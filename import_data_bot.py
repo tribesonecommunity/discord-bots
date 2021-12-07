@@ -202,7 +202,7 @@ def make_teams(player_list):
     elif len(even_games) == 1:
         return even_games[0]
     else:
-        even_games = heapq.heapify(even_games)
+        heapq.heapify(even_games)
         return heapq.heappop(even_games)[1:4]
     #return pd.DataFrame([teams for teams in matches if ((teams[0] > 0.45) & (teams[0] < 0.55))], columns = ['Win Probability', 'Team 1', 'Team 2']).sort_values(by = 'Win Probability', ascending = True)
 
