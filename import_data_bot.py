@@ -1,4 +1,5 @@
 # Relevant libraries
+import heapq
 import pandas as pd
 import numpy as np
 import math
@@ -183,22 +184,26 @@ def make_teams(player_list):
     matches = []
     for team1 in list(itertools.combinations(player_list, r= 5)):
         team2 = set(player_list) - set(team1)
-        matches.append((win_probability([players_ts[player] for player in team1], \
-                                        [players_ts[player] for player in team2]), team1, team2))
+        win_prob = win_probability(
+            [players_ts[player] for player in team1],
+            [players_ts[player] for player in team2]
+        )
+        matches.append((
+            abs(0.50 - win_prob),
+            win_prob,
+            team1,
+            team2
+        ))
 
     #print (random.choice([teams for teams in matches if ((teams[0] > 0.45) & (teams[0] < 0.55))]))
-    even_games = [teams for teams in matches if ((teams[0] > 0.45) & (teams[0] < 0.55))]
+    even_games = [teams for teams in matches if ((teams[1] > 0.45) & (teams[1] < 0.55))]
     if not even_games:
         return (0, ['No Even Teams'], ['Try New Captains'])
     elif len(even_games) == 1:
         return even_games[0]
     else:
-        sorted_even_games = sorted(even_games, key=lambda x: x[0])
-        print(sorted_even_games)
-        middle_item = int(len(sorted_even_games) / 2)
-        print(middle_item, int(1/2))
-        print(sorted_even_games[middle_item])
-        return sorted_even_games[middle_item]
+        even_games = heapq.heapify(even_games)
+        return heapq.heappop(even_games)[1:4]
     #return pd.DataFrame([teams for teams in matches if ((teams[0] > 0.45) & (teams[0] < 0.55))], columns = ['Win Probability', 'Team 1', 'Team 2']).sort_values(by = 'Win Probability', ascending = True)
 
 #player_list = ['sharp|laptop', 'Stork', 'rtcll', 'lel', 'Lyon', 'Fooshiez', 'Noosh', 'MaL', 'Navox', 'hojo420']
