@@ -5,7 +5,6 @@ import numpy as np
 import math
 import trueskill as ts
 import itertools
-import random
 import urllib.request, json
 
 # This is the server that implosions hosts the data on
