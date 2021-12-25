@@ -19,54 +19,19 @@ from math import floor
 from random import random
 from time import clock_gettime
 from typing import Dict, List, Set
-from uuid import uuid4
 
-from discord import Member, Message
+from discord import TextChannel, Member, Message
 from sqlalchemy.exc import IntegrityError
 
 from models import Game, GamePlayer, Player, Queue, QueuePlayer, Session
 
-COMMAND_PREFIX: str = "!"
+COMMAND_PREFIX: str = "$"
 DEBUG: bool = False
 
 
 def debug(*args):
     if DEBUG:
         print(args)
-
-
-# Models start here
-# Some of these models are mocks of discord models exist so that the commands can be invoked from a script rather than needing to be hooked up to discord
-
-@dataclass
-class Role:
-    name: str
-    id: str = field(default_factory=lambda: str(uuid4()).split("-")[0])
-
-
-@dataclass
-class Guild:
-    roles: List[Role] = field(default_factory=lambda: [Role("LTpug")])
-
-
-@dataclass
-class Member:
-    guild: Guild = Guild()
-
-
-@dataclass
-class Message:
-    author: Member
-    content: str
-
-
-@dataclass
-class QueuePlayers:
-    queue: Queue
-    players: List[str] = field(default_factory=list)
-
-
-# Test models end here
 
 
 # To be persisted
@@ -80,8 +45,14 @@ BANNED_PLAYERS: Set[str] = set()
 RE_ADD_DELAY: int = 1
 
 
+async def embed_message(channel: TextChannel, content: str):
+    """
+    TODO: Figure out how to use https://discordpy.readthedocs.io/en/stable/api.html#discord.Embed
+    """
+    await channel.send("`" + content + "`")
+
+
 def is_in_game(player_id: int) -> bool:
-    # return False
     return get_player_game(player_id) is not None
 
 
@@ -105,7 +76,7 @@ def get_player_game(player_id: int) -> Game:
 # Commands start here
 
 
-def add(author: Member, args: List[str]):
+async def add(message: Message, author: Member, args: List[str]):
     """
         Players adds self to queue(s)
 
@@ -119,7 +90,7 @@ def add(author: Member, args: List[str]):
     LTgold [3/10] LTsilver [3/10] LTpug [3/10] LTunrated [3/10] LTirregular [0/10]
     """
     if is_in_game(author.id):
-        print("[add]", author, "you are already in a game")
+        await embed_message(message.channel, f"{author} you are already in a game")
         return
 
     # if len(GAME_HISTORY) > 0:
@@ -153,8 +124,13 @@ def add(author: Member, args: List[str]):
             queues_to_add.append(queue)
     else:
         for queue_name in args:
-            queue = session.query(Queue).filter(Queue.name == queue_name)[0]
-            queues_to_add.append(queue)
+            queue = session.query(Queue).filter(Queue.name == queue_name)
+            if len(queue) > 0:
+                queues_to_add.append(queue[0])
+            else:
+                await embed_message(
+                    message.channel, f"could not find queue: {queue_name}"
+                )
 
     for queue in queues_to_add:
         session.add(QueuePlayer(queue_id=queue.id, player_id=player.id))
@@ -170,7 +146,6 @@ def add(author: Member, args: List[str]):
                     QueuePlayer.queue_id == queue.id
                 )
             ]
-            print(queue_players)
             if len(queue_players) == queue.size:  # Pop!
                 # TODO: Create voice channels
                 game = Game(queue_id=queue.id)
@@ -192,59 +167,57 @@ def add(author: Member, args: List[str]):
                     )
                     session.add(game_player)
 
-                print(
-                    "[add]",
-                    queue.name,
-                    "game popped! BE:",
-                    team0,
-                    "DS:",
-                    team1,
+                await embed_message(
+                    message.channel, f"{queue.name} popped! BE: {team0}, DS:, {team1}"
                 )
 
                 session.query(QueuePlayer).delete()
                 session.commit()
                 return
-    print("[add]", player.name, "added to queues:", queues_added_to)
+
+    await embed_message(
+        message.channel, f"{player.name} added to queues {queues_added_to}"
+    )
 
 
-def add_admin(author: Member, args: List[str]):
+async def add_admin(message: Message, author: Member, args: List[str]):
     """
     TODO:
     - Decorator for admin permissions
     """
+    await embed_message(message.channel, "not implemented")
     if len(args) != 1:
-        print("[add_admin] usage: !addadmin <player_name>")
+        await embed_message(message.channel, "usage: !addadmin <player_name>")
     elif author not in ADMINS:
-        print("[add_admin] you must be an admin to use this command")
-        return
+        await embed_message(message.channel, "you must be an admin to use this command")
     elif args[0] in ADMINS:
-        print("[add_admin]", args[0], "is already an admin")
+        await embed_message(message.channel, f"{args[0]} is already an admin")
     else:
         ADMINS.add(args[0])
-        print("[add_admin]", args[0], "added to admins")
+        await embed_message(message.channel, f"{args[0]} added to admins")
 
 
-def ban(author: Member, args: List[str]):
+async def ban(message: Message, author: Member, args: List[str]):
     """TODO: remove player from queues"""
+    await embed_message(message.channel, "not implemented")
     if len(args) != 1:
-        print("[ban] usage: !ban <player_name>")
-        return
+        await embed_message(message.channel, f"usage: !ban <player_name>")
     elif author not in ADMINS:
-        print("[ban] you must be an admin to use this command")
-        return
+        await embed_message(message.channel, "you must be an admin to use this command")
     elif args[0] in BANNED_PLAYERS:
-        print("[ban]", args[0], "is already banned")
-        return
+        await embed_message(message.channel, f"{args[0]} is already banned")
     else:
         BANNED_PLAYERS.add(args[0])
-        print("[ban]", args[0], "added to ban list")
-        return
+        await embed_message(message.channel, f"{args[0]} added to ban list")
 
 
-def cancel_game(author: Member, args: List[str]):
+async def cancel_game(message: Message, author: Member, args: List[str]):
+    await embed_message(message.channel, "not implemented")
     if len(args) == 1:
         if author not in ADMINS:
-            print("[cancel_game] you must be an admin to cancel a game by its id")
+            await embed_message(
+                message.channel, "you must be an admin to cancel a game by its id"
+            )
             return
         for games in GAMES.values():
             for game in games:
@@ -276,25 +249,28 @@ def cancel_game(author: Member, args: List[str]):
             )
 
 
-def coinflip(author: Member, args: List[str]):
-    print("[coinflip]", floor(random() * 2))
+async def coinflip(message: Message, author: Member, args: List[str]):
+    result = "`HEADS`" if floor(random() * 2) == 0 else "`TAILS`"
+    await embed_message(message.channel, result)
 
 
-def commands(author: Member, args: List[str]):
+async def commands(message: Message, author: Member, args: List[str]):
+    output = "commands:"
     for command in COMMANDS:
-        print(command)
+        output += f"\n{COMMAND_PREFIX}{command}"
+
+    await embed_message(message.channel, output)
 
 
-def create_queue(author: Member, args: List[str]):
-    if len(args) < 1 or len(args) > 2:
-        print(
-            "[create_queue] usage: !createqueue <queue_name> <queue_size (optional)> "
+async def create_queue(message: Message, author: Member, args: List[str]):
+    if len(args) != 2:
+        await embed_message(
+            message.channel, "usage: !createqueue <queue_name> <queue_size>"
         )
         return
-    debug("[create_queue]", args)
     queue_size = int(args[1])
     if queue_size % 2 != 0:
-        print("[create_queue] queue size must be even:", queue_size)
+        await embed_message(message.channel, f"queue size must be even: {queue_size}")
         return
 
     queue = Queue(name=args[0], size=int(args[1]))
@@ -303,13 +279,13 @@ def create_queue(author: Member, args: List[str]):
     try:
         session.add(queue)
         session.commit()
-        print("[create_queue] queue created:", queue)
+        await embed_message(message.channel, f"queue created: {queue}")
     except IntegrityError:
         session.rollback()
-        print("[create_queue] queue already exists")
+        await embed_message(message.channel, "queue already exists")
 
 
-def del_(author: Member, args: List[str]):
+async def del_(message: Message, author: Member, args: List[str]):
     """
     Players deletes self from queue(s)
 
@@ -325,20 +301,23 @@ def del_(author: Member, args: List[str]):
             queue = session.query(Queue).filter(Queue.name == queue_name)[0]
             queues_to_del.append(queue)
 
+    queues_removed_from = []
     for queue in queues_to_del:
         session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == author.id
         ).delete()
         session.commit()
+        queues_removed_from.append(queue.name)
+    await embed_message(message.channel, f"removed from queues: {queues_removed_from}")
 
 
-def finish_game(author: Member, args: List[str]):
+async def finish_game(message: Message, author: Member, args: List[str]):
     """
     TODO
     - Player must be a captain?
     """
     if len(args) == 0:
-        print("[finish_game] usage: !finishgame <win|loss|tie>")
+        await embed_message(message.channel, "usage: !finishgame <win|loss|tie>")
         return
 
     session = Session()
@@ -346,7 +325,9 @@ def finish_game(author: Member, args: List[str]):
         gp for gp in session.query(GamePlayer).filter(GamePlayer.player_id == author.id)
     ]
     if len(game_players) == 0:
-        print("[finish_game] you must be in a game to use that command")
+        await embed_message(
+            message.channel, "you must be in a game to use that command"
+        )
         return
 
     game = session.query(Game).filter(Game.id == game_players[0].game_id)[0]
@@ -357,49 +338,56 @@ def finish_game(author: Member, args: List[str]):
     elif args[0] == "draw":
         game.winning_team = -1
     else:
-        print("[finish_game] usage: !finishgame <win|loss|tie>")
+        await embed_message(message.channel, "usage: !finishgame <win|loss|tie>")
 
     session.add(game)
     session.commit()
+    await embed_message(message.channel, f"game {game.id} finished")
 
 
-def list_bans(author: Member, args: List[str]):
+async def list_bans(message: Message, author: Member, args: List[str]):
+    await embed_message(message.channel, "not implemented")
     print("[list_bans]", BANNED_PLAYERS)
 
 
-def list_queues(author: Member, args: List[str]):
-    print("[list_queues]:")
-    for queue in Session().query(Queue):
-        print(queue)
-
-
-def remove_admin(author: Member, args: List[str]):
+async def remove_admin(message: Message, author: Member, args: List[str]):
+    await embed_message(message.channel, "not implemented")
     if len(args) != 1:
-        print("[remove_admin] usage: !removeadmin <player_name>")
+        await embed_message(
+            message.channel, "[remove_admin] usage: !removeadmin <player_name>"
+        )
     elif author not in ADMINS:
-        print("[remove_admin] you must be an admin to use this command")
+        await embed_message(
+            message.channel, "[remove_admin] you must be an admin to use this command"
+        )
         return
     elif args[0] not in ADMINS:
-        print("[remove_admin]", args[0], "is not an admin")
+        await embed_message(
+            message.channel, "[remove_admin]", args[0], "is not an admin"
+        )
     elif args[0] == author:
-        print("[remove_admin] you cannot remove yourself as an admin")
+        await embed_message(
+            message.channel, "[remove_admin] you cannot remove yourself as an admin"
+        )
     else:
         ADMINS.remove(args[0])
-        print("[remove_admin]", args[0], "removed from admins")
+        await embed_message(
+            message.channel, "[remove_admin]", args[0], "removed from admins"
+        )
 
 
-def remove_queue(author: Member, args: List[str]):
+async def remove_queue(message: Message, author: Member, args: List[str]):
     if len(args) == 0:
-        print("[remove_queue] usage: !remove_queue <queue_name>")
+        await embed_message(message.channel, "usage: !remove_queue <queue_name>")
         return
-    debug("[remove_queue]", args)
     session = Session()
     session.query(Queue).filter(Queue.name == args[0]).delete()
     session.commit()
-    print("[remove_queue] queue removed:", args[0])
+    await embed_message(message.channel, f"queue removed: {args[0]}")
 
 
-def set_add_delay(author: Member, args: List[str]):
+async def set_add_delay(message: Message, author: Member, args: List[str]):
+    await embed_message(message.channel, "not implemented")
     if len(args) != 1:
         print("[set_add_delay] usage: !setadddelay <delay_seconds>")
         return
@@ -408,27 +396,58 @@ def set_add_delay(author: Member, args: List[str]):
     print("[set_add_delay] timer to re-add to games set to", RE_ADD_DELAY)
 
 
-def set_command_prefix(author: Member, args: List[str]):
+async def set_command_prefix(message: Message, author: Member, args: List[str]):
     if len(args) != 1:
-        print("[set_command_prefix] usage: !setcommandprefix prefix")
+        await embed_message(message.channel, "usage: !setcommandprefix <prefix>")
         return
     global COMMAND_PREFIX
     COMMAND_PREFIX = args[0]
-    print("[set_command_prefix] command prefix set to", COMMAND_PREFIX)
+    await embed_message(message.channel, f"command prefix set to {COMMAND_PREFIX}")
 
 
-def status(author: Member, args: List[str]):
+async def status(message: Message, author: Member, args: List[str]):
     session = Session()
-    queues = session.query(Queue)
-    print(queues)
-    games = session.query(Game).filter(Game.winning_team == None)
-    print(games)
+    queues = [q for q in session.query(Queue)]
+    games = [g for g in session.query(Game).filter(Game.winning_team == None)]
+    games_by_queue = dict([(g.queue_id, g) for g in games])
+    output = ""
+    for queue in queues:
+        players_in_queue = [
+            p
+            for p in session.query(Player)
+            .join(QueuePlayer)
+            .filter(QueuePlayer.queue_id == queue.id)
+        ]
+        output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]"
+
+        if len(players_in_queue) > 0:
+            output += f"\n**IN QUEUE:** "
+            output += ", ".join([player.name for player in players_in_queue])
+            output += "\n"
+
+        if queue.id in games_by_queue:
+            for game in games_by_queue[queue.id]:
+                game_players = [
+                    p
+                    for p in session.query(Player)
+                    .join(GamePlayer)
+                    .filter(GamePlayer.game_id == game.id)
+                ]
+                output += f"**IN GAME:** "
+                team0 = filter(lambda x: x.team == 0, game_players)
+                team1 = filter(lambda x: x.team == 1, game_players)
+                output += f", ".join([player.name for player in team0])
+                output += f", ".join([player.name for player in team1])
+                output += "\n"
+
+    await embed_message(message.channel, output)
 
 
-def sub(author: Member, args: List[str]):
+async def sub(message: Message, author: Member, args: List[str]):
     """
     Substitute one player in a game for another
     """
+    await embed_message(message.channel, "not implemented")
     if len(args) != 1:
         print("[sub] usage: !sub <player_name>")
         return
@@ -453,7 +472,8 @@ def sub(author: Member, args: List[str]):
     print("[sub] swapped", callee, "for", author, "in", callee_game.queue_name)
 
 
-def unban(author: Member, args: List[str]):
+async def unban(message: Message, author: Member, args: List[str]):
+    await embed_message(message.channel, "not implemented")
     if len(args) != 1:
         print("[unban] usage: !unban <player_name>")
         return
@@ -487,7 +507,6 @@ COMMANDS = {
     "del": del_,
     "finishgame": finish_game,
     "listbans": list_bans,
-    "listqueues": list_queues,
     "removeadmin": remove_admin,
     "removequeue": remove_queue,
     "setadddelay": set_add_delay,
@@ -498,19 +517,18 @@ COMMANDS = {
 }
 
 
-def on_message(message: Message):
-    print()
-    print("[on_message] message:", message)
+async def handle_message(message: Message):
+    print("[handle_message] message:", message)
     command = message.content.split(" ")[0]
 
     if not command.startswith(COMMAND_PREFIX):
-        debug("[on_message] not command", command)
+        print("[handle_message] not command", command)
         return
 
     command = command[1:]
     if command not in COMMANDS:
-        print("[on_message] exiting - command not found:", command)
+        print("[handle_message] exiting - command not found:", command)
         return
 
-    debug("[on_message] command:", command)
-    COMMANDS[command](message.author, message.content.split(" ")[1:])
+    print("[handle_message] command:", command)
+    await COMMANDS[command](message, message.author, message.content.split(" ")[1:])

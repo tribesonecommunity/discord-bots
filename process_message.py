@@ -31,37 +31,31 @@ if __name__ == "__main__":
     on_message(Message(opsayo, "!createqueue LTgold 10"))
     on_message(Message(opsayo, "!createqueue LTpug 10"))
     on_message(Message(opsayo, "!createqueue LTunrated 10"))
-    on_message(Message(opsayo, "!listqueues"))
     queues = [q for q in session.query(Queue)]
     assert len(queues) == 3
 
     on_message(Message(opsayo, "!removequeue"))
     on_message(Message(opsayo, "!removequeue LTgold"))
     on_message(Message(opsayo, "!removequeue LTfun"))
-    on_message(Message(opsayo, "!listqueues"))
     queues = [q for q in session.query(Queue)]
     assert len(queues) == 2
 
     on_message(Message(opsayo, "!add"))
-    on_message(Message(opsayo, "!listqueues"))
     for queue in QUEUES.values():
         assert len(queue.players) == 1
 
     on_message(Message(opsayo, "!del"))
-    on_message(Message(opsayo, "!listqueues"))
     for queue in QUEUES.values():
         assert len(queue.players) == 0
 
     on_message(Message(opsayo, "!add LTgold"))
     on_message(Message(opsayo, "!add LTpug"))
     assert opsayo in QUEUES["LTpug"].players
-    on_message(Message(opsayo, "!listqueues"))
 
     on_message(Message(opsayo, "!del LTgold"))
     on_message(Message(opsayo, "!del LTpug"))
     assert opsayo not in QUEUES["LTpug"].players
     on_message(Message(opsayo, "!del LTpug"))
-    on_message(Message(opsayo, "!listqueues"))
 
     on_message(Message(opsayo, "!createqueue LTpug 2"))
     on_message(Message(opsayo, "!add LTpug"))
@@ -71,7 +65,6 @@ if __name__ == "__main__":
     on_message(Message(stork, "!add LTpug"))
     assert len(GAMES["LTpug"]) == 1
 
-    on_message(Message(stork, "!listqueues"))
     on_message(Message(stork, "!status"))
 
     on_message(Message(lyon, "!finishgame"))
