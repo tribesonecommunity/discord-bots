@@ -520,13 +520,6 @@ async def test_remove_admin_with_non_admin_should_not_remove_player_from_admins(
 # assert len(GAMES["LTpug"]) == 0
 # await handle_message(Message(opsayo, f"{COMMAND_PREFIX}status"))
 
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}coinflip"))
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}setcommandprefix"))
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}setcommandprefix #"))
-# await handle_message(Message(opsayo, "#coinflip"))
-# await handle_message(Message(opsayo, "#setcommandprefix !"))
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}coinflip"))
-
 # await handle_message(Message(opsayo, f"{COMMAND_PREFIX}setadddelay"))
 # await handle_message(Message(opsayo, f"{COMMAND_PREFIX}setadddelay 1"))
 # sleep(1)
