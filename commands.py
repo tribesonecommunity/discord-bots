@@ -15,7 +15,7 @@ TODO:
 """
 from collections import defaultdict
 from dataclasses import dataclass, field
-from math import ceil, floor
+from math import floor
 from random import random
 from time import clock_gettime
 from typing import Dict, List, Set
@@ -24,7 +24,7 @@ from uuid import uuid4
 from discord import Member, Message
 from sqlalchemy.exc import IntegrityError
 
-from models import Player, Queue, QueuePlayer, Session
+from models import Game, GamePlayer, Player, Queue, QueuePlayer, Session
 
 COMMAND_PREFIX: str = "!"
 DEBUG: bool = False
@@ -37,21 +37,11 @@ def debug(*args):
 
 # Models start here
 # Some of these models are mocks of discord models exist so that the commands can be invoked from a script rather than needing to be hooked up to discord
-@dataclass
-class Game:
-    queue_name: str
-    team1: List[str]
-    team2: List[str]
-    id: str = str(uuid4()).split("-")[0]
-
-    def contains_player(self, player_name):
-        return player_name in self.team1 or player_name in self.team2
-
 
 @dataclass
 class Role:
     name: str
-    id: str = str(uuid4()).split("-")[0]
+    id: str = field(default_factory=lambda: str(uuid4()).split("-")[0])
 
 
 @dataclass
@@ -62,12 +52,6 @@ class Guild:
 @dataclass
 class Member:
     guild: Guild = Guild()
-
-
-@dataclass(frozen=True)
-class Author:
-    name: str
-    id: int = floor(random() * 2 ** 32)
 
 
 @dataclass
@@ -88,11 +72,6 @@ class QueuePlayers:
 # To be persisted
 GAME_HISTORY = []
 
-GAMES: Dict[str, List[Game]] = defaultdict(
-    list
-)  # Map queue names to players in the game
-# QUEUES: Dict[Queue, List[str]] = {}  # TODO: Persist queues
-
 # List of players to be randomized into a queue
 QUEUE_WAITING_ROOM: Dict[Queue, List[str]] = defaultdict(list)
 
@@ -101,16 +80,26 @@ BANNED_PLAYERS: Set[str] = set()
 RE_ADD_DELAY: int = 1
 
 
-def is_in_game(player_name) -> bool:
-    return get_player_game(player_name) is not None
+def is_in_game(player_id: int) -> bool:
+    # return False
+    return get_player_game(player_id) is not None
 
 
-def get_player_game(player_name) -> Game:
-    for games in GAMES.values():
-        for game in games:
-            if game.contains_player(player_name):
-                return game
-    return None
+def get_player_game(player_id: int) -> Game:
+    """
+    Find the game a player is currently in, excluding finished games
+    """
+    session = Session()
+    game_players = [
+        gp
+        for gp in session.query(GamePlayer)
+        .join(Game)
+        .filter(Game.winning_team == None, GamePlayer.player_id == player_id)
+    ]
+    if len(game_players) > 0:
+        return session.query(Game).filter(Game.id == GamePlayer.game_id)[0]
+    else:
+        return None
 
 
 # Commands start here
@@ -129,7 +118,7 @@ def add(author: Member, args: List[str]):
         opsayo added to: LTgold, LTsilver, LTpug, LTunrated
     LTgold [3/10] LTsilver [3/10] LTpug [3/10] LTunrated [3/10] LTirregular [0/10]
     """
-    if is_in_game(author):
+    if is_in_game(author.id):
         print("[add]", author, "you are already in a game")
         return
 
@@ -171,38 +160,51 @@ def add(author: Member, args: List[str]):
         session.add(QueuePlayer(queue_id=queue.id, player_id=player.id))
         try:
             session.commit()
+            queues_added_to.append(queue.name)
         except IntegrityError:
             session.rollback()
         else:
-            queue_players = [
+            queue_players: List[QueuePlayer] = [
                 qp
                 for qp in session.query(QueuePlayer).filter(
                     QueuePlayer.queue_id == queue.id
                 )
             ]
             print(queue_players)
-            print("[add]", author, "added to", queue.name)
-            if len(queue_players) == queue.size:
-                # TODO: Import even teams using trueskill
+            if len(queue_players) == queue.size:  # Pop!
                 # TODO: Create voice channels
-                game = Game(
-                    queue_name,
-                    queue.players[0 : queue.size // 2],
-                    queue.players[queue.size // 2 :],
-                )
+                game = Game(queue_id=queue.id)
+                session.add(game)
 
-                GAMES[queue_name].append(game)
+                # TODO: Import even teams using trueskill
+                team0 = queue_players[: len(queue_players) // 2]
+                team1 = queue_players[len(queue_players) // 2 :]
+
+                for queue_player in team0:
+                    game_player = GamePlayer(
+                        game_id=game.id, player_id=queue_player.player_id, team=0
+                    )
+                    session.add(game_player)
+
+                for queue_player in team1:
+                    game_player = GamePlayer(
+                        game_id=game.id, player_id=queue_player.player_id, team=1
+                    )
+                    session.add(game_player)
+
                 print(
                     "[add]",
-                    queue_name,
-                    "game popped, BE:",
-                    game.team1,
+                    queue.name,
+                    "game popped! BE:",
+                    team0,
                     "DS:",
-                    game.team2,
+                    team1,
                 )
 
-                queue.players.clear()
-                break
+                session.query(QueuePlayer).delete()
+                session.commit()
+                return
+    print("[add]", player.name, "added to queues:", queues_added_to)
 
 
 def add_admin(author: Member, args: List[str]):
@@ -258,7 +260,7 @@ def cancel_game(author: Member, args: List[str]):
                     )
                     return
     else:
-        author_game = get_player_game(author)
+        author_game = get_player_game(author.id)
         if not author_game:
             print("[cancelgame] you are not in a game")
             return
@@ -339,17 +341,26 @@ def finish_game(author: Member, args: List[str]):
         print("[finish_game] usage: !finishgame <win|loss|tie>")
         return
 
-    for queue_name, games in GAMES.items():
-        for game in games:
-            if author in game.team1 or author in game.team2:
-                # TODO: Record game outcome
-                # TODO: Remove voice channels
-                print("[finish_game]", queue_name, "game finished as", args[0])
-                GAME_HISTORY.append((clock_gettime(0), game))
-                GAMES[queue_name].remove(game)
-                return
+    session = Session()
+    game_players = [
+        gp for gp in session.query(GamePlayer).filter(GamePlayer.player_id == author.id)
+    ]
+    if len(game_players) == 0:
+        print("[finish_game] you must be in a game to use that command")
+        return
 
-    print("[finish_game] you must be in a game to use that command")
+    game = session.query(Game).filter(Game.id == game_players[0].game_id)[0]
+    if args[0] == "win":
+        game.winning_team = game_players[0].team
+    elif args[0] == "loss":
+        game.winning_team = (game_players[0].team + 1) % 2
+    elif args[0] == "draw":
+        game.winning_team = -1
+    else:
+        print("[finish_game] usage: !finishgame <win|loss|tie>")
+
+    session.add(game)
+    session.commit()
 
 
 def list_bans(author: Member, args: List[str]):
@@ -407,8 +418,11 @@ def set_command_prefix(author: Member, args: List[str]):
 
 
 def status(author: Member, args: List[str]):
-    print("[status] queues", QUEUES)
-    print("[status] games", GAMES)
+    session = Session()
+    queues = session.query(Queue)
+    print(queues)
+    games = session.query(Game).filter(Game.winning_team == None)
+    print(games)
 
 
 def sub(author: Member, args: List[str]):
@@ -420,7 +434,7 @@ def sub(author: Member, args: List[str]):
         return
 
     callee = args[0]
-    if is_in_game(author):
+    if is_in_game(author.id):
         print("[sub]", author, "is already in a game")
         return
 
@@ -433,8 +447,8 @@ def sub(author: Member, args: List[str]):
         callee_game.team1.remove(callee)
         callee_game.team1.append(author)
     else:
-        callee_game.team2.remove(callee)
-        callee_game.team2.append(author)
+        callee_game.team1.remove(callee)
+        callee_game.team1.append(author)
 
     print("[sub] swapped", callee, "for", author, "in", callee_game.queue_name)
 

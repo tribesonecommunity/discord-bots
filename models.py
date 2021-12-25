@@ -24,18 +24,64 @@ without needing to declare the table schema twice. It does add some boilerplate.
 
 @mapper_registry.mapped
 @dataclass
+class Admin:
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "admin"
+
+    player_id: int = field(
+        metadata={
+            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class BannedPlayer:
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "banned_player"
+
+    player_id: int = field(
+        metadata={
+            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class Game:
     """
-    An instance of a game played
+    A game either in progress or already completed
+
+    winning_team: null means in progress, -1 means in draw, 0 means team 0, 1
+    means team 1. this is so that it's easy to find the other team with (team + 1) % 2
     """
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "game"
 
     queue_id: str = field(
-        metadata={"sa": Column(String, ForeignKey("queue.id"), nullable=False)},
+        metadata={
+            "sa": Column(String, ForeignKey("queue.id"), nullable=False, index=True)
+        },
+    )
+    winning_team: int = field(
+        init=False,
+        metadata={"sa": Column(Integer, index=True)},
     )
     id: str = field(
+        init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
@@ -52,13 +98,18 @@ class GamePlayer:
     __tablename__ = "game_player"
 
     game_id: str = field(
-        metadata={"sa": Column(String, ForeignKey("game.id"), nullable=False)},
+        metadata={
+            "sa": Column(String, ForeignKey("game.id"), nullable=False, index=True)
+        },
     )
     player_id: int = field(
-        metadata={"sa": Column(String, ForeignKey("player.id"), nullable=False)},
+        metadata={
+            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
+        },
     )
-    team: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
     id: str = field(
+        init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
@@ -76,6 +127,7 @@ class Player:
 
     id: int = field(metadata={"sa": Column(Integer, primary_key=True)})
     name: str = field(metadata={"sa": Column(String, nullable=False)})
+    # TODO:
     # trueskill_rating: float = Column(Float, nullable=False, default=0.0)
 
 
@@ -85,9 +137,12 @@ class Queue:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue"
 
-    name: str = field(metadata={"sa": Column(String, unique=True, nullable=False)})
+    name: str = field(
+        metadata={"sa": Column(String, unique=True, nullable=False, index=True)}
+    )
     size: int = field(metadata={"sa": Column(Integer, nullable=False)})
     id: str = field(
+        init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
@@ -105,12 +160,17 @@ class QueuePlayer:
     __table_args__ = (UniqueConstraint("queue_id", "player_id"),)
 
     queue_id: str = field(
-        metadata={"sa": Column(String, ForeignKey("queue.id"), nullable=False)},
+        metadata={
+            "sa": Column(String, ForeignKey("queue.id"), nullable=False, index=True)
+        },
     )
     player_id: int = field(
-        metadata={"sa": Column(String, ForeignKey("player.id"), nullable=False)},
+        metadata={
+            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
+        },
     )
     id: str = field(
+        init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
