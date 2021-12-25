@@ -11,6 +11,7 @@ TODO:
 - generalize printing usage?
 - random / rotating queue pop
 - remove player from queue (admin)
+- pick random team captain for each game
 - use recognizable words for game ids rather than random strings
 - docstrings?
 """
@@ -143,6 +144,9 @@ async def add(message: Message, author: Member, args: List[str]):
                     colour=Colour.red(),
                 )
 
+    if len(queues_to_add) == 0:
+        return
+
     for queue in queues_to_add:
         session.add(QueuePlayer(queue_id=queue.id, player_id=player.id))
         try:
@@ -165,23 +169,37 @@ async def add(message: Message, author: Member, args: List[str]):
                 team0 = queue_players[: len(queue_players) // 2]
                 team1 = queue_players[len(queue_players) // 2 :]
 
+                team0_players = []
                 for queue_player in team0:
                     game_player = GamePlayer(
                         game_id=game.id, player_id=queue_player.player_id, team=0
                     )
                     session.add(game_player)
+                    team0_players.append(
+                        session.query(Player)
+                        .filter(Player.id == queue_player.player_id)[0]
+                        .name
+                    )
 
+                team1_players = []
                 for queue_player in team1:
                     game_player = GamePlayer(
                         game_id=game.id, player_id=queue_player.player_id, team=1
                     )
                     session.add(game_player)
+                    team1_players.append(
+                        session.query(Player)
+                        .filter(Player.id == queue_player.player_id)[0]
+                        .name
+                    )
 
                 short_game_id = game.id.split("-")[0]
 
                 await embed_message(
                     message.channel,
-                    f"{queue.name} popped! BE: {team0}, DS:, {team1}. Game id: {short_game_id}",
+                    content=f"Game '{queue.name}' ({short_game_id}) has begun!",
+                    embed_description=f"**Blood Eagle:** {', '.join(team0_players)}\n**Diamond Sword**: {', '.join(team1_players)}",
+                    colour=Colour.blue(),
                 )
 
                 categories = {
@@ -414,21 +432,26 @@ async def finish_game(message: Message, author: Member, args: List[str]):
     # TODO: Delete channels after the between game wait time, it's nice for
     # players to stick around and chat
     for channel in session.query(GameChannel).filter(GameChannel.game_id == game.id):
-        try:
-            await message.guild.get_channel(channel.channel_id).delete()
-        except:
-            pass
-        try:
-            session.delete(channel)
-        except:
-            pass
+        await message.guild.get_channel(channel.channel_id).delete()
+        session.delete(channel)
 
     session.add(game)
     session.commit()
     short_game_id = game.id.split("-")[0]
     queue = session.query(Queue).filter(Queue.id == Game.queue_id)[0]
+
+    embed_description = ""
+    if game.winning_team == 0:
+        embed_description = "**Winner:** Blood Eagle"
+    elif game.winning_team == 1:
+        embed_description = "**Winner:** Diamond Sword"
+    else:
+        embed_description = "**Tie game**"
     await embed_message(
-        message.channel, f"{queue.name} game ({short_game_id}) finished"
+        message.channel,
+        content=f"Game '{queue.name}' ({short_game_id}) finished",
+        embed_description=embed_description,
+        colour=Colour.green(),
     )
 
 
