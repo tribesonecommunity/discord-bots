@@ -1,9 +1,35 @@
-### Development
-- Use Python 3. `pyenv`, `homebrew`, etc.
-- (Optional) Using a `virtualenv`: `python3 -m venv .venv`
-- (Optional) `source .venv/bin/activate`
+# Development
+
+## Python 3.10.0
+With pyenv:
+- `brew install pyenv`
+- `pyenv install 3.10.0`
+- `pyenv global 3.10.0`
+
+With homebrew:
+- TODO
+
+(Recommended) Use a `virtualenv`
+- `cd discord-bots`
+- `python3 -m venv .venv`
+- `source .venv/bin/activate`
+
+After the above:
 - `pip install -r requirements.txt`
 - `cp .env.example .env`. Modify `.env` by adding your API key
+
+
+## Type checking
+Until I learn how to commit this to the repo, if you use vscode add this to your settings.json:
+https://www.emmanuelgautier.com/blog/enable-vscode-python-type-checking
+```json
+{
+  "python.analysis.typeCheckingMode": "basic"
+}
+```
+
+## Formatting
+Use python black: https://github.com/psf/black
 
 ### Tests
 - `pytest`

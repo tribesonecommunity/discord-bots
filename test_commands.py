@@ -117,7 +117,6 @@ class Message:
         return mentions
 
 
-
 session = Session()
 opsayo = Member("opsayo", id=OPSAYO_MEMBER_ID)
 stork = Member("stork")
@@ -169,7 +168,7 @@ async def test_is_in_game_with_player_in_finished_game_should_return_false():
 async def test_create_queue_with_odd_size_then_does_not_create_queue():
     await handle_message(Message(opsayo, f"{COMMAND_PREFIX}createqueue LTgold 5"))
 
-    queues = [q for q in session.query(Queue)]
+    queues = list(session.query(Queue))
     assert len(queues) == 0
 
 
@@ -177,7 +176,7 @@ async def test_create_queue_with_odd_size_then_does_not_create_queue():
 async def test_create_queue_should_create_queue():
     await handle_message(Message(opsayo, f"{COMMAND_PREFIX}createqueue LTpug 10"))
 
-    queues = [q for q in session.query(Queue)]
+    queues = list(session.query(Queue))
     assert len(queues) == 1
 
 
@@ -186,7 +185,7 @@ async def test_remove_queue_should_remove_queue():
     await handle_message(Message(opsayo, f"{COMMAND_PREFIX}createqueue LTpug 10"))
     await handle_message(Message(opsayo, f"{COMMAND_PREFIX}removequeue LTpug"))
 
-    queues = [q for q in session.query(Queue)]
+    queues = list(session.query(Queue))
     assert len(queues) == 0
 
 
@@ -205,7 +204,7 @@ async def test_add_should_add_player_to_all_queues():
     await handle_message(Message(opsayo, f"{COMMAND_PREFIX}add"))
 
     for queue_name in ("LTpug", "LTunrated"):
-        queue = [q for q in session.query(Queue).filter(Queue.name == queue_name)][0]
+        queue = list(session.query(Queue).filter(Queue.name == queue_name))[0]
         queue_players = [
             qp
             for qp in session.query(QueuePlayer).filter(
@@ -231,7 +230,7 @@ async def test_add_with_queue_named_should_add_player_to_named_queue():
 
     await handle_message(Message(opsayo, f"{COMMAND_PREFIX}add LTpug"))
 
-    lt_pug_queue = [q for q in session.query(Queue).filter(Queue.name == "LTpug")][0]
+    lt_pug_queue = list(session.query(Queue).filter(Queue.name == "LTpug"))[0]
     lt_pug_queue_players = [
         qp
         for qp in session.query(QueuePlayer).filter(
@@ -248,16 +247,13 @@ async def test_add_with_queue_named_should_not_add_player_to_unnamed_queue():
 
     await handle_message(Message(opsayo, f"{COMMAND_PREFIX}add LTpug"))
 
-    lt_unrated_queue = [
-        q for q in session.query(Queue).filter(Queue.name == "LTunrated")
-    ][0]
-    lt_unrated_queue_players = [
-        qp
-        for qp in session.query(QueuePlayer).filter(
+    lt_unrated_queue = list(session.query(Queue).filter(Queue.name == "LTunrated"))[0]
+    lt_unrated_queue_players = list(
+        session.query(QueuePlayer).filter(
             QueuePlayer.player_id == opsayo.id,
             QueuePlayer.queue_id == lt_unrated_queue.id,
         )
-    ]
+    )
     assert len(lt_unrated_queue_players) == 0
 
 
@@ -476,6 +472,7 @@ async def test_remove_admin_with_non_admin_should_not_remove_player_from_admins(
 
     admins = list(session.query(Player).filter(Player.is_admin == True))
     assert len(admins) == 2
+
 
 # await handle_message(Message(opsayo, f"{COMMAND_PREFIX}ban lyon"))
 # assert len(BANNED_PLAYERS) == 1

@@ -16,13 +16,14 @@ TODO:
 - docstrings?
 - backup database each time it starts up
 - migrations
+- enable strict typing configuration
 """
 from collections import defaultdict
 from math import floor
 from random import random
-from typing import Callable, Dict, List, Set
+from typing import Awaitable, Callable, Dict, List, Optional, Set
 
-from discord import Colour, Embed, TextChannel, Member, Message
+from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Member, Message
 from sqlalchemy.exc import IntegrityError
 
 from models import Game, GameChannel, GamePlayer, Player, Queue, QueuePlayer, Session
@@ -32,7 +33,7 @@ COMMAND_PREFIX: str = "$"
 
 
 async def send_message(
-    channel: TextChannel,
+    channel: (DMChannel | GroupChannel | TextChannel),
     content: str = None,
     embed_description: str = None,
     colour: Colour = None,
@@ -47,7 +48,7 @@ async def send_message(
     await channel.send(content=content, embed=embed)
 
 
-def require_admin(command_func: Callable[[Message, List[str]], None]):
+def require_admin(command_func: Callable[[Message, List[str]], Awaitable[None]]):
     """
     Decorator to wrap functions that require being called by an admin
     """
@@ -85,7 +86,7 @@ def is_in_game(player_id: int) -> bool:
     return get_player_game(player_id) is not None
 
 
-def get_player_game(player_id: int) -> Game:
+def get_player_game(player_id: int) -> Optional[Game]:
     """
     Find the game a player is currently in, excluding finished games
     """
@@ -220,22 +221,29 @@ async def add(message: Message, args: List[str]):
                     colour=Colour.blue(),
                 )
 
-                categories = {
-                    category.id: category for category in message.guild.categories
-                }
-                tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
-                be_channel = await message.guild.create_voice_channel(
-                    f"Blood Eagle ({short_game_id})",
-                    category=tribes_voice_category,
-                )
-                ds_channel = await message.guild.create_voice_channel(
-                    f"Diamond Sword ({short_game_id})",
-                    category=tribes_voice_category,
-                )
-                session.add(GameChannel(game_id=game.id, channel_id=be_channel.id))
-                session.add(GameChannel(game_id=game.id, channel_id=ds_channel.id))
-                session.query(QueuePlayer).delete()
-                session.commit()
+                if message.guild:
+                    categories = {
+                        category.id: category for category in message.guild.categories
+                    }
+                    tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
+                    be_channel = await message.guild.create_voice_channel(
+                        f"Blood Eagle ({short_game_id})",
+                        category=tribes_voice_category,
+                    )
+                    ds_channel = await message.guild.create_voice_channel(
+                        f"Diamond Sword ({short_game_id})",
+                        category=tribes_voice_category,
+                    )
+                    session.add(GameChannel(game_id=game.id, channel_id=be_channel.id))
+                    session.add(GameChannel(game_id=game.id, channel_id=ds_channel.id))
+                    session.query(QueuePlayer).delete()
+                    session.commit()
+                else:
+                    await send_message(
+                        message.channel,
+                        embed_description="No guild for message!",
+                        colour=Colour.red(),
+                    )
                 return
 
     queue_statuses = []
@@ -475,7 +483,10 @@ async def finish_game(message: Message, args: List[str]):
     # TODO: Delete channels after the between game wait time, it's nice for
     # players to stick around and chat
     for channel in session.query(GameChannel).filter(GameChannel.game_id == game.id):
-        await message.guild.get_channel(channel.channel_id).delete()
+        if message.guild:
+            guild_channel = message.guild.get_channel(channel.channel_id)
+            if guild_channel:
+                await guild_channel.delete()
         session.delete(channel)
 
     session.add(game)

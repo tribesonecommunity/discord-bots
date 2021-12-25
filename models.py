@@ -2,7 +2,9 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 
 from sqlalchemy import Boolean, Column, Integer, String, UniqueConstraint, create_engine
-from sqlalchemy.orm import registry, sessionmaker
+# pylance issue with sqlalchemy:
+# https://github.com/microsoft/pylance-release/issues/845
+from sqlalchemy.orm import registry, sessionmaker # type: ignore
 from sqlalchemy.sql.schema import ForeignKey
 
 """
