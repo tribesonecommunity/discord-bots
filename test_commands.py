@@ -106,8 +106,8 @@ class Message:
         When a real message has a mention, the content string looks like:
         '!command <@!370328859440054286>'
 
-        For easier unit testing, assume it looks like
-        '!command @opsayo'
+        For easier unit testing, we assume it looks like
+        '!command @username'
         """
         mentions = []
         for chunk in self.content.split(" "):
@@ -477,6 +477,20 @@ async def test_remove_admin_with_non_admin_should_not_remove_player_from_admins(
     admins = list(session.query(Player).filter(Player.is_admin == True))
     assert len(admins) == 2
 
+# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}ban lyon"))
+# assert len(BANNED_PLAYERS) == 1
+# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}ban lyon"))
+# assert len(BANNED_PLAYERS) == 1
+# await handle_message(Message(izza, f"{COMMAND_PREFIX}ban opsayo"))
+# assert len(BANNED_PLAYERS) == 1
+# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}listbans"))
+
+# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}unban lyon"))
+# assert len(BANNED_PLAYERS) == 0
+# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}unban lyon"))
+# await handle_message(Message(izza, f"{COMMAND_PREFIX}unban opsayo"))
+# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}listbans"))
+
 
 # await handle_message(Message(stork, f"{COMMAND_PREFIX}status"))
 # await handle_message(Message(stork, f"{COMMAND_PREFIX}sub"))
@@ -505,20 +519,6 @@ async def test_remove_admin_with_non_admin_should_not_remove_player_from_admins(
 # await handle_message(Message(opsayo, f"{COMMAND_PREFIX}cancelgame " + GAMES["LTpug"][0].id))
 # assert len(GAMES["LTpug"]) == 0
 # await handle_message(Message(opsayo, f"{COMMAND_PREFIX}status"))
-
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}ban lyon"))
-# assert len(BANNED_PLAYERS) == 1
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}ban lyon"))
-# assert len(BANNED_PLAYERS) == 1
-# await handle_message(Message(izza, f"{COMMAND_PREFIX}ban opsayo"))
-# assert len(BANNED_PLAYERS) == 1
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}listbans"))
-
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}unban lyon"))
-# assert len(BANNED_PLAYERS) == 0
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}unban lyon"))
-# await handle_message(Message(izza, f"{COMMAND_PREFIX}unban opsayo"))
-# await handle_message(Message(opsayo, f"{COMMAND_PREFIX}listbans"))
 
 # await handle_message(Message(opsayo, f"{COMMAND_PREFIX}coinflip"))
 # await handle_message(Message(opsayo, f"{COMMAND_PREFIX}setcommandprefix"))

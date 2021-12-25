@@ -15,10 +15,12 @@ Base = mapper_registry.generate_base()
 
 
 """
-Sorry if this looks confusing. Models are declared using the method here: https://docs.sqlalchemy.org/en/14/orm/mapping_styles.html#example-two-dataclasses-with-declarative-table
+Sorry if this looks confusing. Models are declared using the method here:
+https://docs.sqlalchemy.org/en/14/orm/mapping_styles.html#example-two-dataclasses-with-declarative-table
 
-This lets us mix Python dataclasses with SQLAlchemy. We get the conveniences of dataclasses
-without needing to declare the table schema twice. It does add some boilerplate.
+This lets us mix Python dataclasses with SQLAlchemy. We get the conveniences of
+dataclasses without needing to declare the table schema twice. It does add some
+boilerplate.
 """
 
 
@@ -27,9 +29,10 @@ without needing to declare the table schema twice. It does add some boilerplate.
 class Game:
     """
     A game either in progress or already completed
-
+    
     winning_team: null means in progress, -1 means in draw, 0 means team 0, 1
-    means team 1. this is so that it's easy to find the other team with (team + 1) % 2
+    means team 1. this is so that it's easy to find the other team with (team +
+    1) % 2
     """
 
     __sa_dataclass_metadata_key__ = "sa"

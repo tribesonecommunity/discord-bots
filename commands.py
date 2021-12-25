@@ -20,7 +20,7 @@ TODO:
 from collections import defaultdict
 from math import floor
 from random import random
-from typing import Dict, List, Set
+from typing import Callable, Dict, List, Set
 
 from discord import Colour, Embed, TextChannel, Member, Message
 from sqlalchemy.exc import IntegrityError
@@ -29,24 +29,6 @@ from models import Game, GameChannel, GamePlayer, Player, Queue, QueuePlayer, Se
 
 COMMAND_PREFIX: str = "!"
 COMMAND_PREFIX: str = "$"
-DEBUG: bool = False
-
-
-def debug(*args):
-    if DEBUG:
-        print(args)
-
-
-TRIBES_VOICE_CATEGORY_CHANNEL_ID = 462824101753520138
-OPSAYO_MEMBER_ID = 115204465589616646
-
-session = Session()
-try:
-    # There always has to be at least one initial admin to add others!
-    session.add(Player(id=OPSAYO_MEMBER_ID, name="opsayo", is_admin=True))
-    session.commit()
-except IntegrityError:
-    session.rollback()
 
 
 async def send_message(
@@ -63,6 +45,40 @@ async def send_message(
         if colour:
             embed.colour = colour
     await channel.send(content=content, embed=embed)
+
+
+def require_admin(command_func: Callable[[Message, List[str]], None]):
+    """
+    Decorator to wrap functions that require being called by an admin
+    """
+
+    async def wrapper(*args, **kwargs):
+        print(args, kwargs)
+        session = Session()
+        message: Message = args[0]
+        caller = list(session.query(Player).filter(Player.id == message.author.id))
+        if len(caller) > 0 and caller[0].is_admin:
+            await command_func(*args, **kwargs)
+        else:
+            await send_message(
+                message.channel,
+                embed_description="You must be an admin to use that command",
+                colour=Colour.red(),
+            )
+
+    return wrapper
+
+
+TRIBES_VOICE_CATEGORY_CHANNEL_ID = 462824101753520138
+OPSAYO_MEMBER_ID = 115204465589616646
+
+session = Session()
+try:
+    # There always has to be at least one initial admin to add others!
+    session.add(Player(id=OPSAYO_MEMBER_ID, name="opsayo", is_admin=True))
+    session.commit()
+except IntegrityError:
+    session.rollback()
 
 
 def is_in_game(player_id: int) -> bool:
@@ -237,12 +253,13 @@ async def add(message: Message, args: List[str]):
     )
 
 
+@require_admin
 async def add_admin(message: Message, args: List[str]):
     """
     TODO:
     - Decorator for admin permissions
     """
-    if len(args) != 1:
+    if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
             message.channel,
             embed_description="Usage: !addadmin <player_name>",
@@ -251,27 +268,6 @@ async def add_admin(message: Message, args: List[str]):
         return
 
     session = Session()
-    admins = list(
-        session.query(Player).filter(
-            Player.id == message.author.id, Player.is_admin == True
-        )
-    )
-    if len(admins) == 0:
-        await send_message(
-            message.channel,
-            embed_description="You must be an admin to use this command",
-            colour=Colour.red(),
-        )
-        return
-
-    if len(message.mentions) == 0:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !addadmin @<player_name>",
-            colour=Colour.red(),
-        )
-        return
-
     players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
     if len(players) == 0:
         session.add(
@@ -303,15 +299,16 @@ async def add_admin(message: Message, args: List[str]):
             )
 
 
+@require_admin
 async def ban(message: Message, args: List[str]):
     """TODO: remove player from queues"""
-    await send_message(message.channel, "not implemented")
     if len(args) != 1:
         await send_message(
             message.channel,
-            embed_description=f"Usage: !ban <player_name>",
+            embed_description=f"Usage: !ban @<player_name>",
             colour=Colour.red(),
         )
+
     elif author not in ADMINS:
         await send_message(message.channel, "you must be an admin to use this command")
     elif args[0] in BANNED_PLAYERS:
@@ -321,6 +318,7 @@ async def ban(message: Message, args: List[str]):
         await send_message(message.channel, f"{args[0]} added to ban list")
 
 
+@require_admin
 async def cancel_game(message: Message, args: List[str]):
     await send_message(message.channel, "not implemented")
     if len(args) == 1:
@@ -372,6 +370,7 @@ async def commands(message: Message, args: List[str]):
     await send_message(message.channel, output)
 
 
+@require_admin
 async def create_queue(message: Message, args: List[str]):
     if len(args) != 2:
         await send_message(
@@ -479,7 +478,6 @@ async def finish_game(message: Message, args: List[str]):
         await message.guild.get_channel(channel.channel_id).delete()
         session.delete(channel)
 
-    print(game)
     session.add(game)
     session.commit()
     short_game_id = game.id.split("-")[0]
@@ -514,50 +512,25 @@ async def list_bans(message: Message, args: List[str]):
     print("[list_bans]", BANNED_PLAYERS)
 
 
+@require_admin
 async def remove_admin(message: Message, args: List[str]):
-    if len(args) != 1:
+    if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
             message.channel,
             embed_description="Usage: !removeadmin @<player_name>",
             colour=Colour.red(),
         )
         return
+
+    # if message.mentions[0].id == message.author.id:
+    #     await send_message(
+    #         message.channel,
+    #         embed_description="You cannot remove yourself as an admin",
+    #         colour=Colour.red(),
+    #     )
+    #     return
 
     session = Session()
-    author_is_admin = (
-        len(
-            list(
-                session.query(Player).filter(
-                    Player.id == message.author.id, Player.is_admin == True
-                )
-            )
-        )
-        > 0
-    )
-    if not author_is_admin:
-        await send_message(
-            message.channel,
-            embed_description="You must be an admin to use this command",
-            colour=Colour.red(),
-        )
-        return
-
-    if len(message.mentions) == 0:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !removeadmin @<player_name>",
-            colour=Colour.red(),
-        )
-        return
-
-    if message.mentions[0].id == message.author.id:
-        await send_message(
-            message.channel,
-            embed_description="You cannot remove yourself as an admin",
-            colour=Colour.red(),
-        )
-        return
-
     players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
     if len(players) == 0 or not players[0].is_admin:
         await send_message(
@@ -576,6 +549,7 @@ async def remove_admin(message: Message, args: List[str]):
     )
 
 
+@require_admin
 async def remove_queue(message: Message, args: List[str]):
     if len(args) == 0:
         await send_message(
@@ -594,6 +568,7 @@ async def remove_queue(message: Message, args: List[str]):
         await send_message(message.channel, f"Queue not found: {args[0]}")
 
 
+@require_admin
 async def set_add_delay(message: Message, args: List[str]):
     await send_message(message.channel, "not implemented")
     if len(args) != 1:
@@ -604,6 +579,7 @@ async def set_add_delay(message: Message, args: List[str]):
     print("[set_add_delay] timer to re-add to games set to", RE_ADD_DELAY)
 
 
+@require_admin
 async def set_command_prefix(message: Message, args: List[str]):
     if len(args) != 1:
         await send_message(
@@ -693,6 +669,7 @@ async def sub(message: Message, args: List[str]):
     print("[sub] swapped", callee, "for", author, "in", callee_game.queue_name)
 
 
+@require_admin
 async def unban(message: Message, args: List[str]):
     await send_message(message.channel, "not implemented")
     if len(args) != 1:
