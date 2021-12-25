@@ -5,8 +5,10 @@ from math import floor
 from random import random
 from time import sleep
 from typing import Dict, List
+from unittest.mock import Mock
 from uuid import uuid4
 
+from discord import Message
 from pytest import fixture
 import pytest
 
@@ -14,7 +16,6 @@ from commands import (
     COMMAND_PREFIX,
     OPSAYO_MEMBER_ID,
     TRIBES_VOICE_CATEGORY_CHANNEL_ID,
-    Message,
     is_in_game,
     handle_message,
 )
@@ -38,6 +39,11 @@ class Role:
 
 @dataclass
 class Guild:
+    """
+    Fake utility class for
+    https://discordpy.readthedocs.io/en/stable/api.html#guild
+    """
+
     _members: List[Member] = field(default_factory=list)
     categories: List[Category] = field(default_factory=lambda: [TRIBES_VOICE_CATEGORY])
     channels: Dict[str, Channel] = field(default_factory=dict)
@@ -90,33 +96,6 @@ class Channel:
         pass
 
 
-@dataclass
-class Message:
-    author: Member
-    content: str
-    channel: Channel = Channel()
-
-    @property
-    def guild(self):
-        return TEST_GUILD
-
-    @property
-    def mentions(self) -> List[Member]:
-        """
-        When a real message has a mention, the content string looks like:
-        '!command <@!370328859440054286>'
-
-        For easier unit testing, we assume it looks like
-        '!command @username'
-        """
-        mentions = []
-        for chunk in self.content.split(" "):
-            if not chunk.startswith("@"):
-                continue
-            mentions.append(self.guild.get_member_named(chunk[1:]))
-        return mentions
-
-
 session = Session()
 opsayo = Member("opsayo", id=OPSAYO_MEMBER_ID)
 stork = Member("stork")
@@ -137,6 +116,40 @@ def run_around_tests():
     TEST_GUILD._members = [opsayo, stork, izza, lyon]
 
     session.commit()
+
+
+def mentions(content: str) -> List[Member]:
+    """
+    """
+    mentions = []
+    for chunk in content.split(" "):
+        if not chunk.startswith("@"):
+            continue
+        mentions.append(TEST_GUILD.get_member_named(chunk[1:]))
+    return mentions
+
+
+def Message(author: Member, content: str):
+    """
+    Return a mock object that makes Pylance happy
+    """
+    # https://discordpy.readthedocs.io/en/stable/api.html#discord.Message.mentions
+    # When a real message has a mention, the content string looks like:
+    # '!command <@!370328859440054286>'. For simplicity, we assume it looks like
+    # '!command @username'
+    mentions = []
+    for chunk in content.split(" "):
+        if not chunk.startswith("@"):
+            continue
+        mentions.append(TEST_GUILD.get_member_named(chunk[1:]))
+
+    return Mock(
+        author=author,
+        content=content,
+        channel=Channel(),
+        guild=TEST_GUILD,
+        mentions=mentions,
+    )
 
 
 @pytest.mark.asyncio

@@ -54,7 +54,6 @@ def require_admin(command_func: Callable[[Message, List[str]], Awaitable[None]])
     """
 
     async def wrapper(*args, **kwargs):
-        print(args, kwargs)
         session = Session()
         message: Message = args[0]
         caller = list(session.query(Player).filter(Player.id == message.author.id))
@@ -70,7 +69,7 @@ def require_admin(command_func: Callable[[Message, List[str]], Awaitable[None]])
     return wrapper
 
 
-TRIBES_VOICE_CATEGORY_CHANNEL_ID = 462824101753520138
+TRIBES_VOICE_CATEGORY_CHANNEL_ID: str = "462824101753520138"
 OPSAYO_MEMBER_ID = 115204465589616646
 
 session = Session()

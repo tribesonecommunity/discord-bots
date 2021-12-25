@@ -31,5 +31,22 @@ https://www.emmanuelgautier.com/blog/enable-vscode-python-type-checking
 ## Formatting
 Use python black: https://github.com/psf/black
 
-### Tests
-- `pytest`
+## Tests
+- `pytesto`
+
+# To-do list
+
+Feel free to help out!
+
+MVP
+- Bans
+- Queue delay between games (see QueueFinishTimer, Queue.addPlayersWaiting)
+- Player subs
+- AFK / idle timer (see AFKTimer)
+- Bot picks
+- Custom commands !createcommand / !deletecommand
+- Match history / editing
+
+MVP+
+- In-server queue
+- Map picking problem
