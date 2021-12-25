@@ -117,6 +117,31 @@ class GamePlayer:
 
 @mapper_registry.mapped
 @dataclass
+class GameChannel:
+    """
+    A channel created for a game, intended for temporary voice channels
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "game_channel"
+
+    game_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("game.id"), nullable=False, index=True)
+        },
+    )
+    channel_id: int = field(
+        metadata={"sa": Column(Integer, nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class Player:
     """
     id: We use the user id from discord
