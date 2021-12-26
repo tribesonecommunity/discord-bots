@@ -1,10 +1,25 @@
 from dataclasses import dataclass, field
+from datetime import datetime, time, timezone
+from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, Integer, String, UniqueConstraint, create_engine
+# import datetime
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Integer,
+    String,
+    TIMESTAMP,
+    UniqueConstraint,
+    create_engine,
+)
+from sqlalchemy.sql import func
+
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
-from sqlalchemy.orm import registry, sessionmaker # type: ignore
+from sqlalchemy.orm import registry, sessionmaker  # type: ignore
 from sqlalchemy.sql.schema import ForeignKey
 
 """
@@ -31,7 +46,7 @@ boilerplate.
 class Game:
     """
     A game either in progress or already completed
-    
+
     winning_team: null means in progress, -1 means in draw, 0 means team 0, 1
     means team 1. this is so that it's easy to find the other team with (team +
     1) % 2
@@ -45,9 +60,18 @@ class Game:
             "sa": Column(String, ForeignKey("queue.id"), nullable=False, index=True)
         },
     )
-    winning_team: int = field(
+    winning_team: Optional[int] = field(
         init=False,
         metadata={"sa": Column(Integer, index=True)},
+    )
+    finished_at: Optional[datetime] = field(
+        init=False,
+        metadata={"sa": Column(TIMESTAMP, index=True)},
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(TIMESTAMP, index=True)},
     )
     id: str = field(
         init=False,

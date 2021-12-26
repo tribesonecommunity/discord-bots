@@ -19,17 +19,20 @@ TODO:
 - enable strict typing configuration
 """
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from math import floor
 from random import random
-from typing import Awaitable, Callable, Dict, List, Optional, Set
+from typing import Awaitable, Callable, List, Optional
 
-from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Member, Message
+from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
+from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError
 
 from models import Game, GameChannel, GamePlayer, Player, Queue, QueuePlayer, Session
 
 COMMAND_PREFIX: str = "!"
 COMMAND_PREFIX: str = "$"
+RE_ADD_DELAY: int = 10
 
 
 async def send_message(
@@ -69,7 +72,7 @@ def require_admin(command_func: Callable[[Message, List[str]], Awaitable[None]])
     return wrapper
 
 
-TRIBES_VOICE_CATEGORY_CHANNEL_ID: str = "462824101753520138"
+TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = 462824101753520138
 OPSAYO_MEMBER_ID = 115204465589616646
 
 session = Session()
@@ -125,29 +128,39 @@ async def add(message: Message, args: List[str]):
         )
         return
 
-    # if len(GAME_HISTORY) > 0:
-    #     for finish_time, game in reversed(GAME_HISTORY):
-    #         current_time = clock_gettime(0)
-    #         time_difference = current_time - finish_time
-    #         if game.contains_player(author) and time_difference < RE_ADD_DELAY:
-    #             print(
-    #                 "[add]",
-    #                 author,
-    #                 "your game has just finished, you will be randomized into the queue in",
-    #                 ceil(RE_ADD_DELAY - time_difference),
-    #                 "seconds",
-    #             )
-    #             for queue_name in QUEUES.keys():
-    #                 QUEUE_WAITING_ROOM[queue_name].append(author)
-    #             return
-
     session = Session()
+
+    # Add player in case we haven't seen them yet
     player = Player(id=message.author.id, name=message.author.name)
     session.add(player)
     try:
         session.commit()
     except IntegrityError:
         session.rollback()
+
+    most_recent_game: Game = (
+        session.query(Game)
+        .join(GamePlayer)
+        .filter(Game.finished_at != None, GamePlayer.player_id == player.id)
+        .order_by(Game.finished_at.desc())  # type: ignore
+        .first()
+    )
+
+    if most_recent_game and most_recent_game.finished_at:
+        # The timezone info seems to get lost in the round trip to the database
+        finish_time: datetime = most_recent_game.finished_at.replace(
+            tzinfo=timezone.utc
+        )
+        current_time: datetime = datetime.now(timezone.utc)
+        difference: float = (current_time - finish_time).total_seconds()
+        if difference < RE_ADD_DELAY:
+            time_to_wait = floor(RE_ADD_DELAY - difference)
+            await send_message(
+                message.channel,
+                embed_description=f"Your game has just finished, please wait {time_to_wait} seconds",
+                colour=Colour.green(),
+            )
+            return
 
     queues_to_add = []
     if len(args) == 0:
@@ -166,6 +179,11 @@ async def add(message: Message, args: List[str]):
                 )
 
     if len(queues_to_add) == 0:
+        await send_message(
+            message.channel,
+            content="No valid queues found",
+            colour=Colour.red(),
+        )
         return
 
     for queue in queues_to_add:
@@ -488,6 +506,7 @@ async def finish_game(message: Message, args: List[str]):
                 await guild_channel.delete()
         session.delete(channel)
 
+    game.finished_at = datetime.now(timezone.utc)
     session.add(game)
     session.commit()
     short_game_id = game.id.split("-")[0]

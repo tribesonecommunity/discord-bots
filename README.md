@@ -19,6 +19,11 @@ After the above:
 - `cp .env.example .env`. Modify `.env` by adding your API key
 
 
+## Editor
+Recommend using vscode. If you do, install these plugins
+- Python
+- Pylance
+
 ## Type checking
 Until I learn how to commit this to the repo, if you use vscode add this to your settings.json:
 https://www.emmanuelgautier.com/blog/enable-vscode-python-type-checking
