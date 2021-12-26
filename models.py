@@ -201,5 +201,36 @@ class QueuePlayer:
     )
 
 
+@mapper_registry.mapped
+@dataclass
+class QueueWaitlistPlayer:
+    """
+    Player in a waitlist to be automatically added to a queue.
+
+    Used when players just finished a game to randomly add them back to the
+    queue
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "queue_waitlist_player"
+    __table_args__ = (UniqueConstraint("queue_id", "player_id"),)
+
+    queue_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("queue.id"), nullable=False, index=True)
+        },
+    )
+    player_id: int = field(
+        metadata={
+            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)

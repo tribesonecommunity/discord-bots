@@ -37,7 +37,7 @@ https://www.emmanuelgautier.com/blog/enable-vscode-python-type-checking
 Use python black: https://github.com/psf/black
 
 ## Tests
-- `pytesto`
+- `pytest`
 
 # To-do list
 

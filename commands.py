@@ -197,7 +197,6 @@ async def add(message: Message, args: List[str]):
                 session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id)
             )
             if len(queue_players) == queue.size:  # Pop!
-                # TODO: Create voice channels
                 game = Game(queue_id=queue.id)
                 session.add(game)
 
@@ -334,13 +333,36 @@ async def ban(message: Message, args: List[str]):
             colour=Colour.red(),
         )
 
-    elif author not in ADMINS:
-        await send_message(message.channel, "you must be an admin to use this command")
-    elif args[0] in BANNED_PLAYERS:
-        await send_message(message.channel, f"{args[0]} is already banned")
+    session = Session()
+    players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
+    if len(players) == 0:
+        session.add(
+            Player(
+                id=message.mentions[0].id, name=message.mentions[0].name, is_banned=True
+            )
+        )
+        await send_message(
+            message.channel,
+            embed_description=f"{message.mentions[0].name} banned",
+            colour=Colour.green(),
+        )
+        session.commit()
     else:
-        BANNED_PLAYERS.add(args[0])
-        await send_message(message.channel, f"{args[0]} added to ban list")
+        player = players[0]
+        if player.is_banned:
+            await send_message(
+                message.channel,
+                embed_description=f"{player.name} is already banned",
+                colour=Colour.red(),
+            )
+        else:
+            player.is_banned = True
+            session.commit()
+            await send_message(
+                message.channel,
+                embed_description=f"{player.name} banned",
+                colour=Colour.green(),
+            )
 
 
 @require_admin
@@ -537,8 +559,10 @@ async def list_admins(message: Message, args: List[str]):
 
 
 async def list_bans(message: Message, args: List[str]):
-    await send_message(message.channel, "not implemented")
-    print("[list_bans]", BANNED_PLAYERS)
+    output = "Bans:"
+    for player in Session().query(Player).filter(Player.is_banned == True):
+        output += f"\n- {player.name}"
+    await send_message(message.channel, embed_description=output, colour=Colour.green())
 
 
 @require_admin
@@ -599,13 +623,20 @@ async def remove_queue(message: Message, args: List[str]):
 
 @require_admin
 async def set_add_delay(message: Message, args: List[str]):
-    await send_message(message.channel, "not implemented")
     if len(args) != 1:
-        print("[set_add_delay] Usage: !setadddelay <delay_seconds>")
+        await send_message(
+            message.channel,
+            embed_description="Usage: !setadddelay <delay_seconds>",
+            colour=Colour.red(),
+        )
         return
     global RE_ADD_DELAY
     RE_ADD_DELAY = int(args[0])
-    print("[set_add_delay] timer to re-add to games set to", RE_ADD_DELAY)
+    await send_message(
+        message.channel,
+        embed_description=f"Timer to re-add to games set to {RE_ADD_DELAY}",
+        colour=Colour.red(),
+    )
 
 
 @require_admin
@@ -700,20 +731,31 @@ async def sub(message: Message, args: List[str]):
 
 @require_admin
 async def unban(message: Message, args: List[str]):
-    await send_message(message.channel, "not implemented")
-    if len(args) != 1:
-        print("[unban] Usage: !unban <player_name>")
+    if len(args) != 1 or len(message.mentions) == 0:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !iban @<player_name>",
+            colour=Colour.red(),
+        )
         return
-    elif author not in ADMINS:
-        print("[unban] you must be an admin to use this command")
+
+    session = Session()
+    players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
+    if len(players) == 0 or not players[0].is_banned:
+        await send_message(
+            message.channel,
+            embed_description=f"{message.mentions[0].name} is not banned",
+            colour=Colour.red(),
+        )
         return
-    elif args[0] not in BANNED_PLAYERS:
-        print("[unban]", args[0], "is not banned")
-        return
-    else:
-        BANNED_PLAYERS.remove(args[0])
-        print("[ban]", args[0], "removed from ban list")
-        return
+
+    players[0].is_banned = False
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"{message.mentions[0].name} unbanned",
+        colour=Colour.green(),
+    )
 
 
 # Commands end here
@@ -759,4 +801,15 @@ async def handle_message(message: Message):
         return
 
     print("[handle_message] command:", command)
+
+    banned_player = (
+        Session()
+        .query(Player)
+        .filter(Player.id == message.author.id, Player.is_banned == True)
+        .first()
+    )
+    if banned_player:
+        print("[handle_message] message author banned:", command)
+        return
+
     await COMMANDS[command](message, message.content.split(" ")[1:])
