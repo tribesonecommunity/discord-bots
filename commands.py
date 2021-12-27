@@ -1,38 +1,200 @@
 """
 TODO:
-- persistence for queues, admins, banned players
-
-- delay and randomization when adding after a game
-- proper game id
-- command prefix
 - afk timer
 - queue notifications
-- decorator for admin commands
-- generalize printing usage?
-- random / rotating queue pop
-- remove player from queue (admin)
 - pick random team captain for each game
-- use recognizable words for game ids rather than random strings
-- docstrings?
-- backup database each time it starts up
+- recognizable words for game ids and team names
 - migrations
 - enable strict typing configuration
+- add players to db when they join server (see pugbot EventHandler)
 """
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from math import floor
-from random import random
-from typing import Awaitable, Callable, List, Optional
+from random import random, shuffle
+from time import sleep
+from typing import Awaitable, Callable, List, Optional, Set
+import asyncio
 
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
-from sqlalchemy import desc
+from discord.channel import CategoryChannel
+from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
 
-from models import Game, GameChannel, GamePlayer, Player, Queue, QueuePlayer, Session
+from bot import BOT
+from models import (
+    Game,
+    GameChannel,
+    GamePlayer,
+    Player,
+    Queue,
+    QueuePlayer,
+    QueueWaitlistPlayer,
+    Session,
+)
+from queues import SEND_MESSAGE_QUEUE, CREATE_VOICE_CHANNEL_QUEUE
 
 COMMAND_PREFIX: str = "!"
 COMMAND_PREFIX: str = "$"
-RE_ADD_DELAY: int = 10
+RE_ADD_DELAY: int = 5
+
+# TODO: Can this be replaced with tasks?
+thread_pool_executor: ThreadPoolExecutor = ThreadPoolExecutor()
+
+
+@dataclass
+class MessageQueueMessage:
+    channel: (DMChannel | GroupChannel | TextChannel)
+    content: str | None = None
+    embed_description: str | None = None
+    colour: Colour | None = None
+
+
+@dataclass
+class VoiceChannelQueueMessage:
+    guild: Guild
+    name: str
+    game_id: str
+    category: CategoryChannel
+
+
+def async_wrapper(func, *args, **kwargs):
+    """
+    Wrapper to allow passing async functions to ThreadPoolExecutor
+    """
+    asyncio.run(func(*args, **kwargs))
+
+
+async def queue_waitlist(
+    channel: TextChannel | DMChannel | GroupChannel,
+    guild: Guild | None,
+    game_id: str,
+    waitlist_duration_seconds: int,
+) -> None:
+    """
+    Move players in the waitlist into the queues. Pop queues if needed.
+    """
+    print("[queue_waitlist]", channel, guild, game_id, waitlist_duration_seconds)
+    sleep(waitlist_duration_seconds)
+    session = Session()
+
+    queue_waitlist_players: List[QueueWaitlistPlayer]
+    queue_waitlist_players = list(
+        session.query(QueueWaitlistPlayer).filter(
+            QueueWaitlistPlayer.game_id == game_id
+        )
+    )
+    shuffle(queue_waitlist_players)
+
+    players_in_game: Set[int] = set()
+    for queue_waitlist_player in queue_waitlist_players:
+        if queue_waitlist_player.player_id in players_in_game:
+            continue
+
+        session.add(
+            QueuePlayer(
+                queue_id=queue_waitlist_player.queue_id,
+                player_id=queue_waitlist_player.player_id,
+            )
+        )
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+        else:
+            queue: Queue = (
+                session.query(Queue)
+                .filter(Queue.id == queue_waitlist_player.queue_id)
+                .first()
+            )
+            queue_players: List[QueuePlayer] = list(
+                session.query(QueuePlayer).filter(
+                    QueuePlayer.queue_id == queue_waitlist_player.queue_id
+                )
+            )
+            if len(queue_players) == queue.size:  # Pop!
+                game = Game(queue_id=queue.id)
+                session.add(game)
+
+                # TODO: Import even teams using trueskill
+                team0 = queue_players[: len(queue_players) // 2]
+                team1 = queue_players[len(queue_players) // 2 :]
+
+                team0_players = []
+                for queue_player in team0:
+                    game_player = GamePlayer(
+                        game_id=game.id, player_id=queue_player.player_id, team=0
+                    )
+                    session.add(game_player)
+                    team0_players.append(
+                        session.query(Player)
+                        .filter(Player.id == queue_player.player_id)[0]
+                        .name
+                    )
+
+                team1_players = []
+                for queue_player in team1:
+                    game_player = GamePlayer(
+                        game_id=game.id, player_id=queue_player.player_id, team=1
+                    )
+                    session.add(game_player)
+                    team1_players.append(
+                        session.query(Player)
+                        .filter(Player.id == queue_player.player_id)[0]
+                        .name
+                    )
+
+                short_game_id = game.id.split("-")[0]
+
+                # Send the message on the main thread using queues
+                SEND_MESSAGE_QUEUE.put(
+                    MessageQueueMessage(
+                        channel,
+                        content=f"Game '{queue.name}' ({short_game_id}) has begun!",
+                        embed_description=f"**Blood Eagle:** {', '.join(team0_players)}\n**Diamond Sword**: {', '.join(team1_players)}",
+                        colour=Colour.blue(),
+                    )
+                )
+
+                if guild:
+                    categories = {
+                        category.id: category for category in guild.categories
+                    }
+                    tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
+
+                    # Create voice channels on the main thread
+                    CREATE_VOICE_CHANNEL_QUEUE.put(
+                        VoiceChannelQueueMessage(
+                            guild,
+                            f"Blood Eagle ({short_game_id})",
+                            game_id=game.id,
+                            category=tribes_voice_category,
+                        )
+                    )
+                    CREATE_VOICE_CHANNEL_QUEUE.put(
+                        VoiceChannelQueueMessage(
+                            guild,
+                            f"Diamond Sword ({short_game_id})",
+                            game_id=game.id,
+                            category=tribes_voice_category,
+                        )
+                    )
+                    session.query(QueuePlayer).delete()
+                else:
+                    SEND_MESSAGE_QUEUE.put(
+                        MessageQueueMessage(
+                            channel,
+                            embed_description="No guild for message!",
+                            colour=Colour.red(),
+                        )
+                    )
+
+    session.query(QueueWaitlistPlayer).filter(
+        QueueWaitlistPlayer.game_id == game_id
+    ).delete()
+    session.commit()
 
 
 async def send_message(
@@ -48,7 +210,10 @@ async def send_message(
         embed = Embed(description=embed_description)
         if colour:
             embed.colour = colour
-    await channel.send(content=content, embed=embed)
+    try:
+        await channel.send(content=content, embed=embed)
+    except Exception as e:
+        print("[send_message] exception:", e)
 
 
 def require_admin(command_func: Callable[[Message, List[str]], Awaitable[None]]):
@@ -59,8 +224,12 @@ def require_admin(command_func: Callable[[Message, List[str]], Awaitable[None]])
     async def wrapper(*args, **kwargs):
         session = Session()
         message: Message = args[0]
-        caller = list(session.query(Player).filter(Player.id == message.author.id))
-        if len(caller) > 0 and caller[0].is_admin:
+        caller = (
+            session.query(Player)
+            .filter(Player.id == message.author.id, Player.is_admin == True)
+            .first()
+        )
+        if caller:
             await command_func(*args, **kwargs)
         else:
             await send_message(
@@ -109,16 +278,11 @@ def get_player_game(player_id: int) -> Optional[Game]:
 
 async def add(message: Message, args: List[str]):
     """
-        Players adds self to queue(s)
-
-        If no args to all existing queues
+        Players adds self to queue(s). If no args to all existing queues
 
         TODO:
-        - Player must be eligible for queue
+        - Queue eligibility
         - Player queued if just finished game?
-
-        opsayo added to: LTgold, LTsilver, LTpug, LTunrated
-    LTgold [3/10] LTsilver [3/10] LTpug [3/10] LTunrated [3/10] LTirregular [0/10]
     """
     if is_in_game(message.author.id):
         await send_message(
@@ -138,7 +302,7 @@ async def add(message: Message, args: List[str]):
     except IntegrityError:
         session.rollback()
 
-    most_recent_game: Game = (
+    most_recent_game: Optional[Game] = (
         session.query(Game)
         .join(GamePlayer)
         .filter(Game.finished_at != None, GamePlayer.player_id == player.id)
@@ -146,6 +310,8 @@ async def add(message: Message, args: List[str]):
         .first()
     )
 
+    is_waitlist: bool = False
+    waitlist_message: Optional[str] = None
     if most_recent_game and most_recent_game.finished_at:
         # The timezone info seems to get lost in the round trip to the database
         finish_time: datetime = most_recent_game.finished_at.replace(
@@ -154,13 +320,9 @@ async def add(message: Message, args: List[str]):
         current_time: datetime = datetime.now(timezone.utc)
         difference: float = (current_time - finish_time).total_seconds()
         if difference < RE_ADD_DELAY:
-            time_to_wait = floor(RE_ADD_DELAY - difference)
-            await send_message(
-                message.channel,
-                embed_description=f"Your game has just finished, please wait {time_to_wait} seconds",
-                colour=Colour.green(),
-            )
-            return
+            time_to_wait: int = floor(RE_ADD_DELAY - difference)
+            waitlist_message = f"Your game has just finished, you will be randomized into the queue in {time_to_wait} seconds"
+            is_waitlist = True
 
     queues_to_add = []
     if len(args) == 0:
@@ -187,80 +349,98 @@ async def add(message: Message, args: List[str]):
         return
 
     for queue in queues_to_add:
-        session.add(QueuePlayer(queue_id=queue.id, player_id=player.id))
-        try:
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-        else:
-            queue_players: List[QueuePlayer] = list(
-                session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id)
-            )
-            if len(queue_players) == queue.size:  # Pop!
-                game = Game(queue_id=queue.id)
-                session.add(game)
-
-                # TODO: Import even teams using trueskill
-                team0 = queue_players[: len(queue_players) // 2]
-                team1 = queue_players[len(queue_players) // 2 :]
-
-                team0_players = []
-                for queue_player in team0:
-                    game_player = GamePlayer(
-                        game_id=game.id, player_id=queue_player.player_id, team=0
-                    )
-                    session.add(game_player)
-                    team0_players.append(
-                        session.query(Player)
-                        .filter(Player.id == queue_player.player_id)[0]
-                        .name
-                    )
-
-                team1_players = []
-                for queue_player in team1:
-                    game_player = GamePlayer(
-                        game_id=game.id, player_id=queue_player.player_id, team=1
-                    )
-                    session.add(game_player)
-                    team1_players.append(
-                        session.query(Player)
-                        .filter(Player.id == queue_player.player_id)[0]
-                        .name
-                    )
-
-                short_game_id = game.id.split("-")[0]
-
-                await send_message(
-                    message.channel,
-                    content=f"Game '{queue.name}' ({short_game_id}) has begun!",
-                    embed_description=f"**Blood Eagle:** {', '.join(team0_players)}\n**Diamond Sword**: {', '.join(team1_players)}",
-                    colour=Colour.blue(),
+        if is_waitlist and most_recent_game:
+            session.add(
+                QueueWaitlistPlayer(
+                    game_id=most_recent_game.id, queue_id=queue.id, player_id=player.id
                 )
+            )
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+        else:
+            session.add(QueuePlayer(queue_id=queue.id, player_id=player.id))
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+            else:
+                queue_players: List[QueuePlayer] = list(
+                    session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id)
+                )
+                if len(queue_players) == queue.size:  # Pop!
+                    game = Game(queue_id=queue.id)
+                    session.add(game)
 
-                if message.guild:
-                    categories = {
-                        category.id: category for category in message.guild.categories
-                    }
-                    tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
-                    be_channel = await message.guild.create_voice_channel(
-                        f"Blood Eagle ({short_game_id})",
-                        category=tribes_voice_category,
-                    )
-                    ds_channel = await message.guild.create_voice_channel(
-                        f"Diamond Sword ({short_game_id})",
-                        category=tribes_voice_category,
-                    )
-                    session.add(GameChannel(game_id=game.id, channel_id=be_channel.id))
-                    session.add(GameChannel(game_id=game.id, channel_id=ds_channel.id))
-                    session.query(QueuePlayer).delete()
-                    session.commit()
-                else:
+                    # TODO: Import even teams using trueskill
+                    team0 = queue_players[: len(queue_players) // 2]
+                    team1 = queue_players[len(queue_players) // 2 :]
+
+                    team0_players = []
+                    for queue_player in team0:
+                        game_player = GamePlayer(
+                            game_id=game.id, player_id=queue_player.player_id, team=0
+                        )
+                        session.add(game_player)
+                        team0_players.append(
+                            session.query(Player)
+                            .filter(Player.id == queue_player.player_id)[0]
+                            .name
+                        )
+
+                    team1_players = []
+                    for queue_player in team1:
+                        game_player = GamePlayer(
+                            game_id=game.id, player_id=queue_player.player_id, team=1
+                        )
+                        session.add(game_player)
+                        team1_players.append(
+                            session.query(Player)
+                            .filter(Player.id == queue_player.player_id)[0]
+                            .name
+                        )
+
+                    short_game_id = game.id.split("-")[0]
+
                     await send_message(
                         message.channel,
-                        embed_description="No guild for message!",
-                        colour=Colour.red(),
+                        content=f"Game '{queue.name}' ({short_game_id}) has begun!",
+                        embed_description=f"**Blood Eagle:** {', '.join(team0_players)}\n**Diamond Sword**: {', '.join(team1_players)}",
+                        colour=Colour.blue(),
                     )
-                return
+
+                    if message.guild:
+                        categories = {
+                            category.id: category
+                            for category in message.guild.categories
+                        }
+                        tribes_voice_category = categories[
+                            TRIBES_VOICE_CATEGORY_CHANNEL_ID
+                        ]
+                        be_channel = await message.guild.create_voice_channel(
+                            f"Blood Eagle ({short_game_id})",
+                            category=tribes_voice_category,
+                        )
+                        ds_channel = await message.guild.create_voice_channel(
+                            f"Diamond Sword ({short_game_id})",
+                            category=tribes_voice_category,
+                        )
+                        session.add(
+                            GameChannel(game_id=game.id, channel_id=be_channel.id)
+                        )
+                        session.add(
+                            GameChannel(game_id=game.id, channel_id=ds_channel.id)
+                        )
+                        session.query(QueuePlayer).delete()
+                        session.commit()
+                    else:
+                        await send_message(
+                            message.channel,
+                            embed_description="No guild for message!",
+                            colour=Colour.red(),
+                        )
+                    return
 
     queue_statuses = []
     for queue in session.query(Queue):
@@ -269,20 +449,24 @@ async def add(message: Message, args: List[str]):
         )
         queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
 
-    await send_message(
-        message.channel,
-        content=f"{player.name} added to: {', '.join([queue.name for queue in queues_to_add])}",
-        embed_description=" ".join(queue_statuses),
-        colour=Colour.green(),
-    )
+    if is_waitlist and waitlist_message:
+        await send_message(
+            message.channel,
+            content=f"{player.name} added to: {', '.join([queue.name for queue in queues_to_add])}",
+            embed_description=waitlist_message,
+            colour=Colour.green(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            content=f"{player.name} added to: {', '.join([queue.name for queue in queues_to_add])}",
+            embed_description=" ".join(queue_statuses),
+            colour=Colour.green(),
+        )
 
 
 @require_admin
 async def add_admin(message: Message, args: List[str]):
-    """
-    TODO:
-    - Decorator for admin permissions
-    """
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
             message.channel,
@@ -332,6 +516,7 @@ async def ban(message: Message, args: List[str]):
             embed_description=f"Usage: !ban @<player_name>",
             colour=Colour.red(),
         )
+        return
 
     session = Session()
     players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
@@ -410,11 +595,11 @@ async def coinflip(message: Message, args: List[str]):
 
 
 async def commands(message: Message, args: List[str]):
-    output = "commands:"
+    output = "Commands:"
     for command in COMMANDS:
-        output += f"\n{COMMAND_PREFIX}{command}"
+        output += f"\n- {COMMAND_PREFIX}{command}"
 
-    await send_message(message.channel, output)
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
 @require_admin
@@ -541,6 +726,19 @@ async def finish_game(message: Message, args: List[str]):
         embed_description = "**Winner:** Diamond Sword"
     else:
         embed_description = "**Tie game**"
+
+    # Players in this game who try to re-add too soon are added to a waitlist.
+    # This schedules a thread to put those players in the waitlist into queues.
+    BOT.loop.run_in_executor(
+        thread_pool_executor,
+        async_wrapper,
+        queue_waitlist,
+        message.channel,
+        message.guild,
+        game.id,
+        RE_ADD_DELAY,
+    )
+
     await send_message(
         message.channel,
         content=f"Game '{queue.name}' ({short_game_id}) finished",
@@ -575,13 +773,13 @@ async def remove_admin(message: Message, args: List[str]):
         )
         return
 
-    # if message.mentions[0].id == message.author.id:
-    #     await send_message(
-    #         message.channel,
-    #         embed_description="You cannot remove yourself as an admin",
-    #         colour=Colour.red(),
-    #     )
-    #     return
+    if message.mentions[0].id == message.author.id:
+        await send_message(
+            message.channel,
+            embed_description="You cannot remove yourself as an admin",
+            colour=Colour.red(),
+        )
+        return
 
     session = Session()
     players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
@@ -635,7 +833,7 @@ async def set_add_delay(message: Message, args: List[str]):
     await send_message(
         message.channel,
         embed_description=f"Timer to re-add to games set to {RE_ADD_DELAY}",
-        colour=Colour.red(),
+        colour=Colour.green(),
     )
 
 
@@ -650,7 +848,11 @@ async def set_command_prefix(message: Message, args: List[str]):
         return
     global COMMAND_PREFIX
     COMMAND_PREFIX = args[0]
-    await send_message(message.channel, f"command prefix set to {COMMAND_PREFIX}")
+    await send_message(
+        message.channel,
+        embed_description=f"Command prefix set to {COMMAND_PREFIX}",
+        colour=Colour.green(),
+    )
 
 
 async def status(message: Message, args: List[str]):
@@ -673,7 +875,7 @@ async def status(message: Message, args: List[str]):
 
         if len(players_in_queue) > 0:
             output += f"**IN QUEUE:** "
-            output += ", ".join([player.name for player in players_in_queue])
+            output += ", ".join(sorted([player.name for player in players_in_queue]))
             output += "\n"
 
         if queue.id in games_by_queue:
@@ -688,10 +890,12 @@ async def status(message: Message, args: List[str]):
                     .join(GamePlayer)
                     .filter(GamePlayer.game_id == game.id, GamePlayer.team == 1)
                 )
+
+                # TODO: Sort names
                 output += f"**IN GAME:**"
-                output += f", ".join([player.name for player in team0_players])
+                output += f", ".join(sorted([player.name for player in team0_players]))
                 output += "\n"
-                output += f", ".join([player.name for player in team1_players])
+                output += f", ".join(sorted([player.name for player in team1_players]))
                 output += "\n"
 
     if len(output) == 0:

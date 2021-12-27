@@ -9,6 +9,7 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 from discord import Message
+from discord.channel import VoiceChannel
 from pytest import fixture
 import pytest
 
@@ -19,7 +20,15 @@ from commands import (
     is_in_game,
     handle_message,
 )
-from models import Game, GamePlayer, Player, Queue, QueuePlayer, Session
+from models import (
+    Game,
+    GamePlayer,
+    Player,
+    Queue,
+    QueuePlayer,
+    QueueWaitlistPlayer,
+    Session,
+)
 
 
 # Mock discord models so we can invoke tests
@@ -49,6 +58,7 @@ class Guild:
     channels: Dict[str, Channel] = field(default_factory=dict)
     roles: List[Role] = field(default_factory=lambda: [Role("LTpug")])
 
+    # TODO: Use VoiceChannel instead of Channel
     async def create_voice_channel(self, name, category: Category = None) -> Channel:
         channel = Channel()
         self.channels[channel.id] = channel
@@ -106,6 +116,7 @@ lyon = Member("lyon")
 # Runs around each test
 @fixture(autouse=True)
 def run_around_tests():
+    session.query(QueueWaitlistPlayer).delete()
     session.query(QueuePlayer).delete()
     session.query(GamePlayer).delete()
     session.query(Queue).delete()
@@ -519,6 +530,19 @@ async def test_add_with_player_just_finished_should_not_add_to_queue():
 
 
 @pytest.mark.asyncio
+async def test_add_with_player_just_finished_should_add_to_queue_waitlist():
+    await handle_message(Message(opsayo, "!createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "!add"))
+    await handle_message(Message(lyon, "!add"))
+    await handle_message(Message(opsayo, "!finishgame win"))
+
+    await handle_message(Message(opsayo, "!add"))
+
+    queue_waitlist = list(session.query(QueueWaitlistPlayer))
+    assert len(queue_waitlist) == 1
+
+
+@pytest.mark.asyncio
 async def test_ban_should_add_player_to_bans():
     await handle_message(Message(opsayo, "!ban @lyon"))
 
@@ -563,13 +587,3 @@ async def test_unban_should_remove_player_from_bans():
 # await handle_message(Message(opsayo, "!cancelgame " + GAMES["LTpug"][0].id))
 # assert len(GAMES["LTpug"]) == 0
 # await handle_message(Message(opsayo, "!status"))
-
-# await handle_message(Message(opsayo, "!setadddelay"))
-# await handle_message(Message(opsayo, "!setadddelay 1"))
-# sleep(1)
-
-# await handle_message(Message(opsayo, "!add LTpug"))
-# await handle_message(Message(stork, "!add LTpug"))
-# await handle_message(Message(opsayo, "!finishgame win"))
-# await handle_message(Message(opsayo, "!add LTpug"))
-# assert len(QUEUES["LTpug"].players) == 0

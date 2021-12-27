@@ -3,19 +3,15 @@ from datetime import datetime, time, timezone
 from typing import Optional
 from uuid import uuid4
 
-# import datetime
-
 from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
     Integer,
     String,
-    TIMESTAMP,
     UniqueConstraint,
     create_engine,
 )
-from sqlalchemy.sql import func
 
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
@@ -26,7 +22,11 @@ from sqlalchemy.sql.schema import ForeignKey
 engine = create_engine("sqlite:///tribes.db", echo=True)
 """
 # TODO: Use a test db if in test environment
-engine = create_engine("sqlite:///tribes.db", echo=False)
+# TODO: Use locking - sqlite will have corruptions if not same thread
+engine = create_engine(
+    "sqlite:///tribes.db?check_same_thread=false",
+    echo=False,
+)
 mapper_registry = registry()
 Base = mapper_registry.generate_base()
 
@@ -66,12 +66,12 @@ class Game:
     )
     finished_at: Optional[datetime] = field(
         init=False,
-        metadata={"sa": Column(TIMESTAMP, index=True)},
+        metadata={"sa": Column(DateTime, index=True)},
     )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
-        metadata={"sa": Column(TIMESTAMP, index=True)},
+        metadata={"sa": Column(DateTime, index=True)},
     )
     id: str = field(
         init=False,
@@ -97,7 +97,7 @@ class GamePlayer:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
@@ -191,7 +191,7 @@ class QueuePlayer:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
     id: str = field(
@@ -213,17 +213,18 @@ class QueueWaitlistPlayer:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue_waitlist_player"
-    __table_args__ = (UniqueConstraint("queue_id", "player_id"),)
+    __table_args__ = (UniqueConstraint("game_id", "queue_id", "player_id"),)
 
-    queue_id: str = field(
+    game_id: str = field(
         metadata={
-            "sa": Column(String, ForeignKey("queue.id"), nullable=False, index=True)
+            "sa": Column(String, ForeignKey("game.id"), nullable=False, index=True)
         },
     )
+    queue_id: str = field(
+        metadata={"sa": Column(String, ForeignKey("queue.id"), nullable=False)},
+    )
     player_id: int = field(
-        metadata={
-            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
-        },
+        metadata={"sa": Column(Integer, ForeignKey("player.id"), nullable=False)},
     )
     id: str = field(
         init=False,

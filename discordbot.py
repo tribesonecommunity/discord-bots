@@ -1,34 +1,29 @@
 # This example requires the 'members' privileged intents
 
-from enum import auto
-from commands import handle_message
 import os
 import re
 import traceback
 
 from discord import Message
-from discord.ext import commands as discord_commands
 from dotenv import load_dotenv
-import discord
 
-intents = discord.Intents.default()
-intents.members = True
-
-bot = discord_commands.Bot("?", intents=intents)
-
-COMMAND_PREFIX = "!"
+from bot import BOT
+from commands import handle_message
+from tasks import create_voice_channel_task, send_message_task
 
 
-@bot.event
+@BOT.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    print(f"Logged in as {BOT.user} (ID: {BOT.user.id})")
     print("------")
+    send_message_task.start()
+    create_voice_channel_task.start()
 
 
 BULLIEST_BOT_ID = 912605788781035541
 
 
-@bot.event
+@BOT.event
 async def on_message(message: Message):
     if message.channel.name == "bullies-bot" and message.author.id != BULLIEST_BOT_ID:
         print("[on_message]", message)
@@ -40,7 +35,7 @@ async def on_message(message: Message):
             await message.channel.send(f"Encountered exception: {e}")
 
 
-@bot.event
+@BOT.event
 async def on_message_old(message):
     if message.author.id == 359925573134319628:
         print(message.embeds[0].to_dict()["description"])
@@ -154,5 +149,8 @@ async def on_message_old(message):
 
 load_dotenv()
 
-# bot.run('DEVELOPER KEY HERE')
-bot.run(os.getenv("DISCORD_API_KEY"))
+API_KEY = os.getenv("DISCORD_API_KEY")
+if API_KEY:
+    BOT.run(API_KEY)
+else:
+    print("You must define DISCORD_API_KEY!")

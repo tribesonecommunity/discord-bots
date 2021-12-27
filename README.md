@@ -44,7 +44,6 @@ Use python black: https://github.com/psf/black
 Feel free to help out!
 
 MVP
-- Bans
 - Queue delay between games (see QueueFinishTimer, Queue.addPlayersWaiting)
 - Player subs
 - AFK / idle timer (see AFKTimer)
