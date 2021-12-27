@@ -3,12 +3,18 @@
 # https://stackoverflow.com/a/67996748
 
 from queue import SimpleQueue
+from time import sleep
 
 from discord.ext import tasks
 
-from commands import MessageQueueMessage, VoiceChannelQueueMessage, send_message
+from commands import send_message
 from models import GameChannel, Session
-from queues import CREATE_VOICE_CHANNEL_QUEUE, SEND_MESSAGE_QUEUE
+from queues import (
+    CREATE_VOICE_CHANNEL_QUEUE,
+    SEND_MESSAGE_QUEUE,
+    MessageQueueMessage,
+    VoiceChannelQueueMessage,
+)
 
 
 @tasks.loop(seconds=0.5)

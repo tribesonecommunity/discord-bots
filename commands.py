@@ -19,7 +19,6 @@ from typing import Awaitable, Callable, List, Optional, Set
 import asyncio
 
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
-from discord.channel import CategoryChannel
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
 
@@ -34,7 +33,7 @@ from models import (
     QueueWaitlistPlayer,
     Session,
 )
-from queues import SEND_MESSAGE_QUEUE, CREATE_VOICE_CHANNEL_QUEUE
+from queues import SEND_MESSAGE_QUEUE, CREATE_VOICE_CHANNEL_QUEUE, MessageQueueMessage, VoiceChannelQueueMessage
 
 COMMAND_PREFIX: str = "!"
 COMMAND_PREFIX: str = "$"
@@ -43,21 +42,6 @@ RE_ADD_DELAY: int = 5
 # TODO: Can this be replaced with tasks?
 thread_pool_executor: ThreadPoolExecutor = ThreadPoolExecutor()
 
-
-@dataclass
-class MessageQueueMessage:
-    channel: (DMChannel | GroupChannel | TextChannel)
-    content: str | None = None
-    embed_description: str | None = None
-    colour: Colour | None = None
-
-
-@dataclass
-class VoiceChannelQueueMessage:
-    guild: Guild
-    name: str
-    game_id: str
-    category: CategoryChannel
 
 
 def async_wrapper(func, *args, **kwargs):
@@ -76,7 +60,6 @@ async def queue_waitlist(
     """
     Move players in the waitlist into the queues. Pop queues if needed.
     """
-    print("[queue_waitlist]", channel, guild, game_id, waitlist_duration_seconds)
     sleep(waitlist_duration_seconds)
     session = Session()
 
@@ -996,7 +979,6 @@ async def handle_message(message: Message):
     command = message.content.split(" ")[0]
 
     if not command.startswith(COMMAND_PREFIX):
-        print("[handle_message] not command", command)
         return
 
     command = command[1:]
@@ -1004,7 +986,6 @@ async def handle_message(message: Message):
         print("[handle_message] exiting - command not found:", command)
         return
 
-    print("[handle_message] command:", command)
 
     banned_player = (
         Session()
@@ -1015,5 +996,7 @@ async def handle_message(message: Message):
     if banned_player:
         print("[handle_message] message author banned:", command)
         return
+
+    print("[handle_message] executing command:", command)
 
     await COMMANDS[command](message, message.content.split(" ")[1:])
