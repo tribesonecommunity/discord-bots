@@ -10,10 +10,10 @@ TODO:
 """
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import floor
 from random import random, shuffle
+from threading import Timer
 from time import sleep
 from typing import Awaitable, Callable, List, Optional, Set
 import asyncio
@@ -22,7 +22,6 @@ from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
 
-from bot import BOT
 from models import (
     Game,
     GameChannel,
@@ -33,20 +32,21 @@ from models import (
     QueueWaitlistPlayer,
     Session,
 )
-from queues import SEND_MESSAGE_QUEUE, CREATE_VOICE_CHANNEL_QUEUE, MessageQueueMessage, VoiceChannelQueueMessage
+from queues import (
+    SEND_MESSAGE_QUEUE,
+    CREATE_VOICE_CHANNEL_QUEUE,
+    MessageQueueMessage,
+    VoiceChannelQueueMessage,
+)
 
 COMMAND_PREFIX: str = "!"
 COMMAND_PREFIX: str = "$"
 RE_ADD_DELAY: int = 5
 
-# TODO: Can this be replaced with tasks?
-thread_pool_executor: ThreadPoolExecutor = ThreadPoolExecutor()
-
-
 
 def async_wrapper(func, *args, **kwargs):
     """
-    Wrapper to allow passing async functions to ThreadPoolExecutor
+    Wrapper to allow passing async functions to threads
     """
     asyncio.run(func(*args, **kwargs))
 
@@ -55,12 +55,10 @@ async def queue_waitlist(
     channel: TextChannel | DMChannel | GroupChannel,
     guild: Guild | None,
     game_id: str,
-    waitlist_duration_seconds: int,
 ) -> None:
     """
     Move players in the waitlist into the queues. Pop queues if needed.
     """
-    sleep(waitlist_duration_seconds)
     session = Session()
 
     queue_waitlist_players: List[QueueWaitlistPlayer]
@@ -261,11 +259,11 @@ def get_player_game(player_id: int) -> Optional[Game]:
 
 async def add(message: Message, args: List[str]):
     """
-        Players adds self to queue(s). If no args to all existing queues
+    Players adds self to queue(s). If no args to all existing queues
 
-        TODO:
-        - Queue eligibility
-        - Player queued if just finished game?
+    TODO:
+    - Queue eligibility
+    - Player queued if just finished game?
     """
     if is_in_game(message.author.id):
         await send_message(
@@ -712,15 +710,12 @@ async def finish_game(message: Message, args: List[str]):
 
     # Players in this game who try to re-add too soon are added to a waitlist.
     # This schedules a thread to put those players in the waitlist into queues.
-    BOT.loop.run_in_executor(
-        thread_pool_executor,
-        async_wrapper,
-        queue_waitlist,
-        message.channel,
-        message.guild,
-        game.id,
+    timer = Timer(
         RE_ADD_DELAY,
+        async_wrapper,
+        [queue_waitlist, message.channel, message.guild, game.id],
     )
+    timer.start()
 
     await send_message(
         message.channel,
@@ -985,7 +980,6 @@ async def handle_message(message: Message):
     if command not in COMMANDS:
         print("[handle_message] exiting - command not found:", command)
         return
-
 
     banned_player = (
         Session()
