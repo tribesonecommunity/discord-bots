@@ -575,13 +575,6 @@ async def test_unban_should_remove_player_from_bans():
 # assert len(GAMES["LTpug"]) == 0
 # await handle_message(Message(lyon, "!add LTpug"))
 
-# # Re-add timer triggers here
-# await handle_message(Message(stork, "!add LTpug"))
-# assert len(GAMES["LTpug"]) == 0
-# sleep(RE_ADD_DELAY)
-# await handle_message(Message(stork, "!add LTpug"))
-# assert len(GAMES["LTpug"]) == 1
-
 # await handle_message(Message(stork, "!cancelgame " + GAMES["LTpug"][0].id))
 # assert len(GAMES["LTpug"]) == 1
 # await handle_message(Message(opsayo, "!cancelgame " + GAMES["LTpug"][0].id))

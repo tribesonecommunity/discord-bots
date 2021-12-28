@@ -2,20 +2,29 @@
 
 import os
 import re
+import time
 import traceback
 
 from discord import Message
+from discord.channel import GroupChannel, TextChannel
 from dotenv import load_dotenv
+from sqlalchemy.exc import IntegrityError
 
-from bot import BOT
+from bot import bot
 from commands import handle_message
+from models import Player, QueuePlayer, Session
 from tasks import create_voice_channel_task, send_message_task
+from test_commands import Member
 
 
-@BOT.event
+@bot.event
 async def on_ready():
-    print(f"Logged in as {BOT.user} (ID: {BOT.user.id})")
+    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     print("------")
+
+
+@bot.event
+async def on_connect():
     send_message_task.start()
     create_voice_channel_task.start()
 
@@ -23,19 +32,39 @@ async def on_ready():
 BULLIEST_BOT_ID = 912605788781035541
 
 
-@BOT.event
+@bot.event
 async def on_message(message: Message):
-    if message.channel.name == "bullies-bot" and message.author.id != BULLIEST_BOT_ID:
-        print("[on_message]", message)
-        try:
-            await handle_message(message)
-        except Exception as e:
-            print(e)
-            traceback.print_exc()
-            await message.channel.send(f"Encountered exception: {e}")
+    if type(message.channel) is TextChannel or type(message.channel) is GroupChannel:
+        if (
+            message.channel.name == "bullies-bot"
+            and message.author.id != BULLIEST_BOT_ID
+        ):
+            print("[on_message]", message)
+            try:
+                await handle_message(message)
+            except Exception as e:
+                print(e)
+                traceback.print_exc()
+                await message.channel.send(f"Encountered exception: {e}")
 
 
-@BOT.event
+@bot.event
+async def on_join(member: Member):
+    session = Session()
+    try:
+        session.add(Player(id=member.id, name=member.name))
+        session.commit()
+    except IntegrityError:
+        pass
+
+
+@bot.event
+async def on_leave(member: Member):
+    session = Session()
+    session.query(QueuePlayer).filter(QueuePlayer.player_id == member.id).delete()
+
+
+@bot.event
 async def on_message_old(message):
     if message.author.id == 359925573134319628:
         print(message.embeds[0].to_dict()["description"])
@@ -151,6 +180,6 @@ load_dotenv()
 
 API_KEY = os.getenv("DISCORD_API_KEY")
 if API_KEY:
-    BOT.run(API_KEY)
+    bot.run(API_KEY)
 else:
     print("You must define DISCORD_API_KEY!")

@@ -6,16 +6,13 @@ TODO:
 - recognizable words for game ids and team names
 - migrations
 - enable strict typing configuration
-- add players to db when they join server (see pugbot EventHandler)
 """
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from math import floor
 from random import random, shuffle
 from threading import Timer
-from time import sleep
-from typing import Awaitable, Callable, List, Optional, Set
+from typing import Awaitable, Callable, Dict, List, Optional, Set
 import asyncio
 
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message

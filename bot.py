@@ -6,4 +6,4 @@ import discord
 intents = discord.Intents.default()
 intents.members = True
 
-BOT = discord_commands.Bot("?", intents=intents)
+bot = discord_commands.Bot("?", intents=intents)
