@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 from uuid import uuid4
-import time
+import sys
 
 from sqlalchemy import (
     Boolean,
@@ -17,17 +17,19 @@ from sqlalchemy import (
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
 from sqlalchemy.sql.schema import ForeignKey
-from sqlalchemy.sql.sqltypes import Float
 
 """
 engine = create_engine("sqlite:///tribes.db", echo=True)
 """
 # TODO: Use a test db if in test environment
 # TODO: Use locking - sqlite will have corruptions if not same thread
-engine = create_engine(
-    "sqlite:///tribes.db?check_same_thread=false",
-    echo=False,
+
+db_url = (
+    "sqlite:///tribes.test.db?check_same_thread=false"
+    if "pytest" in sys.modules
+    else "sqlite:///tribes.db?check_same_thread=false"
 )
+engine = create_engine(db_url, echo=False)
 mapper_registry = registry()
 Base = mapper_registry.generate_base()
 
