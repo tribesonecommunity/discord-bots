@@ -22,5 +22,5 @@ class MessageQueueMessage:
 class VoiceChannelQueueMessage:
     guild: Guild
     name: str
-    game_id: str
+    game_in_progress_id: str
     category: CategoryChannel

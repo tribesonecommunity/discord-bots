@@ -11,9 +11,11 @@ from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
 
 from models import (
-    Game,
+    GameFinished,
+    GameFinishedPlayer,
+    GameInProgress,
     GameChannel,
-    GamePlayer,
+    GameInProgressPlayer,
     Player,
     Queue,
     QueuePlayer,
@@ -42,7 +44,7 @@ def async_wrapper(func, *args, **kwargs):
 async def queue_waitlist(
     channel: TextChannel | DMChannel | GroupChannel,
     guild: Guild | None,
-    game_id: str,
+    game_finished_id: str,
 ) -> None:
     """
     Move players in the waitlist into the queues. Pop queues if needed.
@@ -52,7 +54,7 @@ async def queue_waitlist(
     queue_waitlist_players: List[QueueWaitlistPlayer]
     queue_waitlist_players = list(
         session.query(QueueWaitlistPlayer).filter(
-            QueueWaitlistPlayer.game_id == game_id
+            QueueWaitlistPlayer.game_finished_id == game_finished_id
         )
     )
     shuffle(queue_waitlist_players)
@@ -85,7 +87,7 @@ async def queue_waitlist(
                 )
             )
             if len(queue_players) == queue.size:  # Pop!
-                game = Game(queue_id=queue.id)
+                game = GameInProgress(queue_id=queue.id, win_probability=0.0)
                 session.add(game)
 
                 # TODO: Import even teams using trueskill
@@ -94,8 +96,10 @@ async def queue_waitlist(
 
                 team0_players = []
                 for queue_player in team0:
-                    game_player = GamePlayer(
-                        game_id=game.id, player_id=queue_player.player_id, team=0
+                    game_player = GameInProgressPlayer(
+                        game_in_progress_id=game.id,
+                        player_id=queue_player.player_id,
+                        team=0,
                     )
                     session.add(game_player)
                     team0_players.append(
@@ -106,8 +110,10 @@ async def queue_waitlist(
 
                 team1_players = []
                 for queue_player in team1:
-                    game_player = GamePlayer(
-                        game_id=game.id, player_id=queue_player.player_id, team=1
+                    game_player = GameInProgressPlayer(
+                        game_in_progress_id=game.id,
+                        player_id=queue_player.player_id,
+                        team=1,
                     )
                     session.add(game_player)
                     team1_players.append(
@@ -116,13 +122,13 @@ async def queue_waitlist(
                         .name
                     )
 
-                short_game_id = game.id.split("-")[0]
+                short_game_in_progress_id = game.id.split("-")[0]
 
                 # Send the message on the main thread using queues
                 SEND_MESSAGE_QUEUE.put(
                     MessageQueueMessage(
                         channel,
-                        content=f"Game '{queue.name}' ({short_game_id}) has begun!",
+                        content=f"Game '{queue.name}' ({short_game_in_progress_id}) has begun!",
                         embed_description=f"**Blood Eagle:** {', '.join(team0_players)}\n**Diamond Sword**: {', '.join(team1_players)}",
                         colour=Colour.blue(),
                     )
@@ -138,16 +144,16 @@ async def queue_waitlist(
                     CREATE_VOICE_CHANNEL_QUEUE.put(
                         VoiceChannelQueueMessage(
                             guild,
-                            f"Blood Eagle ({short_game_id})",
-                            game_id=game.id,
+                            f"Blood Eagle ({short_game_in_progress_id})",
+                            game_in_progress_id=game.id,
                             category=tribes_voice_category,
                         )
                     )
                     CREATE_VOICE_CHANNEL_QUEUE.put(
                         VoiceChannelQueueMessage(
                             guild,
-                            f"Diamond Sword ({short_game_id})",
-                            game_id=game.id,
+                            f"Diamond Sword ({short_game_in_progress_id})",
+                            game_in_progress_id=game.id,
                             category=tribes_voice_category,
                         )
                     )
@@ -162,7 +168,7 @@ async def queue_waitlist(
                     )
 
     session.query(QueueWaitlistPlayer).filter(
-        QueueWaitlistPlayer.game_id == game_id
+        QueueWaitlistPlayer.game_finished_id == game_finished_id
     ).delete()
     session.commit()
 
@@ -227,18 +233,20 @@ def is_in_game(player_id: int) -> bool:
     return get_player_game(player_id) is not None
 
 
-def get_player_game(player_id: int) -> Game | None:
+def get_player_game(player_id: int) -> GameInProgress | None:
     """
-    Find the game a player is currently in, excluding finished games
+    Find the game a player is currently in
     """
     session = Session()
     game_players = list(
-        session.query(GamePlayer)
-        .join(Game)
-        .filter(Game.winning_team == None, GamePlayer.player_id == player_id)
+        session.query(GameInProgressPlayer)
+        .join(GameInProgress)
+        .filter(GameInProgressPlayer.player_id == player_id)
     )
     if len(game_players) > 0:
-        return session.query(Game).filter(Game.id == GamePlayer.game_id)[0]
+        return session.query(GameInProgress).filter(
+            GameInProgress.id == GameInProgressPlayer.game_in_progress_id
+        )[0]
     else:
         return None
 
@@ -264,11 +272,13 @@ async def add(message: Message, args: List[str]):
 
     session = Session()
 
-    most_recent_game: Game | None = (
-        session.query(Game)
-        .join(GamePlayer)
-        .filter(Game.finished_at != None, GamePlayer.player_id == message.author.id)
-        .order_by(Game.finished_at.desc())  # type: ignore
+    most_recent_game: GameFinished | None = (
+        session.query(GameFinished)
+        .join(GameFinishedPlayer)
+        .filter(
+            GameFinishedPlayer.player_id == message.author.id,
+        )
+        .order_by(GameFinished.finished_at.desc())  # type: ignore
         .first()
     )
 
@@ -314,7 +324,7 @@ async def add(message: Message, args: List[str]):
         if is_waitlist and most_recent_game:
             session.add(
                 QueueWaitlistPlayer(
-                    game_id=most_recent_game.id,
+                    game_finished_id=most_recent_game.id,
                     queue_id=queue.id,
                     player_id=message.author.id,
                 )
@@ -340,7 +350,8 @@ async def add(message: Message, args: List[str]):
                     session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id)
                 )
                 if len(queue_players) == queue.size:  # Pop!
-                    game = Game(queue_id=queue.id)
+                    # TODO: Calculate win probability
+                    game = GameInProgress(queue_id=queue.id, win_probability=0.0)
                     session.add(game)
 
                     # TODO: Import even teams using trueskill
@@ -349,8 +360,10 @@ async def add(message: Message, args: List[str]):
 
                     team0_players = []
                     for queue_player in team0:
-                        game_player = GamePlayer(
-                            game_id=game.id, player_id=queue_player.player_id, team=0
+                        game_player = GameInProgressPlayer(
+                            game_in_progress_id=game.id,
+                            player_id=queue_player.player_id,
+                            team=0,
                         )
                         session.add(game_player)
                         team0_players.append(
@@ -362,8 +375,10 @@ async def add(message: Message, args: List[str]):
 
                     team1_players = []
                     for queue_player in team1:
-                        game_player = GamePlayer(
-                            game_id=game.id, player_id=queue_player.player_id, team=1
+                        game_player = GameInProgressPlayer(
+                            game_in_progress_id=game.id,
+                            player_id=queue_player.player_id,
+                            team=1,
                         )
                         session.add(game_player)
                         team1_players.append(
@@ -373,11 +388,11 @@ async def add(message: Message, args: List[str]):
                             .name
                         )
 
-                    short_game_id = game.id.split("-")[0]
+                    short_game_in_progress_id = game.id.split("-")[0]
 
                     await send_message(
                         message.channel,
-                        content=f"Game '{queue.name}' ({short_game_id}) has begun!",
+                        content=f"Game '{queue.name}' ({short_game_in_progress_id}) has begun!",
                         embed_description=f"**Blood Eagle:** {', '.join(team0_players)}\n**Diamond Sword**: {', '.join(team1_players)}",
                         colour=Colour.blue(),
                     )
@@ -391,18 +406,22 @@ async def add(message: Message, args: List[str]):
                             TRIBES_VOICE_CATEGORY_CHANNEL_ID
                         ]
                         be_channel = await message.guild.create_voice_channel(
-                            f"Blood Eagle ({short_game_id})",
+                            f"Blood Eagle ({short_game_in_progress_id})",
                             category=tribes_voice_category,
                         )
                         ds_channel = await message.guild.create_voice_channel(
-                            f"Diamond Sword ({short_game_id})",
+                            f"Diamond Sword ({short_game_in_progress_id})",
                             category=tribes_voice_category,
                         )
                         session.add(
-                            GameChannel(game_id=game.id, channel_id=be_channel.id)
+                            GameChannel(
+                                game_in_progress_id=game.id, channel_id=be_channel.id
+                            )
                         )
                         session.add(
-                            GameChannel(game_id=game.id, channel_id=ds_channel.id)
+                            GameChannel(
+                                game_in_progress_id=game.id, channel_id=ds_channel.id
+                            )
                         )
                         session.query(QueuePlayer).delete()
                         session.commit()
@@ -435,6 +454,7 @@ async def add(message: Message, args: List[str]):
             embed_description=" ".join(queue_statuses),
             colour=Colour.green(),
         )
+    session.commit()
 
 
 @require_admin
@@ -614,22 +634,36 @@ async def finish_game(message: Message, args: List[str]):
         return
 
     session = Session()
-    game_players = list(
-        session.query(GamePlayer)
-        .join(Game)
-        .filter(GamePlayer.player_id == message.author.id, Game.winning_team == None)
+    print(
+        "finish_game:", (list(session.query(GameInProgressPlayer)), message.author.id)
     )
-    if len(game_players) == 0:
-        await send_message(message.channel, "you must be in a game to use that command")
+
+    game_player = (
+        session.query(GameInProgressPlayer)
+        .filter(GameInProgressPlayer.player_id == message.author.id)
+        .first()
+    )
+    if not game_player:
+        await send_message(
+            message.channel,
+            embed_description="You must be in a game to use that command",
+            colour=Colour.red(),
+        )
         return
 
-    game = session.query(Game).filter(Game.id == game_players[0].game_id)[0]
+    game: GameInProgress = (
+        session.query(GameInProgress)
+        .filter(GameInProgress.id == game_player.game_in_progress_id)
+        .first()
+    )
+    queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
+    winning_team = -1
     if args[0] == "win":
-        game.winning_team = game_players[0].team
+        winning_team = game_player.team
     elif args[0] == "loss":
-        game.winning_team = (game_players[0].team + 1) % 2
+        winning_team = (game_player.team + 1) % 2
     elif args[0] == "tie":
-        game.winning_team = -1
+        winning_team = -1
     else:
         await send_message(
             message.channel,
@@ -637,25 +671,59 @@ async def finish_game(message: Message, args: List[str]):
             colour=Colour.red(),
         )
 
+    # TODO: Calculate win probabilities
+    game_finished = GameFinished(
+        finished_at=datetime.now(timezone.utc),
+        queue_name=queue.name,
+        started_at=game.created_at,
+        win_probability=0.0,
+        winning_team=winning_team,
+    )
+    session.add(game_finished)
+    game_in_progress_player: GameInProgressPlayer
+    for game_in_progress_player in session.query(GameInProgressPlayer).filter(
+        GameInProgressPlayer.game_in_progress_id == game.id
+    ):
+        player: Player = (
+            session.query(Player)
+            .filter(Player.id == game_in_progress_player.player_id)
+            .first()
+        )
+        game_finished_player = GameFinishedPlayer(
+            game_finished_id=game_finished.id,
+            player_id=game_in_progress_player.player_id,
+            player_name=player.name,
+            team=game_in_progress_player.team,
+            trueskill_rating_before=0.0,
+            trueskill_rating_after=0.0,
+        )
+        session.add(game_finished_player)
+
+    session.query(GameInProgressPlayer).filter(
+        GameInProgressPlayer.game_in_progress_id == game.id
+    ).delete()
+    session.query(GameInProgress).filter(GameInProgress.id == game.id).delete()
+
     # TODO: Delete channels after the between game wait time, it's nice for
     # players to stick around and chat
-    for channel in session.query(GameChannel).filter(GameChannel.game_id == game.id):
+    for channel in session.query(GameChannel).filter(
+        GameChannel.game_in_progress_id == game.id
+    ):
         if message.guild:
             guild_channel = message.guild.get_channel(channel.channel_id)
             if guild_channel:
                 await guild_channel.delete()
         session.delete(channel)
 
-    game.finished_at = datetime.now(timezone.utc)
-    session.add(game)
-    session.commit()
-    short_game_id = game.id.split("-")[0]
-    queue = session.query(Queue).filter(Queue.id == Game.queue_id)[0]
+    short_game_in_progress_id = game.id.split("-")[0]
+
+    # TODO: This might behave weird if the queue is deleted mid game?
+    queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
 
     embed_description = ""
-    if game.winning_team == 0:
+    if winning_team == 0:
         embed_description = "**Winner:** Blood Eagle"
-    elif game.winning_team == 1:
+    elif winning_team == 1:
         embed_description = "**Winner:** Diamond Sword"
     else:
         embed_description = "**Tie game**"
@@ -669,9 +737,10 @@ async def finish_game(message: Message, args: List[str]):
     )
     timer.start()
 
+    session.commit()
     await send_message(
         message.channel,
-        content=f"Game '{queue.name}' ({short_game_id}) finished",
+        content=f"Game '{queue.name}' ({short_game_in_progress_id}) finished",
         embed_description=embed_description,
         colour=Colour.green(),
     )
@@ -789,7 +858,7 @@ async def status(message: Message, args: List[str]):
     session = Session()
     queues = list(session.query(Queue))
     games_by_queue = defaultdict(list)
-    for game in session.query(Game).filter(Game.winning_team == None):
+    for game in session.query(GameInProgress):
         games_by_queue[game.queue_id].append(game)
 
     output = ""
@@ -812,13 +881,19 @@ async def status(message: Message, args: List[str]):
             for game in games_by_queue[queue.id]:
                 team0_players = list(
                     session.query(Player)
-                    .join(GamePlayer)
-                    .filter(GamePlayer.game_id == game.id, GamePlayer.team == 0)
+                    .join(GameInProgressPlayer)
+                    .filter(
+                        GameInProgressPlayer.game_in_progress_id == game.id,
+                        GameInProgressPlayer.team == 0,
+                    )
                 )
                 team1_players = list(
                     session.query(Player)
-                    .join(GamePlayer)
-                    .filter(GamePlayer.game_id == game.id, GamePlayer.team == 1)
+                    .join(GameInProgressPlayer)
+                    .filter(
+                        GameInProgressPlayer.game_in_progress_id == game.id,
+                        GameInProgressPlayer.team == 1,
+                    )
                 )
 
                 # TODO: Sort names
@@ -844,7 +919,11 @@ async def sub(message: Message, args: List[str]):
     Substitute one player in a game for another
     """
     if len(args) != 1:
-        print("[sub] Usage: !sub <player_name>")
+        await send_message(
+            channel=message.channel,
+            embed_description="Usage: !sub @<player_name>",
+            colour=Colour.red(),
+        )
         return
 
     caller = message.author
@@ -875,15 +954,16 @@ async def sub(message: Message, args: List[str]):
 
     if caller_game:
         caller_game_player = (
-            session.query(GamePlayer)
+            session.query(GameInProgressPlayer)
             .filter(
-                GamePlayer.game_id == caller_game.id, GamePlayer.player_id == caller.id
+                GameInProgressPlayer.game_in_progress_id == caller_game.id,
+                GameInProgressPlayer.player_id == caller.id,
             )
             .first()
         )
         session.add(
-            GamePlayer(
-                game_id=caller_game.id,
+            GameInProgressPlayer(
+                game_in_progress_id=caller_game.id,
                 player_id=callee.id,
                 team=caller_game_player.team,
             )
@@ -892,15 +972,16 @@ async def sub(message: Message, args: List[str]):
         session.commit()
     elif callee_game:
         callee_game_player = (
-            session.query(GamePlayer)
+            session.query(GameInProgressPlayer)
             .filter(
-                GamePlayer.game_id == callee_game.id, GamePlayer.player_id == callee.id
+                GameInProgressPlayer.game_in_progress_id == callee_game.id,
+                GameInProgressPlayer.player_id == callee.id,
             )
             .first()
         )
         session.add(
-            GamePlayer(
-                game_id=callee_game.id,
+            GameInProgressPlayer(
+                game_in_progress_id=callee_game.id,
                 player_id=caller.id,
                 team=callee_game_player.team,
             )

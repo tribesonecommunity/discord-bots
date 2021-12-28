@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     Integer,
     String,
     UniqueConstraint,
@@ -21,9 +22,8 @@ from sqlalchemy.sql.schema import ForeignKey
 """
 engine = create_engine("sqlite:///tribes.db", echo=True)
 """
-# TODO: Use a test db if in test environment
+# TODO: Create db backups on start or periodically
 # TODO: Use locking - sqlite will have corruptions if not same thread
-
 db_url = (
     "sqlite:///tribes.test.db?check_same_thread=false"
     if "pytest" in sys.modules
@@ -43,31 +43,74 @@ https://docs.sqlalchemy.org/en/14/orm/mapping_styles.html#example-two-dataclasse
 
 @mapper_registry.mapped
 @dataclass
-class Game:
-    """
-    A game either in progress or already completed
-
-    winning_team: null means in progress, -1 means in draw, 0 means team 0, 1
-    means team 1. this is so that it's easy to find the other team with (team +
-    1) % 2
-    """
+class GameFinished:
 
     __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "game"
+    __tablename__ = "game_finished"
 
-    queue_id: str = field(
+    finished_at: datetime | None = field(
+        metadata={"sa": Column(DateTime, index=True, nullable=False)},
+    )
+    queue_name: str = field(
+        metadata={"sa": Column(String, index=True, nullable=False)},
+    )
+    started_at: datetime | None = field(
+        metadata={"sa": Column(DateTime, index=True, nullable=False)},
+    )
+    win_probability: float = field(metadata={"sa": Column(Float, nullable=False)})
+    winning_team: int = field(
+        metadata={"sa": Column(Integer, index=True, nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class GameFinishedPlayer:
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "game_finished_player"
+
+    game_finished_id: str = field(
         metadata={
-            "sa": Column(String, ForeignKey("queue.id"), nullable=False, index=True)
+            "sa": Column(
+                String, ForeignKey("game_finished.id"), nullable=False, index=True
+            )
         },
     )
-    winning_team: int | None = field(
-        init=False,
-        metadata={"sa": Column(Integer, index=True)},
+    player_id: int = field(
+        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
     )
-    finished_at: datetime | None = field(
-        init=False,
-        metadata={"sa": Column(DateTime, index=True)},
+    player_name: int = field(
+        metadata={
+            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
+        },
     )
+    team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
+    trueskill_rating_after: float = field(metadata={"sa": Column(Float)})
+    trueskill_rating_before: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class GameInProgress:
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "game_in_progress"
+
+    queue_id: str | None = field(
+        metadata={"sa": Column(String, ForeignKey("queue.id"), index=True)},
+    )
+    win_probability: float = field(metadata={"sa": Column(Float, nullable=False)})
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
@@ -82,7 +125,7 @@ class Game:
 
 @mapper_registry.mapped
 @dataclass
-class GamePlayer:
+class GameInProgressPlayer:
     """
     A participant in a game
     """
@@ -90,9 +133,11 @@ class GamePlayer:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "game_player"
 
-    game_id: str = field(
+    game_in_progress_id: str = field(
         metadata={
-            "sa": Column(String, ForeignKey("game.id"), nullable=False, index=True)
+            "sa": Column(
+                String, ForeignKey("game_in_progress.id"), nullable=False, index=True
+            )
         },
     )
     player_id: int = field(
@@ -118,9 +163,11 @@ class GameChannel:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "game_channel"
 
-    game_id: str = field(
+    game_in_progress_id: str = field(
         metadata={
-            "sa": Column(String, ForeignKey("game.id"), nullable=False, index=True)
+            "sa": Column(
+                String, ForeignKey("game_in_progress.id"), nullable=False, index=True
+            )
         },
     )
     channel_id: int = field(
@@ -155,9 +202,9 @@ class Player:
         default_factory=lambda: datetime.now(timezone.utc),
         metadata={"sa": Column(DateTime)},
     )
-
-    # TODO:
-    # trueskill_rating: float = Column(Float, nullable=False, default=0.0)
+    trueskill_rating: float = field(
+        default=0.0, metadata={"sa": Column(Float, nullable=False)}
+    )
 
 
 @mapper_registry.mapped
@@ -220,11 +267,13 @@ class QueueWaitlistPlayer:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue_waitlist_player"
-    __table_args__ = (UniqueConstraint("game_id", "queue_id", "player_id"),)
+    __table_args__ = (UniqueConstraint("game_finished_id", "queue_id", "player_id"),)
 
-    game_id: str = field(
+    game_finished_id: str = field(
         metadata={
-            "sa": Column(String, ForeignKey("game.id"), nullable=False, index=True)
+            "sa": Column(
+                String, ForeignKey("game_finished.id"), nullable=False, index=True
+            )
         },
     )
     queue_id: str = field(

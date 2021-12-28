@@ -6,8 +6,8 @@ import pytest
 from fixtures import TEST_CHANNEL, TEST_GUILD, izza, lyon, opsayo, stork
 
 from models import (
-    Game,
-    GamePlayer,
+    GameInProgress,
+    GameInProgressPlayer,
     Player,
     Queue,
     QueuePlayer,
@@ -30,9 +30,9 @@ session = Session()
 def run_around_tests():
     session.query(QueueWaitlistPlayer).delete()
     session.query(QueuePlayer).delete()
-    session.query(GamePlayer).delete()
+    session.query(GameInProgressPlayer).delete()
     session.query(Queue).delete()
-    session.query(Game).delete()
+    session.query(GameInProgress).delete()
     session.query(Player).delete()
     session.add(Player(id=OPSAYO_MEMBER_ID, name="opsayo", is_admin=True))
     TEST_GUILD.channels = {}

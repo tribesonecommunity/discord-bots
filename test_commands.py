@@ -12,8 +12,10 @@ from commands import (
 )
 from fixtures import TEST_GUILD, Channel, Member, izza, lyon, opsayo, stork
 from models import (
-    Game,
-    GamePlayer,
+    GameFinished,
+    GameFinishedPlayer,
+    GameInProgress,
+    GameInProgressPlayer,
     Player,
     Queue,
     QueuePlayer,
@@ -30,9 +32,11 @@ session = Session()
 def run_around_tests():
     session.query(QueueWaitlistPlayer).delete()
     session.query(QueuePlayer).delete()
-    session.query(GamePlayer).delete()
+    session.query(GameInProgressPlayer).delete()
+    session.query(GameInProgress).delete()
+    session.query(GameFinishedPlayer).delete()
+    session.query(GameFinished).delete()
     session.query(Queue).delete()
-    session.query(Game).delete()
     session.query(Player).delete()
     session.add(Player(id=OPSAYO_MEMBER_ID, name="opsayo", is_admin=True))
     TEST_GUILD.channels = {}
@@ -139,13 +143,12 @@ async def test_add_should_add_player_to_all_queues():
     await handle_message(Message(opsayo, "!add"))
 
     for queue_name in ("LTpug", "LTunrated"):
-        queue = list(session.query(Queue).filter(Queue.name == queue_name))[0]
-        queue_players = [
-            qp
-            for qp in session.query(QueuePlayer).filter(
+        queue = session.query(Queue).filter(Queue.name == queue_name).first()
+        queue_players = list(
+            session.query(QueuePlayer).filter(
                 QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == queue.id
             )
-        ]
+        )
         assert len(queue_players) == 1
 
 
@@ -165,7 +168,7 @@ async def test_add_with_queue_named_should_add_player_to_named_queue():
 
     await handle_message(Message(opsayo, "!add LTpug"))
 
-    lt_pug_queue = list(session.query(Queue).filter(Queue.name == "LTpug"))[0]
+    lt_pug_queue = session.query(Queue).filter(Queue.name == "LTpug").first()
     lt_pug_queue_players = list(
         session.query(QueuePlayer).filter(
             QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == lt_pug_queue.id
@@ -181,7 +184,7 @@ async def test_add_with_queue_named_should_not_add_player_to_unnamed_queue():
 
     await handle_message(Message(opsayo, "!add LTpug"))
 
-    lt_unrated_queue = list(session.query(Queue).filter(Queue.name == "LTunrated"))[0]
+    lt_unrated_queue = session.query(Queue).filter(Queue.name == "LTunrated").first()
     lt_unrated_queue_players = list(
         session.query(QueuePlayer).filter(
             QueuePlayer.player_id == opsayo.id,
@@ -200,13 +203,12 @@ async def test_del_should_remove_player_from_all_queues():
     await handle_message(Message(opsayo, "!del"))
 
     for queue_name in ("LTpug", "LTunrated"):
-        queue = [q for q in session.query(Queue).filter(Queue.name == queue_name)][0]
-        queue_players = [
-            qp
-            for qp in session.query(QueuePlayer).filter(
+        queue = session.query(Queue).filter(Queue.name == queue_name).first()
+        queue_players = list(
+            session.query(QueuePlayer).filter(
                 QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == queue.id
             )
-        ]
+        )
         assert len(queue_players) == 0
 
 
@@ -217,13 +219,12 @@ async def test_del_with_queue_named_should_del_player_from_named_queue():
 
     await handle_message(Message(opsayo, "!del LTpug"))
 
-    lt_pug_queue = [q for q in session.query(Queue).filter(Queue.name == "LTpug")][0]
-    lt_pug_queue_players = [
-        qp
-        for qp in session.query(QueuePlayer).filter(
+    lt_pug_queue = session.query(Queue).filter(Queue.name == "LTpug").first()
+    lt_pug_queue_players = list(
+        session.query(QueuePlayer).filter(
             QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == lt_pug_queue.id
         )
-    ]
+    )
     assert len(lt_pug_queue_players) == 0
 
 
@@ -234,16 +235,13 @@ async def test_del_with_queue_named_should_not_del_add_player_from_unnamed_queue
     await handle_message(Message(opsayo, "!add"))
     await handle_message(Message(opsayo, "!del LTpug"))
 
-    lt_unrated_queue = [
-        q for q in session.query(Queue).filter(Queue.name == "LTunrated")
-    ][0]
-    lt_unrated_queue_players = [
-        qp
-        for qp in session.query(QueuePlayer).filter(
+    lt_unrated_queue = session.query(Queue).filter(Queue.name == "LTunrated").first()
+    lt_unrated_queue_players = list(
+        session.query(QueuePlayer).filter(
             QueuePlayer.player_id == opsayo.id,
             QueuePlayer.queue_id == lt_unrated_queue.id,
         )
-    ]
+    )
     assert len(lt_unrated_queue_players) == 1
 
 
@@ -256,21 +254,26 @@ async def test_add_with_queue_at_size_should_create_game_and_clear_queue():
     await handle_message(Message(stork, "!add"))
     await handle_message(Message(izza, "!add"))
 
-    queue = [q for q in session.query(Queue).filter(Queue.name == "LTpug")][0]
-    queue_players = [
-        qp
-        for qp in session.query(QueuePlayer).filter(
+    queue = session.query(Queue).filter(Queue.name == "LTpug").first()
+    queue_players = list(
+        session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id,
         )
-    ]
+    )
     assert len(queue_players) == 0
 
-    games = [g for g in session.query(Game).filter(Game.queue_id == queue.id)]
-    assert len(games) == 1
+    game = (
+        session.query(GameInProgress)
+        .filter(GameInProgress.queue_id == queue.id)
+        .first()
+    )
+    assert game is not None
 
-    game_players = [
-        gp for gp in session.query(GamePlayer).filter(GamePlayer.game_id == games[0].id)
-    ]
+    game_players = list(
+        session.query(GameInProgressPlayer).filter(
+            GameInProgressPlayer.game_in_progress_id == game.id
+        )
+    )
     assert len(game_players) == 4
 
 
@@ -282,13 +285,12 @@ async def test_add_with_player_in_game_should_not_add_to_queue():
 
     await handle_message(Message(opsayo, "!add"))
 
-    queue = [q for q in session.query(Queue).filter(Queue.name == "LTpug")][0]
-    queue_players = [
-        qp
-        for qp in session.query(QueuePlayer).filter(
+    queue = session.query(Queue).filter(Queue.name == "LTpug").first()
+    queue_players = list(
+        session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id,
         )
-    ]
+    )
     assert len(queue_players) == 0
 
 
@@ -305,8 +307,8 @@ async def test_finish_game_should_record_finish_at_timestamp():
 
     await handle_message(Message(opsayo, "!finishgame win"))
 
-    game = list(session.query(Game))[0]
-    assert game.finished_at is not None
+    assert len(list(session.query(GameInProgress))) == 0
+    assert len(list(session.query(GameFinished))) == 1
 
 
 @pytest.mark.asyncio
@@ -317,11 +319,13 @@ async def test_finish_game_with_win_should_record_win_for_reporting_team():
 
     await handle_message(Message(opsayo, "!finishgame win"))
 
-    game_player = [
-        gp for gp in session.query(GamePlayer).filter(GamePlayer.player_id == opsayo.id)
-    ][0]
-    game = [g for g in session.query(Game)][0]
-    assert game.winning_team == game_player.team
+    finished_game = session.query(GameFinished).first()
+    game_finished_player = (
+        session.query(GameFinishedPlayer)
+        .filter(GameFinishedPlayer.player_id == opsayo.id)
+        .first()
+    )
+    assert finished_game.winning_team == game_finished_player.team
 
 
 @pytest.mark.asyncio
@@ -332,11 +336,13 @@ async def test_finish_game_with_loss_should_record_win_for_other_team():
 
     await handle_message(Message(opsayo, "!finishgame loss"))
 
-    game_player = [
-        gp for gp in session.query(GamePlayer).filter(GamePlayer.player_id == opsayo.id)
-    ][0]
-    game = [g for g in session.query(Game)][0]
-    assert game.winning_team == (game_player.team + 1) % 2
+    finished_game = session.query(GameFinished).first()
+    game_finished_player = (
+        session.query(GameFinishedPlayer)
+        .filter(GameFinishedPlayer.player_id == opsayo.id)
+        .first()
+    )
+    assert finished_game.winning_team == (game_finished_player.team + 1) % 2
 
 
 @pytest.mark.asyncio
@@ -347,8 +353,13 @@ async def test_finish_game_with_tie_should_record_tie():
 
     await handle_message(Message(opsayo, "!finishgame tie"))
 
-    game = list(session.query(Game))[0]
-    assert game.winning_team == -1
+    finished_game = session.query(GameFinished).first()
+    game_finished_player = (
+        session.query(GameFinishedPlayer)
+        .filter(GameFinishedPlayer.player_id == opsayo.id)
+        .first()
+    )
+    assert finished_game.winning_team == -1
 
 
 @pytest.mark.asyncio
@@ -359,8 +370,8 @@ async def test_finish_game_with_player_not_in_game_should_not_finish_game():
 
     await handle_message(Message(stork, "!finishgame loss"))
 
-    game = [g for g in session.query(Game)][0]
-    assert game.winning_team is None
+    assert session.query(GameInProgress).first() is not None
+    assert session.query(GameFinished).first() is None
 
 
 # TODO: Modify to work with wait timer
@@ -374,8 +385,7 @@ async def test_add_with_player_after_finish_game_should_be_added_to_queue():
 
     await handle_message(Message(opsayo, "!add"))
 
-    queue_players = [qp for qp in session.query(QueuePlayer)]
-    assert len(queue_players) == 1
+    assert len(list(session.query(QueuePlayer))) == 1
 
 
 @pytest.mark.asyncio
@@ -432,7 +442,7 @@ async def test_add_with_player_just_finished_should_not_add_to_queue():
 
     await handle_message(Message(opsayo, "!add"))
 
-    queue = list(session.query(Queue).filter(Queue.name == "LTpug"))[0]
+    queue = session.query(Queue).filter(Queue.name == "LTpug").first()
     queue_players = list(
         session.query(QueuePlayer).filter(
             QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == queue.id
@@ -480,7 +490,7 @@ async def test_sub_with_subber_in_game_and_subbee_not_in_game_should_substitute_
 
     await handle_message(Message(opsayo, "!sub @stork"))
 
-    game_player_ids = set([gp.player_id for gp in session.query(GamePlayer)])
+    game_player_ids = set([gp.player_id for gp in session.query(GameInProgressPlayer)])
     assert stork.id in game_player_ids
     assert opsayo.id not in game_player_ids
 
@@ -493,7 +503,7 @@ async def test_sub_with_subber_not_in_game_and_subbee_in_game_should_substitute_
 
     await handle_message(Message(stork, "!sub @opsayo"))
 
-    game_player_ids = set([gp.player_id for gp in session.query(GamePlayer)])
+    game_player_ids = set([gp.player_id for gp in session.query(GameInProgressPlayer)])
     assert stork.id in game_player_ids
     assert opsayo.id not in game_player_ids
 
@@ -506,7 +516,7 @@ async def test_sub_with_subber_in_game_and_subbee_in_game_should_not_substitute_
 
     await handle_message(Message(opsayo, "!sub @lyon"))
 
-    game_player_ids = set([gp.player_id for gp in session.query(GamePlayer)])
+    game_player_ids = set([gp.player_id for gp in session.query(GameInProgressPlayer)])
     assert lyon.id in game_player_ids
     assert opsayo.id in game_player_ids
 
@@ -519,7 +529,7 @@ async def test_sub_with_subber_not_in_game_and_subbee_not_in_game_should_substit
 
     await handle_message(Message(izza, "!sub @stork"))
 
-    game_player_ids = set([gp.player_id for gp in session.query(GamePlayer)])
+    game_player_ids = set([gp.player_id for gp in session.query(GameInProgressPlayer)])
     assert stork.id not in game_player_ids
     assert izza.id not in game_player_ids
 
