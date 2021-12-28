@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, time, timezone
-from typing import Optional
 from uuid import uuid4
+import time
 
 from sqlalchemy import (
     Boolean,
@@ -17,6 +17,7 @@ from sqlalchemy import (
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
 from sqlalchemy.sql.schema import ForeignKey
+from sqlalchemy.sql.sqltypes import Float
 
 """
 engine = create_engine("sqlite:///tribes.db", echo=True)
@@ -60,11 +61,11 @@ class Game:
             "sa": Column(String, ForeignKey("queue.id"), nullable=False, index=True)
         },
     )
-    winning_team: Optional[int] = field(
+    winning_team: int | None = field(
         init=False,
         metadata={"sa": Column(Integer, index=True)},
     )
-    finished_at: Optional[datetime] = field(
+    finished_at: datetime | None = field(
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -151,6 +152,10 @@ class Player:
     is_banned: bool = field(
         default=False, metadata={"sa": Column(Boolean, nullable=False)}
     )
+    last_activity_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        metadata={"sa": Column(DateTime)},
+    )
 
     # TODO:
     # trueskill_rating: float = Column(Float, nullable=False, default=0.0)
@@ -178,6 +183,8 @@ class Queue:
 class QueuePlayer:
     """
     Players currently waiting in a queue
+
+    :channel_id: The channel that the user sent the message to join the queue
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -194,6 +201,7 @@ class QueuePlayer:
             "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
+    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),

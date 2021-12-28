@@ -1,25 +1,17 @@
-from __future__ import annotations
 
-from dataclasses import dataclass, field
-from math import floor
-from random import random
-from time import sleep
-from typing import Dict, List
+from typing import List
 from unittest.mock import Mock
-from uuid import uuid4
 
 from discord import Message
-from discord.channel import VoiceChannel
 from pytest import fixture
 import pytest
 
 from commands import (
-    COMMAND_PREFIX,
     OPSAYO_MEMBER_ID,
-    TRIBES_VOICE_CATEGORY_CHANNEL_ID,
     is_in_game,
     handle_message,
 )
+from fixtures import TEST_GUILD, Channel, Member, izza, lyon, opsayo, stork
 from models import (
     Game,
     GamePlayer,
@@ -31,86 +23,7 @@ from models import (
 )
 
 
-# Mock discord models so we can invoke tests
-@dataclass
-class Category:
-    id: int
-
-
-TRIBES_VOICE_CATEGORY = Category(TRIBES_VOICE_CATEGORY_CHANNEL_ID)
-
-
-@dataclass
-class Role:
-    name: str
-    id: str = field(default_factory=lambda: str(uuid4()))
-
-
-@dataclass
-class Guild:
-    """
-    Fake utility class for
-    https://discordpy.readthedocs.io/en/stable/api.html#guild
-    """
-
-    _members: List[Member] = field(default_factory=list)
-    categories: List[Category] = field(default_factory=lambda: [TRIBES_VOICE_CATEGORY])
-    channels: Dict[str, Channel] = field(default_factory=dict)
-    roles: List[Role] = field(default_factory=lambda: [Role("LTpug")])
-
-    # TODO: Use VoiceChannel instead of Channel
-    async def create_voice_channel(self, name, category: Category = None) -> Channel:
-        channel = Channel()
-        self.channels[channel.id] = channel
-        return channel
-
-    def get_channel(self, channel_id: str) -> Channel:
-        return self.channels[channel_id]
-
-    def get_member_named(self, member_name: str) -> Member:
-        for member in self._members:
-            if member.name == member_name:
-                return member
-        self._members.append(Member(name=member_name))
-
-        return self._members[-1]
-
-
-TEST_GUILD = Guild()
-
-
-@dataclass
-class Member:
-    name: str
-    id: int = field(default_factory=lambda: floor(random() * 2 ** 32))
-
-    @property
-    def guild(self) -> Guild:
-        """
-        Defined as a property rather than attribute to avoid circular reference
-        """
-        return TEST_GUILD
-
-
-@dataclass
-class Channel:
-    id: str = field(default_factory=lambda: str(uuid4()))
-
-    async def send(self, content, embed):
-        if embed:
-            print(f"[Channel.send] content={content}, embed={embed.description}")
-        else:
-            print(f"[Channel.send] content={content}")
-
-    async def delete(self):
-        pass
-
-
 session = Session()
-opsayo = Member("opsayo", id=OPSAYO_MEMBER_ID)
-stork = Member("stork")
-izza = Member("izza")
-lyon = Member("lyon")
 
 
 # Runs around each test

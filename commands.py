@@ -1,6 +1,5 @@
 """
 TODO:
-- afk timer
 - queue notifications
 - pick random team captain for each game
 - recognizable words for game ids and team names
@@ -12,7 +11,7 @@ from datetime import datetime, timezone
 from math import floor
 from random import random, shuffle
 from threading import Timer
-from typing import Awaitable, Callable, Dict, List, Optional, Set
+from typing import Awaitable, Callable, List, Set
 import asyncio
 
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
@@ -36,8 +35,8 @@ from queues import (
     VoiceChannelQueueMessage,
 )
 
+AFK_TIME_MINUTES: int = 45
 COMMAND_PREFIX: str = "!"
-COMMAND_PREFIX: str = "$"
 RE_ADD_DELAY: int = 5
 
 
@@ -75,6 +74,7 @@ async def queue_waitlist(
             QueuePlayer(
                 queue_id=queue_waitlist_player.queue_id,
                 player_id=queue_waitlist_player.player_id,
+                channel_id=channel.id,
             )
         )
         try:
@@ -235,7 +235,7 @@ def is_in_game(player_id: int) -> bool:
     return get_player_game(player_id) is not None
 
 
-def get_player_game(player_id: int) -> Optional[Game]:
+def get_player_game(player_id: int) -> Game | None:
     """
     Find the game a player is currently in, excluding finished games
     """
@@ -272,24 +272,16 @@ async def add(message: Message, args: List[str]):
 
     session = Session()
 
-    # Add player in case we haven't seen them yet
-    player = Player(id=message.author.id, name=message.author.name)
-    session.add(player)
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-
-    most_recent_game: Optional[Game] = (
+    most_recent_game: Game | None = (
         session.query(Game)
         .join(GamePlayer)
-        .filter(Game.finished_at != None, GamePlayer.player_id == player.id)
+        .filter(Game.finished_at != None, GamePlayer.player_id == message.author.id)
         .order_by(Game.finished_at.desc())  # type: ignore
         .first()
     )
 
     is_waitlist: bool = False
-    waitlist_message: Optional[str] = None
+    waitlist_message: str | None = None
     if most_recent_game and most_recent_game.finished_at:
         # The timezone info seems to get lost in the round trip to the database
         finish_time: datetime = most_recent_game.finished_at.replace(
@@ -330,7 +322,9 @@ async def add(message: Message, args: List[str]):
         if is_waitlist and most_recent_game:
             session.add(
                 QueueWaitlistPlayer(
-                    game_id=most_recent_game.id, queue_id=queue.id, player_id=player.id
+                    game_id=most_recent_game.id,
+                    queue_id=queue.id,
+                    player_id=message.author.id,
                 )
             )
             try:
@@ -338,7 +332,13 @@ async def add(message: Message, args: List[str]):
             except IntegrityError:
                 session.rollback()
         else:
-            session.add(QueuePlayer(queue_id=queue.id, player_id=player.id))
+            session.add(
+                QueuePlayer(
+                    queue_id=queue.id,
+                    player_id=message.author.id,
+                    channel_id=message.channel.id,
+                )
+            )
             try:
                 session.commit()
             except IntegrityError:
@@ -430,14 +430,14 @@ async def add(message: Message, args: List[str]):
     if is_waitlist and waitlist_message:
         await send_message(
             message.channel,
-            content=f"{player.name} added to: {', '.join([queue.name for queue in queues_to_add])}",
+            content=f"{message.author.name} added to: {', '.join([queue.name for queue in queues_to_add])}",
             embed_description=waitlist_message,
             colour=Colour.green(),
         )
     else:
         await send_message(
             message.channel,
-            content=f"{player.name} added to: {', '.join([queue.name for queue in queues_to_add])}",
+            content=f"{message.author.name} added to: {', '.join([queue.name for queue in queues_to_add])}",
             embed_description=" ".join(queue_statuses),
             colour=Colour.green(),
         )
@@ -525,45 +525,6 @@ async def ban(message: Message, args: List[str]):
                 message.channel,
                 embed_description=f"{player.name} banned",
                 colour=Colour.green(),
-            )
-
-
-@require_admin
-async def cancel_game(message: Message, args: List[str]):
-    await send_message(message.channel, "not implemented")
-    if len(args) == 1:
-        if author not in ADMINS:
-            await send_message(
-                message.channel, "you must be an admin to cancel a game by its id"
-            )
-            return
-        for games in GAMES.values():
-            for game in games:
-                if game.id == args[0]:
-                    games.remove(game)
-                    print(
-                        "[cancelgame]",
-                        game.queue_name,
-                        "game",
-                        args[0],
-                        "cancelled by",
-                        author,
-                    )
-                    return
-    else:
-        author_game = get_player_game(author.id)
-        if not author_game:
-            print("[cancelgame] you are not in a game")
-            return
-        else:
-            GAMES[author_game.queue_name].remove(author_game)
-            print(
-                "[cancelgame]",
-                author_game.queue_name,
-                "game",
-                author_game.id,
-                "cancelled by",
-                author,
             )
 
 
@@ -948,7 +909,6 @@ COMMANDS = {
     "add": add,
     "addadmin": add_admin,
     "ban": ban,
-    "cancelgame": cancel_game,
     "coinflip": coinflip,
     "commands": commands,
     "createqueue": create_queue,
@@ -978,15 +938,27 @@ async def handle_message(message: Message):
         print("[handle_message] exiting - command not found:", command)
         return
 
-    banned_player = (
-        Session()
-        .query(Player)
-        .filter(Player.id == message.author.id, Player.is_banned == True)
-        .first()
-    )
-    if banned_player:
-        print("[handle_message] message author banned:", command)
-        return
+    session = Session()
+
+    player = Session().query(Player).filter(Player.id == message.author.id).first()
+    if not player:
+        # Create player for the first time
+        session.add(
+            Player(
+                id == message.author.id,
+                name=message.author.name,
+                last_activity_at=datetime.now(timezone.utc),
+            )
+        )
+        session.commit()
+    elif player:
+        if player.is_banned:
+            print("[handle_message] message author banned:", command)
+            return
+        else:
+            player.last_activity_at = datetime.now(timezone.utc)
+            session.add(player)
+            session.commit()
 
     print("[handle_message] executing command:", command)
 
