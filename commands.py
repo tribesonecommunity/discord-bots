@@ -1,11 +1,3 @@
-"""
-TODO:
-- queue notifications
-- pick random team captain for each game
-- recognizable words for game ids and team names
-- migrations
-- enable strict typing configuration
-"""
 from collections import defaultdict
 from datetime import datetime, timezone
 from math import floor
@@ -363,7 +355,8 @@ async def add(message: Message, args: List[str]):
                         session.add(game_player)
                         team0_players.append(
                             session.query(Player)
-                            .filter(Player.id == queue_player.player_id)[0]
+                            .filter(Player.id == queue_player.player_id)
+                            .first()
                             .name
                         )
 
@@ -375,7 +368,8 @@ async def add(message: Message, args: List[str]):
                         session.add(game_player)
                         team1_players.append(
                             session.query(Player)
-                            .filter(Player.id == queue_player.player_id)[0]
+                            .filter(Player.id == queue_player.player_id)
+                            .first()
                             .name
                         )
 
@@ -828,7 +822,7 @@ async def status(message: Message, args: List[str]):
                 )
 
                 # TODO: Sort names
-                output += f"**IN GAME:**"
+                output += f"**IN GAME: **"
                 output += f", ".join(sorted([player.name for player in team0_players]))
                 output += "\n"
                 output += f", ".join(sorted([player.name for player in team1_players]))
@@ -844,29 +838,77 @@ async def sub(message: Message, args: List[str]):
     """
     Substitute one player in a game for another
     """
-    await send_message(message.channel, "not implemented")
     if len(args) != 1:
         print("[sub] Usage: !sub <player_name>")
         return
 
-    callee = args[0]
-    if is_in_game(author.id):
-        print("[sub]", author, "is already in a game")
+    caller = message.author
+    caller_game = get_player_game(caller.id)
+    callee = message.mentions[0]
+    callee_game = get_player_game(callee.id)
+
+    if caller_game and callee_game:
+        await send_message(
+            channel=message.channel,
+            embed_description=f"{caller.name} and {callee.name} are both already in a game",
+            colour=Colour.red(),
+        )
+        return
+    elif not caller_game and not callee_game:
+        await send_message(
+            channel=message.channel,
+            embed_description=f"{caller.name} and {callee.name} are not in a game",
+            colour=Colour.red(),
+        )
         return
 
-    callee_game = get_player_game(callee)
-    if not callee_game:
-        print("[sub]", callee, "is not in a game")
-        return
+    session = Session()
 
-    if callee in callee_game.team1:
-        callee_game.team1.remove(callee)
-        callee_game.team1.append(author)
-    else:
-        callee_game.team1.remove(callee)
-        callee_game.team1.append(author)
+    # The callee may not be recorded in the database
+    if not session.query(Player).filter(Player.id == callee.id).first():
+        session.add(Player(id=callee.id, name=callee.name))
 
-    print("[sub] swapped", callee, "for", author, "in", callee_game.queue_name)
+    if caller_game:
+        caller_game_player = (
+            session.query(GamePlayer)
+            .filter(
+                GamePlayer.game_id == caller_game.id, GamePlayer.player_id == caller.id
+            )
+            .first()
+        )
+        session.add(
+            GamePlayer(
+                game_id=caller_game.id,
+                player_id=callee.id,
+                team=caller_game_player.team,
+            )
+        )
+        session.delete(caller_game_player)
+        session.commit()
+    elif callee_game:
+        callee_game_player = (
+            session.query(GamePlayer)
+            .filter(
+                GamePlayer.game_id == callee_game.id, GamePlayer.player_id == callee.id
+            )
+            .first()
+        )
+        session.add(
+            GamePlayer(
+                game_id=callee_game.id,
+                player_id=caller.id,
+                team=callee_game_player.team,
+            )
+        )
+        session.delete(callee_game_player)
+        session.commit()
+
+    await send_message(
+        channel=message.channel,
+        embed_description=f"{callee.name} has been substituted with {caller.name}",
+        colour=Colour.green(),
+    )
+    return
 
 
 @require_admin
@@ -940,12 +982,12 @@ async def handle_message(message: Message):
 
     session = Session()
 
-    player = Session().query(Player).filter(Player.id == message.author.id).first()
+    player = session.query(Player).filter(Player.id == message.author.id).first()
     if not player:
         # Create player for the first time
         session.add(
             Player(
-                id == message.author.id,
+                id=message.author.id,
                 name=message.author.name,
                 last_activity_at=datetime.now(timezone.utc),
             )

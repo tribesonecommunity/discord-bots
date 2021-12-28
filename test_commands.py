@@ -1,4 +1,3 @@
-
 from typing import List
 from unittest.mock import Mock
 
@@ -471,6 +470,58 @@ async def test_unban_should_remove_player_from_bans():
 
     banned_players = list(session.query(Player).filter(Player.is_banned == True))
     assert len(banned_players) == 0
+
+
+@pytest.mark.asyncio
+async def test_sub_with_subber_in_game_and_subbee_not_in_game_should_substitute_players():
+    await handle_message(Message(opsayo, "!createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "!add"))
+    await handle_message(Message(lyon, "!add"))
+
+    await handle_message(Message(opsayo, "!sub @stork"))
+
+    game_player_ids = set([gp.player_id for gp in session.query(GamePlayer)])
+    assert stork.id in game_player_ids
+    assert opsayo.id not in game_player_ids
+
+
+@pytest.mark.asyncio
+async def test_sub_with_subber_not_in_game_and_subbee_in_game_should_substitute_players():
+    await handle_message(Message(opsayo, "!createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "!add"))
+    await handle_message(Message(lyon, "!add"))
+
+    await handle_message(Message(stork, "!sub @opsayo"))
+
+    game_player_ids = set([gp.player_id for gp in session.query(GamePlayer)])
+    assert stork.id in game_player_ids
+    assert opsayo.id not in game_player_ids
+
+
+@pytest.mark.asyncio
+async def test_sub_with_subber_in_game_and_subbee_in_game_should_not_substitute_players():
+    await handle_message(Message(opsayo, "!createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "!add"))
+    await handle_message(Message(lyon, "!add"))
+
+    await handle_message(Message(opsayo, "!sub @lyon"))
+
+    game_player_ids = set([gp.player_id for gp in session.query(GamePlayer)])
+    assert lyon.id in game_player_ids
+    assert opsayo.id in game_player_ids
+
+
+@pytest.mark.asyncio
+async def test_sub_with_subber_not_in_game_and_subbee_not_in_game_should_substitute_players():
+    await handle_message(Message(opsayo, "!createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "!add"))
+    await handle_message(Message(lyon, "!add"))
+
+    await handle_message(Message(izza, "!sub @stork"))
+
+    game_player_ids = set([gp.player_id for gp in session.query(GamePlayer)])
+    assert stork.id not in game_player_ids
+    assert izza.id not in game_player_ids
 
 
 # await handle_message(Message(stork, "!status"))

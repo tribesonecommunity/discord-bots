@@ -44,13 +44,15 @@ Use python black: https://github.com/psf/black
 Feel free to help out!
 
 MVP
-- Queue delay between games (see QueueFinishTimer, Queue.addPlayersWaiting)
 - Player subs
-- AFK / idle timer (see AFKTimer)
 - Bot picks
+- Migrations with Alembic
 - Custom commands !createcommand / !deletecommand
 - Match history / editing
 
 MVP+
 - In-server queue
 - Map picking problem
+- Queue notifications
+- Enable strict typing configuration
+- Recognizable words for game ids and team names

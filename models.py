@@ -33,12 +33,9 @@ Base = mapper_registry.generate_base()
 
 
 """
-Sorry if this looks confusing. Models are declared using the method here:
+Sorry if this is complex.  This lets us mix Python dataclasses with SQLAlchemy
+using the method here:
 https://docs.sqlalchemy.org/en/14/orm/mapping_styles.html#example-two-dataclasses-with-declarative-table
-
-This lets us mix Python dataclasses with SQLAlchemy. We get the conveniences of
-dataclasses without needing to declare the table schema twice. It does add some
-boilerplate.
 """
 
 
