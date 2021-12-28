@@ -827,6 +827,11 @@ async def status(message: Message, args: List[str]):
                 output += "\n"
                 output += f", ".join(sorted([player.name for player in team1_players]))
                 output += "\n"
+                minutes_ago = (
+                    datetime.now(timezone.utc)
+                    - game.created_at.replace(tzinfo=timezone.utc)
+                ).seconds // 60
+                output += f"**@ {minutes_ago} minutes ago**\n"
 
     if len(output) == 0:
         output = "No queues or games"

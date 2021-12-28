@@ -44,7 +44,6 @@ Use python black: https://github.com/psf/black
 Feel free to help out!
 
 MVP
-- Player subs
 - Bot picks
 - Migrations with Alembic
 - Custom commands !createcommand / !deletecommand
@@ -56,3 +55,4 @@ MVP+
 - Queue notifications
 - Enable strict typing configuration
 - Recognizable words for game ids and team names
+- Show teams for in-game status
