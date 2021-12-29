@@ -1,12 +1,13 @@
 from collections import defaultdict
-from datetime import datetime, timezone
-import itertools
+from datetime import datetime, timedelta, timezone
 from math import floor
-import math
-from random import random, shuffle
+from random import choices, random, shuffle
 from threading import Timer
 from typing import Awaitable, Callable, Dict, List, Set
 import asyncio
+import itertools
+import math
+import numpy
 
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
 from discord.guild import Guild
@@ -37,7 +38,7 @@ COMMAND_PREFIX: str = "!"
 RE_ADD_DELAY: int = 5
 
 
-def win_probability(team0, team1):
+def win_probability(team0: List[Rating], team1: List[Rating]) -> float:
     """
     Calculate the probability that team0 beats team1
     Taken from https://trueskill.org/#win-probability
@@ -58,9 +59,174 @@ def async_wrapper(func, *args, **kwargs):
     asyncio.run(func(*args, **kwargs))
 
 
+# TODO: Add locking to this method? IDK what happens if lots of people add at the same time
+async def add_player_to_queue(
+    queue_id: str,
+    player_id: int,
+    channel: TextChannel | DMChannel | GroupChannel,
+    guild: Guild,
+    is_multithread: bool = False,
+) -> bool:
+    """
+    Helper function to add player to a queue and pop if needed.
+
+    :is_multithread: Discord client only executes certain commands on the main
+    thread. Use this flag to handle cases where this function is being called
+    in a multi-threaded state
+    """
+    session = Session()
+    session.add(
+        QueuePlayer(
+            queue_id=queue_id,
+            player_id=player_id,
+            channel_id=channel.id,
+        )
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        return False
+
+    queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
+    queue_players: List[QueuePlayer] = (
+        session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).all()
+    )
+    if len(queue_players) == queue.size:  # Pop!
+        player_ids: List[int] = list(map(lambda x: x.player_id, queue_players))
+        players: List[Player] = (
+            session.query(Player).filter(Player.id.in_(player_ids)).all()
+        )
+        best_win_prob_so_far: float | None = None
+        best_teams_so_far: List[Player] | None = None
+
+        # Use a fixed number of shuffles over generating permutations then
+        # shuffle for performance.  There are 3.6 million permutations!
+        for _ in range(100):
+            shuffle(players)
+            team0_ratings = list(
+                map(
+                    lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
+                    players[: len(players) // 2],
+                )
+            )
+            team1_ratings = list(
+                map(
+                    lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
+                    players[len(players) // 2 :],
+                )
+            )
+            win_prob = win_probability(team0_ratings, team1_ratings)
+            if not best_win_prob_so_far:
+                best_win_prob_so_far = win_prob
+                best_teams_so_far = players[:]
+            else:
+                current_team_evenness = abs(0.50 - win_prob)
+                best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
+                if current_team_evenness < best_team_evenness_so_far:
+                    best_win_prob_so_far = win_prob
+                    best_teams_so_far = players[:]
+
+                if int(win_prob * 100) == 50:
+                    # Can't do better than this
+                    break
+
+        if not best_win_prob_so_far or not best_teams_so_far:
+            # Can't really happen, so mostly just to appease the linter
+            return False
+
+        game = GameInProgress(queue_id=queue.id, win_probability=best_win_prob_so_far)
+        session.add(game)
+
+        team0_players = best_teams_so_far[: len(best_teams_so_far) // 2]
+        team1_players = best_teams_so_far[len(best_teams_so_far) // 2 :]
+
+        for player in team0_players:
+            game_player = GameInProgressPlayer(
+                game_in_progress_id=game.id,
+                player_id=player.id,
+                team=0,
+            )
+            session.add(game_player)
+
+        for player in team1_players:
+            game_player = GameInProgressPlayer(
+                game_in_progress_id=game.id,
+                player_id=player.id,
+                team=1,
+            )
+            session.add(game_player)
+
+        short_game_id = game.id.split("-")[0]
+        team0_names = list(map(lambda x: x.name, team0_players))
+        team1_names = list(map(lambda x: x.name, team1_players))
+        channel_message = f"Game '{queue.name}' ({short_game_id}) has begun!"
+        channel_embed = f"**Blood Eagle** ({int(100 * best_win_prob_so_far)}%): {', '.join(team0_names)}\n**Diamond Sword** ({int(100 * (1 - best_win_prob_so_far))}%): {', '.join(team1_names)}"
+
+        if is_multithread:
+            # Send the message on the main thread using queues
+            SEND_MESSAGE_QUEUE.put(
+                MessageQueueMessage(
+                    channel,
+                    content=channel_message,
+                    embed_description=channel_embed,
+                    colour=Colour.blue(),
+                )
+            )
+        else:
+            await send_message(
+                channel,
+                content=channel_message,
+                embed_description=channel_embed,
+                colour=Colour.blue(),
+            )
+
+        categories = {category.id: category for category in guild.categories}
+        tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
+
+        if is_multithread:
+            # Create voice channels on the main thread
+            CREATE_VOICE_CHANNEL_QUEUE.put(
+                VoiceChannelQueueMessage(
+                    guild,
+                    f"Blood Eagle ({short_game_id})",
+                    game_in_progress_id=game.id,
+                    category=tribes_voice_category,
+                )
+            )
+            CREATE_VOICE_CHANNEL_QUEUE.put(
+                VoiceChannelQueueMessage(
+                    guild,
+                    f"Diamond Sword ({short_game_id})",
+                    game_in_progress_id=game.id,
+                    category=tribes_voice_category,
+                )
+            )
+        else:
+            be_channel = await guild.create_voice_channel(
+                f"Blood Eagle ({short_game_id})",
+                category=tribes_voice_category,
+            )
+            ds_channel = await guild.create_voice_channel(
+                f"Diamond Sword ({short_game_id})",
+                category=tribes_voice_category,
+            )
+            session.add(
+                GameChannel(game_in_progress_id=game.id, channel_id=be_channel.id)
+            )
+            session.add(
+                GameChannel(game_in_progress_id=game.id, channel_id=ds_channel.id)
+            )
+
+        session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).delete()
+        session.commit()
+        return True
+    return False
+
+
 async def queue_waitlist(
     channel: TextChannel | DMChannel | GroupChannel,
-    guild: Guild | None,
+    guild: Guild,
     game_finished_id: str,
 ) -> None:
     """
@@ -76,113 +242,18 @@ async def queue_waitlist(
     )
     shuffle(queue_waitlist_players)
 
-    players_in_game: Set[int] = set()
     for queue_waitlist_player in queue_waitlist_players:
-        if queue_waitlist_player.player_id in players_in_game:
+        if is_in_game(queue_waitlist_player.player_id):
+            session.delete(queue_waitlist_player)
             continue
 
-        session.add(
-            QueuePlayer(
-                queue_id=queue_waitlist_player.queue_id,
-                player_id=queue_waitlist_player.player_id,
-                channel_id=channel.id,
-            )
+        await add_player_to_queue(
+            queue_waitlist_player.queue_id,
+            queue_waitlist_player.player_id,
+            channel,
+            guild,
+            True,
         )
-        try:
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-        else:
-            queue: Queue = (
-                session.query(Queue)
-                .filter(Queue.id == queue_waitlist_player.queue_id)
-                .first()
-            )
-            queue_players: List[QueuePlayer] = list(
-                session.query(QueuePlayer).filter(
-                    QueuePlayer.queue_id == queue_waitlist_player.queue_id
-                )
-            )
-            if len(queue_players) == queue.size:  # Pop!
-                game = GameInProgress(queue_id=queue.id, win_probability=0.0)
-                session.add(game)
-
-                # TODO: Import even teams using trueskill
-                team0 = queue_players[: len(queue_players) // 2]
-                team1 = queue_players[len(queue_players) // 2 :]
-
-                team0_players = []
-                for queue_player in team0:
-                    game_player = GameInProgressPlayer(
-                        game_in_progress_id=game.id,
-                        player_id=queue_player.player_id,
-                        team=0,
-                    )
-                    session.add(game_player)
-                    team0_players.append(
-                        session.query(Player)
-                        .filter(Player.id == queue_player.player_id)[0]
-                        .name
-                    )
-
-                team1_players = []
-                for queue_player in team1:
-                    game_player = GameInProgressPlayer(
-                        game_in_progress_id=game.id,
-                        player_id=queue_player.player_id,
-                        team=1,
-                    )
-                    session.add(game_player)
-                    team1_players.append(
-                        session.query(Player)
-                        .filter(Player.id == queue_player.player_id)[0]
-                        .name
-                    )
-
-                short_game_in_progress_id = game.id.split("-")[0]
-
-                # Send the message on the main thread using queues
-                SEND_MESSAGE_QUEUE.put(
-                    MessageQueueMessage(
-                        channel,
-                        content=f"Game '{queue.name}' ({short_game_in_progress_id}) has begun!",
-                        embed_description=f"**Blood Eagle:** {', '.join(team0_players)}\n**Diamond Sword**: {', '.join(team1_players)}",
-                        colour=Colour.blue(),
-                    )
-                )
-
-                if guild:
-                    categories = {
-                        category.id: category for category in guild.categories
-                    }
-                    tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
-
-                    # Create voice channels on the main thread
-                    CREATE_VOICE_CHANNEL_QUEUE.put(
-                        VoiceChannelQueueMessage(
-                            guild,
-                            f"Blood Eagle ({short_game_in_progress_id})",
-                            game_in_progress_id=game.id,
-                            category=tribes_voice_category,
-                        )
-                    )
-                    CREATE_VOICE_CHANNEL_QUEUE.put(
-                        VoiceChannelQueueMessage(
-                            guild,
-                            f"Diamond Sword ({short_game_in_progress_id})",
-                            game_in_progress_id=game.id,
-                            category=tribes_voice_category,
-                        )
-                    )
-                    session.query(QueuePlayer).delete()
-                else:
-                    SEND_MESSAGE_QUEUE.put(
-                        MessageQueueMessage(
-                            channel,
-                            embed_description="No guild for message!",
-                            colour=Colour.red(),
-                        )
-                    )
 
     session.query(QueueWaitlistPlayer).filter(
         QueueWaitlistPlayer.game_finished_id == game_finished_id
@@ -351,103 +422,10 @@ async def add(message: Message, args: List[str]):
             except IntegrityError:
                 session.rollback()
         else:
-            session.add(
-                QueuePlayer(
-                    queue_id=queue.id,
-                    player_id=message.author.id,
-                    channel_id=message.channel.id,
-                )
-            )
-            try:
-                session.commit()
-            except IntegrityError:
-                session.rollback()
-            else:
-                queue_players: List[QueuePlayer] = list(
-                    session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id)
-                )
-                if len(queue_players) == queue.size:  # Pop!
-                    # TODO: Calculate win probability
-                    game = GameInProgress(queue_id=queue.id, win_probability=0.0)
-                    session.add(game)
-
-                    # TODO: Import even teams using trueskill
-                    team0 = queue_players[: len(queue_players) // 2]
-                    team1 = queue_players[len(queue_players) // 2 :]
-
-                    team0_players = []
-                    for queue_player in team0:
-                        game_player = GameInProgressPlayer(
-                            game_in_progress_id=game.id,
-                            player_id=queue_player.player_id,
-                            team=0,
-                        )
-                        session.add(game_player)
-                        team0_players.append(
-                            session.query(Player)
-                            .filter(Player.id == queue_player.player_id)
-                            .first()
-                            .name
-                        )
-
-                    team1_players = []
-                    for queue_player in team1:
-                        game_player = GameInProgressPlayer(
-                            game_in_progress_id=game.id,
-                            player_id=queue_player.player_id,
-                            team=1,
-                        )
-                        session.add(game_player)
-                        team1_players.append(
-                            session.query(Player)
-                            .filter(Player.id == queue_player.player_id)
-                            .first()
-                            .name
-                        )
-
-                    short_game_in_progress_id = game.id.split("-")[0]
-
-                    await send_message(
-                        message.channel,
-                        content=f"Game '{queue.name}' ({short_game_in_progress_id}) has begun!",
-                        embed_description=f"**Blood Eagle:** {', '.join(team0_players)}\n**Diamond Sword**: {', '.join(team1_players)}",
-                        colour=Colour.blue(),
-                    )
-
-                    if message.guild:
-                        categories = {
-                            category.id: category
-                            for category in message.guild.categories
-                        }
-                        tribes_voice_category = categories[
-                            TRIBES_VOICE_CATEGORY_CHANNEL_ID
-                        ]
-                        be_channel = await message.guild.create_voice_channel(
-                            f"Blood Eagle ({short_game_in_progress_id})",
-                            category=tribes_voice_category,
-                        )
-                        ds_channel = await message.guild.create_voice_channel(
-                            f"Diamond Sword ({short_game_in_progress_id})",
-                            category=tribes_voice_category,
-                        )
-                        session.add(
-                            GameChannel(
-                                game_in_progress_id=game.id, channel_id=be_channel.id
-                            )
-                        )
-                        session.add(
-                            GameChannel(
-                                game_in_progress_id=game.id, channel_id=ds_channel.id
-                            )
-                        )
-                        session.query(QueuePlayer).delete()
-                        session.commit()
-                    else:
-                        await send_message(
-                            message.channel,
-                            embed_description="No guild for message!",
-                            colour=Colour.red(),
-                        )
+            if message.guild:
+                if await add_player_to_queue(
+                    queue.id, message.author.id, message.channel, message.guild, False
+                ):
                     return
 
     queue_statuses = []
@@ -564,12 +542,85 @@ async def coinflip(message: Message, args: List[str]):
     await send_message(message.channel, result)
 
 
+async def cancel_game(message: Message, args: List[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !cancelgame <game_id>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    game = (
+        session.query(GameInProgress)
+        .filter(GameInProgress.id.startswith(args[0]))
+        .first()
+    )
+    if not game:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find game: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+
+    session.query(GameInProgressPlayer).filter(
+        GameInProgressPlayer.game_in_progress_id == game.id
+    ).delete()
+    for channel in session.query(GameChannel).filter(
+        GameChannel.game_in_progress_id == game.id
+    ):
+        if message.guild:
+            guild_channel = message.guild.get_channel(channel.channel_id)
+            if guild_channel:
+                await guild_channel.delete()
+        session.delete(channel)
+
+    session.delete(game)
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Game {args[0]} cancelled",
+        colour=Colour.blue(),
+    )
+
+
 async def commands(message: Message, args: List[str]):
     output = "Commands:"
     for command in COMMANDS:
         output += f"\n- {COMMAND_PREFIX}{command}"
 
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
+@require_admin
+async def clear_queue(message: Message, args: List[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !clearqueue <queue_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    queue = session.query(Queue).filter(Queue.name == args[0]).first()
+    if not queue:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+    session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).delete()
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Queue cleared: {args[0]}",
+        colour=Colour.green(),
+    )
 
 
 @require_admin
@@ -659,10 +710,6 @@ async def finish_game(message: Message, args: List[str]):
         return
 
     session = Session()
-    print(
-        "finish_game:", (list(session.query(GameInProgressPlayer)), message.author.id)
-    )
-
     game_player = (
         session.query(GameInProgressPlayer)
         .filter(GameInProgressPlayer.player_id == message.author.id)
@@ -850,6 +897,44 @@ async def list_bans(message: Message, args: List[str]):
 
 
 @require_admin
+async def mock_random_queue(message: Message, args: List[str]):
+    """
+    Helper test method for adding random players to queues
+    """
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !mockrandomqueue <queue_name> <count>",
+        )
+        return
+
+    session = Session()
+    players_from_last_30_days = (
+        session.query(Player)
+        .join(GameFinishedPlayer, GameFinishedPlayer.player_id == Player.id)
+        .join(GameFinished, GameFinished.id == GameFinishedPlayer.game_finished_id)
+        .filter(
+            GameFinished.finished_at > datetime.now(timezone.utc) - timedelta(days=30),
+        )
+        .order_by(GameFinished.finished_at.desc())  # type: ignore
+        .all()
+    )
+    queue = session.query(Queue).filter(Queue.name == args[0]).first()
+    for player in numpy.random.choice(
+        players_from_last_30_days, size=int(args[1]), replace=False
+    ):
+        if message.guild:
+            await add_player_to_queue(
+                queue.id, player.id, message.channel, message.guild
+            )
+        player.last_activity_at = datetime.now(timezone.utc)
+        session.add(player)
+    session.commit()
+    if int(args[1]) != queue.size:
+        await status(message, args)
+
+
+@require_admin
 async def remove_admin(message: Message, args: List[str]):
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
@@ -987,8 +1072,9 @@ async def status(message: Message, args: List[str]):
                     )
                 )
 
+                short_game_id = game.id.split("-")[0]
                 # TODO: Sort names
-                output += f"**IN GAME: **"
+                output += f"**IN GAME** ({short_game_id}):"
                 output += f", ".join(sorted([player.name for player in team0_players]))
                 output += "\n"
                 output += f", ".join(sorted([player.name for player in team1_players]))
@@ -1129,13 +1215,16 @@ COMMANDS = {
     "add": add,
     "addadmin": add_admin,
     "ban": ban,
+    "cancelgame": cancel_game,
     "coinflip": coinflip,
     "commands": commands,
     "createqueue": create_queue,
+    "clearqueue": clear_queue,
     "del": del_,
     "finishgame": finish_game,
     "listadmins": list_admins,
     "listbans": list_bans,
+    "mockrandomqueue": mock_random_queue,
     "removeadmin": remove_admin,
     "removequeue": remove_queue,
     "setadddelay": set_add_delay,

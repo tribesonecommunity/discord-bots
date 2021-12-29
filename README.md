@@ -44,10 +44,11 @@ Use python black: https://github.com/psf/black
 Feel free to help out!
 
 MVP
-- Bot picks
+- Database locking due to sqlite concurrency issues
 - Migrations with Alembic
 - Custom commands !createcommand / !deletecommand
 - Match history / editing
+- Show teams for in-game status
 
 MVP+
 - In-server queue
@@ -55,4 +56,4 @@ MVP+
 - Queue notifications
 - Enable strict typing configuration
 - Recognizable words for game ids and team names
-- Show teams for in-game status
+- Team table? e.g. game -> game_team -> game_team_player
