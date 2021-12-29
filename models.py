@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
 )
+import trueskill
 
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
@@ -48,13 +49,13 @@ class GameFinished:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "game_finished"
 
-    finished_at: datetime | None = field(
+    finished_at: datetime = field(
         metadata={"sa": Column(DateTime, index=True, nullable=False)},
     )
     queue_name: str = field(
         metadata={"sa": Column(String, index=True, nullable=False)},
     )
-    started_at: datetime | None = field(
+    started_at: datetime = field(
         metadata={"sa": Column(DateTime, index=True, nullable=False)},
     )
     win_probability: float = field(metadata={"sa": Column(Float, nullable=False)})
@@ -84,14 +85,16 @@ class GameFinishedPlayer:
     player_id: int = field(
         metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
     )
-    player_name: int = field(
+    player_name: str = field(
         metadata={
             "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
-    trueskill_rating_after: float = field(metadata={"sa": Column(Float)})
-    trueskill_rating_before: float = field(
+    trueskill_mu_after: float = field(metadata={"sa": Column(Float, nullable=False)})
+    trueskill_mu_before: float = field(metadata={"sa": Column(Float, nullable=False)})
+    trueskill_sigma_after: float = field(metadata={"sa": Column(Float, nullable=False)})
+    trueskill_sigma_before: float = field(
         metadata={"sa": Column(Float, nullable=False)}
     )
     id: str = field(
@@ -202,8 +205,11 @@ class Player:
         default_factory=lambda: datetime.now(timezone.utc),
         metadata={"sa": Column(DateTime)},
     )
-    trueskill_rating: float = field(
-        default=0.0, metadata={"sa": Column(Float, nullable=False)}
+    trueskill_mu: float = field(
+        default=trueskill.Rating().mu, metadata={"sa": Column(Float, nullable=False)}
+    )
+    trueskill_sigma: float = field(
+        default=trueskill.Rating().sigma, metadata={"sa": Column(Float, nullable=False)}
     )
 
 

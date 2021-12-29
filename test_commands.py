@@ -2,7 +2,8 @@ from typing import List
 from unittest.mock import Mock
 
 from discord import Message
-from pytest import fixture
+from pytest import approx, fixture
+from trueskill import Rating
 import pytest
 
 from commands import (
@@ -360,6 +361,60 @@ async def test_finish_game_with_tie_should_record_tie():
         .first()
     )
     assert finished_game.winning_team == -1
+
+
+@pytest.mark.asyncio
+async def test_finish_game_with_win_should_increase_trueskill_for_reporting_team():
+    await handle_message(Message(opsayo, "!createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "!add"))
+    await handle_message(Message(lyon, "!add"))
+
+    await handle_message(Message(opsayo, "!finishgame win"))
+
+    assert (
+        session.query(Player).filter(Player.id == opsayo.id).first().trueskill_mu
+        > Rating().mu
+    )
+    assert (
+        session.query(Player).filter(Player.id == lyon.id).first().trueskill_mu
+        < Rating().mu
+    )
+
+
+@pytest.mark.asyncio
+async def test_finish_game_with_loss_should_increase_trueskill_for_other_team():
+    await handle_message(Message(opsayo, "!createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "!add"))
+    await handle_message(Message(lyon, "!add"))
+
+    await handle_message(Message(opsayo, "!finishgame loss"))
+
+    assert (
+        session.query(Player).filter(Player.id == opsayo.id).first().trueskill_mu
+        < Rating().mu
+    )
+    assert (
+        session.query(Player).filter(Player.id == lyon.id).first().trueskill_mu
+        > Rating().mu
+    )
+
+
+@pytest.mark.asyncio
+async def test_finish_game_with_tie_and_equal_trueskill_should_not_modify_trueskill():
+    await handle_message(Message(opsayo, "!createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "!add"))
+    await handle_message(Message(lyon, "!add"))
+
+    await handle_message(Message(opsayo, "!finishgame tie"))
+
+    assert (
+        session.query(Player).filter(Player.id == opsayo.id).first().trueskill_mu
+        == approx(Rating().mu)
+    )
+    assert (
+        session.query(Player).filter(Player.id == lyon.id).first().trueskill_mu
+        == approx(Rating().mu)
+    )
 
 
 @pytest.mark.asyncio

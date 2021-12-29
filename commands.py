@@ -1,14 +1,17 @@
 from collections import defaultdict
 from datetime import datetime, timezone
+import itertools
 from math import floor
+import math
 from random import random, shuffle
 from threading import Timer
-from typing import Awaitable, Callable, List, Set
+from typing import Awaitable, Callable, Dict, List, Set
 import asyncio
 
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
+from trueskill import Rating, global_env, rate
 
 from models import (
     GameFinished,
@@ -32,6 +35,20 @@ from queues import (
 AFK_TIME_MINUTES: int = 45
 COMMAND_PREFIX: str = "!"
 RE_ADD_DELAY: int = 5
+
+
+def win_probability(team0, team1):
+    """
+    Calculate the probability that team0 beats team1
+    Taken from https://trueskill.org/#win-probability
+    """
+    BETA = 4.1666
+    delta_mu = sum(r.mu for r in team0) - sum(r.mu for r in team1)
+    sum_sigma = sum(r.sigma ** 2 for r in itertools.chain(team0, team1))
+    size = len(team0) + len(team1)
+    denom = math.sqrt(size * (BETA * BETA) + sum_sigma)
+    trueskill = global_env()
+    return round(trueskill.cdf(delta_mu / denom), 2)
 
 
 def async_wrapper(func, *args, **kwargs):
@@ -577,10 +594,18 @@ async def create_queue(message: Message, args: List[str]):
     try:
         session.add(queue)
         session.commit()
-        await send_message(message.channel, f"Queue created: {queue.name}")
+        await send_message(
+            message.channel,
+            embed_description=f"Queue created: {queue.name}",
+            colour=Colour.green(),
+        )
     except IntegrityError:
         session.rollback()
-        await send_message(message.channel, "A queue already exists with that name")
+        await send_message(
+            message.channel,
+            embed_description="A queue already exists with that name",
+            colour=Colour.red(),
+        )
 
 
 async def del_(message: Message, args: List[str]):
@@ -651,12 +676,14 @@ async def finish_game(message: Message, args: List[str]):
         )
         return
 
-    game: GameInProgress = (
+    game_in_progress: GameInProgress = (
         session.query(GameInProgress)
         .filter(GameInProgress.id == game_player.game_in_progress_id)
         .first()
     )
-    queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
+    queue: Queue = (
+        session.query(Queue).filter(Queue.id == game_in_progress.queue_id).first()
+    )
     winning_team = -1
     if args[0] == "win":
         winning_team = game_player.team
@@ -671,43 +698,103 @@ async def finish_game(message: Message, args: List[str]):
             colour=Colour.red(),
         )
 
-    # TODO: Calculate win probabilities
+    players = (
+        session.query(Player)
+        .join(GameInProgressPlayer)
+        .filter(
+            GameInProgressPlayer.player_id == Player.id,
+            GameInProgressPlayer.game_in_progress_id == game_in_progress.id,
+        )
+    )
+    players_by_id: Dict[int, Player] = {player.id: player for player in players}
+    game_in_progress_players = (
+        session.query(GameInProgressPlayer)
+        .filter(GameInProgressPlayer.game_in_progress_id == game_in_progress.id)
+        .all()
+    )
+    team0_ratings_before = []
+    team1_ratings_before = []
+    team0_players: List[GameInProgressPlayer] = []
+    team1_players: List[GameInProgressPlayer] = []
+    for game_in_progress_player in game_in_progress_players:
+        player = players_by_id[game_in_progress_player.player_id]
+        if game_in_progress_player.team == 0:
+            team0_players.append(game_in_progress_player)
+            team0_ratings_before.append(
+                Rating(player.trueskill_mu, player.trueskill_sigma)
+            )
+        else:
+            team1_players.append(game_in_progress_player)
+            team1_ratings_before.append(
+                Rating(player.trueskill_mu, player.trueskill_sigma)
+            )
     game_finished = GameFinished(
         finished_at=datetime.now(timezone.utc),
         queue_name=queue.name,
-        started_at=game.created_at,
-        win_probability=0.0,
+        started_at=game_in_progress.created_at,
+        win_probability=win_probability(team0_ratings_before, team1_ratings_before),
         winning_team=winning_team,
     )
     session.add(game_finished)
-    game_in_progress_player: GameInProgressPlayer
-    for game_in_progress_player in session.query(GameInProgressPlayer).filter(
-        GameInProgressPlayer.game_in_progress_id == game.id
-    ):
-        player: Player = (
-            session.query(Player)
-            .filter(Player.id == game_in_progress_player.player_id)
-            .first()
-        )
+
+    outcome = None
+    if winning_team == -1:
+        outcome = [0, 0]
+    elif winning_team == 0:
+        outcome = [0, 1]
+    elif winning_team == 1:
+        outcome = [1, 0]
+
+    team0_ratings_after: List[Rating]
+    team1_ratings_after: List[Rating]
+    team0_ratings_after, team1_ratings_after = rate(
+        [team0_ratings_before, team1_ratings_before], outcome
+    )
+
+    for i, team0_gip in enumerate(team0_players):
+        player = players_by_id[team0_gip.player_id]
         game_finished_player = GameFinishedPlayer(
             game_finished_id=game_finished.id,
-            player_id=game_in_progress_player.player_id,
+            player_id=player.id,
             player_name=player.name,
-            team=game_in_progress_player.team,
-            trueskill_rating_before=0.0,
-            trueskill_rating_after=0.0,
+            team=team0_gip.team,
+            trueskill_mu_before=player.trueskill_mu,
+            trueskill_sigma_before=player.trueskill_sigma,
+            trueskill_mu_after=team0_ratings_after[i].mu,
+            trueskill_sigma_after=team0_ratings_after[i].sigma,
         )
+        player.trueskill_mu = team0_ratings_after[i].mu
+        player.trueskill_sigma = team0_ratings_after[i].sigma
+        session.add(game_finished_player)
+        session.add(player)
+    for i, team1_gip in enumerate(team1_players):
+        player = players_by_id[team1_gip.player_id]
+        game_finished_player = GameFinishedPlayer(
+            game_finished_id=game_finished.id,
+            player_id=player.id,
+            player_name=player.name,
+            team=team1_gip.team,
+            trueskill_mu_before=player.trueskill_mu,
+            trueskill_sigma_before=player.trueskill_sigma,
+            trueskill_mu_after=team1_ratings_after[i].mu,
+            trueskill_sigma_after=team1_ratings_after[i].sigma,
+        )
+        player.trueskill_mu = team1_ratings_after[i].mu
+        player.trueskill_sigma = team1_ratings_after[i].sigma
+        session.add(player)
         session.add(game_finished_player)
 
     session.query(GameInProgressPlayer).filter(
-        GameInProgressPlayer.game_in_progress_id == game.id
+        GameInProgressPlayer.game_in_progress_id == game_in_progress.id
     ).delete()
-    session.query(GameInProgress).filter(GameInProgress.id == game.id).delete()
+    session.query(GameInProgress).filter(
+        GameInProgress.id == game_in_progress.id
+    ).delete()
 
     # TODO: Delete channels after the between game wait time, it's nice for
     # players to stick around and chat
     for channel in session.query(GameChannel).filter(
-        GameChannel.game_in_progress_id == game.id
+        GameChannel.game_in_progress_id == game_in_progress.id
     ):
         if message.guild:
             guild_channel = message.guild.get_channel(channel.channel_id)
@@ -715,10 +802,10 @@ async def finish_game(message: Message, args: List[str]):
                 await guild_channel.delete()
         session.delete(channel)
 
-    short_game_in_progress_id = game.id.split("-")[0]
+    short_game_in_progress_id = game_in_progress.id.split("-")[0]
 
     # TODO: This might behave weird if the queue is deleted mid game?
-    queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
+    queue = session.query(Queue).filter(Queue.id == game_in_progress.queue_id).first()
 
     embed_description = ""
     if winning_team == 0:
@@ -733,7 +820,7 @@ async def finish_game(message: Message, args: List[str]):
     timer = Timer(
         RE_ADD_DELAY,
         async_wrapper,
-        [queue_waitlist, message.channel, message.guild, game.id],
+        [queue_waitlist, message.channel, message.guild, game_in_progress.id],
     )
     timer.start()
 
@@ -801,6 +888,10 @@ async def remove_admin(message: Message, args: List[str]):
 
 @require_admin
 async def remove_queue(message: Message, args: List[str]):
+    """
+    TODO:
+    - Don't allow removing a queue if a game is currently in progress
+    """
     if len(args) == 0:
         await send_message(
             message.channel,
@@ -914,6 +1005,7 @@ async def status(message: Message, args: List[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.green())
 
 
+# TODO: Repick teams on substitute
 async def sub(message: Message, args: List[str]):
     """
     Substitute one player in a game for another

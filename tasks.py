@@ -67,5 +67,9 @@ async def create_voice_channel_task():
             category=message.category,
         )
         session = Session()
-        session.add(GameChannel(game_id=message.game_id, channel_id=channel.id))
+        session.add(
+            GameChannel(
+                game_in_progress_id=message.game_in_progress_id, channel_id=channel.id
+            )
+        )
         session.commit()
