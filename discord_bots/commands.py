@@ -27,11 +27,7 @@ from .models import (
 )
 from .queues import (
     QUEUE_WAITLIST,
-    SEND_MESSAGE,
-    CREATE_VOICE_CHANNEL,
     QueueWaitlistQueueMessage,
-    SendMessageQueueMessage,
-    CreateVoiceChannelQueueMessage,
 )
 
 AFK_TIME_MINUTES: int = 45
@@ -108,7 +104,7 @@ async def add_player_to_queue(
     queue_id: str,
     player_id: int,
     channel: TextChannel | DMChannel | GroupChannel,
-    guild: Guild
+    guild: Guild,
 ) -> bool:
     """
     Helper function to add player to a queue and pop if needed.
@@ -162,64 +158,30 @@ async def add_player_to_queue(
         channel_message = f"Game '{queue.name}' ({short_game_id}) has begun!"
         channel_embed = f"**Blood Eagle** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**Diamond Sword** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
 
-        if is_multithread:
-            # Send the message on the main thread using queues
-            SEND_MESSAGE.put(
-                SendMessageQueueMessage(
-                    channel,
-                    content=channel_message,
-                    embed_description=channel_embed,
-                    colour=Colour.blue(),
-                )
-            )
-        else:
-            await send_message(
-                channel,
-                content=channel_message,
-                embed_description=channel_embed,
-                colour=Colour.blue(),
-            )
+        await send_message(
+            channel,
+            content=channel_message,
+            embed_description=channel_embed,
+            colour=Colour.blue(),
+        )
 
         categories = {category.id: category for category in guild.categories}
         tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
 
-        if is_multithread:
-            # Create voice channels on the main thread
-            CREATE_VOICE_CHANNEL.put(
-                CreateVoiceChannelQueueMessage(
-                    guild,
-                    f"Blood Eagle ({short_game_id})",
-                    in_progress_game_id=game.id,
-                    category=tribes_voice_category,
-                )
-            )
-            CREATE_VOICE_CHANNEL.put(
-                CreateVoiceChannelQueueMessage(
-                    guild,
-                    f"Diamond Sword ({short_game_id})",
-                    in_progress_game_id=game.id,
-                    category=tribes_voice_category,
-                )
-            )
-        else:
-            be_channel = await guild.create_voice_channel(
-                f"Blood Eagle ({short_game_id})",
-                category=tribes_voice_category,
-            )
-            ds_channel = await guild.create_voice_channel(
-                f"Diamond Sword ({short_game_id})",
-                category=tribes_voice_category,
-            )
-            session.add(
-                InProgressGameChannel(
-                    in_progress_game_id=game.id, channel_id=be_channel.id
-                )
-            )
-            session.add(
-                InProgressGameChannel(
-                    in_progress_game_id=game.id, channel_id=ds_channel.id
-                )
-            )
+        be_channel = await guild.create_voice_channel(
+            f"Blood Eagle ({short_game_id})",
+            category=tribes_voice_category,
+        )
+        ds_channel = await guild.create_voice_channel(
+            f"Diamond Sword ({short_game_id})",
+            category=tribes_voice_category,
+        )
+        session.add(
+            InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
+        )
+        session.add(
+            InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
+        )
 
         session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).delete()
         session.commit()
@@ -406,7 +368,9 @@ async def add(message: Message, args: List[str]):
                 session.rollback()
         else:
             if message.guild:
-                if await add_player_to_queue( queue.id, message.author.id, message.channel, message.guild):
+                if await add_player_to_queue(
+                    queue.id, message.author.id, message.channel, message.guild
+                ):
                     return
 
     queue_statuses = []
@@ -474,6 +438,18 @@ async def add_admin(message: Message, args: List[str]):
                 embed_description=f"{player.name} added to admins",
                 colour=Colour.green(),
             )
+
+
+async def add_queue_role(message: Message, args: List[str]):
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !addqueuerole <queue_name> <role_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
 
 
 @require_admin
@@ -1069,14 +1045,20 @@ async def status(message: Message, args: List[str]):
                 )
 
                 short_game_id = game.id.split("-")[0]
-                team0_names = ", ".join(sorted([player.name for player in team0_players]))
-                team1_names = ", ".join(sorted([player.name for player in team1_players]))
+                team0_names = ", ".join(
+                    sorted([player.name for player in team0_players])
+                )
+                team1_names = ", ".join(
+                    sorted([player.name for player in team1_players])
+                )
                 win_prob = game.win_probability
                 if i > 0:
                     output += "\n"
                 output += f"**IN GAME** ({short_game_id}):\n"
                 output += f"**Blood Eagle** ({int(100 * win_prob)}%): {team0_names}\n"
-                output += f"**Diamond Sword** ({int(100 * (1 - win_prob))}%): {team1_names}\n"
+                output += (
+                    f"**Diamond Sword** ({int(100 * (1 - win_prob))}%): {team1_names}\n"
+                )
                 minutes_ago = (
                     datetime.now(timezone.utc)
                     - game.created_at.replace(tzinfo=timezone.utc)

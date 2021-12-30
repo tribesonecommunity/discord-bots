@@ -14,19 +14,14 @@ from discord.member import Member
 from .bot import bot
 from .commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
 from .models import (
-    InProgressGameChannel,
     Player,
     QueuePlayer,
     QueueWaitlistPlayer,
     Session,
 )
 from .queues import (
-    CREATE_VOICE_CHANNEL,
     QUEUE_WAITLIST,
-    SEND_MESSAGE,
     QueueWaitlistQueueMessage,
-    SendMessageQueueMessage,
-    CreateVoiceChannelQueueMessage,
 )
 
 
@@ -62,32 +57,6 @@ async def afk_timer_task():
                 QueuePlayer.player_id == player.id
             ).delete()
             session.commit()
-
-
-@tasks.loop(seconds=0.5)
-async def send_message_task():
-    while not SEND_MESSAGE.empty():
-        message: SendMessageQueueMessage = SEND_MESSAGE.get()
-        await send_message(
-            message.channel, message.content, message.embed_description, message.colour
-        )
-
-
-@tasks.loop(seconds=0.5)
-async def create_voice_channel_task():
-    while not CREATE_VOICE_CHANNEL.empty():
-        message: CreateVoiceChannelQueueMessage = CREATE_VOICE_CHANNEL.get()
-        channel = await message.guild.create_voice_channel(
-            message.name,
-            category=message.category,
-        )
-        session = Session()
-        session.add(
-            InProgressGameChannel(
-                in_progress_game_id=message.in_progress_game_id, channel_id=channel.id
-            )
-        )
-        session.commit()
 
 
 @tasks.loop(seconds=1)

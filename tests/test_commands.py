@@ -20,9 +20,11 @@ from discord_bots.models import (
     Player,
     Queue,
     QueuePlayer,
+    QueueRole,
     QueueWaitlistPlayer,
     Session,
 )
+from discord_bots.queues import QueueWaitlistQueueMessage
 from .fixtures import TEST_GUILD, Channel, Member, izza, lyon, opsayo, stork
 
 
@@ -613,3 +615,13 @@ async def test_sub_with_subber_not_in_game_and_subbee_not_in_game_should_substit
     game_player_ids = set([gp.player_id for gp in session.query(InProgressGamePlayer)])
     assert stork.id not in game_player_ids
     assert izza.id not in game_player_ids
+
+
+@pytest.mark.asyncio
+async def test_add_queue_role_should_add_queue_role():
+    await handle_message(Message(opsayo, "createqueue LTgold 2"))
+
+    await handle_message(Message(opsayo, "addqueuerole LTgold gold"))
+
+    queue_roles = Session().query(QueueRole).all()
+    assert len(queue_roles) == 1

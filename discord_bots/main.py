@@ -12,13 +12,9 @@ from .commands import handle_message
 from .models import Player, QueuePlayer, Session
 from .tasks import (
     afk_timer_task,
-    create_voice_channel_task,
     queue_waitlist_task,
-    send_message_task,
 )
 
-send_message_task.start()
-create_voice_channel_task.start()
 afk_timer_task.start()
 queue_waitlist_task.start()
 
@@ -72,6 +68,7 @@ async def on_join(member: Member):
 async def on_leave(member: Member):
     session = Session()
     session.query(QueuePlayer).filter(QueuePlayer.player_id == member.id).delete()
+    session.commit()
 
 
 def main():
