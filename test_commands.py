@@ -109,7 +109,7 @@ async def test_is_in_game_with_player_in_finished_game_should_return_false():
 async def test_create_queue_with_odd_size_then_does_not_create_queue():
     await handle_message(Message(opsayo, "createqueue LTgold 5"))
 
-    queues = list(session.query(Queue))
+    queues = session.query(Queue).all()
     assert len(queues) == 0
 
 
@@ -117,7 +117,7 @@ async def test_create_queue_with_odd_size_then_does_not_create_queue():
 async def test_create_queue_should_create_queue():
     await handle_message(Message(opsayo, "createqueue LTpug 10"))
 
-    queues = list(session.query(Queue))
+    queues = session.query(Queue).all()
     assert len(queues) == 1
 
 
@@ -126,7 +126,7 @@ async def test_remove_queue_should_remove_queue():
     await handle_message(Message(opsayo, "createqueue LTpug 10"))
     await handle_message(Message(opsayo, "removequeue LTpug"))
 
-    queues = list(session.query(Queue))
+    queues = session.query(Queue).all()
     assert len(queues) == 0
 
 
@@ -138,7 +138,7 @@ async def test_remove_queue_with_a_game_should_not_remove_queue():
 
     await handle_message(Message(opsayo, "removequeue LTpug"))
 
-    queues = list(session.query(Queue))
+    queues = session.query(Queue).all()
     assert len(queues) == 1
 
 
@@ -158,10 +158,12 @@ async def test_add_should_add_player_to_all_queues():
 
     for queue_name in ("LTpug", "LTunrated"):
         queue = session.query(Queue).filter(Queue.name == queue_name).first()
-        queue_players = list(
-            session.query(QueuePlayer).filter(
+        queue_players = (
+            session.query(QueuePlayer)
+            .filter(
                 QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == queue.id
             )
+            .all()
         )
         assert len(queue_players) == 1
 
@@ -183,10 +185,12 @@ async def test_add_with_queue_named_should_add_player_to_named_queue():
     await handle_message(Message(opsayo, "add LTpug"))
 
     lt_pug_queue = session.query(Queue).filter(Queue.name == "LTpug").first()
-    lt_pug_queue_players = list(
-        session.query(QueuePlayer).filter(
+    lt_pug_queue_players = (
+        session.query(QueuePlayer)
+        .filter(
             QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == lt_pug_queue.id
         )
+        .all()
     )
     assert len(lt_pug_queue_players) == 1
 
@@ -199,11 +203,13 @@ async def test_add_with_queue_named_should_not_add_player_to_unnamed_queue():
     await handle_message(Message(opsayo, "add LTpug"))
 
     lt_unrated_queue = session.query(Queue).filter(Queue.name == "LTunrated").first()
-    lt_unrated_queue_players = list(
-        session.query(QueuePlayer).filter(
+    lt_unrated_queue_players = (
+        session.query(QueuePlayer)
+        .filter(
             QueuePlayer.player_id == opsayo.id,
             QueuePlayer.queue_id == lt_unrated_queue.id,
         )
+        .all()
     )
     assert len(lt_unrated_queue_players) == 0
 
@@ -218,10 +224,12 @@ async def test_del_should_remove_player_from_all_queues():
 
     for queue_name in ("LTpug", "LTunrated"):
         queue = session.query(Queue).filter(Queue.name == queue_name).first()
-        queue_players = list(
-            session.query(QueuePlayer).filter(
+        queue_players = (
+            session.query(QueuePlayer)
+            .filter(
                 QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == queue.id
             )
+            .all()
         )
         assert len(queue_players) == 0
 
@@ -234,10 +242,12 @@ async def test_del_with_queue_named_should_del_player_from_named_queue():
     await handle_message(Message(opsayo, "del LTpug"))
 
     lt_pug_queue = session.query(Queue).filter(Queue.name == "LTpug").first()
-    lt_pug_queue_players = list(
-        session.query(QueuePlayer).filter(
+    lt_pug_queue_players = (
+        session.query(QueuePlayer)
+        .filter(
             QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == lt_pug_queue.id
         )
+        .all()
     )
     assert len(lt_pug_queue_players) == 0
 
@@ -250,11 +260,13 @@ async def test_del_with_queue_named_should_not_del_add_player_from_unnamed_queue
     await handle_message(Message(opsayo, "del LTpug"))
 
     lt_unrated_queue = session.query(Queue).filter(Queue.name == "LTunrated").first()
-    lt_unrated_queue_players = list(
-        session.query(QueuePlayer).filter(
+    lt_unrated_queue_players = (
+        session.query(QueuePlayer)
+        .filter(
             QueuePlayer.player_id == opsayo.id,
             QueuePlayer.queue_id == lt_unrated_queue.id,
         )
+        .all()
     )
     assert len(lt_unrated_queue_players) == 1
 
@@ -269,10 +281,12 @@ async def test_add_with_queue_at_size_should_create_game_and_clear_queue():
     await handle_message(Message(izza, "add"))
 
     queue = session.query(Queue).filter(Queue.name == "LTpug").first()
-    queue_players = list(
-        session.query(QueuePlayer).filter(
+    queue_players = (
+        session.query(QueuePlayer)
+        .filter(
             QueuePlayer.queue_id == queue.id,
         )
+        .all()
     )
     assert len(queue_players) == 0
 
@@ -283,10 +297,10 @@ async def test_add_with_queue_at_size_should_create_game_and_clear_queue():
     )
     assert game is not None
 
-    game_players = list(
-        session.query(InProgressGamePlayer).filter(
-            InProgressGamePlayer.in_progress_game_id == game.id
-        )
+    game_players = (
+        session.query(InProgressGamePlayer)
+        .filter(InProgressGamePlayer.in_progress_game_id == game.id)
+        .all()
     )
     assert len(game_players) == 4
 
@@ -300,10 +314,12 @@ async def test_add_with_player_in_game_should_not_add_to_queue():
     await handle_message(Message(opsayo, "add"))
 
     queue = session.query(Queue).filter(Queue.name == "LTpug").first()
-    queue_players = list(
-        session.query(QueuePlayer).filter(
+    queue_players = (
+        session.query(QueuePlayer)
+        .filter(
             QueuePlayer.queue_id == queue.id,
         )
+        .all()
     )
     assert len(queue_players) == 0
 
@@ -321,8 +337,8 @@ async def test_finish_game_should_record_finish_at_timestamp():
 
     await handle_message(Message(opsayo, "finishgame win"))
 
-    assert len(list(session.query(InProgressGame))) == 0
-    assert len(list(session.query(FinishedGame))) == 1
+    assert len(session.query(InProgressGame).all()) == 0
+    assert len(session.query(FinishedGame).all()) == 1
 
 
 @pytest.mark.asyncio
@@ -449,14 +465,14 @@ async def test_add_with_player_right_after_finish_game_should_not_be_added_to_qu
 
     await handle_message(Message(opsayo, "add"))
 
-    assert len(list(session.query(QueuePlayer))) == 0
+    assert len(session.query(QueuePlayer).all()) == 0
 
 
 @pytest.mark.asyncio
 async def test_add_admin_should_add_player_to_admins():
     await handle_message(Message(opsayo, "addadmin @lyon"))
 
-    admins = list(session.query(Player).filter(Player.is_admin == True))
+    admins = session.query(Player).filter(Player.is_admin == True).all()
     assert len(admins) == 2
 
 
@@ -465,7 +481,7 @@ async def test_add_admin_should_add_player_to_admins():
 async def test_add_admin_with_non_admin_should_not_add_player_to_admins():
     await handle_message(Message(izza, "addadmin @lyon"))
 
-    admins = list(session.query(Player).filter(Player.is_admin == True))
+    admins = session.query(Player).filter(Player.is_admin == True).all()
     assert len(admins) == 1
 
 
@@ -475,7 +491,7 @@ async def test_remove_admin_should_remove_player_from_admins():
 
     await handle_message(Message(opsayo, "removeadmin @lyon"))
 
-    admins = list(session.query(Player).filter(Player.is_admin == True))
+    admins = session.query(Player).filter(Player.is_admin == True).all()
     assert len(admins) == 1
 
 
@@ -484,7 +500,7 @@ async def test_remove_admin_should_remove_player_from_admins():
 async def test_remove_admin_with_self_should_not_remove_player_from_admins():
     await handle_message(Message(opsayo, "removeadmin @opsayo"))
 
-    admins = list(session.query(Player).filter(Player.is_admin == True))
+    admins = session.query(Player).filter(Player.is_admin == True).all()
     assert len(admins) == 1
 
 
@@ -494,7 +510,7 @@ async def test_remove_admin_with_non_admin_should_not_remove_player_from_admins(
 
     await handle_message(Message(izza, "removeadmin @lyon"))
 
-    admins = list(session.query(Player).filter(Player.is_admin == True))
+    admins = session.query(Player).filter(Player.is_admin == True).all()
     assert len(admins) == 2
 
 
@@ -508,10 +524,10 @@ async def test_add_with_player_just_finished_should_not_add_to_queue():
     await handle_message(Message(opsayo, "add"))
 
     queue = session.query(Queue).filter(Queue.name == "LTpug").first()
-    queue_players = list(
-        session.query(QueuePlayer).filter(
-            QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == queue.id
-        )
+    queue_players = (
+        session.query(QueuePlayer)
+        .filter(QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == queue.id)
+        .all()
     )
     assert len(queue_players) == 0
 
@@ -525,7 +541,7 @@ async def test_add_with_player_just_finished_should_add_to_queue_waitlist():
 
     await handle_message(Message(opsayo, "add"))
 
-    queue_waitlist = list(session.query(QueueWaitlistPlayer))
+    queue_waitlist = session.query(QueueWaitlistPlayer).all()
     assert len(queue_waitlist) == 1
 
 
@@ -533,7 +549,7 @@ async def test_add_with_player_just_finished_should_add_to_queue_waitlist():
 async def test_ban_should_add_player_to_bans():
     await handle_message(Message(opsayo, "ban @lyon"))
 
-    banned_players = list(session.query(Player).filter(Player.is_banned == True))
+    banned_players = session.query(Player).filter(Player.is_banned == True).all()
     assert len(banned_players) == 1
 
 
@@ -543,7 +559,7 @@ async def test_unban_should_remove_player_from_bans():
 
     await handle_message(Message(opsayo, "unban @lyon"))
 
-    banned_players = list(session.query(Player).filter(Player.is_banned == True))
+    banned_players = session.query(Player).filter(Player.is_banned == True).all()
     assert len(banned_players) == 0
 
 

@@ -69,12 +69,11 @@ async def on_message(message: Message):
 @bot.event
 async def on_reaction_add(reaction: Reaction, user: User | Member):
     session = Session()
-    player: Player = (
+    player: Player | None = (
         session.query(Player).filter(Player.id == user.id).first()
     )
     if player:
         player.last_activity_at = datetime.now(timezone.utc)
-        session.add(player)
         session.commit()
 
 
@@ -85,7 +84,10 @@ async def on_join(member: Member):
         session.add(Player(id=member.id, name=member.name))
         session.commit()
     except IntegrityError:
-        pass
+        session.rollback()
+        player = session.query(Player).filter(Player.id == member.id).first()
+        player.name = member.name
+        session.commit()
 
 
 @bot.event

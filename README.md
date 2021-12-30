@@ -52,12 +52,13 @@ MVP
 - Migrations with Alembic: https://alembic.sqlalchemy.org/en/latest/autogenerate.html
 - Show teams for in-game status
 - Queue eligibility
-- Recognizable words for game ids and team names
 - Check admin by role
 - Notify @ user when afk removed
 - Case insensitive queue names (!add)
+- add queue by integer (e.g. add 1 2 3)
 
 MVP+
+- Recognizable words for game ids and team names
 - In-server queue
 - Map picking problem
 - Queue notifications

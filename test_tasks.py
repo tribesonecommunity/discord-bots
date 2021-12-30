@@ -48,14 +48,13 @@ async def test_afk_timer_with_inactive_player_should_delete_player_from_queue(bo
     player.last_activity_at = datetime.now(timezone.utc) - timedelta(hours=1)
     queue = Queue("ltpug", 10)
     queue_player = QueuePlayer(queue.id, player.id, TEST_CHANNEL.id)
-    session.add(player)
     session.add(queue)
     session.add(queue_player)
     session.commit()
 
     await afk_timer_task()
 
-    queue_players = list(session.query(QueuePlayer))
+    queue_players = session.query(QueuePlayer).all()
     assert len(queue_players) == 0
 
 
@@ -65,12 +64,11 @@ async def test_afk_timer_with_active_player_should_not_delete_player_from_queue(
     player.last_activity_at = datetime.now(timezone.utc)
     queue = Queue("ltpug", 10)
     queue_player = QueuePlayer(queue.id, player.id, 0)
-    session.add(player)
     session.add(queue)
     session.add(queue_player)
     session.commit()
 
     await afk_timer_task()
 
-    queue_players = list(session.query(QueuePlayer))
+    queue_players = session.query(QueuePlayer).all()
     assert len(queue_players) == 1

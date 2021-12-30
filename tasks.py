@@ -12,7 +12,13 @@ from discord.ext import tasks
 
 from bot import bot
 from commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
-from models import InProgressGameChannel, Player, QueuePlayer, QueueWaitlistPlayer, Session
+from models import (
+    InProgressGameChannel,
+    Player,
+    QueuePlayer,
+    QueueWaitlistPlayer,
+    Session,
+)
 from queues import (
     CREATE_VOICE_CHANNEL,
     QUEUE_WAITLIST,
@@ -83,7 +89,7 @@ async def create_voice_channel_task():
 async def queue_waitlist_task():
     """
     Move players in the waitlist into the queues. Pop queues if needed.
-    
+
     This exists as a task so that it happens on the main thread. Sqlite doesn't
     like to do writes on a second thread.
     """
@@ -92,10 +98,10 @@ async def queue_waitlist_task():
         message: QueueWaitlistQueueMessage = QUEUE_WAITLIST.get()
 
         queue_waitlist_players: List[QueueWaitlistPlayer]
-        queue_waitlist_players = list(
-            session.query(QueueWaitlistPlayer).filter(
-                QueueWaitlistPlayer.finished_game_id == message.finished_game_id
-            )
+        queue_waitlist_players = (
+            session.query(QueueWaitlistPlayer)
+            .filter(QueueWaitlistPlayer.finished_game_id == message.finished_game_id)
+            .all()
         )
         shuffle(queue_waitlist_players)
 
@@ -116,4 +122,3 @@ async def queue_waitlist_task():
             QueueWaitlistPlayer.finished_game_id == message.finished_game_id
         ).delete()
         session.commit()
-

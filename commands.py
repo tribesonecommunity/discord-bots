@@ -216,10 +216,14 @@ async def add_player_to_queue(
                 category=tribes_voice_category,
             )
             session.add(
-                InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
+                InProgressGameChannel(
+                    in_progress_game_id=game.id, channel_id=be_channel.id
+                )
             )
             session.add(
-                InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
+                InProgressGameChannel(
+                    in_progress_game_id=game.id, channel_id=ds_channel.id
+                )
             )
 
         session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).delete()
@@ -291,7 +295,7 @@ OPSAYO_MEMBER_ID = 115204465589616646
 
 session = Session()
 # There always has to be at least one initial admin to add others!
-player = session.query(Player).filter(Player.id==OPSAYO_MEMBER_ID).first()
+player = session.query(Player).filter(Player.id == OPSAYO_MEMBER_ID).first()
 player.is_admin = True
 session.commit()
 
@@ -307,10 +311,11 @@ def get_player_game(player_id: int, session=Session()) -> InProgressGame | None:
     :session: Pass in a session if you want to do something with the game that
     gets returned
     """
-    game_players = list(
+    game_players = (
         session.query(InProgressGamePlayer)
         .join(InProgressGame)
         .filter(InProgressGamePlayer.player_id == player_id)
+        .all()
     )
     if len(game_players) > 0:
         return (
@@ -371,7 +376,7 @@ async def add(message: Message, args: List[str]):
             queues_to_add.append(queue)
     else:
         for queue_name in args:
-            queues = list(session.query(Queue).filter(Queue.name == queue_name))
+            queues = session.query(Queue).filter(Queue.name == queue_name).all()
             if len(queues) > 0:
                 queues_to_add.append(queues[0])
             else:
@@ -411,9 +416,10 @@ async def add(message: Message, args: List[str]):
 
     queue_statuses = []
     for queue in session.query(Queue):
-        queue_players = list(
-            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id)
+        queue_players = (
+            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
+
         queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
 
     if is_waitlist and waitlist_message:
@@ -444,7 +450,7 @@ async def add_admin(message: Message, args: List[str]):
         return
 
     session = Session()
-    players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
+    players = session.query(Player).filter(Player.id == message.mentions[0].id).all()
     if len(players) == 0:
         session.add(
             Player(
@@ -487,7 +493,7 @@ async def ban(message: Message, args: List[str]):
         return
 
     session = Session()
-    players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
+    players = session.query(Player).filter(Player.id == message.mentions[0].id).all()
     if len(players) == 0:
         session.add(
             Player(
@@ -663,8 +669,8 @@ async def del_(message: Message, args: List[str]):
 
     queue_statuses = []
     for queue in session.query(Queue):
-        queue_players = list(
-            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id)
+        queue_players = (
+            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
         queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
 
@@ -789,7 +795,6 @@ async def finish_game(message: Message, args: List[str]):
         player.trueskill_mu = team0_ratings_after[i].mu
         player.trueskill_sigma = team0_ratings_after[i].sigma
         session.add(finished_game_player)
-        session.add(player)
     for i, team1_gip in enumerate(team1_players):
         player = players_by_id[team1_gip.player_id]
         finished_game_player = FinishedGamePlayer(
@@ -804,7 +809,6 @@ async def finish_game(message: Message, args: List[str]):
         )
         player.trueskill_mu = team1_ratings_after[i].mu
         player.trueskill_sigma = team1_ratings_after[i].sigma
-        session.add(player)
         session.add(finished_game_player)
 
     session.query(InProgressGamePlayer).filter(
@@ -857,7 +861,7 @@ async def finish_game(message: Message, args: List[str]):
 async def list_admins(message: Message, args: List[str]):
     output = "Admins:"
     player: Player
-    for player in list(Session().query(Player).filter(Player.is_admin == True)):
+    for player in Session().query(Player).filter(Player.is_admin == True).all():
         output += f"\n- {player.name}"
 
     await send_message(message.channel, embed_description=output, colour=Colour.green())
@@ -927,7 +931,7 @@ async def remove_admin(message: Message, args: List[str]):
         return
 
     session = Session()
-    players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
+    players = session.query(Player).filter(Player.id == message.mentions[0].id).all()
     if len(players) == 0 or not players[0].is_admin:
         await send_message(
             message.channel,
@@ -1025,7 +1029,7 @@ async def set_command_prefix(message: Message, args: List[str]):
 
 async def status(message: Message, args: List[str]):
     session = Session()
-    queues = list(session.query(Queue))
+    queues = session.query(Queue).all()
     games_by_queue = defaultdict(list)
     for game in session.query(InProgressGame):
         games_by_queue[game.queue_id].append(game)
@@ -1034,10 +1038,11 @@ async def status(message: Message, args: List[str]):
     for i, queue in enumerate(queues):
         if i > 0:
             output += "\n"
-        players_in_queue = list(
+        players_in_queue = (
             session.query(Player)
             .join(QueuePlayer)
             .filter(QueuePlayer.queue_id == queue.id)
+            .all()
         )
         output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
@@ -1048,21 +1053,24 @@ async def status(message: Message, args: List[str]):
 
         if queue.id in games_by_queue:
             for game in games_by_queue[queue.id]:
-                team0_players = list(
+                team0_players = (
                     session.query(Player)
                     .join(InProgressGamePlayer)
                     .filter(
                         InProgressGamePlayer.in_progress_game_id == game.id,
                         InProgressGamePlayer.team == 0,
                     )
+                    .all()
                 )
-                team1_players = list(
+
+                team1_players = (
                     session.query(Player)
                     .join(InProgressGamePlayer)
                     .filter(
                         InProgressGamePlayer.in_progress_game_id == game.id,
                         InProgressGamePlayer.team == 1,
                     )
+                    .all()
                 )
 
                 short_game_id = game.id.split("-")[0]
@@ -1177,7 +1185,6 @@ async def sub(message: Message, args: List[str]):
     for game_player in game_players:
         session.delete(game_player)
     game.win_probability = win_prob
-    session.add(game)
     team0_players = players[: len(players) // 2]
     team1_players = players[len(players) // 2 :]
 
@@ -1223,7 +1230,7 @@ async def unban(message: Message, args: List[str]):
         return
 
     session = Session()
-    players = list(session.query(Player).filter(Player.id == message.mentions[0].id))
+    players = session.query(Player).filter(Player.id == message.mentions[0].id).all()
     if len(players) == 0 or not players[0].is_banned:
         await send_message(
             message.channel,
@@ -1292,16 +1299,14 @@ async def handle_message(message: Message):
                 last_activity_at=datetime.now(timezone.utc),
             )
         )
-        session.commit()
     elif player:
         if player.is_banned:
             print("[handle_message] message author banned:", command)
             return
         else:
             player.last_activity_at = datetime.now(timezone.utc)
-            session.add(player)
-            session.commit()
 
+    session.commit()
     print("[handle_message] executing command:", command)
 
     await COMMANDS[command](message, message.content.split(" ")[1:])
