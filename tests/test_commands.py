@@ -6,14 +6,13 @@ from pytest import approx, fixture
 from trueskill import Rating
 import pytest
 
-from commands import (
+from discord_bots.commands import (
     COMMAND_PREFIX,
     OPSAYO_MEMBER_ID,
     is_in_game,
     handle_message,
 )
-from fixtures import TEST_GUILD, Channel, Member, izza, lyon, opsayo, stork
-from models import (
+from discord_bots.models import (
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -24,6 +23,7 @@ from models import (
     QueueWaitlistPlayer,
     Session,
 )
+from .fixtures import TEST_GUILD, Channel, Member, izza, lyon, opsayo, stork
 
 
 session = Session()

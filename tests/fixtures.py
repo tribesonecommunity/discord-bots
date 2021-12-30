@@ -9,7 +9,7 @@ from random import random
 from typing import Dict, List
 from uuid import uuid4
 
-from commands import OPSAYO_MEMBER_ID, TRIBES_VOICE_CATEGORY_CHANNEL_ID
+from discord_bots.commands import OPSAYO_MEMBER_ID, TRIBES_VOICE_CATEGORY_CHANNEL_ID
 
 
 # Mock discord models so we can invoke tests

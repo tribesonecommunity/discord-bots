@@ -2,12 +2,10 @@ import json
 from trueskill import Rating, rate
 from datetime import datetime
 
-from models import (
+from discord_bots.models import (
     FinishedGame,
     FinishedGamePlayer,
-    InProgressGame,
     Player,
-    InProgressGamePlayer,
     Session,
 )
 

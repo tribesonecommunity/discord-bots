@@ -5,7 +5,7 @@ import random
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 
-from models import FinishedGame, FinishedGamePlayer, Player, Session
+from discord_bots.models import FinishedGame, FinishedGamePlayer, Player, Session
 
 cnames = {
     "aliceblue": "#F0F8FF",

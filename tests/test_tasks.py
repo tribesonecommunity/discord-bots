@@ -3,9 +3,8 @@ from unittest.mock import Mock, patch
 
 from pytest import fixture
 import pytest
-from fixtures import TEST_CHANNEL, TEST_GUILD, izza, lyon, opsayo, stork
 
-from models import (
+from discord_bots.models import (
     InProgressGame,
     InProgressGamePlayer,
     Player,
@@ -14,8 +13,10 @@ from models import (
     QueueWaitlistPlayer,
     Session,
 )
-from tasks import afk_timer_task
-from test_commands import OPSAYO_MEMBER_ID
+from discord_bots.tasks import afk_timer_task
+
+from .fixtures import TEST_CHANNEL, TEST_GUILD, izza, lyon, opsayo, stork
+from .test_commands import OPSAYO_MEMBER_ID
 
 
 def Bot():
@@ -42,7 +43,7 @@ def run_around_tests():
 
 
 @pytest.mark.asyncio
-@patch("tasks.bot")
+@patch("discord_bots.tasks.bot")
 async def test_afk_timer_with_inactive_player_should_delete_player_from_queue(bot):
     player: Player = session.query(Player).filter(Player.id == OPSAYO_MEMBER_ID).first()
     player.last_activity_at = datetime.now(timezone.utc) - timedelta(hours=1)

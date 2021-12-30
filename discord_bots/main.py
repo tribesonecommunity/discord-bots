@@ -1,22 +1,20 @@
 # This example requires the 'members' privileged intents
 
 from datetime import datetime, timezone
-from typing import List
 import os
 import re
 import traceback
 
-from discord import Message, Reaction
+from discord import Member, Message, Reaction
 from discord.abc import User
 from discord.channel import GroupChannel, TextChannel
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 
-from bot import bot
-from commands import handle_message
-from models import Player, QueuePlayer, Session
-from tasks import afk_timer_task, create_voice_channel_task, queue_waitlist_task, send_message_task
-from test_commands import Member
+from .bot import bot
+from .commands import handle_message
+from .models import Player, QueuePlayer, Session
+from .tasks import afk_timer_task, create_voice_channel_task, queue_waitlist_task, send_message_task
 
 
 @bot.event
@@ -208,10 +206,12 @@ async def on_message_old(message):
         await message.channel.send(team2names)
 
 
-load_dotenv()
 
-API_KEY = os.getenv("DISCORD_API_KEY")
-if API_KEY:
-    bot.run(API_KEY)
-else:
-    print("You must define DISCORD_API_KEY!")
+
+def main():
+    load_dotenv()
+    API_KEY = os.getenv("DISCORD_API_KEY")
+    if API_KEY:
+        bot.run(API_KEY)
+    else:
+        print("You must define DISCORD_API_KEY!")

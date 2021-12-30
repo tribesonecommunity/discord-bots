@@ -1,5 +1,5 @@
-# Development
 
+# Installation
 ## Python 3.10.0
 With pyenv:
 - `brew install pyenv`
@@ -15,12 +15,15 @@ With homebrew:
 - `source .venv/bin/activate`
 
 After the above:
-- `pip install -r requirements.txt`
+- `pip install -U .`
 - `cp .env.example .env`. Modify `.env` by adding your API key
 
+Run the bot:
+- `run-discord-bot`
 
+# Development
 ## Editor
-Recommend using vscode. If you do, install these plugins
+Recommend using vscode. If you do, install these vscode plugins:
 - Python
 - Pylance
 
@@ -38,6 +41,9 @@ This enforces type checks for the types declared
 
 ## Formatting
 Use python black: https://github.com/psf/black
+- Go to vscode preferences (cmd + `,` on mac)
+- Type "python formatting" in the search bar
+- For the option `Python > Formatting: Provider` select `black`
 
 ## Tests
 - `pytest`
@@ -56,6 +62,9 @@ MVP
 - Notify @ user when afk removed
 - Case insensitive queue names (!add)
 - add queue by integer (e.g. add 1 2 3)
+
+Nice to have
+- setup.py
 
 MVP+
 - Recognizable words for game ids and team names

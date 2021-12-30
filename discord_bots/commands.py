@@ -13,7 +13,7 @@ from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, global_env, rate
 
-from models import (
+from .models import (
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -25,7 +25,7 @@ from models import (
     QueueWaitlistPlayer,
     Session,
 )
-from queues import (
+from .queues import (
     QUEUE_WAITLIST,
     SEND_MESSAGE,
     CREATE_VOICE_CHANNEL,

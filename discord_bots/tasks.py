@@ -5,21 +5,21 @@
 from datetime import datetime, timedelta, timezone
 from random import shuffle
 from typing import List
+
 from discord.channel import TextChannel
 from discord.colour import Colour
-
 from discord.ext import tasks
 
-from bot import bot
-from commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
-from models import (
+from .bot import bot
+from .commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
+from .models import (
     InProgressGameChannel,
     Player,
     QueuePlayer,
     QueueWaitlistPlayer,
     Session,
 )
-from queues import (
+from .queues import (
     CREATE_VOICE_CHANNEL,
     QUEUE_WAITLIST,
     SEND_MESSAGE,
