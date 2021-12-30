@@ -162,8 +162,8 @@ async def add_player_to_queue(
             session.add(game_player)
 
         short_game_id = game.id.split("-")[0]
-        team0_names = list(map(lambda x: x.name, team0_players))
-        team1_names = list(map(lambda x: x.name, team1_players))
+        team0_names = sorted(map(lambda x: x.name, team0_players))
+        team1_names = sorted(map(lambda x: x.name, team1_players))
         channel_message = f"Game '{queue.name}' ({short_game_id}) has begun!"
         channel_embed = f"**Blood Eagle** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**Diamond Sword** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
 
@@ -378,7 +378,7 @@ async def add(message: Message, args: List[str]):
             queues_to_add.append(queue)
     else:
         for queue_name in args:
-            queues = session.query(Queue).filter(Queue.name.ilike(queue_name)).all() # type: ignore
+            queues = session.query(Queue).filter(Queue.name.ilike(queue_name)).all()  # type: ignore
             if len(queues) > 0:
                 queues_to_add.append(queues[0])
             else:
@@ -594,7 +594,7 @@ async def clear_queue(message: Message, args: List[str]):
         return
 
     session = Session()
-    queue = session.query(Queue).filter(Queue.name == args[0]).first()
+    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()
     if not queue:
         await send_message(
             message.channel,
@@ -660,7 +660,7 @@ async def del_(message: Message, args: List[str]):
             queues_to_del.append(queue)
     else:
         for queue_name in args:
-            queue = session.query(Queue).filter(Queue.name == queue_name)[0]
+            queue = session.query(Queue).filter(Queue.name.ilike(queue_name))[0]
             queues_to_del.append(queue)
 
     for queue in queues_to_del:
@@ -899,7 +899,7 @@ async def mock_random_queue(message: Message, args: List[str]):
         .order_by(FinishedGame.finished_at.desc())  # type: ignore
         .all()
     )
-    queue = session.query(Queue).filter(Queue.name == args[0]).first()
+    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()
     for player in numpy.random.choice(
         players_from_last_30_days, size=int(args[1]), replace=False
     ):
@@ -963,7 +963,7 @@ async def remove_queue(message: Message, args: List[str]):
 
     session = Session()
 
-    queue = session.query(Queue).filter(Queue.name == args[0]).first()
+    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()
     if queue:
         games_in_progress = (
             session.query(InProgressGame)
@@ -1054,7 +1054,7 @@ async def status(message: Message, args: List[str]):
             output += "\n"
 
         if queue.id in games_by_queue:
-            for game in games_by_queue[queue.id]:
+            for i, game in enumerate(games_by_queue[queue.id]):
                 team0_players = (
                     session.query(Player)
                     .join(InProgressGamePlayer)
@@ -1076,11 +1076,14 @@ async def status(message: Message, args: List[str]):
                 )
 
                 short_game_id = game.id.split("-")[0]
-                output += f"**IN GAME** ({short_game_id}): "
-                output += f", ".join(sorted([player.name for player in team0_players]))
-                output += "\n"
-                output += f", ".join(sorted([player.name for player in team1_players]))
-                output += "\n"
+                team0_names = ", ".join(sorted([player.name for player in team0_players]))
+                team1_names = ", ".join(sorted([player.name for player in team1_players]))
+                win_prob = game.win_probability
+                if i > 0:
+                    output += "\n"
+                output += f"**IN GAME** ({short_game_id}):\n"
+                output += f"**Blood Eagle** ({int(100 * win_prob)}%): {team0_names}\n"
+                output += f"**Diamond Sword** ({int(100 * (1 - win_prob))}%): {team1_names}\n"
                 minutes_ago = (
                     datetime.now(timezone.utc)
                     - game.created_at.replace(tzinfo=timezone.utc)
