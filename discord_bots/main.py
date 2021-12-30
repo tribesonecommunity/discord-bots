@@ -14,7 +14,12 @@ from sqlalchemy.exc import IntegrityError
 from .bot import bot
 from .commands import handle_message
 from .models import Player, QueuePlayer, Session
-from .tasks import afk_timer_task, create_voice_channel_task, queue_waitlist_task, send_message_task
+from .tasks import (
+    afk_timer_task,
+    create_voice_channel_task,
+    queue_waitlist_task,
+    send_message_task,
+)
 
 
 @bot.event
@@ -43,8 +48,6 @@ async def on_connect():
         print("Encountered exception:", e)
 
 
-
-
 BULLIEST_BOT_ID = 912605788781035541
 
 
@@ -67,9 +70,7 @@ async def on_message(message: Message):
 @bot.event
 async def on_reaction_add(reaction: Reaction, user: User | Member):
     session = Session()
-    player: Player | None = (
-        session.query(Player).filter(Player.id == user.id).first()
-    )
+    player: Player | None = session.query(Player).filter(Player.id == user.id).first()
     if player:
         player.last_activity_at = datetime.now(timezone.utc)
         session.commit()
@@ -204,8 +205,6 @@ async def on_message_old(message):
         await message.channel.send(win_factor)
         await message.channel.send(team1names)
         await message.channel.send(team2names)
-
-
 
 
 def main():

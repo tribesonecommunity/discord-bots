@@ -1,12 +1,10 @@
 
-# Installation
+# Running the bot
 
-## Mac
-
-### Homebrew 
-
-Install Homebrew: https://brew.sh/#install
+## macOS Instructions
 ### Python 3.10.0
+Install Homebrew: https://brew.sh/#install
+
 With pyenv:
 - `brew install pyenv`
 - `pyenv install 3.10.0`
@@ -25,20 +23,15 @@ After:
 - `cp .env.example .env`. Modify `.env` by adding your API key
 
 Run the bot:
-- `run-discord-bot`
+- `python scripts/run.py`
 
-## Linux
+## Anything not macOS
 
-The steps are mostly similar, but you have to install Python another way
-
-- Install Python 3
-- Still recommended to use a virtualenv
-- `pip install -e .`. This allows local changes to be picked up without needing
-to reinstall
-- `cp .env.example .env`. Modify `.env` by adding your API key
-- `run-discord-bot`
-
+The steps are the same except you have to install Python another way
 # Development
+
+## Installation
+Installation steps are the same but use `pip install -e .`.  This allows local changes to be picked up without needing to reinstall the package every time.
 ## Editor
 Recommend using vscode. If you do, install these vscode plugins:
 - Python
@@ -92,13 +85,14 @@ MVP
 - queue locking / unlocking
 
 Nice to have
-- setup.py
+- CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md
+- CI for Tests
+- Strict typing configuration
 
 MVP+
 - Recognizable words for game ids and team names
 - In-server queue
 - Map picking problem
 - Queue notifications
-- Enable strict typing configuration
 - Shazbucks
-- Expose API for frontends
+- Expose Flask API: https://flask.palletsprojects.com/en/2.0.x/
