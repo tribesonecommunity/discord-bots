@@ -6,7 +6,6 @@ from discord import Member, Message, Reaction
 from discord.abc import User
 from discord.channel import GroupChannel, TextChannel
 from dotenv import load_dotenv
-from sqlalchemy.exc import IntegrityError
 
 from .bot import bot
 from .commands import handle_message
@@ -67,6 +66,7 @@ async def on_join(member: Member):
     else:
         session.add(Player(id=member.id, name=member.name))
         session.commit()
+
 
 @bot.event
 async def on_leave(member: Member):

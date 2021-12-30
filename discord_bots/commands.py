@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from math import floor
-from random import choices, random, shuffle
+from random import random, shuffle
 from threading import Timer
 from typing import Awaitable, Callable, Dict, List, Tuple
 import itertools
@@ -108,15 +108,10 @@ async def add_player_to_queue(
     queue_id: str,
     player_id: int,
     channel: TextChannel | DMChannel | GroupChannel,
-    guild: Guild,
-    is_multithread: bool = False,
+    guild: Guild
 ) -> bool:
     """
     Helper function to add player to a queue and pop if needed.
-
-    :is_multithread: Discord client only executes certain commands on the main
-    thread. Use this flag to handle cases where this function is being called
-    in a multi-threaded state
     """
     session = Session()
     session.add(
@@ -411,9 +406,7 @@ async def add(message: Message, args: List[str]):
                 session.rollback()
         else:
             if message.guild:
-                if await add_player_to_queue(
-                    queue.id, message.author.id, message.channel, message.guild, False
-                ):
+                if await add_player_to_queue( queue.id, message.author.id, message.channel, message.guild):
                     return
 
     queue_statuses = []

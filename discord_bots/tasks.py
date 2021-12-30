@@ -120,7 +120,6 @@ async def queue_waitlist_task():
                 queue_waitlist_player.player_id,
                 message.channel,
                 message.guild,
-                False,
             )
 
         session.query(QueueWaitlistPlayer).filter(
