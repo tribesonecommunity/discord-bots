@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from math import floor
 from random import choices, random, shuffle
 from threading import Timer
-from typing import Awaitable, Callable, Dict, List, Set
+from typing import Awaitable, Callable, Dict, List, Set, Tuple
 import asyncio
 import itertools
 import math
@@ -34,7 +34,7 @@ from queues import (
 )
 
 AFK_TIME_MINUTES: int = 45
-COMMAND_PREFIX: str = "!"
+COMMAND_PREFIX: str = "$"
 RE_ADD_DELAY: int = 5
 
 
@@ -57,6 +57,57 @@ def async_wrapper(func, *args, **kwargs):
     Wrapper to allow passing async functions to threads
     """
     asyncio.run(func(*args, **kwargs))
+
+
+def get_even_teams(player_ids: List[int]) -> Tuple[List[Player], float]:
+    """
+    Try to figure out even teams, the first half of the returning list is
+    the first team, the second half is the second team.
+
+    :returns: List of players and win probability for the first team
+    """
+    players: List[Player] = (
+        session.query(Player).filter(Player.id.in_(player_ids)).all()  # type: ignore
+    )
+    best_win_prob_so_far: float | None = None
+    best_teams_so_far: List[Player] | None = None
+
+    # Use a fixed number of shuffles over generating permutations then
+    # shuffle for performance.  There are 3.6 million permutations!
+    for _ in range(100):
+        shuffle(players)
+        team0_ratings = list(
+            map(
+                lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
+                players[: len(players) // 2],
+            )
+        )
+        team1_ratings = list(
+            map(
+                lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
+                players[len(players) // 2 :],
+            )
+        )
+        win_prob = win_probability(team0_ratings, team1_ratings)
+        if not best_win_prob_so_far:
+            best_win_prob_so_far = win_prob
+            best_teams_so_far = players[:]
+        else:
+            current_team_evenness = abs(0.50 - win_prob)
+            best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
+            if current_team_evenness < best_team_evenness_so_far:
+                best_win_prob_so_far = win_prob
+                best_teams_so_far = players[:]
+
+            if int(win_prob * 100) == 50:
+                # Can't do better than this
+                break
+
+    if not best_win_prob_so_far or not best_teams_so_far:
+        # Can't really happen, so mostly just to appease the linter
+        return [], 0.0
+
+    return best_teams_so_far, best_win_prob_so_far
 
 
 # TODO: Add locking to this method? IDK what happens if lots of people add at the same time
@@ -94,52 +145,53 @@ async def add_player_to_queue(
     )
     if len(queue_players) == queue.size:  # Pop!
         player_ids: List[int] = list(map(lambda x: x.player_id, queue_players))
-        players: List[Player] = (
-            session.query(Player).filter(Player.id.in_(player_ids)).all()
-        )
-        best_win_prob_so_far: float | None = None
-        best_teams_so_far: List[Player] | None = None
+        players, win_prob = get_even_teams(player_ids)
+        # players: List[Player] = (
+        #     session.query(Player).filter(Player.id.in_(player_ids)).all()  # type: ignore
+        # )
+        # best_win_prob_so_far: float | None = None
+        # best_teams_so_far: List[Player] | None = None
 
-        # Use a fixed number of shuffles over generating permutations then
-        # shuffle for performance.  There are 3.6 million permutations!
-        for _ in range(100):
-            shuffle(players)
-            team0_ratings = list(
-                map(
-                    lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
-                    players[: len(players) // 2],
-                )
-            )
-            team1_ratings = list(
-                map(
-                    lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
-                    players[len(players) // 2 :],
-                )
-            )
-            win_prob = win_probability(team0_ratings, team1_ratings)
-            if not best_win_prob_so_far:
-                best_win_prob_so_far = win_prob
-                best_teams_so_far = players[:]
-            else:
-                current_team_evenness = abs(0.50 - win_prob)
-                best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
-                if current_team_evenness < best_team_evenness_so_far:
-                    best_win_prob_so_far = win_prob
-                    best_teams_so_far = players[:]
+        # # Use a fixed number of shuffles over generating permutations then
+        # # shuffle for performance.  There are 3.6 million permutations!
+        # for _ in range(100):
+        #     shuffle(players)
+        #     team0_ratings = list(
+        #         map(
+        #             lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
+        #             players[: len(players) // 2],
+        #         )
+        #     )
+        #     team1_ratings = list(
+        #         map(
+        #             lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
+        #             players[len(players) // 2 :],
+        #         )
+        #     )
+        #     win_prob = win_probability(team0_ratings, team1_ratings)
+        #     if not best_win_prob_so_far:
+        #         best_win_prob_so_far = win_prob
+        #         best_teams_so_far = players[:]
+        #     else:
+        #         current_team_evenness = abs(0.50 - win_prob)
+        #         best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
+        #         if current_team_evenness < best_team_evenness_so_far:
+        #             best_win_prob_so_far = win_prob
+        #             best_teams_so_far = players[:]
 
-                if int(win_prob * 100) == 50:
-                    # Can't do better than this
-                    break
+        #         if int(win_prob * 100) == 50:
+        #             # Can't do better than this
+        #             break
 
-        if not best_win_prob_so_far or not best_teams_so_far:
-            # Can't really happen, so mostly just to appease the linter
-            return False
+        # if not best_win_prob_so_far or not best_teams_so_far:
+        #     # Can't really happen, so mostly just to appease the linter
+        #     return False
 
-        game = GameInProgress(queue_id=queue.id, win_probability=best_win_prob_so_far)
+        game = GameInProgress(queue_id=queue.id, win_probability=win_prob)
         session.add(game)
 
-        team0_players = best_teams_so_far[: len(best_teams_so_far) // 2]
-        team1_players = best_teams_so_far[len(best_teams_so_far) // 2 :]
+        team0_players = players[: len(players) // 2]
+        team1_players = players[len(players) // 2 :]
 
         for player in team0_players:
             game_player = GameInProgressPlayer(
@@ -161,7 +213,7 @@ async def add_player_to_queue(
         team0_names = list(map(lambda x: x.name, team0_players))
         team1_names = list(map(lambda x: x.name, team1_players))
         channel_message = f"Game '{queue.name}' ({short_game_id}) has begun!"
-        channel_embed = f"**Blood Eagle** ({int(100 * best_win_prob_so_far)}%): {', '.join(team0_names)}\n**Diamond Sword** ({int(100 * (1 - best_win_prob_so_far))}%): {', '.join(team1_names)}"
+        channel_embed = f"**Blood Eagle** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**Diamond Sword** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
 
         if is_multithread:
             # Send the message on the main thread using queues
@@ -318,23 +370,27 @@ except IntegrityError:
 
 
 def is_in_game(player_id: int) -> bool:
-    return get_player_game(player_id) is not None
+    return get_player_game(player_id, Session()) is not None
 
 
-def get_player_game(player_id: int) -> GameInProgress | None:
+def get_player_game(player_id: int, session=Session()) -> GameInProgress | None:
     """
     Find the game a player is currently in
+
+    :session: Pass in a session if you want to do something with the game that
+    gets returned
     """
-    session = Session()
     game_players = list(
         session.query(GameInProgressPlayer)
         .join(GameInProgress)
         .filter(GameInProgressPlayer.player_id == player_id)
     )
     if len(game_players) > 0:
-        return session.query(GameInProgress).filter(
-            GameInProgress.id == GameInProgressPlayer.game_in_progress_id
-        )[0]
+        return (
+            session.query(GameInProgress)
+            .filter(GameInProgress.id == GameInProgressPlayer.game_in_progress_id)
+            .first()
+        )
     else:
         return None
 
@@ -350,6 +406,7 @@ async def add(message: Message, args: List[str]):
     - Queue eligibility
     - Player queued if just finished game?
     """
+    session = Session()
     if is_in_game(message.author.id):
         await send_message(
             message.channel,
@@ -358,7 +415,6 @@ async def add(message: Message, args: List[str]):
         )
         return
 
-    session = Session()
 
     most_recent_game: GameFinished | None = (
         session.query(GameFinished)
@@ -452,7 +508,7 @@ async def add(message: Message, args: List[str]):
     session.commit()
 
 
-@require_admin
+# @require_admin
 async def add_admin(message: Message, args: List[str]):
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
@@ -1096,6 +1152,7 @@ async def sub(message: Message, args: List[str]):
     """
     Substitute one player in a game for another
     """
+    session = Session()
     if len(args) != 1:
         await send_message(
             channel=message.channel,
@@ -1105,9 +1162,9 @@ async def sub(message: Message, args: List[str]):
         return
 
     caller = message.author
-    caller_game = get_player_game(caller.id)
+    caller_game = get_player_game(caller.id, session)
     callee = message.mentions[0]
-    callee_game = get_player_game(callee.id)
+    callee_game = get_player_game(callee.id, session)
 
     if caller_game and callee_game:
         await send_message(
@@ -1124,7 +1181,6 @@ async def sub(message: Message, args: List[str]):
         )
         return
 
-    session = Session()
 
     # The callee may not be recorded in the database
     if not session.query(Player).filter(Player.id == callee.id).first():
@@ -1172,7 +1228,54 @@ async def sub(message: Message, args: List[str]):
         embed_description=f"{callee.name} has been substituted with {caller.name}",
         colour=Colour.green(),
     )
-    return
+
+    game: GameInProgress | None = callee_game or caller_game
+    if not game:
+        return
+
+    game_players = (
+        session.query(GameInProgressPlayer)
+        .filter(GameInProgressPlayer.game_in_progress_id == game.id)
+        .all()
+    )
+    player_ids: List[int] = list(map(lambda x: x.player_id, game_players))
+    players, win_prob = get_even_teams(player_ids)
+    for game_player in game_players:
+        session.delete(game_player)
+    game.win_probability = win_prob
+    session.add(game)
+    team0_players = players[: len(players) // 2]
+    team1_players = players[len(players) // 2 :]
+
+    for player in team0_players:
+        game_player = GameInProgressPlayer(
+            game_in_progress_id=game.id,
+            player_id=player.id,
+            team=0,
+        )
+        session.add(game_player)
+
+    for player in team1_players:
+        game_player = GameInProgressPlayer(
+            game_in_progress_id=game.id,
+            player_id=player.id,
+            team=1,
+        )
+        session.add(game_player)
+
+    short_game_id = game.id.split("-")[0]
+    team0_names = list(map(lambda x: x.name, team0_players))
+    team1_names = list(map(lambda x: x.name, team1_players))
+    channel_message = f"New teams ({short_game_id}):"
+    channel_embed = f"**Blood Eagle** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**Diamond Sword** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
+
+    await send_message(
+        message.channel,
+        content=channel_message,
+        embed_description=channel_embed,
+        colour=Colour.blue(),
+    )
+    session.commit()
 
 
 @require_admin
