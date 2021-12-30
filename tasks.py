@@ -3,7 +3,6 @@
 # https://stackoverflow.com/a/67996748
 
 from datetime import datetime, timedelta, timezone
-import queue
 from random import shuffle
 from typing import List
 from discord.channel import TextChannel
@@ -13,7 +12,7 @@ from discord.ext import tasks
 
 from bot import bot
 from commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
-from models import GameChannel, Player, Queue, QueuePlayer, QueueWaitlistPlayer, Session
+from models import InProgressGameChannel, Player, QueuePlayer, QueueWaitlistPlayer, Session
 from queues import (
     CREATE_VOICE_CHANNEL,
     QUEUE_WAITLIST,
@@ -73,8 +72,8 @@ async def create_voice_channel_task():
         )
         session = Session()
         session.add(
-            GameChannel(
-                game_in_progress_id=message.game_in_progress_id, channel_id=channel.id
+            InProgressGameChannel(
+                in_progress_game_id=message.in_progress_game_id, channel_id=channel.id
             )
         )
         session.commit()
@@ -95,7 +94,7 @@ async def queue_waitlist_task():
         queue_waitlist_players: List[QueueWaitlistPlayer]
         queue_waitlist_players = list(
             session.query(QueueWaitlistPlayer).filter(
-                QueueWaitlistPlayer.game_finished_id == message.game_finished_id
+                QueueWaitlistPlayer.finished_game_id == message.finished_game_id
             )
         )
         shuffle(queue_waitlist_players)
@@ -114,7 +113,7 @@ async def queue_waitlist_task():
             )
 
         session.query(QueueWaitlistPlayer).filter(
-            QueueWaitlistPlayer.game_finished_id == message.game_finished_id
+            QueueWaitlistPlayer.finished_game_id == message.finished_game_id
         ).delete()
         session.commit()
 

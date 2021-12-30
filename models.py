@@ -21,7 +21,10 @@ from sqlalchemy.orm import registry, sessionmaker  # type: ignore
 from sqlalchemy.sql.schema import ForeignKey
 
 # TODO: Create db backups on start or periodically
-# TODO: Use locking - sqlite will have corruptions if not same thread
+# It may be tempting, but do not set check_same_thread=False here. Sqlite
+# doesn't handle concurrency well and writing to the db on different threads
+# could cause file corruption. Use a queue / tasks to ensure that writes happen
+# on the main thread.
 db_url = (
     "sqlite:///tribes.test.db"
     if "pytest" in sys.modules
@@ -41,10 +44,10 @@ https://docs.sqlalchemy.org/en/14/orm/mapping_styles.html#example-two-dataclasse
 
 @mapper_registry.mapped
 @dataclass
-class GameFinished:
+class FinishedGame:
 
     __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "game_finished"
+    __tablename__ = "finished_game"
 
     finished_at: datetime = field(
         metadata={"sa": Column(DateTime, index=True, nullable=False)},
@@ -68,14 +71,14 @@ class GameFinished:
 
 @mapper_registry.mapped
 @dataclass
-class GameFinishedPlayer:
+class FinishedGamePlayer:
     __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "game_finished_player"
+    __tablename__ = "finished_game_player"
 
-    game_finished_id: str = field(
+    finished_game_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("game_finished.id"), nullable=False, index=True
+                String, ForeignKey("finished_game.id"), nullable=False, index=True
             )
         },
     )
@@ -103,9 +106,9 @@ class GameFinishedPlayer:
 
 @mapper_registry.mapped
 @dataclass
-class GameInProgress:
+class InProgressGame:
     __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "game_in_progress"
+    __tablename__ = "in_progress_game"
 
     queue_id: str | None = field(
         metadata={"sa": Column(String, ForeignKey("queue.id"), index=True)},
@@ -125,18 +128,18 @@ class GameInProgress:
 
 @mapper_registry.mapped
 @dataclass
-class GameInProgressPlayer:
+class InProgressGamePlayer:
     """
     A participant in a game
     """
 
     __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "game_player"
+    __tablename__ = "in_progress_game_player"
 
-    game_in_progress_id: str = field(
+    in_progress_game_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("game_in_progress.id"), nullable=False, index=True
+                String, ForeignKey("in_progress_game.id"), nullable=False, index=True
             )
         },
     )
@@ -155,18 +158,18 @@ class GameInProgressPlayer:
 
 @mapper_registry.mapped
 @dataclass
-class GameChannel:
+class InProgressGameChannel:
     """
     A channel created for a game, intended for temporary voice channels
     """
 
     __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "game_channel"
+    __tablename__ = "in_progress_game_channel"
 
-    game_in_progress_id: str = field(
+    in_progress_game_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("game_in_progress.id"), nullable=False, index=True
+                String, ForeignKey("in_progress_game.id"), nullable=False, index=True
             )
         },
     )
@@ -270,12 +273,12 @@ class QueueWaitlistPlayer:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue_waitlist_player"
-    __table_args__ = (UniqueConstraint("game_finished_id", "queue_id", "player_id"),)
+    __table_args__ = (UniqueConstraint("finished_game_id", "queue_id", "player_id"),)
 
-    game_finished_id: str = field(
+    finished_game_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("game_finished.id"), nullable=False, index=True
+                String, ForeignKey("finished_game.id"), nullable=False, index=True
             )
         },
     )

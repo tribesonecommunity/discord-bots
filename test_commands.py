@@ -14,10 +14,10 @@ from commands import (
 )
 from fixtures import TEST_GUILD, Channel, Member, izza, lyon, opsayo, stork
 from models import (
-    GameFinished,
-    GameFinishedPlayer,
-    GameInProgress,
-    GameInProgressPlayer,
+    FinishedGame,
+    FinishedGamePlayer,
+    InProgressGame,
+    InProgressGamePlayer,
     Player,
     Queue,
     QueuePlayer,
@@ -34,10 +34,10 @@ session = Session()
 def run_around_tests():
     session.query(QueueWaitlistPlayer).delete()
     session.query(QueuePlayer).delete()
-    session.query(GameInProgressPlayer).delete()
-    session.query(GameInProgress).delete()
-    session.query(GameFinishedPlayer).delete()
-    session.query(GameFinished).delete()
+    session.query(InProgressGamePlayer).delete()
+    session.query(InProgressGame).delete()
+    session.query(FinishedGamePlayer).delete()
+    session.query(FinishedGame).delete()
     session.query(Queue).delete()
     session.query(Player).delete()
     session.add(Player(id=OPSAYO_MEMBER_ID, name="opsayo", is_admin=True))
@@ -277,15 +277,15 @@ async def test_add_with_queue_at_size_should_create_game_and_clear_queue():
     assert len(queue_players) == 0
 
     game = (
-        session.query(GameInProgress)
-        .filter(GameInProgress.queue_id == queue.id)
+        session.query(InProgressGame)
+        .filter(InProgressGame.queue_id == queue.id)
         .first()
     )
     assert game is not None
 
     game_players = list(
-        session.query(GameInProgressPlayer).filter(
-            GameInProgressPlayer.game_in_progress_id == game.id
+        session.query(InProgressGamePlayer).filter(
+            InProgressGamePlayer.in_progress_game_id == game.id
         )
     )
     assert len(game_players) == 4
@@ -321,8 +321,8 @@ async def test_finish_game_should_record_finish_at_timestamp():
 
     await handle_message(Message(opsayo, "finishgame win"))
 
-    assert len(list(session.query(GameInProgress))) == 0
-    assert len(list(session.query(GameFinished))) == 1
+    assert len(list(session.query(InProgressGame))) == 0
+    assert len(list(session.query(FinishedGame))) == 1
 
 
 @pytest.mark.asyncio
@@ -333,13 +333,13 @@ async def test_finish_game_with_win_should_record_win_for_reporting_team():
 
     await handle_message(Message(opsayo, "finishgame win"))
 
-    finished_game = session.query(GameFinished).first()
-    game_finished_player = (
-        session.query(GameFinishedPlayer)
-        .filter(GameFinishedPlayer.player_id == opsayo.id)
+    finished_game = session.query(FinishedGame).first()
+    finished_game_player = (
+        session.query(FinishedGamePlayer)
+        .filter(FinishedGamePlayer.player_id == opsayo.id)
         .first()
     )
-    assert finished_game.winning_team == game_finished_player.team
+    assert finished_game.winning_team == finished_game_player.team
 
 
 @pytest.mark.asyncio
@@ -350,13 +350,13 @@ async def test_finish_game_with_loss_should_record_win_for_other_team():
 
     await handle_message(Message(opsayo, "finishgame loss"))
 
-    finished_game = session.query(GameFinished).first()
-    game_finished_player = (
-        session.query(GameFinishedPlayer)
-        .filter(GameFinishedPlayer.player_id == opsayo.id)
+    finished_game = session.query(FinishedGame).first()
+    finished_game_player = (
+        session.query(FinishedGamePlayer)
+        .filter(FinishedGamePlayer.player_id == opsayo.id)
         .first()
     )
-    assert finished_game.winning_team == (game_finished_player.team + 1) % 2
+    assert finished_game.winning_team == (finished_game_player.team + 1) % 2
 
 
 @pytest.mark.asyncio
@@ -367,10 +367,10 @@ async def test_finish_game_with_tie_should_record_tie():
 
     await handle_message(Message(opsayo, "finishgame tie"))
 
-    finished_game = session.query(GameFinished).first()
-    game_finished_player = (
-        session.query(GameFinishedPlayer)
-        .filter(GameFinishedPlayer.player_id == opsayo.id)
+    finished_game = session.query(FinishedGame).first()
+    finished_game_player = (
+        session.query(FinishedGamePlayer)
+        .filter(FinishedGamePlayer.player_id == opsayo.id)
         .first()
     )
     assert finished_game.winning_team == -1
@@ -436,8 +436,8 @@ async def test_finish_game_with_player_not_in_game_should_not_finish_game():
 
     await handle_message(Message(stork, "finishgame loss"))
 
-    assert session.query(GameInProgress).first() is not None
-    assert session.query(GameFinished).first() is None
+    assert session.query(InProgressGame).first() is not None
+    assert session.query(FinishedGame).first() is None
 
 
 @pytest.mark.asyncio
@@ -555,7 +555,7 @@ async def test_sub_with_subber_in_game_and_subbee_not_in_game_should_substitute_
 
     await handle_message(Message(opsayo, "sub @stork"))
 
-    game_player_ids = set([gp.player_id for gp in session.query(GameInProgressPlayer)])
+    game_player_ids = set([gp.player_id for gp in session.query(InProgressGamePlayer)])
     assert stork.id in game_player_ids
     assert opsayo.id not in game_player_ids
 
@@ -568,7 +568,7 @@ async def test_sub_with_subber_not_in_game_and_subbee_in_game_should_substitute_
 
     await handle_message(Message(stork, "sub @opsayo"))
 
-    game_player_ids = set([gp.player_id for gp in session.query(GameInProgressPlayer)])
+    game_player_ids = set([gp.player_id for gp in session.query(InProgressGamePlayer)])
     assert stork.id in game_player_ids
     assert opsayo.id not in game_player_ids
 
@@ -581,7 +581,7 @@ async def test_sub_with_subber_in_game_and_subbee_in_game_should_not_substitute_
 
     await handle_message(Message(opsayo, "sub @lyon"))
 
-    game_player_ids = set([gp.player_id for gp in session.query(GameInProgressPlayer)])
+    game_player_ids = set([gp.player_id for gp in session.query(InProgressGamePlayer)])
     assert lyon.id in game_player_ids
     assert opsayo.id in game_player_ids
 
@@ -594,6 +594,6 @@ async def test_sub_with_subber_not_in_game_and_subbee_not_in_game_should_substit
 
     await handle_message(Message(izza, "sub @stork"))
 
-    game_player_ids = set([gp.player_id for gp in session.query(GameInProgressPlayer)])
+    game_player_ids = set([gp.player_id for gp in session.query(InProgressGamePlayer)])
     assert stork.id not in game_player_ids
     assert izza.id not in game_player_ids

@@ -25,7 +25,7 @@ class SendMessageQueueMessage:
 class CreateVoiceChannelQueueMessage:
     guild: Guild
     name: str
-    game_in_progress_id: str
+    in_progress_game_id: str
     category: CategoryChannel
 
 
@@ -33,4 +33,4 @@ class CreateVoiceChannelQueueMessage:
 class QueueWaitlistQueueMessage:
     channel: (DMChannel | GroupChannel | TextChannel)
     guild: Guild
-    game_finished_id: str
+    finished_game_id: str

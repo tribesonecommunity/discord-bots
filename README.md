@@ -47,16 +47,18 @@ Use python black: https://github.com/psf/black
 Feel free to help out!
 
 MVP
-- Database locking due to sqlite concurrency issues
-- Migrations with Alembic
 - Custom commands !createcommand / !deletecommand
 - Match history / editing
+- Migrations with Alembic
 - Show teams for in-game status
+- Queue eligibility
+- Recognizable words for game ids and team names
+- Check admin by role
 
 MVP+
 - In-server queue
 - Map picking problem
 - Queue notifications
 - Enable strict typing configuration
-- Recognizable words for game ids and team names
-- Team table? e.g. game -> game_team -> game_team_player
+- Shazbucks
+- Expose API for frontends
