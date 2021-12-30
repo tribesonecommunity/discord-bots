@@ -60,15 +60,13 @@ async def on_reaction_add(reaction: Reaction, user: User | Member):
 @bot.event
 async def on_join(member: Member):
     session = Session()
-    try:
-        session.add(Player(id=member.id, name=member.name))
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        player = session.query(Player).filter(Player.id == member.id).first()
+    player = session.query(Player).filter(Player.id == member.id).first()
+    if player:
         player.name = member.name
         session.commit()
-
+    else:
+        session.add(Player(id=member.id, name=member.name))
+        session.commit()
 
 @bot.event
 async def on_leave(member: Member):
