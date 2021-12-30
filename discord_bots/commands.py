@@ -378,7 +378,7 @@ async def add(message: Message, args: List[str]):
             queues_to_add.append(queue)
     else:
         for queue_name in args:
-            queues = session.query(Queue).filter(Queue.name == queue_name).all()
+            queues = session.query(Queue).filter(Queue.name.ilike(queue_name)).all() # type: ignore
             if len(queues) > 0:
                 queues_to_add.append(queues[0])
             else:

@@ -70,14 +70,12 @@ Use python black: https://github.com/psf/black
 Feel free to help out!
 
 MVP
+- Show teams for in-game status
 - Custom commands !createcommand / !deletecommand
 - Match history / editing
-- Migrations with Alembic: https://alembic.sqlalchemy.org/en/latest/autogenerate.html
-- Show teams for in-game status
 - Queue eligibility
 - Check admin by role
-- Notify @ user when afk removed
-- Case insensitive queue names (!add)
+- Migrations with Alembic: https://alembic.sqlalchemy.org/en/latest/autogenerate.html
 - add queue by integer (e.g. add 1 2 3)
 
 Nice to have
