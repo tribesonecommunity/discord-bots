@@ -3,19 +3,24 @@
 # https://stackoverflow.com/a/67996748
 
 from datetime import datetime, timedelta, timezone
+import queue
+from random import shuffle
+from typing import List
 from discord.channel import TextChannel
 from discord.colour import Colour
 
 from discord.ext import tasks
 
 from bot import bot
-from commands import AFK_TIME_MINUTES, send_message
-from models import GameChannel, Player, Queue, QueuePlayer, Session
+from commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
+from models import GameChannel, Player, Queue, QueuePlayer, QueueWaitlistPlayer, Session
 from queues import (
-    CREATE_VOICE_CHANNEL_QUEUE,
-    SEND_MESSAGE_QUEUE,
-    MessageQueueMessage,
-    VoiceChannelQueueMessage,
+    CREATE_VOICE_CHANNEL,
+    QUEUE_WAITLIST,
+    SEND_MESSAGE,
+    QueueWaitlistQueueMessage,
+    SendMessageQueueMessage,
+    CreateVoiceChannelQueueMessage,
 )
 
 
@@ -51,8 +56,8 @@ async def afk_timer_task():
 
 @tasks.loop(seconds=0.5)
 async def send_message_task():
-    while not SEND_MESSAGE_QUEUE.empty():
-        message: MessageQueueMessage = SEND_MESSAGE_QUEUE.get()
+    while not SEND_MESSAGE.empty():
+        message: SendMessageQueueMessage = SEND_MESSAGE.get()
         await send_message(
             message.channel, message.content, message.embed_description, message.colour
         )
@@ -60,8 +65,8 @@ async def send_message_task():
 
 @tasks.loop(seconds=0.5)
 async def create_voice_channel_task():
-    while not CREATE_VOICE_CHANNEL_QUEUE.empty():
-        message: VoiceChannelQueueMessage = CREATE_VOICE_CHANNEL_QUEUE.get()
+    while not CREATE_VOICE_CHANNEL.empty():
+        message: CreateVoiceChannelQueueMessage = CREATE_VOICE_CHANNEL.get()
         channel = await message.guild.create_voice_channel(
             message.name,
             category=message.category,
@@ -73,3 +78,43 @@ async def create_voice_channel_task():
             )
         )
         session.commit()
+
+
+@tasks.loop(seconds=1)
+async def queue_waitlist_task():
+    """
+    Move players in the waitlist into the queues. Pop queues if needed.
+    
+    This exists as a task so that it happens on the main thread. Sqlite doesn't
+    like to do writes on a second thread.
+    """
+    session = Session()
+    while not QUEUE_WAITLIST.empty():
+        message: QueueWaitlistQueueMessage = QUEUE_WAITLIST.get()
+
+        queue_waitlist_players: List[QueueWaitlistPlayer]
+        queue_waitlist_players = list(
+            session.query(QueueWaitlistPlayer).filter(
+                QueueWaitlistPlayer.game_finished_id == message.game_finished_id
+            )
+        )
+        shuffle(queue_waitlist_players)
+
+        for queue_waitlist_player in queue_waitlist_players:
+            if is_in_game(queue_waitlist_player.player_id):
+                session.delete(queue_waitlist_player)
+                continue
+
+            await add_player_to_queue(
+                queue_waitlist_player.queue_id,
+                queue_waitlist_player.player_id,
+                message.channel,
+                message.guild,
+                False,
+            )
+
+        session.query(QueueWaitlistPlayer).filter(
+            QueueWaitlistPlayer.game_finished_id == message.game_finished_id
+        ).delete()
+        session.commit()
+

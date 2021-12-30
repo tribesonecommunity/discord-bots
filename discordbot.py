@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from bot import bot
 from commands import handle_message
 from models import Player, QueuePlayer, Session
-from tasks import afk_timer_task, create_voice_channel_task, send_message_task
+from tasks import afk_timer_task, create_voice_channel_task, queue_waitlist_task, send_message_task
 from test_commands import Member
 
 
@@ -39,6 +39,11 @@ async def on_connect():
         afk_timer_task.start()
     except RuntimeError as e:
         print("Encountered exception:", e)
+    try:
+        queue_waitlist_task.start()
+    except RuntimeError as e:
+        print("Encountered exception:", e)
+
 
 
 

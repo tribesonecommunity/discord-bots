@@ -1,17 +1,20 @@
 from dataclasses import dataclass
+from datetime import datetime
 from queue import SimpleQueue
 from discord.channel import CategoryChannel, DMChannel, GroupChannel, TextChannel
 
 from discord.colour import Colour
 from discord.guild import Guild
+from sqlalchemy.sql.sqltypes import DateTime
 
 
-SEND_MESSAGE_QUEUE = SimpleQueue()
-CREATE_VOICE_CHANNEL_QUEUE = SimpleQueue()
+CREATE_VOICE_CHANNEL = SimpleQueue()
+QUEUE_WAITLIST = SimpleQueue()
+SEND_MESSAGE = SimpleQueue()
 
 
 @dataclass
-class MessageQueueMessage:
+class SendMessageQueueMessage:
     channel: (DMChannel | GroupChannel | TextChannel)
     content: str | None = None
     embed_description: str | None = None
@@ -19,8 +22,15 @@ class MessageQueueMessage:
 
 
 @dataclass
-class VoiceChannelQueueMessage:
+class CreateVoiceChannelQueueMessage:
     guild: Guild
     name: str
     game_in_progress_id: str
     category: CategoryChannel
+
+
+@dataclass
+class QueueWaitlistQueueMessage:
+    channel: (DMChannel | GroupChannel | TextChannel)
+    guild: Guild
+    game_finished_id: str

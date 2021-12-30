@@ -27,10 +27,12 @@ from models import (
     Session,
 )
 from queues import (
-    SEND_MESSAGE_QUEUE,
-    CREATE_VOICE_CHANNEL_QUEUE,
-    MessageQueueMessage,
-    VoiceChannelQueueMessage,
+    QUEUE_WAITLIST,
+    SEND_MESSAGE,
+    CREATE_VOICE_CHANNEL,
+    QueueWaitlistQueueMessage,
+    SendMessageQueueMessage,
+    CreateVoiceChannelQueueMessage,
 )
 
 AFK_TIME_MINUTES: int = 45
@@ -50,13 +52,6 @@ def win_probability(team0: List[Rating], team1: List[Rating]) -> float:
     denom = math.sqrt(size * (BETA * BETA) + sum_sigma)
     trueskill = global_env()
     return round(trueskill.cdf(delta_mu / denom), 2)
-
-
-def async_wrapper(func, *args, **kwargs):
-    """
-    Wrapper to allow passing async functions to threads
-    """
-    asyncio.run(func(*args, **kwargs))
 
 
 def get_even_teams(player_ids: List[int]) -> Tuple[List[Player], float]:
@@ -176,8 +171,8 @@ async def add_player_to_queue(
 
         if is_multithread:
             # Send the message on the main thread using queues
-            SEND_MESSAGE_QUEUE.put(
-                MessageQueueMessage(
+            SEND_MESSAGE.put(
+                SendMessageQueueMessage(
                     channel,
                     content=channel_message,
                     embed_description=channel_embed,
@@ -197,16 +192,16 @@ async def add_player_to_queue(
 
         if is_multithread:
             # Create voice channels on the main thread
-            CREATE_VOICE_CHANNEL_QUEUE.put(
-                VoiceChannelQueueMessage(
+            CREATE_VOICE_CHANNEL.put(
+                CreateVoiceChannelQueueMessage(
                     guild,
                     f"Blood Eagle ({short_game_id})",
                     game_in_progress_id=game.id,
                     category=tribes_voice_category,
                 )
             )
-            CREATE_VOICE_CHANNEL_QUEUE.put(
-                VoiceChannelQueueMessage(
+            CREATE_VOICE_CHANNEL.put(
+                CreateVoiceChannelQueueMessage(
                     guild,
                     f"Diamond Sword ({short_game_id})",
                     game_in_progress_id=game.id,
@@ -235,41 +230,18 @@ async def add_player_to_queue(
     return False
 
 
-async def queue_waitlist(
+def add_queue_waitlist_message(
     channel: TextChannel | DMChannel | GroupChannel,
     guild: Guild,
     game_finished_id: str,
 ) -> None:
     """
-    Move players in the waitlist into the queues. Pop queues if needed.
+    Put a message onto a queue to handle the game queue waitlist.
+
+    We use a queue here so that it happens on the main thread. Sqlite doesn't
+    handle concurrency well and by default blocks actions from separate threads.
     """
-    session = Session()
-
-    queue_waitlist_players: List[QueueWaitlistPlayer]
-    queue_waitlist_players = list(
-        session.query(QueueWaitlistPlayer).filter(
-            QueueWaitlistPlayer.game_finished_id == game_finished_id
-        )
-    )
-    shuffle(queue_waitlist_players)
-
-    for queue_waitlist_player in queue_waitlist_players:
-        if is_in_game(queue_waitlist_player.player_id):
-            session.delete(queue_waitlist_player)
-            continue
-
-        await add_player_to_queue(
-            queue_waitlist_player.queue_id,
-            queue_waitlist_player.player_id,
-            channel,
-            guild,
-            True,
-        )
-
-    session.query(QueueWaitlistPlayer).filter(
-        QueueWaitlistPlayer.game_finished_id == game_finished_id
-    ).delete()
-    session.commit()
+    QUEUE_WAITLIST.put(QueueWaitlistQueueMessage(channel, guild, game_finished_id))
 
 
 async def send_message(
@@ -710,10 +682,6 @@ async def del_(message: Message, args: List[str]):
 
 
 async def finish_game(message: Message, args: List[str]):
-    """
-    TODO
-    - Player must be a captain?
-    """
     if len(args) == 0:
         await send_message(
             message.channel,
@@ -875,12 +843,11 @@ async def finish_game(message: Message, args: List[str]):
     else:
         embed_description = "**Tie game**"
 
-    # Players in this game who try to re-add too soon are added to a waitlist.
-    # This schedules a thread to put those players in the waitlist into queues.
+    # Use a timer to delay processing the waitlist
     timer = Timer(
         RE_ADD_DELAY,
-        async_wrapper,
-        [queue_waitlist, message.channel, message.guild, game_in_progress.id],
+        add_queue_waitlist_message,
+        [message.channel, message.guild, game_finished.id],
     )
     timer.start()
 
@@ -1109,8 +1076,7 @@ async def status(message: Message, args: List[str]):
                 )
 
                 short_game_id = game.id.split("-")[0]
-                # TODO: Sort names
-                output += f"**IN GAME** ({short_game_id}):"
+                output += f"**IN GAME** ({short_game_id}): "
                 output += f", ".join(sorted([player.name for player in team0_players]))
                 output += "\n"
                 output += f", ".join(sorted([player.name for player in team1_players]))
@@ -1127,7 +1093,6 @@ async def status(message: Message, args: List[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.green())
 
 
-# TODO: Repick teams on substitute
 async def sub(message: Message, args: List[str]):
     """
     Substitute one player in a game for another
