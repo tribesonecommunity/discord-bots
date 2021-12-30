@@ -5,7 +5,7 @@
 
 ### Homebrew 
 
-https://brew.sh/#install
+Install Homebrew: https://brew.sh/#install
 ### Python 3.10.0
 With pyenv:
 - `brew install pyenv`
@@ -13,7 +13,7 @@ With pyenv:
 - `pyenv global 3.10.0`
 
 Without pyenv:
-https://docs.python-guide.org/starting/install3/osx/
+- https://docs.python-guide.org/starting/install3/osx/
 
 With a virtualenv (optional but recommended):
 - `cd discord-bots`
@@ -65,18 +65,31 @@ Use python black: https://github.com/psf/black
 ## Tests
 - `pytest`
 
+## Migrations
+Migrations are handled by Alembic: https://alembic.sqlalchemy.org/.
+
+- Make your changes in `models.py`
+- Generate a migration file: `alembic revision --autogenerate -m "Your migration name here"`. Alembic will automatically pick up changes. Your migration file will be in `alembic/migrations`.
+- Apply your migration to the database: `alembic upgrade head`
+- Commit your migration
+
+Alembic does not pick up certain changes - for these changes you'll need to manually edit the migration file. Examples of changes Alembic detects incorrectly are renaming tables or columns - Alembic will think the old thing was deleted and the new thing is brand new. This is important! See here for a full list of changes Alembic will not detect correctly: https://alembic.sqlalchemy.org/en/latest/autogenerate.html#what-does-autogenerate-detect-and-what-does-it-not-detect
+
+
+See here for detailed instructions: https://alembic.sqlalchemy.org/en/latest/tutorial.html
+
 # To-do list
 
 Feel free to help out!
 
 MVP
-- Show teams for in-game status
-- Custom commands !createcommand / !deletecommand
-- Match history / editing
 - Queue eligibility
 - Check admin by role
+- Match history / editing
+- Custom commands !createcommand / !deletecommand
 - Migrations with Alembic: https://alembic.sqlalchemy.org/en/latest/autogenerate.html
 - add queue by integer (e.g. add 1 2 3)
+- queue locking / unlocking
 
 Nice to have
 - setup.py

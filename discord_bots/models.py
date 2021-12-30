@@ -26,9 +26,7 @@ from sqlalchemy.sql.schema import ForeignKey
 # could cause file corruption. Use a queue / tasks to ensure that writes happen
 # on the main thread.
 db_url = (
-    "sqlite:///tribes.test.db"
-    if "pytest" in sys.modules
-    else "sqlite:///tribes.db"
+    "sqlite:///tribes.test.db" if "pytest" in sys.modules else "sqlite:///tribes.db"
 )
 engine = create_engine(db_url, echo=False)
 mapper_registry = registry()
@@ -187,7 +185,7 @@ class InProgressGameChannel:
 @dataclass
 class Player:
     """
-    id: We use the user id from discord
+    :id: We use the user id from discord
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -254,6 +252,31 @@ class QueuePlayer:
         },
     )
     channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class QueueRole:
+    """
+    :role_id: Discord id, used like guild.get_role(role_id)
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "queue_role"
+
+    queue_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("queue.id"), index=True, nullable=False)
+        },
+    )
+    role_id: int = field(
+        metadata={"sa": Column(Integer, nullable=False)},
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
