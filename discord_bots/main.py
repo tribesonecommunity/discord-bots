@@ -18,34 +18,18 @@ from .tasks import (
     send_message_task,
 )
 
+send_message_task.start()
+create_voice_channel_task.start()
+afk_timer_task.start()
+queue_waitlist_task.start()
+
+
+BULLIEST_BOT_ID = 912605788781035541
+
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    print("------")
-
-
-@bot.event
-async def on_connect():
-    try:
-        send_message_task.start()
-    except RuntimeError as e:
-        print("Encountered exception:", e)
-    try:
-        create_voice_channel_task.start()
-    except RuntimeError as e:
-        print("Encountered exception:", e)
-    try:
-        afk_timer_task.start()
-    except RuntimeError as e:
-        print("Encountered exception:", e)
-    try:
-        queue_waitlist_task.start()
-    except RuntimeError as e:
-        print("Encountered exception:", e)
-
-
-BULLIEST_BOT_ID = 912605788781035541
 
 
 @bot.event
