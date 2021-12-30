@@ -20,15 +20,12 @@ import trueskill
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
 from sqlalchemy.sql.schema import ForeignKey
 
-"""
-engine = create_engine("sqlite:///tribes.db", echo=True)
-"""
 # TODO: Create db backups on start or periodically
 # TODO: Use locking - sqlite will have corruptions if not same thread
 db_url = (
-    "sqlite:///tribes.test.db?check_same_thread=false"
+    "sqlite:///tribes.test.db"
     if "pytest" in sys.modules
-    else "sqlite:///tribes.db?check_same_thread=false"
+    else "sqlite:///tribes.db"
 )
 engine = create_engine(db_url, echo=False)
 mapper_registry = registry()

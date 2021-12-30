@@ -146,47 +146,6 @@ async def add_player_to_queue(
     if len(queue_players) == queue.size:  # Pop!
         player_ids: List[int] = list(map(lambda x: x.player_id, queue_players))
         players, win_prob = get_even_teams(player_ids)
-        # players: List[Player] = (
-        #     session.query(Player).filter(Player.id.in_(player_ids)).all()  # type: ignore
-        # )
-        # best_win_prob_so_far: float | None = None
-        # best_teams_so_far: List[Player] | None = None
-
-        # # Use a fixed number of shuffles over generating permutations then
-        # # shuffle for performance.  There are 3.6 million permutations!
-        # for _ in range(100):
-        #     shuffle(players)
-        #     team0_ratings = list(
-        #         map(
-        #             lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
-        #             players[: len(players) // 2],
-        #         )
-        #     )
-        #     team1_ratings = list(
-        #         map(
-        #             lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
-        #             players[len(players) // 2 :],
-        #         )
-        #     )
-        #     win_prob = win_probability(team0_ratings, team1_ratings)
-        #     if not best_win_prob_so_far:
-        #         best_win_prob_so_far = win_prob
-        #         best_teams_so_far = players[:]
-        #     else:
-        #         current_team_evenness = abs(0.50 - win_prob)
-        #         best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
-        #         if current_team_evenness < best_team_evenness_so_far:
-        #             best_win_prob_so_far = win_prob
-        #             best_teams_so_far = players[:]
-
-        #         if int(win_prob * 100) == 50:
-        #             # Can't do better than this
-        #             break
-
-        # if not best_win_prob_so_far or not best_teams_so_far:
-        #     # Can't really happen, so mostly just to appease the linter
-        #     return False
-
         game = GameInProgress(queue_id=queue.id, win_probability=win_prob)
         session.add(game)
 
@@ -414,7 +373,6 @@ async def add(message: Message, args: List[str]):
             colour=Colour.red(),
         )
         return
-
 
     most_recent_game: GameFinished | None = (
         session.query(GameFinished)
@@ -690,10 +648,9 @@ async def create_queue(message: Message, args: List[str]):
         return
 
     queue_size = int(args[1])
-    # TODO: Re-add later, but commented out is useful for solo testing
-    # if queue_size % 2 != 0:
-    #     await send_message(message.channel, f"queue size must be even: {queue_size}")
-    #     return
+    if queue_size % 2 != 0:
+        await send_message(message.channel, f"queue size must be even: {queue_size}")
+        return
 
     queue = Queue(name=args[0], size=queue_size)
     session = Session()
@@ -1040,14 +997,37 @@ async def remove_queue(message: Message, args: List[str]):
             colour=Colour.red(),
         )
         return
+
     session = Session()
-    queues = list(session.query(Queue).filter(Queue.name == args[0]))
-    if len(queues) > 0:
-        session.delete(queues[0])
-        session.commit()
-        await send_message(message.channel, f"Queue removed: {args[0]}")
+
+    queue = session.query(Queue).filter(Queue.name == args[0]).first()
+    if queue:
+        games_in_progress = (
+            session.query(GameInProgress)
+            .filter(GameInProgress.queue_id == queue.id)
+            .all()
+        )
+        if len(games_in_progress) > 0:
+            await send_message(
+                message.channel,
+                embed_description=f"Cannot remove queue with game in progress: {args[0]}",
+                colour=Colour.red(),
+            )
+            return
+        else:
+            session.delete(queue)
+            session.commit()
+            await send_message(
+                message.channel,
+                embed_description=f"Queue removed: {args[0]}",
+                colour=Colour.blue(),
+            )
     else:
-        await send_message(message.channel, f"Queue not found: {args[0]}")
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {args[0]}",
+            colour=Colour.red(),
+        )
 
 
 @require_admin
@@ -1180,7 +1160,6 @@ async def sub(message: Message, args: List[str]):
             colour=Colour.red(),
         )
         return
-
 
     # The callee may not be recorded in the database
     if not session.query(Player).filter(Player.id == callee.id).first():

@@ -131,6 +131,18 @@ async def test_remove_queue_should_remove_queue():
 
 
 @pytest.mark.asyncio
+async def test_remove_queue_with_a_game_should_not_remove_queue():
+    await handle_message(Message(opsayo, "createqueue LTpug 2"))
+    await handle_message(Message(lyon, "add"))
+    await handle_message(Message(opsayo, "add"))
+
+    await handle_message(Message(opsayo, "removequeue LTpug"))
+
+    queues = list(session.query(Queue))
+    assert len(queues) == 1
+
+
+@pytest.mark.asyncio
 async def test_remove_queue_with_nonexistent_queue_should_not_throw_exception():
     await handle_message(Message(opsayo, "removequeue LTpug"))
 
@@ -408,14 +420,12 @@ async def test_finish_game_with_tie_and_equal_trueskill_should_not_modify_truesk
 
     await handle_message(Message(opsayo, "finishgame tie"))
 
-    assert (
-        session.query(Player).filter(Player.id == opsayo.id).first().trueskill_mu
-        == approx(Rating().mu)
-    )
-    assert (
-        session.query(Player).filter(Player.id == lyon.id).first().trueskill_mu
-        == approx(Rating().mu)
-    )
+    assert session.query(Player).filter(
+        Player.id == opsayo.id
+    ).first().trueskill_mu == approx(Rating().mu)
+    assert session.query(Player).filter(
+        Player.id == lyon.id
+    ).first().trueskill_mu == approx(Rating().mu)
 
 
 @pytest.mark.asyncio

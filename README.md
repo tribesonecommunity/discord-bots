@@ -25,13 +25,16 @@ Recommend using vscode. If you do, install these plugins
 - Pylance
 
 ## Type checking
-Until I learn how to commit this to the repo, if you use vscode add this to your settings.json:
+If you use vscode add this to your settings.json (if anyone knows how to commit
+this to the project lmk!):
 https://www.emmanuelgautier.com/blog/enable-vscode-python-type-checking
 ```json
 {
   "python.analysis.typeCheckingMode": "basic"
 }
 ```
+
+This enforces type checks for the types declared
 
 ## Formatting
 Use python black: https://github.com/psf/black
