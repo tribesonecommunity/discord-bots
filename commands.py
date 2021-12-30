@@ -290,12 +290,10 @@ TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = 462824101753520138
 OPSAYO_MEMBER_ID = 115204465589616646
 
 session = Session()
-try:
-    # There always has to be at least one initial admin to add others!
-    session.add(Player(id=OPSAYO_MEMBER_ID, name="opsayo", is_admin=True))
-    session.commit()
-except IntegrityError:
-    session.rollback()
+# There always has to be at least one initial admin to add others!
+player = session.query(Player).filter(Player.id==OPSAYO_MEMBER_ID).first()
+player.is_admin = True
+session.commit()
 
 
 def is_in_game(player_id: int) -> bool:

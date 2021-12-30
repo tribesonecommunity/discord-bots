@@ -49,11 +49,13 @@ Feel free to help out!
 MVP
 - Custom commands !createcommand / !deletecommand
 - Match history / editing
-- Migrations with Alembic
+- Migrations with Alembic: https://alembic.sqlalchemy.org/en/latest/autogenerate.html
 - Show teams for in-game status
 - Queue eligibility
 - Recognizable words for game ids and team names
 - Check admin by role
+- Notify @ user when afk removed
+- Case insensitive queue names (!add)
 
 MVP+
 - In-server queue
