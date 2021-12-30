@@ -1,24 +1,40 @@
 
 # Installation
-## Python 3.10.0
+
+## Mac
+
+### Homebrew 
+
+https://brew.sh/#install
+### Python 3.10.0
 With pyenv:
 - `brew install pyenv`
 - `pyenv install 3.10.0`
 - `pyenv global 3.10.0`
 
-With homebrew:
-- TODO
+Without pyenv:
+https://docs.python-guide.org/starting/install3/osx/
 
-(Recommended) Use a `virtualenv`
+With a virtualenv (optional but recommended):
 - `cd discord-bots`
 - `python3 -m venv .venv`
 - `source .venv/bin/activate`
 
-After the above:
+After:
 - `pip install -U .`
 - `cp .env.example .env`. Modify `.env` by adding your API key
 
 Run the bot:
+- `run-discord-bot`
+
+## Linux
+
+The steps are mostly similar, but you have to install Python another way
+
+- Install Python 3
+- Still recommended to use a virtualenv
+- `pip install -U .`
+- `cp .env.example .env`. Modify `.env` by adding your API key
 - `run-discord-bot`
 
 # Development
