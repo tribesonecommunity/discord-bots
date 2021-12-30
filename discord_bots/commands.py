@@ -251,9 +251,11 @@ async def send_message(
     content: str = None,
     embed_description: str = None,
     colour: Colour = None,
+    embed_content: bool = True,
 ):
     if content:
-        content = f"`{content}`"
+        if embed_content:
+            content = f"`{content}`"
     embed = None
     if embed_description:
         embed = Embed(description=embed_description)

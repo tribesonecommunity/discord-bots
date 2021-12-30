@@ -9,6 +9,7 @@ from typing import List
 from discord.channel import TextChannel
 from discord.colour import Colour
 from discord.ext import tasks
+from discord.member import Member
 
 from .bot import bot
 from .commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
@@ -48,11 +49,15 @@ async def afk_timer_task():
         if queue_player:
             channel = bot.get_channel(queue_player.channel_id)
             if channel and isinstance(channel, TextChannel):
-                await send_message(
-                    channel,
-                    embed_description=f"{player.name} was removed from all queues for being inactive for {AFK_TIME_MINUTES} minutes",
-                    colour=Colour.red(),
-                )
+                member: Member | None = channel.guild.get_member(player.id)
+                if member:
+                    await send_message(
+                        channel,
+                        content=member.mention,
+                        embed_content=False,
+                        embed_description=f"{player.name} was removed from all queues for being inactive for {AFK_TIME_MINUTES} minutes",
+                        colour=Colour.red(),
+                    )
             session.query(QueuePlayer).filter(
                 QueuePlayer.player_id == player.id
             ).delete()

@@ -33,7 +33,8 @@ The steps are mostly similar, but you have to install Python another way
 
 - Install Python 3
 - Still recommended to use a virtualenv
-- `pip install -U .`
+- `pip install -e .`. This allows local changes to be picked up without needing
+to reinstall
 - `cp .env.example .env`. Modify `.env` by adding your API key
 - `run-discord-bot`
 
