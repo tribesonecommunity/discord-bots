@@ -5,7 +5,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from discord_bots.models import Base
+from discord_bots.models import Base, Player
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

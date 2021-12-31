@@ -334,5 +334,4 @@ class QueueWaitlistPlayer:
     )
 
 
-Base.metadata.create_all(engine)
 Session: sessionmaker = sessionmaker(bind=engine)
