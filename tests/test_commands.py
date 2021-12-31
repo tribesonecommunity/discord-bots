@@ -1,4 +1,3 @@
-from typing import List
 from unittest.mock import Mock
 
 from discord import Message
@@ -57,7 +56,7 @@ def run_around_tests():
     session.commit()
 
 
-def mentions(content: str) -> List[Member]:
+def mentions(content: str) -> list[Member]:
     """ """
     mentions = []
     for chunk in content.split(" "):

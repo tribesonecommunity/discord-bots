@@ -6,7 +6,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import floor
 from random import random
-from typing import Dict, List
 from uuid import uuid4
 
 from discord_bots.commands import TRIBES_VOICE_CATEGORY_CHANNEL_ID
@@ -55,10 +54,10 @@ class Guild:
     https://discordpy.readthedocs.io/en/stable/api.html#guild
     """
 
-    _members: List[Member] = field(default_factory=list)
-    categories: List[Category] = field(default_factory=lambda: [TRIBES_VOICE_CATEGORY])
-    channels: Dict[int, Channel] = field(default_factory=dict)
-    roles: List[Role] = field(default_factory=lambda: [ROLE_LT_GOLD, ROLE_LT_PUG])
+    _members: list[Member] = field(default_factory=list)
+    categories: list[Category] = field(default_factory=lambda: [TRIBES_VOICE_CATEGORY])
+    channels: dict[int, Channel] = field(default_factory=dict)
+    roles: list[Role] = field(default_factory=lambda: [ROLE_LT_GOLD, ROLE_LT_PUG])
 
     # TODO: Use VoiceChannel instead of Channel
     async def create_voice_channel(self, name, category: Category = None) -> Channel:

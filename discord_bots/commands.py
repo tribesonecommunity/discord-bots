@@ -3,13 +3,12 @@ from datetime import datetime, timedelta, timezone
 from math import floor
 from random import random, shuffle
 from threading import Timer
-from typing import Awaitable, Callable, Dict, List, Tuple
+from typing import Awaitable, Callable
 import itertools
 import math
-from discord.role import Role
 import numpy
 
-from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message, colour
+from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, global_env, rate
@@ -37,7 +36,7 @@ COMMAND_PREFIX: str = "$"
 RE_ADD_DELAY: int = 5
 
 
-def win_probability(team0: List[Rating], team1: List[Rating]) -> float:
+def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     """
     Calculate the probability that team0 beats team1
     Taken from https://trueskill.org/#win-probability
@@ -51,19 +50,19 @@ def win_probability(team0: List[Rating], team1: List[Rating]) -> float:
     return round(trueskill.cdf(delta_mu / denom), 2)
 
 
-def get_even_teams(player_ids: List[int]) -> Tuple[List[Player], float]:
+def get_even_teams(player_ids: list[int]) -> tuple[list[Player], float]:
     """
     Try to figure out even teams, the first half of the returning list is
     the first team, the second half is the second team.
 
-    :returns: List of players and win probability for the first team
+    :returns: list of players and win probability for the first team
     """
     session = Session()
-    players: List[Player] = (
+    players: list[Player] = (
         session.query(Player).filter(Player.id.in_(player_ids)).all()  # type: ignore
     )
     best_win_prob_so_far: float | None = None
-    best_teams_so_far: List[Player] | None = None
+    best_teams_so_far: list[Player] | None = None
 
     # Use a fixed number of shuffles instead of generating permutations. There
     # are 3.6 million permutations!
@@ -144,11 +143,11 @@ async def add_player_to_queue(
         return False, False
 
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
-    queue_players: List[QueuePlayer] = (
+    queue_players: list[QueuePlayer] = (
         session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).all()
     )
     if len(queue_players) == queue.size:  # Pop!
-        player_ids: List[int] = list(map(lambda x: x.player_id, queue_players))
+        player_ids: list[int] = list(map(lambda x: x.player_id, queue_players))
         players, win_prob = get_even_teams(player_ids)
         game = InProgressGame(queue_id=queue.id, win_probability=win_prob)
         session.add(game)
@@ -244,7 +243,7 @@ async def send_message(
         print("[send_message] exception:", e)
 
 
-def require_admin(command_func: Callable[[Message, List[str]], Awaitable[None]]):
+def require_admin(command_func: Callable[[Message, list[str]], Awaitable[None]]):
     """
     Decorator to wrap functions that require being called by an admin
     """
@@ -302,7 +301,7 @@ def get_player_game(player_id: int, session=Session()) -> InProgressGame | None:
 # Commands start here
 
 
-async def add(message: Message, args: List[str]):
+async def add(message: Message, args: list[str]):
     """
     Players adds self to queue(s). If no args to all existing queues
 
@@ -416,7 +415,7 @@ async def add(message: Message, args: List[str]):
 
 
 # @require_admin
-async def add_admin(message: Message, args: List[str]):
+async def add_admin(message: Message, args: list[str]):
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
             message.channel,
@@ -458,7 +457,7 @@ async def add_admin(message: Message, args: List[str]):
 
 
 @require_admin
-async def add_queue_role(message: Message, args: List[str]):
+async def add_queue_role(message: Message, args: list[str]):
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -480,7 +479,7 @@ async def add_queue_role(message: Message, args: List[str]):
         )
         return
     if message.guild:
-        role_name_to_role_id: Dict[str, int] = {
+        role_name_to_role_id: dict[str, int] = {
             role.name.lower(): role.id for role in message.guild.roles
         }
         if role_name.lower() not in role_name_to_role_id:
@@ -500,7 +499,7 @@ async def add_queue_role(message: Message, args: List[str]):
 
 
 @require_admin
-async def ban(message: Message, args: List[str]):
+async def ban(message: Message, args: list[str]):
     """TODO: remove player from queues"""
     if len(args) != 1:
         await send_message(
@@ -542,12 +541,12 @@ async def ban(message: Message, args: List[str]):
             )
 
 
-async def coinflip(message: Message, args: List[str]):
+async def coinflip(message: Message, args: list[str]):
     result = "HEADS" if floor(random() * 2) == 0 else "TAILS"
     await send_message(message.channel, embed_description=result, colour=Colour.blue())
 
 
-async def cancel_game(message: Message, args: List[str]):
+async def cancel_game(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -591,7 +590,7 @@ async def cancel_game(message: Message, args: List[str]):
     )
 
 
-async def commands(message: Message, args: List[str]):
+async def commands(message: Message, args: list[str]):
     output = "Commands:"
     for command in COMMANDS:
         output += f"\n- {COMMAND_PREFIX}{command}"
@@ -600,7 +599,7 @@ async def commands(message: Message, args: List[str]):
 
 
 @require_admin
-async def clear_queue(message: Message, args: List[str]):
+async def clear_queue(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -629,7 +628,7 @@ async def clear_queue(message: Message, args: List[str]):
 
 
 @require_admin
-async def create_queue(message: Message, args: List[str]):
+async def create_queue(message: Message, args: list[str]):
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -663,7 +662,7 @@ async def create_queue(message: Message, args: List[str]):
         )
 
 
-async def del_(message: Message, args: List[str]):
+async def del_(message: Message, args: list[str]):
     """
     Players deletes self from queue(s)
 
@@ -700,7 +699,7 @@ async def del_(message: Message, args: List[str]):
     )
 
 
-async def finish_game(message: Message, args: List[str]):
+async def finish_game(message: Message, args: list[str]):
     if len(args) == 0:
         await send_message(
             message.channel,
@@ -753,7 +752,7 @@ async def finish_game(message: Message, args: List[str]):
             InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
         )
     )
-    players_by_id: Dict[int, Player] = {player.id: player for player in players}
+    players_by_id: dict[int, Player] = {player.id: player for player in players}
     in_progress_game_players = (
         session.query(InProgressGamePlayer)
         .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
@@ -761,8 +760,8 @@ async def finish_game(message: Message, args: List[str]):
     )
     team0_ratings_before = []
     team1_ratings_before = []
-    team0_players: List[InProgressGamePlayer] = []
-    team1_players: List[InProgressGamePlayer] = []
+    team0_players: list[InProgressGamePlayer] = []
+    team1_players: list[InProgressGamePlayer] = []
     for in_progress_game_player in in_progress_game_players:
         player = players_by_id[in_progress_game_player.player_id]
         if in_progress_game_player.team == 0:
@@ -792,8 +791,8 @@ async def finish_game(message: Message, args: List[str]):
     elif winning_team == 1:
         outcome = [1, 0]
 
-    team0_ratings_after: List[Rating]
-    team1_ratings_after: List[Rating]
+    team0_ratings_after: list[Rating]
+    team1_ratings_after: list[Rating]
     team0_ratings_after, team1_ratings_after = rate(
         [team0_ratings_before, team1_ratings_before], outcome
     )
@@ -876,7 +875,7 @@ async def finish_game(message: Message, args: List[str]):
     )
 
 
-async def list_admins(message: Message, args: List[str]):
+async def list_admins(message: Message, args: list[str]):
     output = "Admins:"
     player: Player
     for player in Session().query(Player).filter(Player.is_admin == True).all():
@@ -885,14 +884,14 @@ async def list_admins(message: Message, args: List[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-async def list_bans(message: Message, args: List[str]):
+async def list_bans(message: Message, args: list[str]):
     output = "Bans:"
     for player in Session().query(Player).filter(Player.is_banned == True):
         output += f"\n- {player.name}"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-async def list_queue_roles(message: Message, args: List[str]):
+async def list_queue_roles(message: Message, args: list[str]):
     if not message.guild:
         return
 
@@ -900,7 +899,7 @@ async def list_queue_roles(message: Message, args: List[str]):
     session = Session()
     queue: Queue
     for i, queue in enumerate(session.query(Queue).all()):
-        queue_role_names: List[str] = []
+        queue_role_names: list[str] = []
         queue_role: QueueRole
         for queue_role in (
             session.query(QueueRole).filter(QueueRole.queue_id == queue.id).all()
@@ -913,7 +912,7 @@ async def list_queue_roles(message: Message, args: List[str]):
 
 
 @require_admin
-async def mock_random_queue(message: Message, args: List[str]):
+async def mock_random_queue(message: Message, args: list[str]):
     """
     Helper test method for adding random players to queues
     """
@@ -951,7 +950,7 @@ async def mock_random_queue(message: Message, args: List[str]):
 
 
 @require_admin
-async def remove_admin(message: Message, args: List[str]):
+async def remove_admin(message: Message, args: list[str]):
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
             message.channel,
@@ -988,7 +987,7 @@ async def remove_admin(message: Message, args: List[str]):
 
 
 @require_admin
-async def remove_queue(message: Message, args: List[str]):
+async def remove_queue(message: Message, args: list[str]):
     if len(args) == 0:
         await send_message(
             message.channel,
@@ -1030,7 +1029,7 @@ async def remove_queue(message: Message, args: List[str]):
 
 
 @require_admin
-async def remove_queue_role(message: Message, args: List[str]):
+async def remove_queue_role(message: Message, args: list[str]):
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -1052,7 +1051,7 @@ async def remove_queue_role(message: Message, args: List[str]):
         )
         return
     if message.guild:
-        role_name_to_role_id: Dict[str, int] = {
+        role_name_to_role_id: dict[str, int] = {
             role.name.lower(): role.id for role in message.guild.roles
         }
         if role_name.lower() not in role_name_to_role_id:
@@ -1075,7 +1074,7 @@ async def remove_queue_role(message: Message, args: List[str]):
 
 
 @require_admin
-async def set_add_delay(message: Message, args: List[str]):
+async def set_add_delay(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -1093,7 +1092,7 @@ async def set_add_delay(message: Message, args: List[str]):
 
 
 @require_admin
-async def set_command_prefix(message: Message, args: List[str]):
+async def set_command_prefix(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -1110,7 +1109,7 @@ async def set_command_prefix(message: Message, args: List[str]):
     )
 
 
-async def status(message: Message, args: List[str]):
+async def status(message: Message, args: list[str]):
     session = Session()
     queues = session.query(Queue).all()
     games_by_queue = defaultdict(list)
@@ -1183,7 +1182,7 @@ async def status(message: Message, args: List[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.green())
 
 
-async def sub(message: Message, args: List[str]):
+async def sub(message: Message, args: list[str]):
     """
     Substitute one player in a game for another
     """
@@ -1272,7 +1271,7 @@ async def sub(message: Message, args: List[str]):
         .filter(InProgressGamePlayer.in_progress_game_id == game.id)
         .all()
     )
-    player_ids: List[int] = list(map(lambda x: x.player_id, game_players))
+    player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
     players, win_prob = get_even_teams(player_ids)
     for game_player in game_players:
         session.delete(game_player)
@@ -1312,7 +1311,7 @@ async def sub(message: Message, args: List[str]):
 
 
 @require_admin
-async def unban(message: Message, args: List[str]):
+async def unban(message: Message, args: list[str]):
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
             message.channel,

@@ -4,7 +4,6 @@
 
 from datetime import datetime, timedelta, timezone
 from random import shuffle
-from typing import List
 
 from discord.channel import TextChannel
 from discord.colour import Colour
@@ -71,7 +70,7 @@ async def queue_waitlist_task():
     while not QUEUE_WAITLIST.empty():
         message: QueueWaitlistQueueMessage = QUEUE_WAITLIST.get()
 
-        queue_waitlist_players: List[QueueWaitlistPlayer]
+        queue_waitlist_players: list[QueueWaitlistPlayer]
         queue_waitlist_players = (
             session.query(QueueWaitlistPlayer)
             .filter(QueueWaitlistPlayer.finished_game_id == message.finished_game_id)
