@@ -684,3 +684,26 @@ async def test_remove_admin_role_should_remove_admin_role():
 
     admin_roles = Session().query(AdminRole).all()
     assert len(admin_roles) == 0
+
+
+@pytest.mark.asyncio
+async def test_add_with_locked_queue_should_not_add_to_queue():
+    await handle_message(Message(opsayo, "createqueue ltpug 10"))
+    await handle_message(Message(opsayo, "lockqueue ltpug"))
+
+    await handle_message(Message(opsayo, "add"))
+
+    queue_players = Session().query(QueuePlayer).all()
+    assert len(queue_players) == 0
+
+
+@pytest.mark.asyncio
+async def test_unlock_queue_should_allow_add_to_queue():
+    await handle_message(Message(opsayo, "createqueue ltpug 10"))
+    await handle_message(Message(opsayo, "lockqueue ltpug"))
+
+    await handle_message(Message(opsayo, "unlockqueue ltpug"))
+    await handle_message(Message(opsayo, "add"))
+
+    queue_players = Session().query(QueuePlayer).all()
+    assert len(queue_players) == 1

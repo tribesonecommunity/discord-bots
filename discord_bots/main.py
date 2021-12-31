@@ -26,7 +26,7 @@ session = Session()
 # There always has to be at least one initial admin to add others!
 player = session.query(Player).filter(Player.id == OPSAYO_MEMBER_ID).first()
 if player:
-    player.is_admin = False
+    player.is_admin = True
     session.commit()
     session.close()
 

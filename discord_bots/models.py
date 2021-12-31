@@ -237,6 +237,9 @@ class Queue:
         metadata={"sa": Column(String, unique=True, nullable=False, index=True)}
     )
     size: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    is_locked: bool = field(
+        default=False, metadata={"sa": Column(Boolean, nullable=False)}
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),

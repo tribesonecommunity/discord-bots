@@ -230,6 +230,9 @@ async def send_message(
     colour: Colour = None,
     embed_content: bool = True,
 ):
+    """
+    :colour: red = fail, green = success, blue = informational
+    """
     if content:
         if embed_content:
             content = f"`{content}`"
@@ -259,6 +262,7 @@ def require_admin(command_func: Callable[[Message, list[str]], Awaitable[None]])
         )
         if caller:
             await command_func(*args, **kwargs)
+            return
 
         if not message.guild:
             print("No message guild?")
@@ -357,15 +361,17 @@ async def add(message: Message, args: list[str]):
             waitlist_message = f"Your game has just finished, you will be randomized into the queue in {time_to_wait} seconds"
             is_waitlist = True
 
-    queues_to_add = []
+    queues_to_add: list[Queue] = []
     if len(args) == 0:
         for queue in session.query(Queue):
-            queues_to_add.append(queue)
+            if queue and not queue.is_locked:
+                queues_to_add.append(queue)
     else:
         for queue_name in args:
-            queues = session.query(Queue).filter(Queue.name.ilike(queue_name)).all()  # type: ignore
-            if len(queues) > 0:
-                queues_to_add.append(queues[0])
+            queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+            if queue:
+                if not queue.is_locked:
+                    queues_to_add.append(queue)
             else:
                 await send_message(
                     message.channel,
@@ -406,6 +412,7 @@ async def add(message: Message, args: list[str]):
                     queues_added_to.append(queue)
 
     queue_statuses = []
+    queue: Queue
     for queue in session.query(Queue):
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
@@ -980,6 +987,35 @@ async def list_queue_roles(message: Message, args: list[str]):
 
 
 @require_admin
+async def lock_queue(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !lock_queue <queue_name>",
+        )
+        return
+
+    session = Session()
+    queue: Queue | None = session.query(Queue).filter(Queue.name == args[0]).first()
+    if not queue:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+
+    queue.is_locked = True
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Queue {args[0]} locked",
+        colour=Colour.red(),
+    )
+
+
+@require_admin
 async def mock_random_queue(message: Message, args: list[str]):
     """
     Helper test method for adding random players to queues
@@ -1239,7 +1275,10 @@ async def status(message: Message, args: list[str]):
             .filter(QueuePlayer.queue_id == queue.id)
             .all()
         )
-        output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+        if queue.is_locked:
+            output += f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+        else:
+            output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
         if len(players_in_queue) > 0:
             output += f"**IN QUEUE:** "
@@ -1452,6 +1491,35 @@ async def unban(message: Message, args: list[str]):
     )
 
 
+@require_admin
+async def unlock_queue(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !unlock_queue <queue_name>",
+        )
+        return
+
+    session = Session()
+    queue: Queue | None = session.query(Queue).filter(Queue.name == args[0]).first()
+    if not queue:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+
+    queue.is_locked = False
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Queue {args[0]} unlocked",
+        colour=Colour.blue(),
+    )
+
+
 # Commands end here
 
 
@@ -1476,6 +1544,7 @@ COMMANDS = {
     "listbans": list_bans,
     # "listcustomcommands": list_custom_commands,
     "listqueueroles": list_queue_roles,
+    "lockqueue": lock_queue,
     # "matchhistory": match_history,
     "mockrandomqueue": mock_random_queue,
     "removeadmin": remove_admin,
@@ -1488,6 +1557,7 @@ COMMANDS = {
     "status": status,
     "sub": sub,
     "unban": unban,
+    "unlockqueue": unlock_queue,
 }
 
 

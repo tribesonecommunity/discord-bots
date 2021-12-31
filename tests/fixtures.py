@@ -8,8 +8,22 @@ from math import floor
 from random import random
 from uuid import uuid4
 
-from discord_bots.commands import TRIBES_VOICE_CATEGORY_CHANNEL_ID, finish_game
-from discord_bots.models import AdminRole, FinishedGame, FinishedGamePlayer, InProgressGame, InProgressGamePlayer, Player, Queue, QueuePlayer, QueueRole, QueueWaitlistPlayer, Session
+from discord_bots.commands import TRIBES_VOICE_CATEGORY_CHANNEL_ID
+from discord_bots.models import (
+    AdminRole,
+    Base,
+    FinishedGame,
+    FinishedGamePlayer,
+    InProgressGame,
+    InProgressGamePlayer,
+    Player,
+    Queue,
+    QueuePlayer,
+    QueueRole,
+    QueueWaitlistPlayer,
+    Session,
+    engine,
+)
 
 
 # Mock discord models so we can invoke tests
@@ -19,6 +33,7 @@ class Category:
 
 
 TRIBES_VOICE_CATEGORY = Category(TRIBES_VOICE_CATEGORY_CHANNEL_ID)
+
 
 @dataclass
 class Role:
@@ -58,7 +73,9 @@ class Guild:
     _members: list[Member] = field(default_factory=list)
     categories: list[Category] = field(default_factory=lambda: [TRIBES_VOICE_CATEGORY])
     channels: dict[int, Channel] = field(default_factory=dict)
-    roles: list[Role] = field(default_factory=lambda: [ROLE_ADMIN, ROLE_LT_GOLD, ROLE_LT_PUG])
+    roles: list[Role] = field(
+        default_factory=lambda: [ROLE_ADMIN, ROLE_LT_GOLD, ROLE_LT_PUG]
+    )
 
     # TODO: Use VoiceChannel instead of Channel
     async def create_voice_channel(self, name, category: Category = None) -> Channel:
@@ -109,6 +126,7 @@ lyon = Member("lyon")
 
 
 def setup_tests():
+    Base.metadata.create_all(engine)
     session = Session()
     session.query(AdminRole).delete()
     session.query(QueueWaitlistPlayer).delete()
@@ -125,4 +143,3 @@ def setup_tests():
     TEST_GUILD._members = [opsayo, stork, izza, lyon]
 
     session.commit()
-

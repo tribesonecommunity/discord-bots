@@ -58,21 +58,24 @@ Use python black: https://github.com/psf/black
 ## Tests
 - `pytest`
 
+I haven't setup alembic to cooperate with the test database. If you add a new
+migration, delete the test db and it should work.
+
 ## Migrations
 Migrations are handled by Alembic: https://alembic.sqlalchemy.org/.
 
-To apply migrations:
+To apply migrations to an existing database:
 - `alembic upgrade head`
 
 To create new migrations:
 - Make your changes in `models.py`
-- Generate a migration file: `alembic revision --autogenerate -m "Your migration name here"`. Alembic will automatically pick up changes. Your migration file will be in `alembic/migrations`.
+- Generate a migration file: `alembic revision --autogenerate -m "Your migration name here"`. Alembic will automatically pick up changes. Your migration file will be in `alembic/versions`.
 - Apply your migration to the database: `alembic upgrade head`
-- Commit your migration
+- Commit your migration: `git add alembic/versions`
 
-Alembic does not pick up certain changes - for these changes you'll need to manually edit the migration file. Examples of changes Alembic detects incorrectly are renaming tables or columns - Alembic will think the old thing was deleted and the new thing is brand new. This is important! See here for a full list of changes Alembic will not detect correctly: https://alembic.sqlalchemy.org/en/latest/autogenerate.html#what-does-autogenerate-detect-and-what-does-it-not-detect
+Alembic does not pick up certain changes like renaming tables or columns correctly. For these changes you'll need to manually edit the migration file. See here for a full list of changes Alembic will not detect correctly: https://alembic.sqlalchemy.org/en/latest/autogenerate.html#what-does-autogenerate-detect-and-what-does-it-not-detect
 
-See here for detailed instructions: https://alembic.sqlalchemy.org/en/latest/tutorial.html
+See here for detailed instructions on how to use Alembic: https://alembic.sqlalchemy.org/en/latest/tutorial.html
 
 # To-do list
 
@@ -81,9 +84,9 @@ Feel free to help out!
 MVP
 - Match history / editing
 - Custom commands !createcommand / !deletecommand
-- Migrations with Alembic: https://alembic.sqlalchemy.org/en/latest/autogenerate.html
 - add queue by integer (e.g. add 1 2 3)
 - queue locking / unlocking
+- dice rolling
 
 Nice to have
 - CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md
