@@ -11,6 +11,7 @@ from discord_bots.commands import (
     handle_message,
 )
 from discord_bots.models import (
+    AdminRole,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -30,6 +31,7 @@ from .fixtures import (
     izza,
     lyon,
     opsayo,
+    setup_tests,
     stork,
 )
 
@@ -40,20 +42,7 @@ session = Session()
 # Runs around each test
 @fixture(autouse=True)
 def run_around_tests():
-    session.query(QueueWaitlistPlayer).delete()
-    session.query(QueuePlayer).delete()
-    session.query(InProgressGamePlayer).delete()
-    session.query(InProgressGame).delete()
-    session.query(FinishedGamePlayer).delete()
-    session.query(FinishedGame).delete()
-    session.query(QueueRole).delete()
-    session.query(Queue).delete()
-    session.query(Player).delete()
-    session.add(Player(id=opsayo.id, name="opsayo", is_admin=True))
-    TEST_GUILD.channels = {}
-    TEST_GUILD._members = [opsayo, stork, izza, lyon]
-
-    session.commit()
+    setup_tests()
 
 
 def mentions(content: str) -> list[Member]:
@@ -677,3 +666,21 @@ async def test_add_to_queue_with_player_without_queue_role_should_not_add_to_que
 
     queue_players = Session().query(QueuePlayer).all()
     assert len(queue_players) == 0
+
+
+@pytest.mark.asyncio
+async def test_add_admin_role_should_add_admin_role():
+    await handle_message(Message(opsayo, "addadminrole admin"))
+
+    admin_roles = Session().query(AdminRole).all()
+    assert len(admin_roles) == 1
+
+
+@pytest.mark.asyncio
+async def test_remove_admin_role_should_remove_admin_role():
+    await handle_message(Message(opsayo, "addadminrole admin"))
+
+    await handle_message(Message(opsayo, "removeadminrole admin"))
+
+    admin_roles = Session().query(AdminRole).all()
+    assert len(admin_roles) == 0

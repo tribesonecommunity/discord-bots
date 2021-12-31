@@ -15,7 +15,7 @@ from discord_bots.models import (
 )
 from discord_bots.tasks import afk_timer_task
 
-from .fixtures import TEST_CHANNEL, TEST_GUILD, izza, lyon, opsayo, stork
+from .fixtures import TEST_CHANNEL, TEST_GUILD, izza, lyon, opsayo, setup_tests, stork
 
 
 def Bot():
@@ -28,17 +28,7 @@ session = Session()
 # Runs around each test
 @fixture(autouse=True)
 def run_around_tests():
-    session.query(QueueWaitlistPlayer).delete()
-    session.query(QueuePlayer).delete()
-    session.query(InProgressGamePlayer).delete()
-    session.query(Queue).delete()
-    session.query(InProgressGame).delete()
-    session.query(Player).delete()
-    session.add(Player(id=opsayo.id, name="opsayo", is_admin=True))
-    TEST_GUILD.channels = {}
-    TEST_GUILD._members = [opsayo, stork, izza, lyon]
-
-    session.commit()
+    setup_tests()
 
 
 @pytest.mark.asyncio

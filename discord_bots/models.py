@@ -42,6 +42,22 @@ https://docs.sqlalchemy.org/en/14/orm/mapping_styles.html#example-two-dataclasse
 
 @mapper_registry.mapped
 @dataclass
+class AdminRole:
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "admin_role"
+
+    role_id: int = field(
+        metadata={"sa": Column(Integer, nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class FinishedGame:
 
     __sa_dataclass_metadata_key__ = "sa"

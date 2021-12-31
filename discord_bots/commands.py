@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, global_env, rate
 
 from .models import (
+    AdminRole,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -258,6 +259,21 @@ def require_admin(command_func: Callable[[Message, list[str]], Awaitable[None]])
         )
         if caller:
             await command_func(*args, **kwargs)
+
+        if not message.guild:
+            print("No message guild?")
+            return
+
+        member = message.guild.get_member(message.author.id)
+        if not member:
+            return
+
+        admin_roles = session.query(AdminRole).all()
+        admin_role_ids = map(lambda x: x.role_id, admin_roles)
+        member_role_ids = map(lambda x: x.id, member.roles)
+        is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
+        if is_admin:
+            await command_func(*args, **kwargs)
         else:
             await send_message(
                 message.channel,
@@ -414,7 +430,7 @@ async def add(message: Message, args: list[str]):
     session.commit()
 
 
-# @require_admin
+@require_admin
 async def add_admin(message: Message, args: list[str]):
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
@@ -454,6 +470,38 @@ async def add_admin(message: Message, args: list[str]):
                 embed_description=f"{player.name} added to admins",
                 colour=Colour.green(),
             )
+
+
+@require_admin
+async def add_admin_role(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !addadminrole <role_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    role_name = args[0]
+    if message.guild:
+        session = Session()
+        role_name_to_role_id: dict[str, int] = {
+            role.name.lower(): role.id for role in message.guild.roles
+        }
+        if role_name.lower() not in role_name_to_role_id:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find role: {role_name}",
+                colour=Colour.red(),
+            )
+            return
+        session.add(AdminRole(role_name_to_role_id[role_name.lower()]))
+        await send_message(
+            message.channel,
+            embed_description=f"Added admin role: {role_name}",
+            colour=Colour.green(),
+        )
+        session.commit()
 
 
 @require_admin
@@ -884,6 +932,26 @@ async def list_admins(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
+async def list_admin_roles(message: Message, args: list[str]):
+    output = "Admin roles:"
+    if not message.guild:
+        return
+
+    admin_role_ids = list(map(lambda x: x.role_id, Session().query(AdminRole).all()))
+    admin_role_names: list[str] = []
+
+    role_id_to_role_name: dict[int, str] = {
+        role.id: role.name for role in message.guild.roles
+    }
+
+    for admin_role_id in admin_role_ids:
+        if admin_role_id in role_id_to_role_name:
+            admin_role_names.append(role_id_to_role_name[admin_role_id])
+    output += f"\n{', '.join(admin_role_names)}"
+
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
 async def list_bans(message: Message, args: list[str]):
     output = "Bans:"
     for player in Session().query(Player).filter(Player.is_banned == True):
@@ -984,6 +1052,51 @@ async def remove_admin(message: Message, args: list[str]):
         embed_description=f"{message.mentions[0].name} removed from admins",
         colour=Colour.green(),
     )
+
+
+@require_admin
+async def remove_admin_role(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !removeadminrole <role_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    role_name = args[0]
+    if message.guild:
+        session = Session()
+        role_name_to_role_id: dict[str, int] = {
+            role.name.lower(): role.id for role in message.guild.roles
+        }
+        if role_name.lower() not in role_name_to_role_id:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find role: {role_name}",
+                colour=Colour.red(),
+            )
+            return
+        admin_role = (
+            session.query(AdminRole)
+            .filter(AdminRole.role_id == role_name_to_role_id[role_name.lower()])
+            .first()
+        )
+        if admin_role:
+            session.delete(admin_role)
+            await send_message(
+                message.channel,
+                embed_description=f"Removed admin role: {role_name}",
+                colour=Colour.green(),
+            )
+            session.commit()
+        else:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find admin role: {role_name}",
+                colour=Colour.red(),
+            )
+            return
 
 
 @require_admin
@@ -1345,7 +1458,7 @@ async def unban(message: Message, args: list[str]):
 COMMANDS = {
     "add": add,
     "addadmin": add_admin,
-    # "addadminrole": add_admin_role,
+    "addadminrole": add_admin_role,
     "addqueuerole": add_queue_role,
     "ban": ban,
     "cancelgame": cancel_game,
@@ -1359,14 +1472,14 @@ COMMANDS = {
     # "deletecustomcommand": delete_custom_command,
     "finishgame": finish_game,
     "listadmins": list_admins,
-    # "listadminroles": list_admin_roles,
+    "listadminroles": list_admin_roles,
     "listbans": list_bans,
     # "listcustomcommands": list_custom_commands,
     "listqueueroles": list_queue_roles,
     # "matchhistory": match_history,
     "mockrandomqueue": mock_random_queue,
     "removeadmin": remove_admin,
-    # "removeadminrole": remove_admin_role,
+    "removeadminrole": remove_admin_role,
     "removequeuerole": remove_queue_role,
     "removequeue": remove_queue,
     # "roll": roll,

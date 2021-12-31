@@ -76,8 +76,6 @@ See here for detailed instructions: https://alembic.sqlalchemy.org/en/latest/tut
 Feel free to help out!
 
 MVP
-- Queue eligibility
-- Check admin by role
 - Match history / editing
 - Custom commands !createcommand / !deletecommand
 - Migrations with Alembic: https://alembic.sqlalchemy.org/en/latest/autogenerate.html
