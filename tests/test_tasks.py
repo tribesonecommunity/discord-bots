@@ -16,7 +16,6 @@ from discord_bots.models import (
 from discord_bots.tasks import afk_timer_task
 
 from .fixtures import TEST_CHANNEL, TEST_GUILD, izza, lyon, opsayo, stork
-from .test_commands import OPSAYO_MEMBER_ID
 
 
 def Bot():
@@ -35,7 +34,7 @@ def run_around_tests():
     session.query(Queue).delete()
     session.query(InProgressGame).delete()
     session.query(Player).delete()
-    session.add(Player(id=OPSAYO_MEMBER_ID, name="opsayo", is_admin=True))
+    session.add(Player(id=opsayo.id, name="opsayo", is_admin=True))
     TEST_GUILD.channels = {}
     TEST_GUILD._members = [opsayo, stork, izza, lyon]
 
@@ -45,7 +44,7 @@ def run_around_tests():
 @pytest.mark.asyncio
 @patch("discord_bots.tasks.bot")
 async def test_afk_timer_with_inactive_player_should_delete_player_from_queue(bot):
-    player: Player = session.query(Player).filter(Player.id == OPSAYO_MEMBER_ID).first()
+    player: Player = session.query(Player).filter(Player.id == opsayo.id).first()
     player.last_activity_at = datetime.now(timezone.utc) - timedelta(hours=1)
     queue = Queue("ltpug", 10)
     queue_player = QueuePlayer(queue.id, player.id, TEST_CHANNEL.id)
@@ -61,7 +60,7 @@ async def test_afk_timer_with_inactive_player_should_delete_player_from_queue(bo
 
 @pytest.mark.asyncio
 async def test_afk_timer_with_active_player_should_not_delete_player_from_queue():
-    player: Player = session.query(Player).filter(Player.id == OPSAYO_MEMBER_ID).first()
+    player: Player = session.query(Player).filter(Player.id == opsayo.id).first()
     player.last_activity_at = datetime.now(timezone.utc)
     queue = Queue("ltpug", 10)
     queue_player = QueuePlayer(queue.id, player.id, 0)

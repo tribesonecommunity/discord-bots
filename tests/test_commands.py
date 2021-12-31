@@ -8,7 +8,6 @@ import pytest
 
 from discord_bots.commands import (
     COMMAND_PREFIX,
-    OPSAYO_MEMBER_ID,
     is_in_game,
     handle_message,
 )
@@ -24,8 +23,16 @@ from discord_bots.models import (
     QueueWaitlistPlayer,
     Session,
 )
-from discord_bots.queues import QueueWaitlistQueueMessage
-from .fixtures import TEST_GUILD, Channel, Member, izza, lyon, opsayo, stork
+from .fixtures import (
+    ROLE_LT_GOLD,
+    TEST_GUILD,
+    Channel,
+    Member,
+    izza,
+    lyon,
+    opsayo,
+    stork,
+)
 
 
 session = Session()
@@ -40,9 +47,10 @@ def run_around_tests():
     session.query(InProgressGame).delete()
     session.query(FinishedGamePlayer).delete()
     session.query(FinishedGame).delete()
+    session.query(QueueRole).delete()
     session.query(Queue).delete()
     session.query(Player).delete()
-    session.add(Player(id=OPSAYO_MEMBER_ID, name="opsayo", is_admin=True))
+    session.add(Player(id=opsayo.id, name="opsayo", is_admin=True))
     TEST_GUILD.channels = {}
     TEST_GUILD._members = [opsayo, stork, izza, lyon]
 
@@ -621,7 +629,52 @@ async def test_sub_with_subber_not_in_game_and_subbee_not_in_game_should_substit
 async def test_add_queue_role_should_add_queue_role():
     await handle_message(Message(opsayo, "createqueue LTgold 2"))
 
-    await handle_message(Message(opsayo, "addqueuerole LTgold gold"))
+    await handle_message(Message(opsayo, "addqueuerole LTgold LTgold"))
 
     queue_roles = Session().query(QueueRole).all()
     assert len(queue_roles) == 1
+
+
+@pytest.mark.asyncio
+async def test_remove_queue_role_should_remove_queue_role():
+    await handle_message(Message(opsayo, "createqueue LTgold 2"))
+    await handle_message(Message(opsayo, "addqueuerole LTgold LTgold"))
+
+    await handle_message(Message(opsayo, "removequeuerole LTgold LTgold"))
+
+    queue_roles = Session().query(QueueRole).all()
+    assert len(queue_roles) == 0
+
+
+@pytest.mark.asyncio
+async def test_add_to_queue_with_queue_with_no_queue_roles_should_add_to_queue():
+    await handle_message(Message(opsayo, "createqueue LTunrated 2"))
+
+    await handle_message(Message(opsayo, "add"))
+
+    queue_players = Session().query(QueuePlayer).all()
+    assert len(queue_players) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_to_queue_with_player_with_queue_role_should_add_to_queue():
+    await handle_message(Message(opsayo, "createqueue LTgold 2"))
+    await handle_message(Message(opsayo, "addqueuerole LTgold LTgold"))
+    opsayo.roles.append(ROLE_LT_GOLD)
+
+    await handle_message(Message(opsayo, "add"))
+
+    queue_players = Session().query(QueuePlayer).all()
+    assert len(queue_players) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_to_queue_with_player_without_queue_role_should_not_add_to_queue():
+    await handle_message(Message(opsayo, "createqueue LTgold 2"))
+    await handle_message(Message(opsayo, "addqueuerole LTgold LTgold"))
+    opsayo.roles = []
+
+    await handle_message(Message(opsayo, "add"))
+
+    queue_players = Session().query(QueuePlayer).all()
+    assert len(queue_players) == 0

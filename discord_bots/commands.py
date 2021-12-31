@@ -6,9 +6,10 @@ from threading import Timer
 from typing import Awaitable, Callable, Dict, List, Tuple
 import itertools
 import math
+from discord.role import Role
 import numpy
 
-from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
+from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message, colour
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, global_env, rate
@@ -22,6 +23,7 @@ from .models import (
     Player,
     Queue,
     QueuePlayer,
+    QueueRole,
     QueueWaitlistPlayer,
     Session,
 )
@@ -56,6 +58,7 @@ def get_even_teams(player_ids: List[int]) -> Tuple[List[Player], float]:
 
     :returns: List of players and win probability for the first team
     """
+    session = Session()
     players: List[Player] = (
         session.query(Player).filter(Player.id.in_(player_ids)).all()  # type: ignore
     )
@@ -105,11 +108,28 @@ async def add_player_to_queue(
     player_id: int,
     channel: TextChannel | DMChannel | GroupChannel,
     guild: Guild,
-) -> bool:
+) -> tuple[bool, bool]:
     """
     Helper function to add player to a queue and pop if needed.
+
+    :returns: A tuple of booleans - the first represents whether the player was
+    added to the queue, the second represents whether the queue popped as a
+    result.
     """
     session = Session()
+    queue_roles = session.query(QueueRole).filter(QueueRole.queue_id == queue_id).all()
+
+    # Zero queue roles means no role restrictions
+    if len(queue_roles) > 0:
+        member = guild.get_member(player_id)
+        if not member:
+            return False, False
+        queue_role_ids = set(map(lambda x: x.role_id, queue_roles))
+        player_role_ids = set(map(lambda x: x.id, member.roles))
+        has_role = len(queue_role_ids.intersection(player_role_ids)) > 0
+        if not has_role:
+            return False, False
+
     session.add(
         QueuePlayer(
             queue_id=queue_id,
@@ -121,7 +141,7 @@ async def add_player_to_queue(
         session.commit()
     except IntegrityError:
         session.rollback()
-        return False
+        return False, False
 
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
     queue_players: List[QueuePlayer] = (
@@ -185,8 +205,8 @@ async def add_player_to_queue(
 
         session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).delete()
         session.commit()
-        return True
-    return False
+        return True, True
+    return True, False
 
 
 def add_queue_waitlist_message(
@@ -250,13 +270,6 @@ def require_admin(command_func: Callable[[Message, List[str]], Awaitable[None]])
 
 
 TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = 462824101753520138
-OPSAYO_MEMBER_ID = 115204465589616646
-
-session = Session()
-# There always has to be at least one initial admin to add others!
-player = session.query(Player).filter(Player.id == OPSAYO_MEMBER_ID).first()
-player.is_admin = True
-session.commit()
 
 
 def is_in_game(player_id: int) -> bool:
@@ -353,6 +366,7 @@ async def add(message: Message, args: List[str]):
         )
         return
 
+    queues_added_to = []
     for queue in queues_to_add:
         if is_waitlist and most_recent_game:
             session.add(
@@ -368,10 +382,13 @@ async def add(message: Message, args: List[str]):
                 session.rollback()
         else:
             if message.guild:
-                if await add_player_to_queue(
+                added_to_queue, queue_popped = await add_player_to_queue(
                     queue.id, message.author.id, message.channel, message.guild
-                ):
+                )
+                if queue_popped:
                     return
+                if added_to_queue:
+                    queues_added_to.append(queue)
 
     queue_statuses = []
     for queue in session.query(Queue):
@@ -384,14 +401,14 @@ async def add(message: Message, args: List[str]):
     if is_waitlist and waitlist_message:
         await send_message(
             message.channel,
-            content=f"{message.author.name} added to: {', '.join([queue.name for queue in queues_to_add])}",
+            content=f"{message.author.name} added to: {', '.join([queue.name for queue in queues_added_to])}",
             embed_description=waitlist_message,
             colour=Colour.green(),
         )
     else:
         await send_message(
             message.channel,
-            content=f"{message.author.name} added to: {', '.join([queue.name for queue in queues_to_add])}",
+            content=f"{message.author.name} added to: {', '.join([queue.name for queue in queues_added_to])}",
             embed_description=" ".join(queue_statuses),
             colour=Colour.green(),
         )
@@ -440,6 +457,7 @@ async def add_admin(message: Message, args: List[str]):
             )
 
 
+@require_admin
 async def add_queue_role(message: Message, args: List[str]):
     if len(args) != 2:
         await send_message(
@@ -449,7 +467,36 @@ async def add_queue_role(message: Message, args: List[str]):
         )
         return
 
+    queue_name = args[0]
+    role_name = args[1]
+
     session = Session()
+    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    if not queue:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {queue_name}",
+            colour=Colour.red(),
+        )
+        return
+    if message.guild:
+        role_name_to_role_id: Dict[str, int] = {
+            role.name.lower(): role.id for role in message.guild.roles
+        }
+        if role_name.lower() not in role_name_to_role_id:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find role: {role_name}",
+                colour=Colour.red(),
+            )
+            return
+        session.add(QueueRole(queue.id, role_name_to_role_id[role_name.lower()]))
+        await send_message(
+            message.channel,
+            embed_description=f"Added role {role_name} to queue {queue_name}",
+            colour=Colour.green(),
+        )
+        session.commit()
 
 
 @require_admin
@@ -496,8 +543,8 @@ async def ban(message: Message, args: List[str]):
 
 
 async def coinflip(message: Message, args: List[str]):
-    result = "`HEADS`" if floor(random() * 2) == 0 else "`TAILS`"
-    await send_message(message.channel, result)
+    result = "HEADS" if floor(random() * 2) == 0 else "TAILS"
+    await send_message(message.channel, embed_description=result, colour=Colour.blue())
 
 
 async def cancel_game(message: Message, args: List[str]):
@@ -835,14 +882,34 @@ async def list_admins(message: Message, args: List[str]):
     for player in Session().query(Player).filter(Player.is_admin == True).all():
         output += f"\n- {player.name}"
 
-    await send_message(message.channel, embed_description=output, colour=Colour.green())
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
 async def list_bans(message: Message, args: List[str]):
     output = "Bans:"
     for player in Session().query(Player).filter(Player.is_banned == True):
         output += f"\n- {player.name}"
-    await send_message(message.channel, embed_description=output, colour=Colour.green())
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
+async def list_queue_roles(message: Message, args: List[str]):
+    if not message.guild:
+        return
+
+    output = "Queues:\n"
+    session = Session()
+    queue: Queue
+    for i, queue in enumerate(session.query(Queue).all()):
+        queue_role_names: List[str] = []
+        queue_role: QueueRole
+        for queue_role in (
+            session.query(QueueRole).filter(QueueRole.queue_id == queue.id).all()
+        ):
+            role = message.guild.get_role(queue_role.role_id)
+            if role:
+                queue_role_names.append(role.name)
+        output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
 @require_admin
@@ -960,6 +1027,51 @@ async def remove_queue(message: Message, args: List[str]):
             embed_description=f"Queue not found: {args[0]}",
             colour=Colour.red(),
         )
+
+
+@require_admin
+async def remove_queue_role(message: Message, args: List[str]):
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !removequeuerole <queue_name> <role_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    queue_name = args[0]
+    role_name = args[1]
+
+    session = Session()
+    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    if not queue:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {queue_name}",
+            colour=Colour.red(),
+        )
+        return
+    if message.guild:
+        role_name_to_role_id: Dict[str, int] = {
+            role.name.lower(): role.id for role in message.guild.roles
+        }
+        if role_name.lower() not in role_name_to_role_id:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find role: {role_name}",
+                colour=Colour.red(),
+            )
+            return
+        session.query(QueueRole).filter(
+            QueueRole.queue_id == queue.id,
+            QueueRole.role_id == role_name_to_role_id[role_name.lower()],
+        ).delete()
+        await send_message(
+            message.channel,
+            embed_description=f"Removed role {role_name} from queue {queue_name}",
+            colour=Colour.green(),
+        )
+        session.commit()
 
 
 @require_admin
@@ -1235,7 +1347,7 @@ COMMANDS = {
     "add": add,
     "addadmin": add_admin,
     # "addadminrole": add_admin_role,
-    # "addqueuerole": add_queue_role,
+    "addqueuerole": add_queue_role,
     "ban": ban,
     "cancelgame": cancel_game,
     "coinflip": coinflip,
@@ -1251,13 +1363,14 @@ COMMANDS = {
     # "listadminroles": list_admin_roles,
     "listbans": list_bans,
     # "listcustomcommands": list_custom_commands,
-    # "listqueueroles": list_queue_roles,
+    "listqueueroles": list_queue_roles,
     # "matchhistory": match_history,
     "mockrandomqueue": mock_random_queue,
     "removeadmin": remove_admin,
     # "removeadminrole": remove_admin_role,
-    # "removequeuerole": remove_queue_role,
+    "removequeuerole": remove_queue_role,
     "removequeue": remove_queue,
+    # "roll": roll,
     "setadddelay": set_add_delay,
     "setcommandprefix": set_command_prefix,
     "status": status,
