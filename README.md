@@ -85,7 +85,6 @@ MVP
 - Match history / editing
 - Custom commands !createcommand / !deletecommand
 - add queue by integer (e.g. add 1 2 3)
-- dice rolling
 
 Nice to have
 - CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md

@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from math import floor
-from random import random, shuffle
+from random import randint, random, shuffle
 from threading import Timer
 from typing import Awaitable, Callable
 import itertools
@@ -1222,6 +1222,22 @@ async def remove_queue_role(message: Message, args: list[str]):
         session.commit()
 
 
+async def roll(message: Message, args: list[str]):
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !roll <low_range> <high_range>",
+            colour=Colour.red(),
+        )
+        return
+
+    await send_message(
+        message.channel,
+        embed_description=f"You rolled: {randint(int(args[0]), int(args[1]))}",
+        colour=Colour.blue(),
+    )
+
+
 @require_admin
 async def set_add_delay(message: Message, args: list[str]):
     if len(args) != 1:
@@ -1231,6 +1247,7 @@ async def set_add_delay(message: Message, args: list[str]):
             colour=Colour.red(),
         )
         return
+
     global RE_ADD_DELAY
     RE_ADD_DELAY = int(args[0])
     await send_message(
@@ -1276,7 +1293,9 @@ async def status(message: Message, args: list[str]):
             .all()
         )
         if queue.is_locked:
-            output += f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+            output += (
+                f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+            )
         else:
             output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
@@ -1551,7 +1570,7 @@ COMMANDS = {
     "removeadminrole": remove_admin_role,
     "removequeuerole": remove_queue_role,
     "removequeue": remove_queue,
-    # "roll": roll,
+    "roll": roll,
     "setadddelay": set_add_delay,
     "setcommandprefix": set_command_prefix,
     "status": status,
