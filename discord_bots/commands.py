@@ -1011,7 +1011,7 @@ async def lock_queue(message: Message, args: list[str]):
     await send_message(
         message.channel,
         embed_description=f"Queue {args[0]} locked",
-        colour=Colour.red(),
+        colour=Colour.green(),
     )
 
 
@@ -1516,7 +1516,7 @@ async def unlock_queue(message: Message, args: list[str]):
     await send_message(
         message.channel,
         embed_description=f"Queue {args[0]} unlocked",
-        colour=Colour.blue(),
+        colour=Colour.green(),
     )
 
 

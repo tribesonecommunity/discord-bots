@@ -85,7 +85,6 @@ MVP
 - Match history / editing
 - Custom commands !createcommand / !deletecommand
 - add queue by integer (e.g. add 1 2 3)
-- queue locking / unlocking
 - dice rolling
 
 Nice to have
