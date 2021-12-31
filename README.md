@@ -84,7 +84,7 @@ Feel free to help out!
 MVP
 - Match history / editing
 - Custom commands !createcommand / !deletecommand
-- add queue by integer (e.g. add 1 2 3)
+- Show average ELO in a match
 
 Nice to have
 - CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md

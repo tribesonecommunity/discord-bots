@@ -1,4 +1,6 @@
 import json
+from uuid import uuid4
+
 from trueskill import Rating, rate
 from datetime import datetime
 
@@ -18,6 +20,7 @@ session = Session()
 for i, match in enumerate(data):
     print(i, len(data), i / len(data))
     finished_game = FinishedGame(
+        game_id=str(uuid4()),
         finished_at=datetime.fromtimestamp(match["timestamp"] // 1000),
         queue_name=match["queue"]["name"],
         started_at=datetime.fromtimestamp(match["completionTimestamp"] // 1000),
@@ -77,7 +80,7 @@ for i, match in enumerate(data):
             finished_game_id=finished_game.id,
             player_id=player.id,
             player_name=player.name,
-            team=2,
+            team=1,
             trueskill_mu_before=team2_ratings[i].mu,
             trueskill_sigma_before=team2_ratings[i].sigma,
             trueskill_mu_after=team2_new_ratings[i].mu,

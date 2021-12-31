@@ -666,7 +666,7 @@ async def clear_queue(message: Message, args: list[str]):
         return
 
     session = Session()
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()
+    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
     if not queue:
         await send_message(
             message.channel,
@@ -842,6 +842,7 @@ async def finish_game(message: Message, args: list[str]):
             )
     finished_game = FinishedGame(
         finished_at=datetime.now(timezone.utc),
+        game_id=in_progress_game.id,
         queue_name=queue.name,
         started_at=in_progress_game.created_at,
         win_probability=win_probability(team0_ratings_before, team1_ratings_before),
@@ -1049,7 +1050,7 @@ async def mock_random_queue(message: Message, args: list[str]):
         .order_by(FinishedGame.finished_at.desc())  # type: ignore
         .all()
     )
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()
+    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
     for player in numpy.random.choice(
         players_from_last_30_days, size=int(args[1]), replace=False
     ):
@@ -1062,6 +1063,81 @@ async def mock_random_queue(message: Message, args: list[str]):
     session.commit()
     if int(args[1]) != queue.size:
         await status(message, args)
+
+
+@require_admin
+async def match_history(message: Message, args: list[str]):
+    """
+    Display recent match history
+    """
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !matchhistory <count>",
+            colour=Colour.red(),
+        )
+        return
+    count = int(args[0])
+    if count > 10:
+        await send_message(
+            message.channel,
+            embed_description="Count cannot exceed 10",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    finished_games: list[FinishedGame] = (
+        session.query(FinishedGame).order_by(FinishedGame.finished_at.desc()).limit(count)  # type: ignore
+    )
+
+    output = ""
+    for i, finished_game in enumerate(finished_games):
+        if i > 0:
+            output += "\n"
+        short_game_id = finished_game.game_id.split("-")[0]
+        output += f"**{finished_game.queue_name}** ({short_game_id})"
+        team0_fg_players: list[FinishedGamePlayer] = session.query(
+            FinishedGamePlayer
+        ).filter(
+            FinishedGamePlayer.finished_game_id == finished_game.id,
+            FinishedGamePlayer.team == 0,
+        )
+        team1_fg_players: list[FinishedGamePlayer] = session.query(
+            FinishedGamePlayer
+        ).filter(
+            FinishedGamePlayer.finished_game_id == finished_game.id,
+            FinishedGamePlayer.team == 1,
+        )
+        team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
+        team0_players = session.query(Player).filter(Player.id.in_(team0_player_ids))
+        team1_players = session.query(Player).filter(Player.id.in_(team1_player_ids))
+        team0_names = ", ".join(sorted([player.name for player in team0_players]))
+        team1_names = ", ".join(sorted([player.name for player in team1_players]))
+        team0_win_prob = int(100 * finished_game.win_probability)
+        team1_win_prob = 100 - team0_win_prob
+        if finished_game.winning_team == 0:
+            output += f"\n**Blood Eagle ({team0_win_prob}%): {team0_names}**"
+            output += f"\nDiamond Sword ({team1_win_prob}%): {team1_names}"
+        else:
+            output += f"\nBlood Eagle ({team0_win_prob}%): {team0_names}"
+            output += f"\n**Diamond Sword ({team1_win_prob}%): {team1_names}**"
+        minutes_ago = (
+            datetime.now(timezone.utc)
+            - finished_game.finished_at.replace(tzinfo=timezone.utc)
+        ).seconds // 60
+        if minutes_ago < 60:
+            output += f"\n@ {minutes_ago} minutes ago\n"
+        else:
+            hours_ago = minutes_ago // 60
+            output += f"\n@ {hours_ago} hours ago\n"
+
+    await send_message(
+        message.channel,
+        embed_description=output,
+        colour=Colour.blue(),
+    )
 
 
 @require_admin
@@ -1158,7 +1234,7 @@ async def remove_queue(message: Message, args: list[str]):
 
     session = Session()
 
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()
+    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
     if queue:
         games_in_progress = (
             session.query(InProgressGame)
@@ -1575,7 +1651,7 @@ COMMANDS = {
     # "listcustomcommands": list_custom_commands,
     "listqueueroles": list_queue_roles,
     "lockqueue": lock_queue,
-    # "matchhistory": match_history,
+    "matchhistory": match_history,
     "mockrandomqueue": mock_random_queue,
     "removeadmin": remove_admin,
     "removeadminrole": remove_admin_role,

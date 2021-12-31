@@ -63,6 +63,7 @@ class FinishedGame:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "finished_game"
 
+    game_id: str = field(metadata={"sa": Column(String, index=True, nullable=False)})
     finished_at: datetime = field(
         metadata={"sa": Column(DateTime, index=True, nullable=False)},
     )
