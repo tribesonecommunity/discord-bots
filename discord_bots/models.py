@@ -240,6 +240,11 @@ class Queue:
     is_locked: bool = field(
         default=False, metadata={"sa": Column(Boolean, nullable=False)}
     )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),

@@ -11,6 +11,7 @@ import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.sql.expression import asc
 from trueskill import Rating, global_env, rate
 
 from .models import (
@@ -325,8 +326,7 @@ async def add(message: Message, args: list[str]):
     """
     Players adds self to queue(s). If no args to all existing queues
 
-    TODO:
-    - Queue eligibility
+    Players can also add to a queue by its index. The index starts at 1.
     """
     session = Session()
     if is_in_game(message.author.id):
@@ -362,22 +362,21 @@ async def add(message: Message, args: list[str]):
             is_waitlist = True
 
     queues_to_add: list[Queue] = []
+    all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
     if len(args) == 0:
-        for queue in session.query(Queue):
-            if queue and not queue.is_locked:
-                queues_to_add.append(queue)
+        queues_to_add += all_queues
     else:
-        for queue_name in args:
-            queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                if not queue.is_locked:
+        for arg in args:
+            # Try adding by integer index first, then try string name
+            try:
+                queue_index = int(arg) - 1
+                queues_to_add.append(all_queues[queue_index])
+            except ValueError:
+                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                if queue:
                     queues_to_add.append(queue)
-            else:
-                await send_message(
-                    message.channel,
-                    embed_description=f"Could not find queue: {queue_name}",
-                    colour=Colour.red(),
-                )
+            except IndexError:
+                continue
 
     if len(queues_to_add) == 0:
         await send_message(
@@ -389,6 +388,9 @@ async def add(message: Message, args: list[str]):
 
     queues_added_to = []
     for queue in queues_to_add:
+        if queue.is_locked:
+            continue
+
         if is_waitlist and most_recent_game:
             session.add(
                 QueueWaitlistPlayer(
@@ -413,7 +415,7 @@ async def add(message: Message, args: list[str]):
 
     queue_statuses = []
     queue: Queue
-    for queue in session.query(Queue):
+    for queue in all_queues:
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
@@ -724,23 +726,31 @@ async def del_(message: Message, args: list[str]):
     If no args deletes from existing queues
     """
     session = Session()
-    queues_to_del = []
+    queues_to_del: list[Queue] = []
+    all_queues: list(Queue) = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
     if len(args) == 0:
-        for queue in session.query(Queue):
-            queues_to_del.append(queue)
+        queues_to_del += session.query(Queue).all()
     else:
-        for queue_name in args:
-            queue = session.query(Queue).filter(Queue.name.ilike(queue_name))[0]
-            queues_to_del.append(queue)
+        for arg in args:
+            # Try remove by integer index first, then try string name
+            try:
+                queue_index = int(arg) - 1
+                queues_to_del.append(all_queues[queue_index])
+            except ValueError:
+                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                if queue:
+                    queues_to_del.append(queue)
+            except IndexError:
+                continue
 
     for queue in queues_to_del:
         session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == message.author.id
         ).delete()
-        session.commit()
 
     queue_statuses = []
-    for queue in session.query(Queue):
+    queue: Queue
+    for queue in all_queues:  # type: ignore
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
@@ -752,6 +762,7 @@ async def del_(message: Message, args: list[str]):
         embed_description=" ".join(queue_statuses),
         colour=Colour.green(),
     )
+    session.commit()
 
 
 async def finish_game(message: Message, args: list[str]):
@@ -1277,7 +1288,7 @@ async def set_command_prefix(message: Message, args: list[str]):
 
 async def status(message: Message, args: list[str]):
     session = Session()
-    queues = session.query(Queue).all()
+    queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
     games_by_queue = defaultdict(list)
     for game in session.query(InProgressGame):
         games_by_queue[game.queue_id].append(game)

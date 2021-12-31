@@ -213,6 +213,21 @@ async def test_add_with_queue_named_should_not_add_player_to_unnamed_queue():
 
 
 @pytest.mark.asyncio
+async def test_add_with_queue_index_should_add_player_to_queue():
+    await handle_message(Message(opsayo, "createqueue LTpug 10"))
+
+    await handle_message(Message(opsayo, "add 1"))
+
+    queue = session.query(Queue).filter(Queue.name == "LTpug").first()
+    queue_players = (
+        session.query(QueuePlayer)
+        .filter(QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == queue.id)
+        .all()
+    )
+    assert len(queue_players) == 1
+
+
+@pytest.mark.asyncio
 async def test_del_should_remove_player_from_all_queues():
     await handle_message(Message(opsayo, "createqueue LTpug 10"))
     await handle_message(Message(opsayo, "createqueue LTunrated 10"))
@@ -267,6 +282,22 @@ async def test_del_with_queue_named_should_not_del_add_player_from_unnamed_queue
         .all()
     )
     assert len(lt_unrated_queue_players) == 1
+
+
+@pytest.mark.asyncio
+async def test_del_with_queue_index_should_remove_player_to_queue():
+    await handle_message(Message(opsayo, "createqueue LTpug 10"))
+    await handle_message(Message(opsayo, "add 1"))
+
+    await handle_message(Message(opsayo, "del 1"))
+
+    queue = session.query(Queue).filter(Queue.name == "LTpug").first()
+    queue_players = (
+        session.query(QueuePlayer)
+        .filter(QueuePlayer.player_id == opsayo.id, QueuePlayer.queue_id == queue.id)
+        .all()
+    )
+    assert len(queue_players) == 0
 
 
 @pytest.mark.asyncio

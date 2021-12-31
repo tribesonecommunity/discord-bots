@@ -1,3 +1,7 @@
+"""
+Queues used for handling concurrency (e.g. doing work on the main thread) not a
+"game queue"
+"""
 from dataclasses import dataclass
 from queue import SimpleQueue
 from discord.channel import DMChannel, GroupChannel, TextChannel
