@@ -23,6 +23,7 @@ from discord_bots.models import (
     QueueWaitlistPlayer,
     Session,
 )
+from discord_bots.utils import short_uuid
 from .fixtures import (
     ROLE_LT_GOLD,
     TEST_GUILD,
@@ -738,3 +739,18 @@ async def test_unlock_queue_should_allow_add_to_queue():
 
     queue_players = Session().query(QueuePlayer).all()
     assert len(queue_players) == 1
+
+
+@pytest.mark.asyncio
+async def test_edit_match_should_change_winning_team():
+    await handle_message(Message(opsayo, "createqueue ltpug 2"))
+    await handle_message(Message(opsayo, "add"))
+    await handle_message(Message(lyon, "add"))
+    await handle_message(Message(opsayo, "finishgame win"))
+
+    finished_game = Session().query(FinishedGame).first()
+    short_game_id = short_uuid(finished_game.game_id)
+    await handle_message(Message(opsayo, f"editmatch {short_game_id} -1"))
+
+    finished_game = Session().query(FinishedGame).first()
+    assert finished_game.winning_team == -1

@@ -14,6 +14,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.expression import asc
 from trueskill import Rating, global_env, rate
 
+from discord_bots.utils import short_uuid
+
 from .models import (
     AdminRole,
     FinishedGame,
@@ -173,7 +175,7 @@ async def add_player_to_queue(
             )
             session.add(game_player)
 
-        short_game_id = game.id.split("-")[0]
+        short_game_id = short_uuid(game.id)
         team0_names = sorted(map(lambda x: x.name, team0_players))
         team1_names = sorted(map(lambda x: x.name, team1_players))
         channel_message = f"Game '{queue.name}' ({short_game_id}) has begun!"
@@ -288,6 +290,55 @@ def require_admin(command_func: Callable[[Message, list[str]], Awaitable[None]])
 
     return wrapper
 
+
+def finished_game_str(finished_game: FinishedGame) -> str:
+    """
+    Helper method to pretty print a finished game
+    """
+    output = ""
+    session = Session()
+    short_game_id = short_uuid(finished_game.game_id)
+    output += f"**{finished_game.queue_name}** ({short_game_id})"
+    team0_fg_players: list[FinishedGamePlayer] = session.query(
+        FinishedGamePlayer
+    ).filter(
+        FinishedGamePlayer.finished_game_id == finished_game.id,
+        FinishedGamePlayer.team == 0,
+    )
+    team1_fg_players: list[FinishedGamePlayer] = session.query(
+        FinishedGamePlayer
+    ).filter(
+        FinishedGamePlayer.finished_game_id == finished_game.id,
+        FinishedGamePlayer.team == 1,
+    )
+    team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
+    team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
+    team0_players = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+    team1_players = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+    team0_names = ", ".join(sorted([player.name for player in team0_players]))
+    team1_names = ", ".join(sorted([player.name for player in team1_players]))
+    team0_win_prob = int(100 * finished_game.win_probability)
+    team1_win_prob = 100 - team0_win_prob
+    if finished_game.winning_team == 0:
+        output += f"\n**Blood Eagle ({team0_win_prob}%): {team0_names}**"
+        output += f"\nDiamond Sword ({team1_win_prob}%): {team1_names}"
+    elif finished_game.winning_team == 1:
+        output += f"\nBlood Eagle ({team0_win_prob}%): {team0_names}"
+        output += f"\n**Diamond Sword ({team1_win_prob}%): {team1_names}**"
+    else:
+        output += f"\nBlood Eagle ({team0_win_prob}%): {team0_names}"
+        output += f"\nDiamond Sword ({team1_win_prob}%): {team1_names}"
+    minutes_ago = (
+        datetime.now(timezone.utc)
+        - finished_game.finished_at.replace(tzinfo=timezone.utc)
+    ).seconds // 60
+    if minutes_ago < 60:
+        output += f"\n@ {minutes_ago} minutes ago\n"
+    else:
+        hours_ago = minutes_ago // 60
+        output += f"\n@ {hours_ago} hours ago\n"
+
+    return output
 
 TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = 462824101753520138
 
@@ -765,6 +816,50 @@ async def del_(message: Message, args: list[str]):
     session.commit()
 
 
+@require_admin
+async def edit_match(message: Message, args: list[str]):
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !editmatch <game_id> <-1 (draw)| 0 (BE win) | 1 (DS win)>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    game: FinishedGame | None = (
+        session.query(FinishedGame)
+        .filter(FinishedGame.game_id.startswith(args[0]))
+        .first()
+    )
+    if not game:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find game: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+    outcome = int(args[1])
+    if outcome != -1 and outcome != 0 and outcome != 1:
+        await send_message(
+            message.channel,
+            embed_description="Outcome must be -1 (draw), 0 (BE win), or 1 (DS win)",
+            colour=Colour.red(),
+        )
+        return
+
+    game.winning_team = outcome
+    session.add(game)
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Match {args[0]} outcome changed:\n\n" + finished_game_str(game),
+        colour=Colour.green(),
+    )
+
+    # TODO: Show the match
+
+
 async def finish_game(message: Message, args: list[str]):
     if len(args) == 0:
         await send_message(
@@ -1095,43 +1190,7 @@ async def match_history(message: Message, args: list[str]):
     for i, finished_game in enumerate(finished_games):
         if i > 0:
             output += "\n"
-        short_game_id = finished_game.game_id.split("-")[0]
-        output += f"**{finished_game.queue_name}** ({short_game_id})"
-        team0_fg_players: list[FinishedGamePlayer] = session.query(
-            FinishedGamePlayer
-        ).filter(
-            FinishedGamePlayer.finished_game_id == finished_game.id,
-            FinishedGamePlayer.team == 0,
-        )
-        team1_fg_players: list[FinishedGamePlayer] = session.query(
-            FinishedGamePlayer
-        ).filter(
-            FinishedGamePlayer.finished_game_id == finished_game.id,
-            FinishedGamePlayer.team == 1,
-        )
-        team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
-        team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
-        team0_players = session.query(Player).filter(Player.id.in_(team0_player_ids))
-        team1_players = session.query(Player).filter(Player.id.in_(team1_player_ids))
-        team0_names = ", ".join(sorted([player.name for player in team0_players]))
-        team1_names = ", ".join(sorted([player.name for player in team1_players]))
-        team0_win_prob = int(100 * finished_game.win_probability)
-        team1_win_prob = 100 - team0_win_prob
-        if finished_game.winning_team == 0:
-            output += f"\n**Blood Eagle ({team0_win_prob}%): {team0_names}**"
-            output += f"\nDiamond Sword ({team1_win_prob}%): {team1_names}"
-        else:
-            output += f"\nBlood Eagle ({team0_win_prob}%): {team0_names}"
-            output += f"\n**Diamond Sword ({team1_win_prob}%): {team1_names}**"
-        minutes_ago = (
-            datetime.now(timezone.utc)
-            - finished_game.finished_at.replace(tzinfo=timezone.utc)
-        ).seconds // 60
-        if minutes_ago < 60:
-            output += f"\n@ {minutes_ago} minutes ago\n"
-        else:
-            hours_ago = minutes_ago // 60
-            output += f"\n@ {hours_ago} hours ago\n"
+        output += finished_game_str(finished_game)
 
     await send_message(
         message.channel,
@@ -1353,12 +1412,43 @@ async def set_command_prefix(message: Message, args: list[str]):
             colour=Colour.red(),
         )
         return
+
     global COMMAND_PREFIX
     COMMAND_PREFIX = args[0]
     await send_message(
         message.channel,
         embed_description=f"Command prefix set to {COMMAND_PREFIX}",
         colour=Colour.green(),
+    )
+
+
+async def show_match(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !showmatch <match_id>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    finished_game = (
+        session.query(FinishedGame)
+        .filter(FinishedGame.game_id.startswith(args[0]))
+        .first()
+    )
+    if not finished_game:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find game: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+
+    await send_message(
+        message.channel,
+        embed_description=finished_game_str(finished_game),
+        colour=Colour.blue(),
     )
 
 
@@ -1413,7 +1503,7 @@ async def status(message: Message, args: list[str]):
                     .all()
                 )
 
-                short_game_id = game.id.split("-")[0]
+                short_game_id = short_uuid(game.id)
                 team0_names = ", ".join(
                     sorted([player.name for player in team0_players])
                 )
@@ -1553,7 +1643,7 @@ async def sub(message: Message, args: list[str]):
         )
         session.add(game_player)
 
-    short_game_id = game.id.split("-")[0]
+    short_game_id = short_uuid(game.id)
     team0_names = list(map(lambda x: x.name, team0_players))
     team1_names = list(map(lambda x: x.name, team1_players))
     channel_message = f"New teams ({short_game_id}):"
@@ -1642,7 +1732,7 @@ COMMANDS = {
     "createqueue": create_queue,
     "clearqueue": clear_queue,
     "del": del_,
-    # "editmatch": edit_match,
+    "editmatch": edit_match,
     # "deletecustomcommand": delete_custom_command,
     "finishgame": finish_game,
     "listadmins": list_admins,
@@ -1660,6 +1750,7 @@ COMMANDS = {
     "roll": roll,
     "setadddelay": set_add_delay,
     "setcommandprefix": set_command_prefix,
+    "showmatch": show_match,
     "status": status,
     "sub": sub,
     "unban": unban,

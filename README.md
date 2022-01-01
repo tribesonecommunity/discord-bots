@@ -85,6 +85,7 @@ MVP
 - Match history / editing
 - Custom commands !createcommand / !deletecommand
 - Show average ELO in a match
+- Remove threads / queues - and only use tasks
 
 Nice to have
 - CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md
