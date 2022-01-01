@@ -32,6 +32,9 @@ The steps are the same except you have to install Python another way
 
 ## Installation
 Installation steps are the same but use `pip install -e .`.  This allows local changes to be picked up without needing to reinstall the package every time.
+
+## Pre-commit hook
+This project uses `darker` for formatting in a pre-commit hook. Install using `pre-commit install`
 ## Editor
 Recommend using vscode. If you do, install these vscode plugins:
 - Python
@@ -85,7 +88,6 @@ Feel free to help out!
 
 MVP
 - Show average ELO in a match
-- Delete voice channels after re-add delay
 
 Nice to have
 - CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md
