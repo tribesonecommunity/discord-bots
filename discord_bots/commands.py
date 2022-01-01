@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from math import floor
-from random import randint, random, shuffle
+from random import choice, randint, random, shuffle
 from statistics import mean
 from typing import Awaitable, Callable
 
@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
 from discord_bots.utils import short_uuid, win_probability
+from names import B, D, E, S, generate_be_name, generate_ds_name
 
 from .models import (
     AdminRole,
@@ -32,6 +33,7 @@ from .models import (
 
 AFK_TIME_MINUTES: int = 45
 COMMAND_PREFIX: str = "$"
+TEAM_NAMES: bool = True
 
 # TODO: Bump to 45 once its live
 RE_ADD_DELAY: int = 15
@@ -139,6 +141,8 @@ async def add_player_to_queue(
         game = InProgressGame(
             average_trueskill=mean(list(map(lambda x: x.trueskill_mu, players))),
             queue_id=queue.id,
+            team0_name=generate_be_name() if TEAM_NAMES else "Blood Eagle",
+            team1_name=generate_ds_name() if TEAM_NAMES else "Diamond Sword",
             win_probability=win_prob,
         )
         session.add(game)
@@ -166,7 +170,7 @@ async def add_player_to_queue(
         team0_names = sorted(map(lambda x: x.name, team0_players))
         team1_names = sorted(map(lambda x: x.name, team1_players))
         channel_message = f"Game '{queue.name}' ({short_game_id}) (TS: {round(game.average_trueskill, 2)}) has begun!"
-        channel_embed = f"**Blood Eagle** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**Diamond Sword** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
+        channel_embed = f"**{game.team0_name}** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**{game.team1_name}** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
 
         await send_message(
             channel,
@@ -179,11 +183,11 @@ async def add_player_to_queue(
         tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
 
         be_channel = await guild.create_voice_channel(
-            f"Blood Eagle ({short_game_id})",
+            f"{game.team0_name}",
             category=tribes_voice_category,
         )
         ds_channel = await guild.create_voice_channel(
-            f"Diamond Sword ({short_game_id})",
+            f"{game.team1_name}",
             category=tribes_voice_category,
         )
         session.add(
@@ -293,14 +297,14 @@ def finished_game_str(finished_game: FinishedGame) -> str:
     team0_win_prob = int(100 * finished_game.win_probability)
     team1_win_prob = 100 - team0_win_prob
     if finished_game.winning_team == 0:
-        output += f"\n**Blood Eagle ({team0_win_prob}%): {team0_names}**"
-        output += f"\nDiamond Sword ({team1_win_prob}%): {team1_names}"
+        output += f"\n**{finished_game.team0_name} ({team0_win_prob}%): {team0_names}**"
+        output += f"\n{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
     elif finished_game.winning_team == 1:
-        output += f"\nBlood Eagle ({team0_win_prob}%): {team0_names}"
-        output += f"\n**Diamond Sword ({team1_win_prob}%): {team1_names}**"
+        output += f"\n{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
+        output += f"\n**{finished_game.team1_name} ({team1_win_prob}%): {team1_names}**"
     else:
-        output += f"\nBlood Eagle ({team0_win_prob}%): {team0_names}"
-        output += f"\nDiamond Sword ({team1_win_prob}%): {team1_names}"
+        output += f"\n{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
+        output += f"\n{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
     minutes_ago = (
         datetime.now(timezone.utc)
         - finished_game.finished_at.replace(tzinfo=timezone.utc)
@@ -823,6 +827,17 @@ async def del_(message: Message, args: list[str]):
 
 
 @require_admin
+async def disable_team_names(message: Message, args: list[str]):
+    global TEAM_NAMES
+    TEAM_NAMES = False
+    await send_message(
+        message.channel,
+        embed_description="Team names disabled",
+        colour=Colour.blue(),
+    )
+
+
+@require_admin
 async def edit_match_winner(message: Message, args: list[str]):
     if len(args) != 2:
         await send_message(
@@ -869,7 +884,16 @@ async def edit_match_winner(message: Message, args: list[str]):
         colour=Colour.green(),
     )
 
-    # TODO: Show the match
+
+@require_admin
+async def enable_team_names(message: Message, args: list[str]):
+    global TEAM_NAMES
+    TEAM_NAMES = True
+    await send_message(
+        message.channel,
+        embed_description="Team names enabled",
+        colour=Colour.blue(),
+    )
 
 
 async def finish_game(message: Message, args: list[str]):
@@ -953,6 +977,8 @@ async def finish_game(message: Message, args: list[str]):
         game_id=in_progress_game.id,
         queue_name=queue.name,
         started_at=in_progress_game.created_at,
+        team0_name=in_progress_game.team0_name,
+        team1_name=in_progress_game.team1_name,
         win_probability=win_probability(team0_ratings_before, team1_ratings_before),
         winning_team=winning_team,
     )
@@ -1012,9 +1038,9 @@ async def finish_game(message: Message, args: list[str]):
 
     embed_description = ""
     if winning_team == 0:
-        embed_description = "**Winner:** Blood Eagle"
+        embed_description = f"**Winner:** {in_progress_game.team0_name}"
     elif winning_team == 1:
-        embed_description = "**Winner:** Diamond Sword"
+        embed_description = f"**Winner:** {in_progress_game.team1_name}"
     else:
         embed_description = "**Tie game**"
 
@@ -1203,6 +1229,20 @@ async def match_history(message: Message, args: list[str]):
         if i > 0:
             output += "\n"
         output += finished_game_str(finished_game)
+
+    await send_message(
+        message.channel,
+        embed_description=output,
+        colour=Colour.blue(),
+    )
+
+
+async def random_names(message: Message, args: list[str]):
+    count = int(args[0])
+
+    output = ""
+    for _ in range(count):
+        output += f"{generate_be_name()} vs {generate_ds_name()}\n"
 
     await send_message(
         message.channel,
@@ -1556,10 +1596,10 @@ async def status(message: Message, args: list[str]):
                 if i > 0:
                     output += "\n"
                 output += f"**IN GAME** ({short_game_id}) (TS: {round(game.average_trueskill, 2)}):\n"
-                output += f"**Blood Eagle** ({int(100 * win_prob)}%): {team0_names}\n"
                 output += (
-                    f"**Diamond Sword** ({int(100 * (1 - win_prob))}%): {team1_names}\n"
+                    f"**{game.team0_name}** ({int(100 * win_prob)}%): {team0_names}\n"
                 )
+                output += f"**{game.team1_name}** ({int(100 * (1 - win_prob))}%): {team1_names}\n"
                 minutes_ago = (
                     datetime.now(timezone.utc)
                     - game.created_at.replace(tzinfo=timezone.utc)
@@ -1689,7 +1729,7 @@ async def sub(message: Message, args: list[str]):
     team0_names = list(map(lambda x: x.name, team0_players))
     team1_names = list(map(lambda x: x.name, team1_players))
     channel_message = f"New teams ({short_game_id}):"
-    channel_embed = f"**Blood Eagle** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**Diamond Sword** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
+    channel_embed = f"**{game.team0_name}** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**{game.team1_name}** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
 
     await send_message(
         message.channel,
@@ -1774,7 +1814,9 @@ COMMANDS = {
     "createqueue": create_queue,
     "clearqueue": clear_queue,
     "del": del_,
+    "disableteamnames": disable_team_names,
     "editmatchwinner": edit_match_winner,
+    "enableteamnames": enable_team_names,
     "finishgame": finish_game,
     "listadmins": list_admins,
     "listadminroles": list_admin_roles,
@@ -1784,6 +1826,7 @@ COMMANDS = {
     "lockqueue": lock_queue,
     "matchhistory": match_history,
     "mockrandomqueue": mock_random_queue,
+    "randomnames": random_names,
     "removeadmin": remove_admin,
     "removeadminrole": remove_admin_role,
     "removecommand": remove_command,

@@ -23,8 +23,7 @@ from sqlalchemy.sql.schema import ForeignKey, MetaData
 # TODO: Create db backups on start or periodically
 # It may be tempting, but do not set check_same_thread=False here. Sqlite
 # doesn't handle concurrency well and writing to the db on different threads
-# could cause file corruption. Use a queue / tasks to ensure that writes happen
-# on the main thread.
+# could cause file corruption. Use tasks to ensure that writes happen on the main thread.
 db_url = (
     "sqlite:///tribes.test.db" if "pytest" in sys.modules else "sqlite:///tribes.db"
 )
@@ -108,6 +107,14 @@ class FinishedGame:
     winning_team: int = field(
         metadata={"sa": Column(Integer, index=True, nullable=False)},
     )
+    team0_name: str = field(
+        default="Blood Eagle",
+        metadata={"sa": Column(String, nullable=False, server_default="Blood Eagle")},
+    )
+    team1_name: str = field(
+        default="Diamond Sword",
+        metadata={"sa": Column(String, nullable=False, server_default="Diamond Sword")},
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -161,6 +168,14 @@ class InProgressGame:
         metadata={"sa": Column(String, ForeignKey("queue.id"), index=True)},
     )
     win_probability: float = field(metadata={"sa": Column(Float, nullable=False)})
+    team0_name: str = field(
+        default="Blood Eagle",
+        metadata={"sa": Column(String, nullable=False, server_default="Blood Eagle")},
+    )
+    team1_name: str = field(
+        default="Diamond Sword",
+        metadata={"sa": Column(String, nullable=False, server_default="Diamond Sword")},
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,

@@ -1,10 +1,8 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-
 from discord_bots.models import Base, Player
 
 # this is the Alembic Config object, which provides
@@ -64,7 +62,9 @@ def run_migrations_online():
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, render_as_batch=True, target_metadata=target_metadata
+            connection=connection,
+            render_as_batch=True,
+            target_metadata=target_metadata,
         )
 
         with context.begin_transaction():
