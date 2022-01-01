@@ -20,11 +20,16 @@ queue_waitlist_task.start()
 
 
 BULLIEST_BOT_ID = 912605788781035541
+LYON_ID = 193359832340889600
 OPSAYO_MEMBER_ID = 115204465589616646
 
 session = Session()
 # There always has to be at least one initial admin to add others!
 player = session.query(Player).filter(Player.id == OPSAYO_MEMBER_ID).first()
+if player:
+    player.is_admin = True
+    session.commit()
+player = session.query(Player).filter(Player.id == LYON_ID).first()
 if player:
     player.is_admin = True
     session.commit()
