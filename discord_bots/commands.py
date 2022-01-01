@@ -165,7 +165,7 @@ async def add_player_to_queue(
         short_game_id = short_uuid(game.id)
         team0_names = sorted(map(lambda x: x.name, team0_players))
         team1_names = sorted(map(lambda x: x.name, team1_players))
-        channel_message = f"Game '{queue.name}' ({short_game_id}) has begun!"
+        channel_message = f"Game '{queue.name}' ({short_game_id}) (TS: {round(game.average_trueskill, 2)}) has begun!"
         channel_embed = f"**Blood Eagle** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**Diamond Sword** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
 
         await send_message(
@@ -1036,7 +1036,7 @@ async def finish_game(message: Message, args: list[str]):
     short_in_progress_game_id = in_progress_game.id.split("-")[0]
     await send_message(
         message.channel,
-        content=f"Game '{queue.name}' ({short_in_progress_game_id}) finished",
+        content=f"Game '{queue.name}' ({short_in_progress_game_id}) (TS: {round(finished_game.average_trueskill, 2)}) finished",
         embed_description=embed_description,
         colour=Colour.green(),
     )
