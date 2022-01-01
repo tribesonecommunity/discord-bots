@@ -8,7 +8,6 @@ import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.sql.sqltypes import REAL
 from trueskill import Rating, rate
 
 from discord_bots.utils import short_uuid, win_probability
@@ -324,16 +323,16 @@ def get_player_game(player_id: int, session=Session()) -> InProgressGame | None:
     :session: Pass in a session if you want to do something with the game that
     gets returned
     """
-    game_players = (
+    ipg_player = (
         session.query(InProgressGamePlayer)
         .join(InProgressGame)
         .filter(InProgressGamePlayer.player_id == player_id)
-        .all()
+        .first()
     )
-    if len(game_players) > 0:
+    if ipg_player:
         return (
             session.query(InProgressGame)
-            .filter(InProgressGame.id == InProgressGamePlayer.in_progress_game_id)
+            .filter(InProgressGame.id == ipg_player.in_progress_game_id)
             .first()
         )
     else:

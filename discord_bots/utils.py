@@ -2,7 +2,6 @@
 import itertools
 import math
 
-
 from trueskill import Rating, global_env
 
 
@@ -21,4 +20,5 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     size = len(team0) + len(team1)
     denom = math.sqrt(size * (BETA * BETA) + sum_sigma)
     trueskill = global_env()
+
     return round(trueskill.cdf(delta_mu / denom), 2)
