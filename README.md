@@ -83,7 +83,7 @@ Feel free to help out!
 
 MVP
 - Show average ELO in a match
-- Remove threads / queues - and only use tasks
+- Delete voice channels after re-add delay
 
 Nice to have
 - CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md

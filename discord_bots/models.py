@@ -18,7 +18,7 @@ import trueskill
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
-from sqlalchemy.sql.schema import ForeignKey
+from sqlalchemy.sql.schema import ForeignKey, MetaData
 
 # TODO: Create db backups on start or periodically
 # It may be tempting, but do not set check_same_thread=False here. Sqlite
@@ -29,7 +29,14 @@ db_url = (
     "sqlite:///tribes.test.db" if "pytest" in sys.modules else "sqlite:///tribes.db"
 )
 engine = create_engine(db_url, echo=False)
-mapper_registry = registry()
+naming_convention = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+mapper_registry = registry(metadata=MetaData(naming_convention=naming_convention))
 Base = mapper_registry.generate_base()
 
 
@@ -334,6 +341,36 @@ class QueueRole:
 
 @mapper_registry.mapped
 @dataclass
+class QueueWaitlist:
+    """
+    A waitlist to buffer players after they finish game. Players are randomly
+    added from this waitlist into queues.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "queue_waitlist"
+    __table_args__ = (UniqueConstraint("finished_game_id", "queue_id"),)
+
+    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    finished_game_id: str = field(
+        metadata={"sa": Column(String, ForeignKey("finished_game.id"), nullable=False)},
+    )
+    guild_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    queue_id: str = field(
+        metadata={"sa": Column(String, ForeignKey("queue.id"), nullable=False)},
+    )
+    end_waitlist_at: datetime = field(
+        metadata={"sa": Column(DateTime, index=True, nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class QueueWaitlistPlayer:
     """
     Player in a waitlist to be automatically added to a queue.
@@ -344,17 +381,14 @@ class QueueWaitlistPlayer:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue_waitlist_player"
-    __table_args__ = (UniqueConstraint("finished_game_id", "queue_id", "player_id"),)
+    __table_args__ = (UniqueConstraint("queue_waitlist_id", "player_id"),)
 
-    finished_game_id: str = field(
+    queue_waitlist_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("finished_game.id"), nullable=False, index=True
+                String, ForeignKey("queue_waitlist.id"), nullable=False, index=True
             )
         },
-    )
-    queue_id: str = field(
-        metadata={"sa": Column(String, ForeignKey("queue.id"), nullable=False)},
     )
     player_id: int = field(
         metadata={"sa": Column(Integer, ForeignKey("player.id"), nullable=False)},

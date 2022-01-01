@@ -71,6 +71,7 @@ class Guild:
     """
 
     _members: list[Member] = field(default_factory=list)
+    id: int = field(default_factory=lambda: floor(random() * 2 ** 32))
     categories: list[Category] = field(default_factory=lambda: [TRIBES_VOICE_CATEGORY])
     channels: dict[int, Channel] = field(default_factory=dict)
     roles: list[Role] = field(

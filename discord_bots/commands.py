@@ -2,13 +2,13 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from math import floor
 from random import randint, random, shuffle
-from threading import Timer
 from typing import Awaitable, Callable
 import numpy
 
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.sql.sqltypes import REAL
 from trueskill import Rating, rate
 
 from discord_bots.utils import short_uuid, win_probability
@@ -25,6 +25,7 @@ from .models import (
     Queue,
     QueuePlayer,
     QueueRole,
+    QueueWaitlist,
     QueueWaitlistPlayer,
     Session,
 )
@@ -35,7 +36,9 @@ from .queues import (
 
 AFK_TIME_MINUTES: int = 45
 COMMAND_PREFIX: str = "$"
-RE_ADD_DELAY: int = 5
+
+# TODO: Bump to 45 once its live
+RE_ADD_DELAY: int = 15
 
 
 def get_even_teams(player_ids: list[int]) -> tuple[list[Player], float]:
@@ -428,17 +431,22 @@ async def add(message: Message, args: list[str]):
             continue
 
         if is_waitlist and most_recent_game:
-            session.add(
-                QueueWaitlistPlayer(
-                    finished_game_id=most_recent_game.id,
-                    queue_id=queue.id,
-                    player_id=message.author.id,
-                )
+            queue_waitlist = (
+                session.query(QueueWaitlist)
+                .filter(QueueWaitlist.finished_game_id == most_recent_game.id)
+                .first()
             )
-            try:
-                session.commit()
-            except IntegrityError:
-                session.rollback()
+            if queue_waitlist:
+                session.add(
+                    QueueWaitlistPlayer(
+                        queue_waitlist_id=queue_waitlist.id,
+                        player_id=message.author.id,
+                    )
+                )
+                try:
+                    session.commit()
+                except IntegrityError:
+                    session.rollback()
         else:
             if message.guild:
                 added_to_queue, queue_popped = await add_player_to_queue(
@@ -1037,13 +1045,17 @@ async def finish_game(message: Message, args: list[str]):
     else:
         embed_description = "**Tie game**"
 
-    # Use a timer to delay processing the waitlist
-    timer = Timer(
-        RE_ADD_DELAY,
-        add_queue_waitlist_message,
-        [message.channel, message.guild, finished_game.id],
-    )
-    timer.start()
+    if message.guild:
+        session.add(
+            QueueWaitlist(
+                channel_id=message.channel.id,
+                finished_game_id=finished_game.id,
+                guild_id=message.guild.id,
+                queue_id=queue.id,
+                end_waitlist_at=datetime.now(timezone.utc)
+                + timedelta(seconds=RE_ADD_DELAY),
+            )
+        )
 
     session.commit()
     await send_message(
@@ -1452,7 +1464,7 @@ async def set_add_delay(message: Message, args: list[str]):
     RE_ADD_DELAY = int(args[0])
     await send_message(
         message.channel,
-        embed_description=f"Timer to re-add to games set to {RE_ADD_DELAY}",
+        embed_description=f"Delay between games set to {RE_ADD_DELAY}",
         colour=Colour.green(),
     )
 

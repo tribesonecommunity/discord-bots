@@ -15,6 +15,7 @@ from .commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_me
 from .models import (
     Player,
     QueuePlayer,
+    QueueWaitlist,
     QueueWaitlistPlayer,
     Session,
 )
@@ -65,15 +66,19 @@ async def queue_waitlist_task():
 
     This exists as a task so that it happens on the main thread. Sqlite doesn't
     like to do writes on a second thread.
+
+    TODO: Tests for this method
     """
     session = Session()
-    while not QUEUE_WAITLIST.empty():
-        message: QueueWaitlistQueueMessage = QUEUE_WAITLIST.get()
-
+    queue_waitlist: QueueWaitlist
+    for queue_waitlist in session.query(QueueWaitlist).filter(
+        QueueWaitlist.end_waitlist_at < datetime.now(timezone.utc)
+    ):
+        pass
         queue_waitlist_players: list[QueueWaitlistPlayer]
         queue_waitlist_players = (
             session.query(QueueWaitlistPlayer)
-            .filter(QueueWaitlistPlayer.finished_game_id == message.finished_game_id)
+            .filter(QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id)
             .all()
         )
         shuffle(queue_waitlist_players)
@@ -83,14 +88,18 @@ async def queue_waitlist_task():
                 session.delete(queue_waitlist_player)
                 continue
 
-            await add_player_to_queue(
-                queue_waitlist_player.queue_id,
-                queue_waitlist_player.player_id,
-                message.channel,
-                message.guild,
-            )
+            channel = bot.get_channel(queue_waitlist.channel_id)
+            guild = bot.get_guild(queue_waitlist.guild_id)
+            if channel and guild and isinstance(channel, TextChannel):
+                await add_player_to_queue(
+                    queue_waitlist.queue_id,
+                    queue_waitlist_player.player_id,
+                    channel,
+                    guild,
+                )
 
         session.query(QueueWaitlistPlayer).filter(
-            QueueWaitlistPlayer.finished_game_id == message.finished_game_id
+            QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
         ).delete()
+        session.delete(queue_waitlist)
         session.commit()

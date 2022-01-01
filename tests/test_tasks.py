@@ -5,23 +5,19 @@ from pytest import fixture
 import pytest
 
 from discord_bots.models import (
-    InProgressGame,
-    InProgressGamePlayer,
     Player,
     Queue,
     QueuePlayer,
-    QueueWaitlistPlayer,
     Session,
 )
 from discord_bots.tasks import afk_timer_task
 
-from .fixtures import TEST_CHANNEL, TEST_GUILD, izza, lyon, opsayo, setup_tests, stork
+from .fixtures import TEST_CHANNEL, opsayo, setup_tests
 
 
 def Bot():
     """Return a mock discord client"""
     return Mock(get_channel=lambda x: TEST_CHANNEL)
-
 
 session = Session()
 
