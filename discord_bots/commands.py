@@ -29,10 +29,6 @@ from .models import (
     QueueWaitlistPlayer,
     Session,
 )
-from .queues import (
-    QUEUE_WAITLIST,
-    QueueWaitlistQueueMessage,
-)
 
 AFK_TIME_MINUTES: int = 45
 COMMAND_PREFIX: str = "$"
@@ -197,20 +193,6 @@ async def add_player_to_queue(
         session.commit()
         return True, True
     return True, False
-
-
-def add_queue_waitlist_message(
-    channel: TextChannel | DMChannel | GroupChannel,
-    guild: Guild,
-    finished_game_id: str,
-) -> None:
-    """
-    Put a message onto a queue to handle the game queue waitlist.
-
-    We use a queue here so that it happens on the main thread. Sqlite doesn't
-    handle concurrency well and by default blocks actions from separate threads.
-    """
-    QUEUE_WAITLIST.put(QueueWaitlistQueueMessage(channel, guild, finished_game_id))
 
 
 async def send_message(

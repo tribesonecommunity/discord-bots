@@ -19,13 +19,9 @@ from .models import (
     QueueWaitlistPlayer,
     Session,
 )
-from .queues import (
-    QUEUE_WAITLIST,
-    QueueWaitlistQueueMessage,
-)
 
 
-@tasks.loop(seconds=60)
+
 async def afk_timer_task():
     session = Session()
     timeout: datetime = datetime.now(timezone.utc) - timedelta(minutes=AFK_TIME_MINUTES)
