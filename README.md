@@ -86,9 +86,6 @@ See here for detailed instructions on how to use Alembic: https://alembic.sqlalc
 
 Feel free to help out!
 
-MVP
-- Show average ELO in a match
-
 Nice to have
 - CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md
 - CI for Tests
