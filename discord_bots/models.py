@@ -58,6 +58,29 @@ class AdminRole:
 
 @mapper_registry.mapped
 @dataclass
+class CustomCommand:
+    """
+    A way for users to add custom text commands to the bot
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "custom_command"
+
+    name: str = field(
+        metadata={"sa": Column(String, index=True, nullable=False, unique=True)},
+    )
+    output: str = field(
+        metadata={"sa": Column(String, nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class FinishedGame:
 
     __sa_dataclass_metadata_key__ = "sa"

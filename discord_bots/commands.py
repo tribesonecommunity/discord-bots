@@ -15,6 +15,7 @@ from discord_bots.utils import short_uuid, win_probability
 
 from .models import (
     AdminRole,
+    CustomCommand,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -322,6 +323,7 @@ def finished_game_str(finished_game: FinishedGame) -> str:
         output += f"\n@ {hours_ago} hours ago\n"
 
     return output
+
 
 TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = 462824101753520138
 
@@ -689,6 +691,37 @@ async def commands(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
+async def create_command(message: Message, args: list[str]):
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !createcommand <name> <output>",
+            colour=Colour.red(),
+        )
+        return
+    name = args[0]
+    output = args[1]
+
+    session = Session()
+    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
+    if exists is not None:
+        await send_message(
+            message.channel,
+            embed_description="A command with that name already exists",
+            colour=Colour.red(),
+        )
+        return
+
+    session.add(CustomCommand(name, output))
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Command `{name}` added",
+        colour=Colour.green(),
+    )
+
+
 @require_admin
 async def clear_queue(message: Message, args: list[str]):
     if len(args) != 1:
@@ -836,7 +869,8 @@ async def edit_match(message: Message, args: list[str]):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"Match {args[0]} outcome changed:\n\n" + finished_game_str(game),
+        embed_description=f"Match {args[0]} outcome changed:\n\n"
+        + finished_game_str(game),
         colour=Colour.green(),
     )
 
@@ -1056,6 +1090,13 @@ async def list_bans(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
+async def list_commands(message: Message, args: list[str]):
+    output = "Commands:"
+    for command in Session().query(CustomCommand):
+        output += f"\n- {command.name}"
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
 async def list_queue_roles(message: Message, args: list[str]):
     if not message.guild:
         return
@@ -1262,6 +1303,36 @@ async def remove_admin_role(message: Message, args: list[str]):
                 colour=Colour.red(),
             )
             return
+
+
+async def remove_command(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !removecommand <name>",
+            colour=Colour.red(),
+        )
+        return
+
+    name = args[0]
+    session = Session()
+    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
+    if not exists:
+        await send_message(
+            message.channel,
+            embed_description="Could not find command with that name",
+            colour=Colour.red(),
+        )
+        return
+
+    session.delete(exists)
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Command `{name}` removed",
+        colour=Colour.green(),
+    )
 
 
 @require_admin
@@ -1711,23 +1782,23 @@ COMMANDS = {
     "cancelgame": cancel_game,
     "coinflip": coinflip,
     "commands": commands,
-    # "createcustomcommand": create_custom_command,
+    "createcommand": create_command,
     "createqueue": create_queue,
     "clearqueue": clear_queue,
     "del": del_,
     "editmatch": edit_match,
-    # "deletecustomcommand": delete_custom_command,
     "finishgame": finish_game,
     "listadmins": list_admins,
     "listadminroles": list_admin_roles,
     "listbans": list_bans,
-    # "listcustomcommands": list_custom_commands,
+    "listcommands": list_commands,
     "listqueueroles": list_queue_roles,
     "lockqueue": lock_queue,
     "matchhistory": match_history,
     "mockrandomqueue": mock_random_queue,
     "removeadmin": remove_admin,
     "removeadminrole": remove_admin_role,
+    "removecommand": remove_command,
     "removequeuerole": remove_queue_role,
     "removequeue": remove_queue,
     "roll": roll,
@@ -1748,13 +1819,7 @@ async def handle_message(message: Message):
     if not command.startswith(COMMAND_PREFIX):
         return
 
-    command = command[1:]
-    if command not in COMMANDS:
-        print("[handle_message] exiting - command not found:", command)
-        return
-
     session = Session()
-
     player = session.query(Player).filter(Player.id == message.author.id).first()
     if not player:
         # Create player for the first time
@@ -1773,6 +1838,22 @@ async def handle_message(message: Message):
             player.last_activity_at = datetime.now(timezone.utc)
 
     session.commit()
+
+    command = command[1:]
+    if command not in COMMANDS:
+        custom_command: CustomCommand | None = (
+            session.query(CustomCommand).filter(CustomCommand.name == command).first()
+        )
+        if custom_command:
+            await send_message(
+                message.channel, content=custom_command.output, embed_content=False
+            )
+            return
+
+        print("[handle_message] exiting - command not found:", command)
+        return
+
     print("[handle_message] executing command:", command)
 
-    await COMMANDS[command](message, message.content.split(" ")[1:])
+    args = message.content.split(" ")
+    await COMMANDS[command](message, args[1:])

@@ -12,6 +12,7 @@ from discord_bots.commands import (
 )
 from discord_bots.models import (
     AdminRole,
+    CustomCommand,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -754,3 +755,19 @@ async def test_edit_match_should_change_winning_team():
 
     finished_game = Session().query(FinishedGame).first()
     assert finished_game.winning_team == -1
+
+
+@pytest.mark.asyncio
+async def test_create_command_should_create_command():
+    await handle_message(Message(opsayo, "createcommand hello world"))
+
+    command = Session().query(CustomCommand).first()
+    assert command is not None
+
+
+@pytest.mark.asyncio
+async def test_remove_command_should_remove_command():
+    await handle_message(Message(opsayo, "removecommand hello"))
+
+    command = Session().query(CustomCommand).first()
+    assert command is None

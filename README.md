@@ -82,8 +82,6 @@ See here for detailed instructions on how to use Alembic: https://alembic.sqlalc
 Feel free to help out!
 
 MVP
-- Match history / editing
-- Custom commands !createcommand / !deletecommand
 - Show average ELO in a match
 - Remove threads / queues - and only use tasks
 
