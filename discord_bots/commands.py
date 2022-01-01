@@ -3,9 +3,9 @@ from datetime import datetime, timedelta, timezone
 from math import floor
 from random import randint, random, shuffle
 from typing import Awaitable, Callable
-import numpy
 
-from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
+import numpy
+from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.sqltypes import REAL
@@ -1025,8 +1025,8 @@ async def finish_game(message: Message, args: list[str]):
                 + timedelta(seconds=RE_ADD_DELAY),
             )
         )
-
     session.commit()
+
     short_in_progress_game_id = in_progress_game.id.split("-")[0]
     await send_message(
         message.channel,
