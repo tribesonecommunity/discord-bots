@@ -4,17 +4,14 @@ from math import floor
 from random import randint, random, shuffle
 from threading import Timer
 from typing import Awaitable, Callable
-import itertools
-import math
 import numpy
 
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel, Message
 from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.sql.expression import asc
-from trueskill import Rating, global_env, rate
+from trueskill import Rating, rate
 
-from discord_bots.utils import short_uuid
+from discord_bots.utils import short_uuid, win_probability
 
 from .models import (
     AdminRole,
@@ -38,20 +35,6 @@ from .queues import (
 AFK_TIME_MINUTES: int = 45
 COMMAND_PREFIX: str = "$"
 RE_ADD_DELAY: int = 5
-
-
-def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
-    """
-    Calculate the probability that team0 beats team1
-    Taken from https://trueskill.org/#win-probability
-    """
-    BETA = 4.1666
-    delta_mu = sum(r.mu for r in team0) - sum(r.mu for r in team1)
-    sum_sigma = sum(r.sigma ** 2 for r in itertools.chain(team0, team1))
-    size = len(team0) + len(team1)
-    denom = math.sqrt(size * (BETA * BETA) + sum_sigma)
-    trueskill = global_env()
-    return round(trueskill.cdf(delta_mu / denom), 2)
 
 
 def get_even_teams(player_ids: list[int]) -> tuple[list[Player], float]:
