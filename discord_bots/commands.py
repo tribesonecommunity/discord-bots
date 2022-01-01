@@ -823,11 +823,11 @@ async def del_(message: Message, args: list[str]):
 
 
 @require_admin
-async def edit_match(message: Message, args: list[str]):
+async def edit_match_winner(message: Message, args: list[str]):
     if len(args) != 2:
         await send_message(
             message.channel,
-            embed_description="Usage: !editmatch <game_id> <-1 (draw)| 0 (BE win) | 1 (DS win)>",
+            embed_description="Usage: !editmatchwinner <game_id> <tie|be|ds>",
             colour=Colour.red(),
         )
         return
@@ -845,16 +845,21 @@ async def edit_match(message: Message, args: list[str]):
             colour=Colour.red(),
         )
         return
-    outcome = int(args[1])
-    if outcome != -1 and outcome != 0 and outcome != 1:
+    outcome = args[1].lower()
+    if outcome == "tie":
+        game.winning_team = -1
+    elif outcome == "be":
+        game.winning_team = 0
+    elif outcome == "ds":
+        game.winning_team = 1
+    else:
         await send_message(
             message.channel,
-            embed_description="Outcome must be -1 (draw), 0 (BE win), or 1 (DS win)",
+            embed_description="Outcome must be tie, be, or ds",
             colour=Colour.red(),
         )
         return
 
-    game.winning_team = outcome
     session.add(game)
     session.commit()
     await send_message(
@@ -1769,7 +1774,7 @@ COMMANDS = {
     "createqueue": create_queue,
     "clearqueue": clear_queue,
     "del": del_,
-    "editmatch": edit_match,
+    "editmatchwinner": edit_match_winner,
     "finishgame": finish_game,
     "listadmins": list_admins,
     "listadminroles": list_admin_roles,

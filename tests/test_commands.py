@@ -1,15 +1,11 @@
 from unittest.mock import Mock
 
+import pytest
 from discord import Message
 from pytest import approx, fixture
 from trueskill import Rating
-import pytest
 
-from discord_bots.commands import (
-    COMMAND_PREFIX,
-    is_in_game,
-    handle_message,
-)
+from discord_bots.commands import COMMAND_PREFIX, handle_message, is_in_game
 from discord_bots.models import (
     AdminRole,
     CustomCommand,
@@ -25,6 +21,7 @@ from discord_bots.models import (
     Session,
 )
 from discord_bots.utils import short_uuid
+
 from .fixtures import (
     ROLE_LT_GOLD,
     TEST_GUILD,
@@ -36,7 +33,6 @@ from .fixtures import (
     setup_tests,
     stork,
 )
-
 
 session = Session()
 
@@ -743,7 +739,7 @@ async def test_unlock_queue_should_allow_add_to_queue():
 
 
 @pytest.mark.asyncio
-async def test_edit_match_should_change_winning_team():
+async def test_edit_match_winner_should_change_winning_team():
     await handle_message(Message(opsayo, "createqueue ltpug 2"))
     await handle_message(Message(opsayo, "add"))
     await handle_message(Message(lyon, "add"))
@@ -751,7 +747,7 @@ async def test_edit_match_should_change_winning_team():
 
     finished_game = Session().query(FinishedGame).first()
     short_game_id = short_uuid(finished_game.game_id)
-    await handle_message(Message(opsayo, f"editmatch {short_game_id} -1"))
+    await handle_message(Message(opsayo, f"editmatchwinner {short_game_id} tie"))
 
     finished_game = Session().query(FinishedGame).first()
     assert finished_game.winning_team == -1
