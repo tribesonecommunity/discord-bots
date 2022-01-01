@@ -1,8 +1,9 @@
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
-import sys
 
+import trueskill
 from sqlalchemy import (
     Boolean,
     Column,
@@ -13,7 +14,6 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
 )
-import trueskill
 
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
@@ -93,6 +93,7 @@ class FinishedGame:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "finished_game"
 
+    average_trueskill: float = field(metadata={"sa": Column(Float, nullable=False)})
     game_id: str = field(metadata={"sa": Column(String, index=True, nullable=False)})
     finished_at: datetime = field(
         metadata={"sa": Column(DateTime, index=True, nullable=False)},
@@ -155,6 +156,7 @@ class InProgressGame:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "in_progress_game"
 
+    average_trueskill: float = field(metadata={"sa": Column(Float, nullable=True)})
     queue_id: str | None = field(
         metadata={"sa": Column(String, ForeignKey("queue.id"), index=True)},
     )

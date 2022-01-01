@@ -2,6 +2,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from math import floor
 from random import randint, random, shuffle
+from statistics import mean
 from typing import Awaitable, Callable
 
 import numpy
@@ -135,7 +136,11 @@ async def add_player_to_queue(
     if len(queue_players) == queue.size:  # Pop!
         player_ids: list[int] = list(map(lambda x: x.player_id, queue_players))
         players, win_prob = get_even_teams(player_ids)
-        game = InProgressGame(queue_id=queue.id, win_probability=win_prob)
+        game = InProgressGame(
+            average_trueskill=mean(list(map(lambda x: x.trueskill_mu, players))),
+            queue_id=queue.id,
+            win_probability=win_prob,
+        )
         session.add(game)
 
         team0_players = players[: len(players) // 2]
@@ -266,7 +271,7 @@ def finished_game_str(finished_game: FinishedGame) -> str:
     output = ""
     session = Session()
     short_game_id = short_uuid(finished_game.game_id)
-    output += f"**{finished_game.queue_name}** ({short_game_id})"
+    output += f"**{finished_game.queue_name}** ({short_game_id}) (TS: {round(finished_game.average_trueskill, 2)})"
     team0_fg_players: list[FinishedGamePlayer] = session.query(
         FinishedGamePlayer
     ).filter(
@@ -751,10 +756,6 @@ async def create_queue(message: Message, args: list[str]):
         return
 
     queue_size = int(args[1])
-    if queue_size % 2 != 0:
-        await send_message(message.channel, f"queue size must be even: {queue_size}")
-        return
-
     queue = Queue(name=args[0], size=queue_size)
     session = Session()
 
@@ -942,6 +943,7 @@ async def finish_game(message: Message, args: list[str]):
                 Rating(player.trueskill_mu, player.trueskill_sigma)
             )
     finished_game = FinishedGame(
+        average_trueskill=in_progress_game.average_trueskill,
         finished_at=datetime.now(timezone.utc),
         game_id=in_progress_game.id,
         queue_name=queue.name,
@@ -1548,7 +1550,7 @@ async def status(message: Message, args: list[str]):
                 win_prob = game.win_probability
                 if i > 0:
                     output += "\n"
-                output += f"**IN GAME** ({short_game_id}):\n"
+                output += f"**IN GAME** ({short_game_id}) (TS: {round(game.average_trueskill, 2)}):\n"
                 output += f"**Blood Eagle** ({int(100 * win_prob)}%): {team0_names}\n"
                 output += (
                     f"**Diamond Sword** ({int(100 * (1 - win_prob))}%): {team1_names}\n"

@@ -1,15 +1,10 @@
 import json
+from datetime import datetime
 from uuid import uuid4
 
 from trueskill import Rating, rate
-from datetime import datetime
 
-from discord_bots.models import (
-    FinishedGame,
-    FinishedGamePlayer,
-    Player,
-    Session,
-)
+from discord_bots.models import FinishedGame, FinishedGamePlayer, Player, Session
 
 DATA_FILE = "out.json"
 
@@ -20,6 +15,7 @@ session = Session()
 for i, match in enumerate(data):
     print(i, len(data), i / len(data))
     finished_game = FinishedGame(
+        average_trueskill=0.0,
         game_id=str(uuid4()),
         finished_at=datetime.fromtimestamp(match["timestamp"] // 1000),
         queue_name=match["queue"]["name"],
@@ -71,8 +67,8 @@ for i, match in enumerate(data):
             trueskill_mu_after=team1_new_ratings[i].mu,
             trueskill_sigma_after=team1_new_ratings[i].sigma,
         )
-        player.trueskill_mu=team1_new_ratings[i].mu
-        player.trueskill_sigma=team1_new_ratings[i].sigma
+        player.trueskill_mu = team1_new_ratings[i].mu
+        player.trueskill_sigma = team1_new_ratings[i].sigma
         session.add(finished_game_player)
 
     for i, player in enumerate(team2_players):
@@ -86,8 +82,8 @@ for i, match in enumerate(data):
             trueskill_mu_after=team2_new_ratings[i].mu,
             trueskill_sigma_after=team2_new_ratings[i].sigma,
         )
-        player.trueskill_mu=team2_new_ratings[i].mu
-        player.trueskill_sigma=team2_new_ratings[i].sigma
+        player.trueskill_mu = team2_new_ratings[i].mu
+        player.trueskill_sigma = team2_new_ratings[i].sigma
         session.add(finished_game_player)
 
     session.commit()
