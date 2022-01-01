@@ -75,6 +75,8 @@ To create new migrations:
 
 Alembic does not pick up certain changes like renaming tables or columns correctly. For these changes you'll need to manually edit the migration file. See here for a full list of changes Alembic will not detect correctly: https://alembic.sqlalchemy.org/en/latest/autogenerate.html#what-does-autogenerate-detect-and-what-does-it-not-detect
 
+Alembic also sometimes has issues with constraints and naming. If you run into an issue like this, you may need to hand edit the migration. See here: https://alembic.sqlalchemy.org/en/latest/naming.html
+
 See here for detailed instructions on how to use Alembic: https://alembic.sqlalchemy.org/en/latest/tutorial.html
 
 # To-do list
