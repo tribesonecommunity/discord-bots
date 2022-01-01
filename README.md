@@ -91,6 +91,7 @@ Nice to have
 - CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md
 - CI for Tests
 - Strict typing configuration
+- Commit hook for formatting
 
 MVP+
 - Recognizable words for game ids and team names

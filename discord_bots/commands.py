@@ -1004,21 +1004,6 @@ async def finish_game(message: Message, args: list[str]):
         InProgressGame.id == in_progress_game.id
     ).delete()
 
-    # TODO: Delete channels after the between game wait time, it's nice for
-    # players to stick around and chat
-    for channel in session.query(InProgressGameChannel).filter(
-        InProgressGameChannel.in_progress_game_id == in_progress_game.id
-    ):
-        if message.guild:
-            guild_channel = message.guild.get_channel(channel.channel_id)
-            if guild_channel:
-                await guild_channel.delete()
-        session.delete(channel)
-
-    short_in_progress_game_id = in_progress_game.id.split("-")[0]
-
-    queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
-
     embed_description = ""
     if winning_team == 0:
         embed_description = "**Winner:** Blood Eagle"
@@ -1027,12 +1012,14 @@ async def finish_game(message: Message, args: list[str]):
     else:
         embed_description = "**Tie game**"
 
+    queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     if message.guild:
         session.add(
             QueueWaitlist(
                 channel_id=message.channel.id,
                 finished_game_id=finished_game.id,
                 guild_id=message.guild.id,
+                in_progress_game_id=in_progress_game.id,
                 queue_id=queue.id,
                 end_waitlist_at=datetime.now(timezone.utc)
                 + timedelta(seconds=RE_ADD_DELAY),
@@ -1040,6 +1027,7 @@ async def finish_game(message: Message, args: list[str]):
         )
 
     session.commit()
+    short_in_progress_game_id = in_progress_game.id.split("-")[0]
     await send_message(
         message.channel,
         content=f"Game '{queue.name}' ({short_in_progress_game_id}) finished",

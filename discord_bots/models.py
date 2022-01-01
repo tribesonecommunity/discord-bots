@@ -349,13 +349,23 @@ class QueueWaitlist:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue_waitlist"
-    __table_args__ = (UniqueConstraint("finished_game_id", "queue_id"),)
 
     channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     finished_game_id: str = field(
-        metadata={"sa": Column(String, ForeignKey("finished_game.id"), nullable=False)},
+        metadata={
+            "sa": Column(
+                String, ForeignKey("finished_game.id"), nullable=False, unique=True
+            )
+        },
     )
     guild_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    in_progress_game_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("in_progress_game.id"), nullable=False, unique=True
+            )
+        },
+    )
     queue_id: str = field(
         metadata={"sa": Column(String, ForeignKey("queue.id"), nullable=False)},
     )

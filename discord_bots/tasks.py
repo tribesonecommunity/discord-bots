@@ -13,6 +13,7 @@ from discord.member import Member
 from .bot import bot
 from .commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
 from .models import (
+    InProgressGameChannel,
     Player,
     QueuePlayer,
     QueueWaitlist,
@@ -21,7 +22,7 @@ from .models import (
 )
 
 
-
+@tasks.loop(minutes=1)
 async def afk_timer_task():
     session = Session()
     timeout: datetime = datetime.now(timezone.utc) - timedelta(minutes=AFK_TIME_MINUTES)
@@ -70,7 +71,9 @@ async def queue_waitlist_task():
     for queue_waitlist in session.query(QueueWaitlist).filter(
         QueueWaitlist.end_waitlist_at < datetime.now(timezone.utc)
     ):
-        pass
+        channel = bot.get_channel(queue_waitlist.channel_id)
+        guild = bot.get_guild(queue_waitlist.guild_id)
+
         queue_waitlist_players: list[QueueWaitlistPlayer]
         queue_waitlist_players = (
             session.query(QueueWaitlistPlayer)
@@ -78,14 +81,11 @@ async def queue_waitlist_task():
             .all()
         )
         shuffle(queue_waitlist_players)
-
         for queue_waitlist_player in queue_waitlist_players:
             if is_in_game(queue_waitlist_player.player_id):
                 session.delete(queue_waitlist_player)
                 continue
 
-            channel = bot.get_channel(queue_waitlist.channel_id)
-            guild = bot.get_guild(queue_waitlist.guild_id)
             if channel and guild and isinstance(channel, TextChannel):
                 await add_player_to_queue(
                     queue_waitlist.queue_id,
@@ -93,6 +93,16 @@ async def queue_waitlist_task():
                     channel,
                     guild,
                 )
+
+        for igp_channel in session.query(InProgressGameChannel).filter(
+            InProgressGameChannel.in_progress_game_id
+            == queue_waitlist.in_progress_game_id
+        ):
+            if guild:
+                guild_channel = guild.get_channel(igp_channel.channel_id)
+                if guild_channel:
+                    await guild_channel.delete()
+            session.delete(igp_channel)
 
         session.query(QueueWaitlistPlayer).filter(
             QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
