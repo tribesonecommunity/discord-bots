@@ -838,11 +838,11 @@ async def disable_team_names(message: Message, args: list[str]):
 
 
 @require_admin
-async def edit_match_winner(message: Message, args: list[str]):
+async def edit_game_winner(message: Message, args: list[str]):
     if len(args) != 2:
         await send_message(
             message.channel,
-            embed_description="Usage: !editmatchwinner <game_id> <tie|be|ds>",
+            embed_description="Usage: !editgamewinner <game_id> <tie|be|ds>",
             colour=Colour.red(),
         )
         return
@@ -879,7 +879,7 @@ async def edit_match_winner(message: Message, args: list[str]):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"Match {args[0]} outcome changed:\n\n"
+        embed_description=f"Game {args[0]} outcome changed:\n\n"
         + finished_game_str(game),
         colour=Colour.green(),
     )
@@ -1199,14 +1199,14 @@ async def mock_random_queue(message: Message, args: list[str]):
 
 
 @require_admin
-async def match_history(message: Message, args: list[str]):
+async def game_history(message: Message, args: list[str]):
     """
-    Display recent match history
+    Display recent game history
     """
     if len(args) != 1:
         await send_message(
             message.channel,
-            embed_description="Usage: !matchhistory <count>",
+            embed_description="Usage: !gamehistory <count>",
             colour=Colour.red(),
         )
         return
@@ -1504,11 +1504,11 @@ async def set_command_prefix(message: Message, args: list[str]):
     )
 
 
-async def show_match(message: Message, args: list[str]):
+async def show_game(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
             message.channel,
-            embed_description="Usage: !showmatch <match_id>",
+            embed_description="Usage: !showgame <game_id>",
             colour=Colour.red(),
         )
         return
@@ -1815,7 +1815,7 @@ COMMANDS = {
     "clearqueue": clear_queue,
     "del": del_,
     "disableteamnames": disable_team_names,
-    "editmatchwinner": edit_match_winner,
+    "editgamewinner": edit_game_winner,
     "enableteamnames": enable_team_names,
     "finishgame": finish_game,
     "listadmins": list_admins,
@@ -1824,7 +1824,7 @@ COMMANDS = {
     "listcommands": list_commands,
     "listqueueroles": list_queue_roles,
     "lockqueue": lock_queue,
-    "matchhistory": match_history,
+    "gamehistory": game_history,
     "mockrandomqueue": mock_random_queue,
     "randomnames": random_names,
     "removeadmin": remove_admin,
@@ -1835,7 +1835,7 @@ COMMANDS = {
     "roll": roll,
     "setadddelay": set_add_delay,
     "setcommandprefix": set_command_prefix,
-    "showmatch": show_match,
+    "showgame": show_game,
     "status": status,
     "sub": sub,
     "unban": unban,
