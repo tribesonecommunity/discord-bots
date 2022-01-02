@@ -107,7 +107,6 @@ Nice to have
 
 MVP+
 
-- Recognizable words for game ids and team names
 - In-server queue
 - Map picking / rotation
 - Queue notifications
