@@ -786,6 +786,7 @@ async def create_queue(message: Message, args: list[str]):
         )
 
 
+@require_admin
 async def decay_player(message: Message, args: list[str]):
     """
     Manually adjust a player's trueskill rating downward by a percentage
