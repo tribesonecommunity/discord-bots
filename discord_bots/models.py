@@ -20,12 +20,16 @@ from sqlalchemy import (
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
+DB_NAME = "tribes"
+
 # TODO: Create db backups on start or periodically
 # It may be tempting, but do not set check_same_thread=False here. Sqlite
 # doesn't handle concurrency well and writing to the db on different threads
 # could cause file corruption. Use tasks to ensure that writes happen on the main thread.
 db_url = (
-    "sqlite:///tribes.test.db" if "pytest" in sys.modules else "sqlite:///tribes.db"
+    f"sqlite:///{DB_NAME}.test.db"
+    if "pytest" in sys.modules
+    else f"sqlite:///{DB_NAME}.db"
 )
 engine = create_engine(db_url, echo=False)
 naming_convention = {

@@ -1,7 +1,10 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from glob import glob
 from math import floor
-from random import choice, randint, random, shuffle
+from os import remove
+from random import randint, random, shuffle
+from shutil import copyfile
 from statistics import mean
 from typing import Awaitable, Callable
 
@@ -12,9 +15,10 @@ from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
 from discord_bots.utils import short_uuid, win_probability
-from names import B, D, E, S, generate_be_name, generate_ds_name
+from names import generate_be_name, generate_ds_name
 
 from .models import (
+    DB_NAME,
     AdminRole,
     CustomCommand,
     FinishedGame,
@@ -721,6 +725,17 @@ async def create_command(message: Message, args: list[str]):
 
 
 @require_admin
+async def create_db_backup(message: Message, args: list[str]):
+    date_string = datetime.now().strftime("%Y-%m-%d")
+    copyfile(f"{DB_NAME}.db", f"{DB_NAME}_{date_string}.db")
+    await send_message(
+        message.channel,
+        embed_description=f"Backup made to {DB_NAME}_{date_string}.db",
+        colour=Colour.green(),
+    )
+
+
+@require_admin
 async def clear_queue(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
@@ -1104,6 +1119,19 @@ async def list_bans(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
+@require_admin
+async def list_db_backups(message: Message, args: list[str]):
+    output = "Backups:"
+    for filename in glob("tribes_*.db"):
+        output += f"\n- {filename}"
+
+    await send_message(
+        message.channel,
+        embed_description=output,
+        colour=Colour.blue(),
+    )
+
+
 async def list_commands(message: Message, args: list[str]):
     output = "Commands:"
     for command in Session().query(CustomCommand):
@@ -1403,6 +1431,33 @@ async def remove_queue(message: Message, args: list[str]):
             embed_description=f"Queue not found: {args[0]}",
             colour=Colour.red(),
         )
+
+
+@require_admin
+async def remove_db_backup(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !removedbbackup <db_filename>",
+            colour=Colour.red(),
+        )
+        return
+
+    db_filename = args[0]
+    if not db_filename.startswith("tribes") or not db_filename.endswith(".db"):
+        await send_message(
+            message.channel,
+            embed_description="Filename must be of the format tribes_{date}.db",
+            colour=Colour.red(),
+        )
+        return
+
+    remove(db_filename)
+    await send_message(
+        message.channel,
+        embed_description=f"DB backup {db_filename} removed",
+        colour=Colour.green(),
+    )
 
 
 @require_admin
@@ -1811,6 +1866,7 @@ COMMANDS = {
     "coinflip": coinflip,
     "commands": commands,
     "createcommand": create_command,
+    "createdbbackup": create_db_backup,
     "createqueue": create_queue,
     "clearqueue": clear_queue,
     "del": del_,
@@ -1821,6 +1877,7 @@ COMMANDS = {
     "listadmins": list_admins,
     "listadminroles": list_admin_roles,
     "listbans": list_bans,
+    "listdbbackups": list_db_backups,
     "listcommands": list_commands,
     "listqueueroles": list_queue_roles,
     "lockqueue": lock_queue,
@@ -1830,6 +1887,7 @@ COMMANDS = {
     "removeadmin": remove_admin,
     "removeadminrole": remove_admin_role,
     "removecommand": remove_command,
+    "removedbbackup": remove_db_backup,
     "removequeuerole": remove_queue_role,
     "removequeue": remove_queue,
     "roll": roll,
