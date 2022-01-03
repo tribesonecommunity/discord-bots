@@ -140,6 +140,7 @@ def setup_tests():
     session.query(Queue).delete()
     session.query(Player).delete()
     session.add(Player(id=opsayo.id, name="opsayo", is_admin=True))
+    session.add(Player(id=stork.id, name="stork"))
     TEST_GUILD.channels = {}
     TEST_GUILD._members = [opsayo, stork, izza, lyon]
 

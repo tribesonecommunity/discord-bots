@@ -14,6 +14,7 @@ from discord_bots.models import (
     InProgressGame,
     InProgressGamePlayer,
     Player,
+    PlayerDecay,
     Queue,
     QueuePlayer,
     QueueRole,
@@ -767,3 +768,18 @@ async def test_remove_command_should_remove_command():
 
     command = Session().query(CustomCommand).first()
     assert command is None
+
+
+@pytest.mark.asyncio
+async def test_decay_player_should_decay_player():
+    session = Session()
+    stork_player: Player = session.query(Player).filter(Player.id == stork.id).first()
+    stork_player.trueskill_mu = 30
+    session.commit()
+    await handle_message(Message(opsayo, "decayplayer @stork 10%"))
+
+    session = Session()
+    stork_player: Player = session.query(Player).filter(Player.id == stork.id).first()
+    assert stork_player.trueskill_mu == 30 * 0.90
+    player_decays = session.query(PlayerDecay).all()
+    assert len(player_decays) == 1

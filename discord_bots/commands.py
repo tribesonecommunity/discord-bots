@@ -27,6 +27,7 @@ from .models import (
     InProgressGameChannel,
     InProgressGamePlayer,
     Player,
+    PlayerDecay,
     Queue,
     QueuePlayer,
     QueueRole,
@@ -785,6 +786,59 @@ async def create_queue(message: Message, args: list[str]):
         )
 
 
+async def decay_player(message: Message, args: list[str]):
+    """
+    Manually adjust a player's trueskill rating downward by a percentage
+    """
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !decayplayer @<player> <decay_amount_percent>%",
+            colour=Colour.red(),
+        )
+        return
+
+    decay_amount = args[1]
+    if not decay_amount.endswith("%"):
+        await send_message(
+            message.channel,
+            embed_description="Decay amount must end with %",
+            colour=Colour.red(),
+        )
+        return
+
+    decay_amount = int(decay_amount[:-1])
+    if decay_amount <= 0 or decay_amount > 10:
+        await send_message(
+            message.channel,
+            embed_description="Decay amount must be between 0-10",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    player: Player = (
+        session.query(Player).filter(Player.id == message.mentions[0].id).first()
+    )
+    trueskill_mu_before = player.trueskill_mu
+    trueskill_mu_after = player.trueskill_mu * (100 - decay_amount) / 100
+    player.trueskill_mu = trueskill_mu_after
+    await send_message(
+        message.channel,
+        embed_description=f"{message.mentions[0].name} decayed by {decay_amount}%",
+        colour=Colour.green(),
+    )
+    session.add(
+        PlayerDecay(
+            player.id,
+            decay_amount,
+            trueskill_mu_before=trueskill_mu_before,
+            trueskill_mu_after=trueskill_mu_after,
+        )
+    )
+    session.commit()
+
+
 async def del_(message: Message, args: list[str]):
     """
     Players deletes self from queue(s)
@@ -1127,6 +1181,27 @@ async def list_commands(message: Message, args: list[str]):
     output = "Commands:"
     for command in Session().query(CustomCommand):
         output += f"\n- {command.name}"
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
+async def list_player_decays(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !listplayerdecays @<player>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    player = session.query(Player).filter(Player.id == message.mentions[0].id).first()
+    player_decays: list[PlayerDecay] = session.query(PlayerDecay).filter(
+        PlayerDecay.player_id == player.id
+    )
+    output = f"Decays for {player.name}:"
+    for player_decay in player_decays:
+        output += f"\n- {player_decay.decayed_at.strftime('%Y-%m-%d')} - Amount: {player_decay.decay_percentage}%"
+
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
@@ -1868,6 +1943,7 @@ COMMANDS = {
     "createdbbackup": create_db_backup,
     "createqueue": create_queue,
     "clearqueue": clear_queue,
+    "decayplayer": decay_player,
     "del": del_,
     "disableteamnames": disable_team_names,
     "editgamewinner": edit_game_winner,
@@ -1878,6 +1954,7 @@ COMMANDS = {
     "listbans": list_bans,
     "listdbbackups": list_db_backups,
     "listcommands": list_commands,
+    "listplayerdecays": list_player_decays,
     "listqueueroles": list_queue_roles,
     "lockqueue": lock_queue,
     "gamehistory": game_history,

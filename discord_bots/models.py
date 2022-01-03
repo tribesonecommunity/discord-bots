@@ -281,6 +281,36 @@ class Player:
 
 @mapper_registry.mapped
 @dataclass
+class PlayerDecay:
+    """
+    A manual instance of decaying a player's trueskill
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "player_decay"
+
+    player_id: int = field(
+        metadata={
+            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    decay_percentage: float = field(metadata={"sa": Column(Float, nullable=False)})
+    trueskill_mu_before: float = field(metadata={"sa": Column(Float, nullable=False)})
+    trueskill_mu_after: float = field(metadata={"sa": Column(Float, nullable=False)})
+    decayed_at: datetime = field(
+        init=False,
+        default_factory=lambda: datetime.now(timezone.utc),
+        metadata={"sa": Column(DateTime)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class Queue:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue"
