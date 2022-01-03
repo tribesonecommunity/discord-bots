@@ -54,12 +54,12 @@ def get_even_teams(player_ids: list[int]) -> tuple[list[Player], float]:
     players: list[Player] = (
         session.query(Player).filter(Player.id.in_(player_ids)).all()  # type: ignore
     )
-    best_win_prob_so_far: float | None = None
-    best_teams_so_far: list[Player] | None = None
+    best_win_prob_so_far: float = 0.0
+    best_teams_so_far: list[Player] = []
 
     # Use a fixed number of shuffles instead of generating permutations. There
     # are 3.6 million permutations!
-    for _ in range(300):
+    for _ in range(500):
         shuffle(players)
         team0_ratings = list(
             map(
@@ -74,23 +74,11 @@ def get_even_teams(player_ids: list[int]) -> tuple[list[Player], float]:
             )
         )
         win_prob = win_probability(team0_ratings, team1_ratings)
-        if not best_win_prob_so_far:
+        current_team_evenness = abs(0.50 - win_prob)
+        best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
+        if current_team_evenness < best_team_evenness_so_far:
             best_win_prob_so_far = win_prob
             best_teams_so_far = players[:]
-        else:
-            current_team_evenness = abs(0.50 - win_prob)
-            best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
-            if current_team_evenness < best_team_evenness_so_far:
-                best_win_prob_so_far = win_prob
-                best_teams_so_far = players[:]
-
-            if int(win_prob * 100) == 50:
-                # Can't do better than this
-                break
-
-    if not best_win_prob_so_far or not best_teams_so_far:
-        # Can't really happen, so mostly just to appease the linter
-        return [], 0.0
 
     return best_teams_so_far, best_win_prob_so_far
 
@@ -173,8 +161,9 @@ async def add_player_to_queue(
         short_game_id = short_uuid(game.id)
         team0_names = sorted(map(lambda x: x.name, team0_players))
         team1_names = sorted(map(lambda x: x.name, team1_players))
-        channel_message = f"Game '{queue.name}' ({short_game_id}) (TS: {round(game.average_trueskill, 2)}) has begun!"
-        channel_embed = f"**{game.team0_name}** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**{game.team1_name}** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
+        # channel_message = f"Game '{queue.name}' ({short_game_id}) (TS: {round(game.average_trueskill, 2)}) has begun!"
+        channel_message = f"Game '{queue.name}' ({short_game_id}) has begun!"
+        channel_embed = f"**{game.team0_name}** ({round(100 * win_prob, 1)}%): {', '.join(team0_names)}\n**{game.team1_name}** ({round(100 * (1 - win_prob), 1)}%): {', '.join(team1_names)}"
 
         await send_message(
             channel,
@@ -279,7 +268,8 @@ def finished_game_str(finished_game: FinishedGame) -> str:
     output = ""
     session = Session()
     short_game_id = short_uuid(finished_game.game_id)
-    output += f"**{finished_game.queue_name}** ({short_game_id}) (TS: {round(finished_game.average_trueskill, 2)})"
+    # output += f"**{finished_game.queue_name}** ({short_game_id}) (TS: {round(finished_game.average_trueskill, 2)})"
+    output += f"**{finished_game.queue_name}** ({short_game_id})"
     team0_fg_players: list[FinishedGamePlayer] = session.query(
         FinishedGamePlayer
     ).filter(
@@ -298,7 +288,7 @@ def finished_game_str(finished_game: FinishedGame) -> str:
     team1_players = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
     team0_names = ", ".join(sorted([player.name for player in team0_players]))
     team1_names = ", ".join(sorted([player.name for player in team1_players]))
-    team0_win_prob = int(100 * finished_game.win_probability)
+    team0_win_prob = round(100 * finished_game.win_probability, 1)
     team1_win_prob = 100 - team0_win_prob
     if finished_game.winning_team == 0:
         output += f"\n**{finished_game.team0_name} ({team0_win_prob}%): {team0_names}**"
@@ -1077,7 +1067,8 @@ async def finish_game(message: Message, args: list[str]):
     short_in_progress_game_id = in_progress_game.id.split("-")[0]
     await send_message(
         message.channel,
-        content=f"Game '{queue.name}' ({short_in_progress_game_id}) (TS: {round(finished_game.average_trueskill, 2)}) finished",
+        # content=f"Game '{queue.name}' ({short_in_progress_game_id}) (TS: {round(finished_game.average_trueskill, 2)}) finished",
+        content=f"Game '{queue.name}' ({short_in_progress_game_id}) finished",
         embed_description=embed_description,
         colour=Colour.green(),
     )
@@ -1659,11 +1650,10 @@ async def status(message: Message, args: list[str]):
                 win_prob = game.win_probability
                 if i > 0:
                     output += "\n"
-                output += f"**IN GAME** ({short_game_id}) (TS: {round(game.average_trueskill, 2)}):\n"
-                output += (
-                    f"**{game.team0_name}** ({int(100 * win_prob)}%): {team0_names}\n"
-                )
-                output += f"**{game.team1_name}** ({int(100 * (1 - win_prob))}%): {team1_names}\n"
+                # output += f"**IN GAME** ({short_game_id}) (TS: {round(game.average_trueskill, 2)}):\n"
+                output += f"**IN GAME** ({short_game_id}):\n"
+                output += f"**{game.team0_name}** ({round(100 * win_prob, 1)}%): {team0_names}\n"
+                output += f"**{game.team1_name}** ({round(100 * (1 - win_prob), 1)}%): {team1_names}\n"
                 minutes_ago = (
                     datetime.now(timezone.utc)
                     - game.created_at.replace(tzinfo=timezone.utc)
@@ -1793,7 +1783,7 @@ async def sub(message: Message, args: list[str]):
     team0_names = list(map(lambda x: x.name, team0_players))
     team1_names = list(map(lambda x: x.name, team1_players))
     channel_message = f"New teams ({short_game_id}):"
-    channel_embed = f"**{game.team0_name}** ({int(100 * win_prob)}%): {', '.join(team0_names)}\n**{game.team1_name}** ({int(100 * (1 - win_prob))}%): {', '.join(team1_names)}"
+    channel_embed = f"**{game.team0_name}** ({round(100 * win_prob, 1)}%): {', '.join(team0_names)}\n**{game.team1_name}** ({round(100 * (1 - win_prob), 1)}%): {', '.join(team1_names)}"
 
     await send_message(
         message.channel,

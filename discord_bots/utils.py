@@ -21,4 +21,4 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     denom = math.sqrt(size * (BETA * BETA) + sum_sigma)
     trueskill = global_env()
 
-    return round(trueskill.cdf(delta_mu / denom), 2)
+    return trueskill.cdf(delta_mu / denom)

@@ -108,4 +108,4 @@ async def queue_waitlist_task():
             QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
         ).delete()
         session.delete(queue_waitlist)
-        session.commit()
+    session.commit()
