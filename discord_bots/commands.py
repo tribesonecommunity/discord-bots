@@ -1193,10 +1193,19 @@ async def mock_random_queue(message: Message, args: list[str]):
     """
     Helper test method for adding random players to queues
     """
+    if message.author.id != 115204465589616646:
+        await send_message(
+            message.channel,
+            embed_description="Only special people can use this command",
+            colour=Colour.red(),
+        )
+        return
+
     if len(args) != 2:
         await send_message(
             message.channel,
             embed_description="Usage: !mockrandomqueue <queue_name> <count>",
+            colour=Colour.red(),
         )
         return
 
