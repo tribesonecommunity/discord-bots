@@ -1,12 +1,8 @@
-# Running the bot
+# How to run the bot
 
-## macOS Instructions
+## Installation
 
-### Python 3.10.0
-
-1. Install Homebrew: https://brew.sh/#install
 1. Install Python 3.1.0: https://docs.python-guide.org/starting/install3/osx/
-
    - (optional) Install Python with pyenv instead:
    - `brew install pyenv`
    - `pyenv install 3.10.0`
@@ -19,14 +15,12 @@
 1. `pip install -U .`
 1. `cp .env.example .env`. Modify `.env` by adding your API key
 1. Setup the database: `alembic upgrade head`
+
+## Running the bot
 1. (optional) Import match history:
    - `curl "http://50.116.36.119/api/server/127155819698454529/games/1546300801000" > out.json`
    - `python scripts/import_match_history.py`
 1. Run the bot: `python scripts/run.py`
-
-## Anything not macOS
-
-The steps are the same except you have to install Python another way
 
 # Development
 
