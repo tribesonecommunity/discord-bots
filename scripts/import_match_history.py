@@ -5,6 +5,7 @@ from uuid import uuid4
 from trueskill import Rating, rate
 
 from discord_bots.models import FinishedGame, FinishedGamePlayer, Player, Session
+from discord_bots.utils import win_probability
 
 DATA_FILE = "out.json"
 
@@ -14,16 +15,6 @@ session = Session()
 
 for i, match in enumerate(data):
     print(i, len(data), i / len(data))
-    finished_game = FinishedGame(
-        average_trueskill=0.0,
-        game_id=str(uuid4()),
-        finished_at=datetime.fromtimestamp(match["timestamp"] // 1000),
-        queue_name=match["queue"]["name"],
-        started_at=datetime.fromtimestamp(match["completionTimestamp"] // 1000),
-        win_probability=0.0,
-        winning_team=match["winningTeam"] - 1,
-    )
-    session.add(finished_game)
     team1_players = []
     team2_players = []
     for json_player in match["players"]:
@@ -41,6 +32,7 @@ for i, match in enumerate(data):
         else:
             team2_players.append(player)
 
+
     team1_ratings = list(
         map(lambda x: Rating(x.trueskill_mu, x.trueskill_sigma), team1_players)
     )
@@ -55,6 +47,19 @@ for i, match in enumerate(data):
     elif match["winningTeam"] == 2:
         outcome = [1, 0]
     team1_new_ratings, team2_new_ratings = rate([team1_ratings, team2_ratings], outcome)
+
+    win_prob = win_probability(team1_ratings, team2_ratings)
+
+    finished_game = FinishedGame(
+        average_trueskill=0.0,
+        game_id=str(uuid4()),
+        finished_at=datetime.fromtimestamp(match["timestamp"] // 1000),
+        queue_name=match["queue"]["name"],
+        started_at=datetime.fromtimestamp(match["completionTimestamp"] // 1000),
+        win_probability=win_prob,
+        winning_team=match["winningTeam"] - 1,
+    )
+    session.add(finished_game)
 
     for i, player in enumerate(team1_players):
         finished_game_player = FinishedGamePlayer(
