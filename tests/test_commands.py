@@ -739,7 +739,7 @@ async def test_unlock_queue_should_allow_add_to_queue():
 
 
 @pytest.mark.asyncio
-async def test_edit_match_winner_should_change_winning_team():
+async def test_edit_game_winner_should_change_winning_team():
     await handle_message(Message(opsayo, "createqueue ltpug 2"))
     await handle_message(Message(opsayo, "add"))
     await handle_message(Message(lyon, "add"))
@@ -747,7 +747,7 @@ async def test_edit_match_winner_should_change_winning_team():
 
     finished_game = Session().query(FinishedGame).first()
     short_game_id = short_uuid(finished_game.game_id)
-    await handle_message(Message(opsayo, f"editmatchwinner {short_game_id} tie"))
+    await handle_message(Message(opsayo, f"editgamewinner {short_game_id} tie"))
 
     finished_game = Session().query(FinishedGame).first()
     assert finished_game.winning_team == -1
