@@ -221,6 +221,8 @@ async def add_player_to_queue(
         )
 
         session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).delete()
+        session.query(MapVote).delete()
+        session.query(SkipMapVote).delete()
         session.commit()
         return True, True
     return True, False

@@ -365,6 +365,23 @@ async def test_add_with_queue_at_size_should_create_game_and_clear_queue():
 
 
 @pytest.mark.asyncio
+async def test_add_with_queue_at_size_should_delete_map_votes():
+    await handle_message(Message(opsayo, "createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+    await handle_message(Message(opsayo, "votemap dx"))
+
+    await handle_message(Message(opsayo, "add"))
+    await handle_message(Message(lyon, "add"))
+
+    session = Session()
+    map_votes: list[MapVote] = session.query(MapVote).all()
+    skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
+    assert len(map_votes) == 0
+    assert len(skip_map_votes) == 0
+
+
+@pytest.mark.asyncio
 async def test_add_with_player_in_game_should_not_add_to_queue():
     await handle_message(Message(opsayo, "createqueue LTpug 2"))
     await handle_message(Message(opsayo, "add"))
@@ -1137,6 +1154,5 @@ async def test_vote_skip_map_with_rotation_at_end_should_rollover_rotation_to_be
 
 
 # TODO:
-# Votes should be removed when a map pops or when a vote succeeds
 # Remove votes when a map is removed from voteable map pool or map rotation
 # Popping a queue should update the map rotation
