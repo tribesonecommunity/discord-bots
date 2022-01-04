@@ -4,7 +4,6 @@ from unittest.mock import Mock, patch
 import pytest
 from pytest import fixture
 
-from discord_bots.commands import vote_map
 from discord_bots.models import (
     MapVote,
     Player,

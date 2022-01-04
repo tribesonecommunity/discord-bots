@@ -369,7 +369,7 @@ async def test_add_with_queue_at_size_should_delete_map_votes():
     await handle_message(Message(opsayo, "createqueue LTpug 2"))
     await handle_message(Message(opsayo, "setmapvotethreshold 2"))
     await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
-    await handle_message(Message(opsayo, "votemap dx"))
+    await handle_message(Message(opsayo, "voteswapmap dx"))
 
     await handle_message(Message(opsayo, "add"))
     await handle_message(Message(lyon, "add"))
@@ -959,7 +959,7 @@ async def test_remove_voteable_map_with_short_name_should_remove_voteable_map():
 @pytest.mark.asyncio
 async def test_remove_voteable_map_should_remove_map_votes_for_that_map():
     await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
-    await handle_message(Message(opsayo, "votemap dx"))
+    await handle_message(Message(opsayo, "voteswapmap dx"))
 
     await handle_message(Message(opsayo, "removevoteablemap dx"))
 
@@ -1007,75 +1007,75 @@ async def test_set_map_vote_threshold_should_set_map_vote_threshold():
 
 
 @pytest.mark.asyncio
-async def test_vote_map_with_votes_below_threshold_should_not_change_current_map():
+async def test_vote_swap_map_with_votes_below_threshold_should_not_change_current_map():
     session = Session()
     session.add(CurrentMap(0, "stonehenge", "sh"))
     session.commit()
     await handle_message(Message(opsayo, "setmapvotethreshold 2"))
     await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
 
-    await handle_message(Message(opsayo, "votemap dx"))
+    await handle_message(Message(opsayo, "voteswapmap dx"))
 
     current_map: CurrentMap = Session().query(CurrentMap).first()
     assert current_map.short_name == "sh"
 
 
 @pytest.mark.asyncio
-async def test_unvote_map_should_remove_vote():
+async def test_unvote_swap_map_should_remove_vote():
     session = Session()
     session.add(CurrentMap(0, "stonehenge", "sh"))
     session.commit()
     await handle_message(Message(opsayo, "setmapvotethreshold 2"))
     await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
 
-    await handle_message(Message(opsayo, "votemap dx"))
-    await handle_message(Message(opsayo, "unvotemap dx"))
-    await handle_message(Message(stork, "votemap dx"))
+    await handle_message(Message(opsayo, "voteswapmap dx"))
+    await handle_message(Message(opsayo, "unvoteswapmap dx"))
+    await handle_message(Message(stork, "voteswapmap dx"))
 
     current_map: CurrentMap = Session().query(CurrentMap).first()
     assert current_map.short_name == "sh"
 
 
 @pytest.mark.asyncio
-async def test_vote_map_with_votes_equal_to_threshold_should_change_current_map():
+async def test_vote_swap_map_with_votes_equal_to_threshold_should_change_current_map():
     session = Session()
     session.add(CurrentMap(0, "stonehenge", "sh"))
     session.commit()
     await handle_message(Message(opsayo, "setmapvotethreshold 2"))
     await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
 
-    await handle_message(Message(opsayo, "votemap dx"))
-    await handle_message(Message(stork, "votemap dx"))
+    await handle_message(Message(opsayo, "voteswapmap dx"))
+    await handle_message(Message(stork, "voteswapmap dx"))
 
     current_map: CurrentMap = Session().query(CurrentMap).first()
     assert current_map.short_name == "dx"
 
 
 @pytest.mark.asyncio
-async def test_vote_map_with_votes_equal_to_threshold_should_remove_map_votes():
+async def test_vote_swap_map_with_votes_equal_to_threshold_should_remove_map_votes():
     session = Session()
     session.add(CurrentMap(0, "stonehenge", "sh"))
     session.commit()
     await handle_message(Message(opsayo, "setmapvotethreshold 2"))
     await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
 
-    await handle_message(Message(opsayo, "votemap dx"))
-    await handle_message(Message(stork, "votemap dx"))
+    await handle_message(Message(opsayo, "voteswapmap dx"))
+    await handle_message(Message(stork, "voteswapmap dx"))
 
     map_votes: list[MapVote] = Session().query(MapVote).all()
     assert len(map_votes) == 0
 
 
 @pytest.mark.asyncio
-async def test_vote_map_with_votes_equal_to_threshold_should_not_change_rotation_index():
+async def test_vote_swap_map_with_votes_equal_to_threshold_should_not_change_rotation_index():
     session = Session()
     session.add(CurrentMap(0, "stonehenge", "sh"))
     session.commit()
     await handle_message(Message(opsayo, "setmapvotethreshold 2"))
     await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
 
-    await handle_message(Message(opsayo, "votemap dx"))
-    await handle_message(Message(stork, "votemap dx"))
+    await handle_message(Message(opsayo, "voteswapmap dx"))
+    await handle_message(Message(stork, "voteswapmap dx"))
 
     current_map: CurrentMap = Session().query(CurrentMap).first()
     assert current_map.map_rotation_index == 0

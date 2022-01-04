@@ -102,8 +102,9 @@ Common issues:
 
 # To-do list
 
-- Buffer voters into queue when vote succeeds?
-- Give queuers a chance to del when vote succeeds?
+- Map change queue waitlist (just like finished game queue waitlist)
+  - Buffer voters into queue when vote succeeds?
+  - Give queuers a chance to del when vote succeeds?
 
 Feel free to help out!
 
