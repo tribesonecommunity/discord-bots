@@ -1104,6 +1104,6 @@ async def test_vote_skip_map_with_rotation_at_end_should_rollover_rotation_to_be
 
 
 # TODO:
-# AFK tasks should remove votes
 # Votes should be removed when a map pops or when a vote succeeds
 # Remove votes when a map is removed from voteable map pool or map rotation
+# Popping a queue should update the map rotation

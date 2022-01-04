@@ -14,11 +14,13 @@ from .bot import bot
 from .commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
 from .models import (
     InProgressGameChannel,
+    MapVote,
     Player,
     QueuePlayer,
     QueueWaitlist,
     QueueWaitlistPlayer,
     Session,
+    SkipMapVote,
 )
 
 
@@ -52,6 +54,54 @@ async def afk_timer_task():
                     )
             session.query(QueuePlayer).filter(
                 QueuePlayer.player_id == player.id
+            ).delete()
+            session.commit()
+
+    for player in (
+        session.query(Player)
+        .join(MapVote)
+        .filter(Player.last_activity_at < timeout, MapVote.player_id == Player.id)
+    ):
+        map_votes: list[MapVote] = (
+            session.query(MapVote).filter(MapVote.player_id == player.id).all()
+        )
+        if len(map_votes) > 0:
+            channel = bot.get_channel(map_votes[0].channel_id)
+            if channel and isinstance(channel, TextChannel):
+                member: Member | None = channel.guild.get_member(player.id)
+                if member:
+                    await send_message(
+                        channel,
+                        content=member.mention,
+                        embed_content=False,
+                        embed_description=f"{player.name}'s votes removed for being inactive for {AFK_TIME_MINUTES} minutes",
+                        colour=Colour.red(),
+                    )
+            session.query(MapVote).filter(MapVote.player_id == player.id).delete()
+            session.commit()
+
+    for player in (
+        session.query(Player)
+        .join(SkipMapVote)
+        .filter(Player.last_activity_at < timeout, SkipMapVote.player_id == Player.id)
+    ):
+        skip_map_votes: list[SkipMapVote] = (
+            session.query(SkipMapVote).filter(SkipMapVote.player_id == player.id).all()
+        )
+        if len(skip_map_votes) > 0:
+            channel = bot.get_channel(skip_map_votes[0].channel_id)
+            if channel and isinstance(channel, TextChannel):
+                member: Member | None = channel.guild.get_member(player.id)
+                if member:
+                    await send_message(
+                        channel,
+                        content=member.mention,
+                        embed_content=False,
+                        embed_description=f"{player.name}'s votes removed for being inactive for {AFK_TIME_MINUTES} minutes",
+                        colour=Colour.red(),
+                    )
+            session.query(SkipMapVote).filter(
+                SkipMapVote.player_id == player.id
             ).delete()
             session.commit()
 

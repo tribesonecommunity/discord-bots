@@ -307,6 +307,7 @@ class MapVote:
     __tablename__ = "map_vote"
     __table_args__ = (UniqueConstraint("player_id", "voteable_map_id"),)
 
+    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     player_id: int = field(
         metadata={
             "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
@@ -336,6 +337,7 @@ class SkipMapVote:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "skip_map_vote"
 
+    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     player_id: int = field(
         metadata={
             "sa": Column(

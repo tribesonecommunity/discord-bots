@@ -2295,7 +2295,11 @@ async def vote_map(message: Message, args: list[str]):
         # TODO: What to do about players currently in queue?
         # TODO: Buffer for 20 seconds?
     else:
-        session.add(MapVote(message.author.id, voteable_map_id=voteable_map.id))
+        session.add(
+            MapVote(
+                message.channel.id, message.author.id, voteable_map_id=voteable_map.id
+            )
+        )
         await send_message(
             message.channel,
             embed_description=f"Add map vote for {args[0]}",
@@ -2310,7 +2314,7 @@ async def vote_skip_map(message: Message, args: list[str]):
     A player votes to go to the next map in rotation
     """
     session = Session()
-    session.add(SkipMapVote(message.author.id))
+    session.add(SkipMapVote(message.channel.id, message.author.id))
     try:
         session.commit()
         skip_map_votes: list[SkipMapVote] = Session().query(SkipMapVote).all()
