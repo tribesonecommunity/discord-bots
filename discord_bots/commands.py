@@ -2331,7 +2331,6 @@ async def vote_map(message: Message, args: list[str]):
     session.commit()
 
 
-# TODO: Vote for many maps at once
 async def vote_skip_map(message: Message, args: list[str]):
     """
     A player votes to go to the next map in rotation

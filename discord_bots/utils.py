@@ -19,7 +19,6 @@ def short_uuid(uuid: str) -> str:
 
 
 def update_current_map_to_next_map_in_rotation():
-    """"""
     session = Session()
     current_map: CurrentMap = session.query(CurrentMap).first()
     rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
