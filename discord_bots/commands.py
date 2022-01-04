@@ -160,8 +160,11 @@ async def add_player_to_queue(
             average_trueskill = mean(
                 list(map(lambda x: x.unrated_trueskill_mu, players))
             )
+        current_map: CurrentMap | None = session.query(CurrentMap).first()
         game = InProgressGame(
             average_trueskill=average_trueskill,
+            map_full_name=current_map.full_name if current_map else "",
+            map_short_name=current_map.short_name if current_map else "",
             queue_id=queue.id,
             team0_name=generate_be_name() if TEAM_NAMES else "Blood Eagle",
             team1_name=generate_ds_name() if TEAM_NAMES else "Diamond Sword",
@@ -225,15 +228,19 @@ async def add_player_to_queue(
         session.query(SkipMapVote).delete()
 
         # TODO: This is duplicated
-        current_map: CurrentMap = session.query(CurrentMap).first()
         rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-        next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-            rotation_maps
-        )
-        next_map = rotation_maps[next_rotation_map_index]
-        current_map.map_rotation_index = next_rotation_map_index
-        current_map.full_name = next_map.full_name
-        current_map.short_name = next_map.short_name
+        if len(rotation_maps) > 0:
+            if current_map:
+                next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+                    rotation_maps
+                )
+                next_map = rotation_maps[next_rotation_map_index]
+                current_map.map_rotation_index = next_rotation_map_index
+                current_map.full_name = next_map.full_name
+                current_map.short_name = next_map.short_name
+            else:
+                next_map = rotation_maps[0]
+                session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
 
         session.commit()
         return True, True
@@ -1155,6 +1162,8 @@ async def finish_game(message: Message, args: list[str]):
         finished_at=datetime.now(timezone.utc),
         game_id=in_progress_game.id,
         is_rated=queue.is_rated,
+        map_full_name=in_progress_game.map_full_name,
+        map_short_name=in_progress_game.map_short_name,
         queue_name=queue.name,
         started_at=in_progress_game.created_at,
         team0_name=in_progress_game.team0_name,

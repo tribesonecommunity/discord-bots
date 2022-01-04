@@ -130,6 +130,10 @@ class FinishedGame:
         metadata={"sa": Column(DateTime, index=True, nullable=False)},
     )
     is_rated: bool = field(metadata={"sa": Column(Boolean, nullable=False)})
+    map_full_name: str = field(metadata={"sa": Column(String, server_default="")})
+    map_short_name: str = field(
+        metadata={"sa": Column(String, index=True, server_default="")}
+    )
     queue_name: str = field(
         metadata={"sa": Column(String, index=True, nullable=False)},
     )
@@ -215,6 +219,10 @@ class InProgressGame:
     __tablename__ = "in_progress_game"
 
     average_trueskill: float = field(metadata={"sa": Column(Float, nullable=True)})
+    map_full_name: str = field(metadata={"sa": Column(String, server_default="")})
+    map_short_name: str = field(
+        metadata={"sa": Column(String, index=True, server_default="")}
+    )
     queue_id: str | None = field(
         metadata={"sa": Column(String, ForeignKey("queue.id"), index=True)},
     )
