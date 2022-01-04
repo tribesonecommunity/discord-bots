@@ -1153,6 +1153,23 @@ async def test_vote_skip_map_with_rotation_at_end_should_rollover_rotation_to_be
     assert current_map.map_rotation_index == 0
 
 
+@pytest.mark.asyncio
+async def test_popping_the_queue_should_update_map_rotation():
+    session = Session()
+    session.add(CurrentMap(0, "dangerous crossing", "dx"))
+    session.commit()
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+    await handle_message(Message(opsayo, "addrotationmap sh stonehenge"))
+    await handle_message(Message(opsayo, "createqueue LTpug 2"))
+
+    await handle_message(Message(lyon, "add"))
+    await handle_message(Message(opsayo, "add"))
+
+    current_map: CurrentMap = Session().query(CurrentMap).first()
+    assert current_map.short_name == "sh"
+    assert current_map.map_rotation_index == 1
+
+
 # TODO:
 # Remove votes when a map is removed from voteable map pool or map rotation
 # Popping a queue should update the map rotation

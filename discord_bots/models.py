@@ -640,3 +640,7 @@ class VoteableMap:
 
 
 Session: sessionmaker = sessionmaker(bind=engine)
+
+
+# TODO:
+# Add map to games (IGP, FG)

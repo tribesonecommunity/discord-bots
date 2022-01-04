@@ -223,6 +223,17 @@ async def add_player_to_queue(
         session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).delete()
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
+
+        # TODO: This is duplicated
+        current_map: CurrentMap = session.query(CurrentMap).first()
+        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+        next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+            rotation_maps
+        )
+        current_map.map_rotation_index = next_rotation_map_index
+        current_map.full_name = rotation_maps[next_rotation_map_index].full_name
+        current_map.short_name = rotation_maps[next_rotation_map_index].short_name
+
         session.commit()
         return True, True
     return True, False
@@ -2328,6 +2339,8 @@ async def vote_skip_map(message: Message, args: list[str]):
                 embed_description=f"Vote to skip the current map passed!",
                 colour=Colour.green(),
             )
+
+            # TODO: This is duplicated
             current_map: CurrentMap = session.query(CurrentMap).first()
             rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
             next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
