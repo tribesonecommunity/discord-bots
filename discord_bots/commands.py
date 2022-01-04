@@ -2290,6 +2290,8 @@ async def vote_map(message: Message, args: list[str]):
             embed_description=f"Map vote for {voteable_map.full_name} ({voteable_map.short_name}) passed!",
             colour=Colour.green(),
         )
+        session.query(MapVote).delete()
+        session.query(SkipMapVote).delete()
         # TODO: Show updated status
         # TODO: Randomly add votes into queue
         # TODO: What to do about players currently in queue?
@@ -2332,6 +2334,8 @@ async def vote_skip_map(message: Message, args: list[str]):
             current_map.map_rotation_index = next_rotation_map_index
             current_map.full_name = rotation_maps[next_rotation_map_index].full_name
             current_map.short_name = rotation_maps[next_rotation_map_index].short_name
+            session.query(MapVote).delete()
+            session.query(SkipMapVote).delete()
             session.commit()
         else:
             await send_message(

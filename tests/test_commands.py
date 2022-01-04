@@ -19,6 +19,7 @@ from discord_bots.models import (
     FinishedGamePlayer,
     InProgressGame,
     InProgressGamePlayer,
+    MapVote,
     Player,
     PlayerDecay,
     Queue,
@@ -27,6 +28,7 @@ from discord_bots.models import (
     QueueWaitlistPlayer,
     RotationMap,
     Session,
+    SkipMapVote,
     VoteableMap,
 )
 from discord_bots.utils import short_uuid
@@ -1021,6 +1023,21 @@ async def test_vote_map_with_votes_equal_to_threshold_should_change_current_map(
 
 
 @pytest.mark.asyncio
+async def test_vote_map_with_votes_equal_to_threshold_should_remove_map_votes():
+    session = Session()
+    session.add(CurrentMap(0, "stonehenge", "sh"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "votemap dx"))
+    await handle_message(Message(stork, "votemap dx"))
+
+    map_votes: list[MapVote] = Session().query(MapVote).all()
+    assert len(map_votes) == 0
+
+
+@pytest.mark.asyncio
 async def test_vote_map_with_votes_equal_to_threshold_should_not_change_rotation_index():
     session = Session()
     session.add(CurrentMap(0, "stonehenge", "sh"))
@@ -1084,6 +1101,22 @@ async def test_vote_skip_map_with_votes_equal_to_threshold_should_change_to_next
     current_map: CurrentMap = Session().query(CurrentMap).first()
     assert current_map.short_name == "sh"
     assert current_map.map_rotation_index == 1
+
+
+@pytest.mark.asyncio
+async def test_vote_skip_map_with_votes_equal_to_threshold_should_remove_all_skip_map_votes():
+    session = Session()
+    session.add(CurrentMap(0, "dangerouscrossing", "dx"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+    await handle_message(Message(opsayo, "addrotationmap sh stonehenge"))
+
+    await handle_message(Message(opsayo, "voteskipmap"))
+    await handle_message(Message(stork, "voteskipmap"))
+
+    skip_map_votes: list[SkipMapVote] = Session().query(SkipMapVote).all()
+    assert len(skip_map_votes) == 0
 
 
 @pytest.mark.asyncio
