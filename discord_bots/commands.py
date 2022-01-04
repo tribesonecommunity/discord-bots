@@ -2051,8 +2051,7 @@ async def status(message: Message, args: list[str]):
                 if i > 0:
                     output += "\n"
                 # output += f"**IN GAME** ({short_game_id}) (TS: {round(game.average_trueskill, 2)}):\n"
-                output += f"**IN GAME** ({short_game_id}):\n"
-                output += f"**Map: {game.map_full_name} ({game.map_short_name})**\n"
+                output += f"**IN GAME - {game.map_short_name}** ({short_game_id}):\n"
                 output += pretty_format_team(
                     game.team0_name, game.win_probability, team0_players
                 )
