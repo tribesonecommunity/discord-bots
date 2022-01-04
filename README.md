@@ -102,9 +102,11 @@ Common issues:
 
 # To-do list
 
+- Buffer voters into queue when vote succeeds?
+- Give queuers a chance to del when vote succeeds?
+
 Feel free to help out!
 
-- Add map to games
 - Surface current map, next map, vote status in status and game history
 - Update migration to rename / alter column rather than drop/replace: `alembic/versions/20220103111554_fdb66df22216_add_rated_and_unrated_trueskill.py`
 - Mark mock games as mock games for easier deletion

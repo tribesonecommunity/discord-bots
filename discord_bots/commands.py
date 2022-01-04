@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
 from discord_bots.utils import (
+    pretty_format_team,
     short_uuid,
     update_current_map_to_next_map_in_rotation,
     win_probability,
@@ -196,11 +197,13 @@ async def add_player_to_queue(
             session.add(game_player)
 
         short_game_id = short_uuid(game.id)
-        team0_names = sorted(map(lambda x: x.name, team0_players))
-        team1_names = sorted(map(lambda x: x.name, team1_players))
         # channel_message = f"Game '{queue.name}' ({short_game_id}) (TS: {round(game.average_trueskill, 2)}) has begun!"
         channel_message = f"Game '{queue.name}' ({short_game_id}) has begun!"
-        channel_embed = f"**{game.team0_name}** ({round(100 * win_prob, 1)}%): {', '.join(team0_names)}\n**{game.team1_name}** ({round(100 * (1 - win_prob), 1)}%): {', '.join(team1_names)}"
+        channel_embed = ""
+        channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
+        channel_embed += pretty_format_team(
+            game.team1_name, 1 - win_prob, team1_players
+        )
 
         await send_message(
             channel,
@@ -1936,9 +1939,10 @@ async def show_game(message: Message, args: list[str]):
 async def status(message: Message, args: list[str]):
     session = Session()
     queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
-    games_by_queue = defaultdict(list)
+    games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
     for game in session.query(InProgressGame):
-        games_by_queue[game.queue_id].append(game)
+        if game.queue_id:
+            games_by_queue[game.queue_id].append(game)
 
     output = ""
     for i, queue in enumerate(queues):
@@ -1963,6 +1967,7 @@ async def status(message: Message, args: list[str]):
             output += "\n"
 
         if queue.id in games_by_queue:
+            game: InProgressGame
             for i, game in enumerate(games_by_queue[queue.id]):
                 team0_players = (
                     session.query(Player)
@@ -1985,19 +1990,16 @@ async def status(message: Message, args: list[str]):
                 )
 
                 short_game_id = short_uuid(game.id)
-                team0_names = ", ".join(
-                    sorted([player.name for player in team0_players])
-                )
-                team1_names = ", ".join(
-                    sorted([player.name for player in team1_players])
-                )
-                win_prob = game.win_probability
                 if i > 0:
                     output += "\n"
                 # output += f"**IN GAME** ({short_game_id}) (TS: {round(game.average_trueskill, 2)}):\n"
                 output += f"**IN GAME** ({short_game_id}):\n"
-                output += f"**{game.team0_name}** ({round(100 * win_prob, 1)}%): {team0_names}\n"
-                output += f"**{game.team1_name}** ({round(100 * (1 - win_prob), 1)}%): {team1_names}\n"
+                output += pretty_format_team(
+                    game.team0_name, game.win_probability, team0_players
+                )
+                output += pretty_format_team(
+                    game.team1_name, 1 - game.win_probability, team1_players
+                )
                 minutes_ago = (
                     datetime.now(timezone.utc)
                     - game.created_at.replace(tzinfo=timezone.utc)
@@ -2125,10 +2127,10 @@ async def sub(message: Message, args: list[str]):
         session.add(game_player)
 
     short_game_id = short_uuid(game.id)
-    team0_names = list(map(lambda x: x.name, team0_players))
-    team1_names = list(map(lambda x: x.name, team1_players))
     channel_message = f"New teams ({short_game_id}):"
-    channel_embed = f"**{game.team0_name}** ({round(100 * win_prob, 1)}%): {', '.join(team0_names)}\n**{game.team1_name}** ({round(100 * (1 - win_prob), 1)}%): {', '.join(team1_names)}"
+    channel_embed = ""
+    channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
+    channel_embed += pretty_format_team(game.team1_name, win_prob, team1_players)
 
     await send_message(
         message.channel,

@@ -4,7 +4,18 @@ import math
 
 from trueskill import Rating, global_env
 
-from discord_bots.models import CurrentMap, RotationMap, Session
+from discord_bots.models import CurrentMap, Player, RotationMap, Session
+
+
+def pretty_format_team(
+    team_name: str, win_probability: float, players: list[Player]
+) -> str:
+    player_names = ", ".join(sorted([player.name for player in players]))
+    return f"**{team_name}** ({round(win_probability, 1)}%): {player_names}\n"
+
+
+def short_uuid(uuid: str) -> str:
+    return uuid.split("-")[0]
 
 
 def update_current_map_to_next_map_in_rotation():
@@ -25,10 +36,6 @@ def update_current_map_to_next_map_in_rotation():
             next_map = rotation_maps[0]
             session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
         session.commit()
-
-
-def short_uuid(uuid: str) -> str:
-    return uuid.split("-")[0]
 
 
 def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
