@@ -4,6 +4,28 @@ import math
 
 from trueskill import Rating, global_env
 
+from discord_bots.models import CurrentMap, RotationMap, Session
+
+
+def update_current_map_to_next_map_in_rotation():
+    """"""
+    session = Session()
+    current_map: CurrentMap = session.query(CurrentMap).first()
+    rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+    if len(rotation_maps) > 0:
+        if current_map:
+            next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+                rotation_maps
+            )
+            next_map = rotation_maps[next_rotation_map_index]
+            current_map.map_rotation_index = next_rotation_map_index
+            current_map.full_name = next_map.full_name
+            current_map.short_name = next_map.short_name
+        else:
+            next_map = rotation_maps[0]
+            session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
+        session.commit()
+
 
 def short_uuid(uuid: str) -> str:
     return uuid.split("-")[0]

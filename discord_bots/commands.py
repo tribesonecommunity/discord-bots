@@ -14,7 +14,11 @@ from discord.guild import Guild
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
-from discord_bots.utils import short_uuid, win_probability
+from discord_bots.utils import (
+    short_uuid,
+    update_current_map_to_next_map_in_rotation,
+    win_probability,
+)
 from names import generate_be_name, generate_ds_name
 
 from .models import (
@@ -226,23 +230,8 @@ async def add_player_to_queue(
         session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).delete()
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
-
-        # TODO: This is duplicated
-        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-        if len(rotation_maps) > 0:
-            if current_map:
-                next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-                    rotation_maps
-                )
-                next_map = rotation_maps[next_rotation_map_index]
-                current_map.map_rotation_index = next_rotation_map_index
-                current_map.full_name = next_map.full_name
-                current_map.short_name = next_map.short_name
-            else:
-                next_map = rotation_maps[0]
-                session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
-
         session.commit()
+        update_current_map_to_next_map_in_rotation()
         return True, True
     return True, False
 
@@ -2357,15 +2346,7 @@ async def vote_skip_map(message: Message, args: list[str]):
                 colour=Colour.green(),
             )
 
-            # TODO: This is duplicated
-            current_map: CurrentMap = session.query(CurrentMap).first()
-            rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-            next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-                rotation_maps
-            )
-            current_map.map_rotation_index = next_rotation_map_index
-            current_map.full_name = rotation_maps[next_rotation_map_index].full_name
-            current_map.short_name = rotation_maps[next_rotation_map_index].short_name
+            update_current_map_to_next_map_in_rotation()
             session.query(MapVote).delete()
             session.query(SkipMapVote).delete()
             session.commit()
