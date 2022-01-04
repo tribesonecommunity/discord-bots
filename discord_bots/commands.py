@@ -230,9 +230,10 @@ async def add_player_to_queue(
         next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
             rotation_maps
         )
+        next_map = rotation_maps[next_rotation_map_index]
         current_map.map_rotation_index = next_rotation_map_index
-        current_map.full_name = rotation_maps[next_rotation_map_index].full_name
-        current_map.short_name = rotation_maps[next_rotation_map_index].short_name
+        current_map.full_name = next_map.full_name
+        current_map.short_name = next_map.short_name
 
         session.commit()
         return True, True
@@ -1757,7 +1758,14 @@ async def remove_voteable_map(message: Message, args: list[str]):
         return
 
     session = Session()
-    session.query(VoteableMap).filter(VoteableMap.short_name == args[0]).delete()
+    voteable_map = (
+        session.query(VoteableMap).filter(VoteableMap.short_name == args[0]).first()
+    )
+    if voteable_map:
+        session.query(MapVote).filter(
+            MapVote.voteable_map_id == voteable_map.id
+        ).delete()
+        session.delete(voteable_map)
     session.commit()
 
     await send_message(

@@ -104,17 +104,11 @@ Common issues:
 
 Feel free to help out!
 
-TODO:
-
-- Map picking / rotation
+- Add map to games
+- Surface current map, next map, vote status in status and game history
 - Update migration to rename / alter column rather than drop/replace: `alembic/versions/20220103111554_fdb66df22216_add_rated_and_unrated_trueskill.py`
 - Mark mock games as mock games for easier deletion
-
-Nice to have
-
-- CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md
-- CI for Tests
-- Strict typing configuration
+- De-dupe pretty-printing for in progress games
 
 MVP+
 
@@ -122,3 +116,9 @@ MVP+
 - Queue notifications
 - Shazbucks
 - Expose Flask API: https://flask.palletsprojects.com/en/2.0.x/
+- CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md
+- CI for Tests
+
+Maybe?
+
+- Strict typing configuration

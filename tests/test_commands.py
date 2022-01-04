@@ -957,6 +957,18 @@ async def test_remove_voteable_map_with_short_name_should_remove_voteable_map():
 
 
 @pytest.mark.asyncio
+async def test_remove_voteable_map_should_remove_map_votes_for_that_map():
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+    await handle_message(Message(opsayo, "votemap dx"))
+
+    await handle_message(Message(opsayo, "removevoteablemap dx"))
+
+    session = Session()
+    map_votes: list[MapVote] = session.query(MapVote).all()
+    assert len(map_votes) == 0
+
+
+@pytest.mark.asyncio
 async def test_remove_voteable_map_with_long_name_should_not_remove_voteable_map():
     await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
 
@@ -1168,8 +1180,3 @@ async def test_popping_the_queue_should_update_map_rotation():
     current_map: CurrentMap = Session().query(CurrentMap).first()
     assert current_map.short_name == "sh"
     assert current_map.map_rotation_index == 1
-
-
-# TODO:
-# Remove votes when a map is removed from voteable map pool or map rotation
-# Popping a queue should update the map rotation
