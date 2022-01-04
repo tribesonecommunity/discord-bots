@@ -1756,7 +1756,7 @@ async def remove_rotation_map(message: Message, args: list[str]):
 
     session = Session()
     rotation_map = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[0])).first()
+        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[0])).first()  # type: ignore
     )
     if rotation_map:
         session.delete(rotation_map)
@@ -1786,7 +1786,7 @@ async def remove_voteable_map(message: Message, args: list[str]):
 
     session = Session()
     voteable_map = (
-        session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()
+        session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
     )
     if voteable_map:
         session.query(MapVote).filter(
@@ -1993,7 +1993,7 @@ async def status(message: Message, args: list[str]):
     map_votes: list[MapVote] = session.query(MapVote).all()
     voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
     voted_maps: list[VoteableMap] = (
-        session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()
+        session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
     )
     voted_maps_str = ", ".join(
         [
@@ -2404,7 +2404,7 @@ async def vote_swap_map(message: Message, args: list[str]):
         map_votes: list[MapVote] = session.query(MapVote).all()
         voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
         voted_maps: list[VoteableMap] = (
-            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()
+            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
         )
         voted_maps_str = ", ".join(
             [

@@ -102,16 +102,16 @@ Common issues:
 
 # To-do list
 
+- Helper methods to force map votes
 - Map change queue waitlist (just like finished game queue waitlist)
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
+- Allow voting for multiple maps at once
 
 Feel free to help out!
 
-- Surface current map, next map, vote status in status and game history
 - Update migration to rename / alter column rather than drop/replace: `alembic/versions/20220103111554_fdb66df22216_add_rated_and_unrated_trueskill.py`
 - Mark mock games as mock games for easier deletion
-- De-dupe pretty-printing for in progress games
 
 MVP+
 
