@@ -147,6 +147,27 @@ async def test_remove_queue_with_nonexistent_queue_should_not_throw_exception():
 
 
 @pytest.mark.asyncio
+async def test_set_queue_unrated_should_make_queue_unrated():
+    await handle_message(Message(opsayo, "createqueue LTpug 10"))
+
+    await handle_message(Message(opsayo, "setqueueunrated LTpug"))
+
+    queue: Queue = session.query(Queue).first()
+    assert queue.is_rated == False
+
+
+@pytest.mark.asyncio
+async def test_set_queue_rated_should_make_queue_rated():
+    await handle_message(Message(opsayo, "createqueue LTpug 10"))
+    await handle_message(Message(opsayo, "setqueueunrated LTpug"))
+
+    await handle_message(Message(opsayo, "setqueuerated LTpug"))
+
+    queue: Queue = session.query(Queue).first()
+    assert queue.is_rated == True
+
+
+@pytest.mark.asyncio
 async def test_add_should_add_player_to_all_queues():
     await handle_message(Message(opsayo, "createqueue LTpug 10"))
     await handle_message(Message(opsayo, "createqueue LTunrated 10"))
@@ -428,14 +449,17 @@ async def test_finish_game_with_win_should_increase_trueskill_for_reporting_team
 
     await handle_message(Message(opsayo, "finishgame win"))
 
-    assert (
-        session.query(Player).filter(Player.id == opsayo.id).first().trueskill_mu
-        > Rating().mu
-    )
-    assert (
-        session.query(Player).filter(Player.id == lyon.id).first().trueskill_mu
-        < Rating().mu
-    )
+    winner: Player = session.query(Player).filter(Player.id == opsayo.id).first()
+    loser: Player = session.query(Player).filter(Player.id == lyon.id).first()
+    assert winner.rated_trueskill_mu > Rating().mu
+    assert winner.unrated_trueskill_mu > Rating().mu
+    assert loser.rated_trueskill_mu < Rating().mu
+    assert loser.unrated_trueskill_mu < Rating().mu
+
+    fgp: FinishedGamePlayer
+    for fgp in session.query(FinishedGamePlayer).all():
+        assert fgp.rated_trueskill_mu_before != approx(fgp.rated_trueskill_mu_after)
+        assert fgp.unrated_trueskill_mu_before != approx(fgp.unrated_trueskill_mu_after)
 
 
 @pytest.mark.asyncio
@@ -446,14 +470,17 @@ async def test_finish_game_with_loss_should_increase_trueskill_for_other_team():
 
     await handle_message(Message(opsayo, "finishgame loss"))
 
-    assert (
-        session.query(Player).filter(Player.id == opsayo.id).first().trueskill_mu
-        < Rating().mu
-    )
-    assert (
-        session.query(Player).filter(Player.id == lyon.id).first().trueskill_mu
-        > Rating().mu
-    )
+    loser: Player = session.query(Player).filter(Player.id == opsayo.id).first()
+    winner: Player = session.query(Player).filter(Player.id == lyon.id).first()
+    assert loser.rated_trueskill_mu < Rating().mu
+    assert loser.unrated_trueskill_mu < Rating().mu
+    assert winner.rated_trueskill_mu > Rating().mu
+    assert winner.unrated_trueskill_mu > Rating().mu
+
+    fgp: FinishedGamePlayer
+    for fgp in session.query(FinishedGamePlayer).all():
+        assert fgp.rated_trueskill_mu_before != approx(fgp.rated_trueskill_mu_after)
+        assert fgp.unrated_trueskill_mu_before != approx(fgp.unrated_trueskill_mu_after)
 
 
 @pytest.mark.asyncio
@@ -464,12 +491,62 @@ async def test_finish_game_with_tie_and_equal_trueskill_should_not_modify_truesk
 
     await handle_message(Message(opsayo, "finishgame tie"))
 
-    assert session.query(Player).filter(
-        Player.id == opsayo.id
-    ).first().trueskill_mu == approx(Rating().mu)
-    assert session.query(Player).filter(
-        Player.id == lyon.id
-    ).first().trueskill_mu == approx(Rating().mu)
+    first_player: Player = session.query(Player).filter(Player.id == opsayo.id).first()
+    second_player: Player = session.query(Player).filter(Player.id == lyon.id).first()
+
+    assert first_player.rated_trueskill_mu == approx(Rating().mu)
+    assert first_player.unrated_trueskill_mu == approx(Rating().mu)
+    assert second_player.rated_trueskill_mu == approx(Rating().mu)
+    assert second_player.unrated_trueskill_mu == approx(Rating().mu)
+
+    fgp: FinishedGamePlayer
+    for fgp in session.query(FinishedGamePlayer).all():
+        assert fgp.rated_trueskill_mu_before == approx(fgp.rated_trueskill_mu_after)
+        assert fgp.unrated_trueskill_mu_before == approx(fgp.unrated_trueskill_mu_after)
+
+
+@pytest.mark.asyncio
+async def test_finish_game_with_unrated_queue_win_should_only_affect_unrated_trueskill():
+    await handle_message(Message(opsayo, "createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "setqueueunrated LTpug"))
+    await handle_message(Message(opsayo, "add"))
+    await handle_message(Message(lyon, "add"))
+
+    await handle_message(Message(opsayo, "finishgame win"))
+
+    winner: Player = session.query(Player).filter(Player.id == opsayo.id).first()
+    loser: Player = session.query(Player).filter(Player.id == lyon.id).first()
+    assert winner.rated_trueskill_mu == approx(Rating().mu)
+    assert winner.unrated_trueskill_mu > Rating().mu
+    assert loser.rated_trueskill_mu == approx(Rating().mu)
+    assert loser.unrated_trueskill_mu < Rating().mu
+
+    fgp: FinishedGamePlayer
+    for fgp in session.query(FinishedGamePlayer).all():
+        assert fgp.rated_trueskill_mu_before == approx(fgp.rated_trueskill_mu_after)
+        assert fgp.unrated_trueskill_mu_before != approx(fgp.unrated_trueskill_mu_after)
+
+
+@pytest.mark.asyncio
+async def test_finish_game_with_unrated_queue_loss_should_only_affect_unrated_trueskill():
+    await handle_message(Message(opsayo, "createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "setqueueunrated LTpug"))
+    await handle_message(Message(opsayo, "add"))
+    await handle_message(Message(lyon, "add"))
+
+    await handle_message(Message(opsayo, "finishgame loss"))
+
+    loser: Player = session.query(Player).filter(Player.id == opsayo.id).first()
+    winner: Player = session.query(Player).filter(Player.id == lyon.id).first()
+    assert loser.rated_trueskill_mu == approx(Rating().mu)
+    assert loser.unrated_trueskill_mu < Rating().mu
+    assert winner.rated_trueskill_mu == approx(Rating().mu)
+    assert winner.unrated_trueskill_mu > Rating().mu
+
+    fgp: FinishedGamePlayer
+    for fgp in session.query(FinishedGamePlayer).all():
+        assert fgp.rated_trueskill_mu_before == fgp.rated_trueskill_mu_after
+        assert fgp.unrated_trueskill_mu_before != fgp.unrated_trueskill_mu_after
 
 
 @pytest.mark.asyncio
@@ -774,12 +851,14 @@ async def test_remove_command_should_remove_command():
 async def test_decay_player_should_decay_player():
     session = Session()
     stork_player: Player = session.query(Player).filter(Player.id == stork.id).first()
-    stork_player.trueskill_mu = 30
     session.commit()
+
     await handle_message(Message(opsayo, "decayplayer @stork 10%"))
 
     session = Session()
     stork_player: Player = session.query(Player).filter(Player.id == stork.id).first()
-    assert stork_player.trueskill_mu == 30 * 0.90
+    print(stork_player)
+    assert stork_player.rated_trueskill_mu == Rating().mu * 0.90
+    assert stork_player.unrated_trueskill_mu == Rating().mu * 0.90
     player_decays = session.query(PlayerDecay).all()
     assert len(player_decays) == 1

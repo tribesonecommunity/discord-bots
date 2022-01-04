@@ -15,6 +15,9 @@ session = Session()
 
 for i, match in enumerate(data):
     print(i, len(data), i / len(data))
+    if match["queue"]["name"] == "bottest":
+        continue
+
     team1_players = []
     team2_players = []
     for json_player in match["players"]:
@@ -32,13 +35,31 @@ for i, match in enumerate(data):
         else:
             team2_players.append(player)
 
+    rated_team1_ratings = list(
+        map(
+            lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+            team1_players,
+        )
+    )
+    rated_team2_ratings = list(
+        map(
+            lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+            team2_players,
+        )
+    )
+    unrated_team1_ratings = list(
+        map(
+            lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
+            team1_players,
+        )
+    )
+    unrated_team2_ratings = list(
+        map(
+            lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
+            team2_players,
+        )
+    )
 
-    team1_ratings = list(
-        map(lambda x: Rating(x.trueskill_mu, x.trueskill_sigma), team1_players)
-    )
-    team2_ratings = list(
-        map(lambda x: Rating(x.trueskill_mu, x.trueskill_sigma), team2_players)
-    )
     outcome = None
     if match["winningTeam"] == 0:
         outcome = [0, 0]
@@ -46,14 +67,28 @@ for i, match in enumerate(data):
         outcome = [0, 1]
     elif match["winningTeam"] == 2:
         outcome = [1, 0]
-    team1_new_ratings, team2_new_ratings = rate([team1_ratings, team2_ratings], outcome)
+    is_rated = match["queue"]["name"] != "LTunrated"
+    if is_rated:
+        rated_team1_new_ratings, rated_team2_new_ratings = rate(
+            [rated_team1_ratings, rated_team2_ratings], outcome
+        )
+    else:
+        rated_team1_new_ratings, rated_team2_new_ratings = (
+            rated_team1_ratings,
+            rated_team2_ratings,
+        )
 
-    win_prob = win_probability(team1_ratings, team2_ratings)
+    unrated_team1_new_ratings, unrated_team2_new_ratings = rate(
+        [unrated_team1_ratings, unrated_team2_ratings], outcome
+    )
+
+    win_prob = win_probability(rated_team1_ratings, rated_team2_ratings)
 
     finished_game = FinishedGame(
         average_trueskill=0.0,
         game_id=str(uuid4()),
         finished_at=datetime.fromtimestamp(match["timestamp"] // 1000),
+        is_rated=is_rated,
         queue_name=match["queue"]["name"],
         started_at=datetime.fromtimestamp(match["completionTimestamp"] // 1000),
         win_probability=win_prob,
@@ -67,13 +102,19 @@ for i, match in enumerate(data):
             player_id=player.id,
             player_name=player.name,
             team=0,
-            trueskill_mu_before=team1_ratings[i].mu,
-            trueskill_sigma_before=team1_ratings[i].sigma,
-            trueskill_mu_after=team1_new_ratings[i].mu,
-            trueskill_sigma_after=team1_new_ratings[i].sigma,
+            rated_trueskill_mu_before=rated_team1_ratings[i].mu,
+            rated_trueskill_sigma_before=rated_team1_ratings[i].sigma,
+            rated_trueskill_mu_after=rated_team1_new_ratings[i].mu,
+            rated_trueskill_sigma_after=rated_team1_new_ratings[i].sigma,
+            unrated_trueskill_mu_before=unrated_team1_ratings[i].mu,
+            unrated_trueskill_sigma_before=unrated_team1_ratings[i].sigma,
+            unrated_trueskill_mu_after=unrated_team1_new_ratings[i].mu,
+            unrated_trueskill_sigma_after=unrated_team1_new_ratings[i].sigma,
         )
-        player.trueskill_mu = team1_new_ratings[i].mu
-        player.trueskill_sigma = team1_new_ratings[i].sigma
+        player.rated_trueskill_mu = rated_team1_new_ratings[i].mu
+        player.rated_trueskill_sigma = rated_team1_new_ratings[i].sigma
+        player.unrated_trueskill_mu = unrated_team1_new_ratings[i].mu
+        player.unrated_trueskill_sigma = unrated_team1_new_ratings[i].sigma
         session.add(finished_game_player)
 
     for i, player in enumerate(team2_players):
@@ -82,13 +123,19 @@ for i, match in enumerate(data):
             player_id=player.id,
             player_name=player.name,
             team=1,
-            trueskill_mu_before=team2_ratings[i].mu,
-            trueskill_sigma_before=team2_ratings[i].sigma,
-            trueskill_mu_after=team2_new_ratings[i].mu,
-            trueskill_sigma_after=team2_new_ratings[i].sigma,
+            rated_trueskill_mu_before=rated_team2_ratings[i].mu,
+            rated_trueskill_sigma_before=rated_team2_ratings[i].sigma,
+            rated_trueskill_mu_after=rated_team2_new_ratings[i].mu,
+            rated_trueskill_sigma_after=rated_team2_new_ratings[i].sigma,
+            unrated_trueskill_mu_before=unrated_team2_ratings[i].mu,
+            unrated_trueskill_sigma_before=unrated_team2_ratings[i].sigma,
+            unrated_trueskill_mu_after=unrated_team2_new_ratings[i].mu,
+            unrated_trueskill_sigma_after=unrated_team2_new_ratings[i].sigma,
         )
-        player.trueskill_mu = team2_new_ratings[i].mu
-        player.trueskill_sigma = team2_new_ratings[i].sigma
+        player.rated_trueskill_mu = rated_team2_new_ratings[i].mu
+        player.rated_trueskill_sigma = rated_team2_new_ratings[i].sigma
+        player.unrated_trueskill_mu = unrated_team2_new_ratings[i].mu
+        player.unrated_trueskill_sigma = unrated_team2_new_ratings[i].sigma
         session.add(finished_game_player)
 
     session.commit()

@@ -1,6 +1,6 @@
+import random
 from collections import defaultdict
 from datetime import timedelta
-import random
 
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
@@ -196,8 +196,8 @@ while current_date < end_date:
         )
         # print(last_game_of_day)
         if last_game_of_day:
-            mu_y_axes[player.id].append(last_game_of_day.trueskill_mu_after)
-            sigma_y_axes[player.id].append(last_game_of_day.trueskill_sigma_after)
+            mu_y_axes[player.id].append(last_game_of_day.rated_trueskill_mu_after)
+            sigma_y_axes[player.id].append(last_game_of_day.rated_trueskill_sigma_after)
         else:
             mu_y_axes[player.id].append(mu_y_axes[player.id][-1])
             sigma_y_axes[player.id].append(sigma_y_axes[player.id][-1])
@@ -207,7 +207,7 @@ while current_date < end_date:
 
 
 highest_rated_players = (
-    session.query(Player).order_by(Player.trueskill_mu.desc()).limit(15).all()  # type: ignore
+    session.query(Player).order_by(Player.rated_trueskill_mu.desc()).limit(15).all()  # type: ignore
 )
 
 # print(sigma_y_axes)

@@ -102,6 +102,9 @@ https://alembic.sqlalchemy.org/en/latest/naming.html
 
 Feel free to help out!
 
+TODO:
+- Update migration to rename / alter column rather than drop/replace: `alembic/versions/20220103111554_fdb66df22216_add_rated_and_unrated_trueskill.py`
+
 Nice to have
 
 - CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md

@@ -101,6 +101,7 @@ class FinishedGame:
     finished_at: datetime = field(
         metadata={"sa": Column(DateTime, index=True, nullable=False)},
     )
+    is_rated: bool = field(metadata={"sa": Column(Boolean, nullable=False)})
     queue_name: str = field(
         metadata={"sa": Column(String, index=True, nullable=False)},
     )
@@ -148,10 +149,28 @@ class FinishedGamePlayer:
         },
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
-    trueskill_mu_after: float = field(metadata={"sa": Column(Float, nullable=False)})
-    trueskill_mu_before: float = field(metadata={"sa": Column(Float, nullable=False)})
-    trueskill_sigma_after: float = field(metadata={"sa": Column(Float, nullable=False)})
-    trueskill_sigma_before: float = field(
+    rated_trueskill_mu_after: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    rated_trueskill_mu_before: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    rated_trueskill_sigma_after: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    rated_trueskill_sigma_before: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    unrated_trueskill_mu_after: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    unrated_trueskill_mu_before: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    unrated_trueskill_sigma_after: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    unrated_trueskill_sigma_before: float = field(
         metadata={"sa": Column(Float, nullable=False)}
     )
     id: str = field(
@@ -254,6 +273,10 @@ class InProgressGameChannel:
 class Player:
     """
     :id: We use the user id from discord
+    :rated_trueskill_mu: A player's trueskill rating accounting for only rated
+    games.
+    :unrated_trueskill_mu: A player's trueskill rating account for rated and
+    unrated games.
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -271,10 +294,16 @@ class Player:
         default_factory=lambda: datetime.now(timezone.utc),
         metadata={"sa": Column(DateTime)},
     )
-    trueskill_mu: float = field(
+    rated_trueskill_mu: float = field(
         default=trueskill.Rating().mu, metadata={"sa": Column(Float, nullable=False)}
     )
-    trueskill_sigma: float = field(
+    rated_trueskill_sigma: float = field(
+        default=trueskill.Rating().sigma, metadata={"sa": Column(Float, nullable=False)}
+    )
+    unrated_trueskill_mu: float = field(
+        default=trueskill.Rating().mu, metadata={"sa": Column(Float, nullable=False)}
+    )
+    unrated_trueskill_sigma: float = field(
         default=trueskill.Rating().sigma, metadata={"sa": Column(Float, nullable=False)}
     )
 
@@ -295,8 +324,18 @@ class PlayerDecay:
         },
     )
     decay_percentage: float = field(metadata={"sa": Column(Float, nullable=False)})
-    trueskill_mu_before: float = field(metadata={"sa": Column(Float, nullable=False)})
-    trueskill_mu_after: float = field(metadata={"sa": Column(Float, nullable=False)})
+    rated_trueskill_mu_before: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    rated_trueskill_mu_after: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    unrated_trueskill_mu_before: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    unrated_trueskill_mu_after: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
     decayed_at: datetime = field(
         init=False,
         default_factory=lambda: datetime.now(timezone.utc),
@@ -319,6 +358,9 @@ class Queue:
         metadata={"sa": Column(String, unique=True, nullable=False, index=True)}
     )
     size: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    is_rated: bool = field(
+        default=True, metadata={"sa": Column(Boolean, nullable=False)}
+    )
     is_locked: bool = field(
         default=False, metadata={"sa": Column(Boolean, nullable=False)}
     )

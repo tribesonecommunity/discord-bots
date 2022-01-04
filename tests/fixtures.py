@@ -17,6 +17,7 @@ from discord_bots.models import (
     InProgressGame,
     InProgressGamePlayer,
     Player,
+    PlayerDecay,
     Queue,
     QueuePlayer,
     QueueRole,
@@ -138,6 +139,7 @@ def setup_tests():
     session.query(FinishedGame).delete()
     session.query(QueueRole).delete()
     session.query(Queue).delete()
+    session.query(PlayerDecay).delete()
     session.query(Player).delete()
     session.add(Player(id=opsayo.id, name="opsayo", is_admin=True))
     session.add(Player(id=stork.id, name="stork"))

@@ -44,8 +44,10 @@ TEAM_NAMES: bool = True
 RE_ADD_DELAY: int = 15
 
 
-def get_even_teams(player_ids: list[int]) -> tuple[list[Player], float]:
+def get_even_teams(player_ids: list[int], is_rated: bool) -> tuple[list[Player], float]:
     """
+    TODO: Tests
+
     Try to figure out even teams, the first half of the returning list is
     the first team, the second half is the second team.
 
@@ -62,18 +64,33 @@ def get_even_teams(player_ids: list[int]) -> tuple[list[Player], float]:
     # are 3.6 million permutations!
     for _ in range(500):
         shuffle(players)
-        team0_ratings = list(
-            map(
-                lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
-                players[: len(players) // 2],
+        if is_rated:
+            team0_ratings = list(
+                map(
+                    lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+                    players[: len(players) // 2],
+                )
             )
-        )
-        team1_ratings = list(
-            map(
-                lambda x: Rating(x.trueskill_mu, x.trueskill_sigma),
-                players[len(players) // 2 :],
+            team1_ratings = list(
+                map(
+                    lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+                    players[len(players) // 2 :],
+                )
             )
-        )
+        else:
+            team0_ratings = list(
+                map(
+                    lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
+                    players[: len(players) // 2],
+                )
+            )
+            team1_ratings = list(
+                map(
+                    lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
+                    players[len(players) // 2 :],
+                )
+            )
+
         win_prob = win_probability(team0_ratings, team1_ratings)
         current_team_evenness = abs(0.50 - win_prob)
         best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
@@ -130,9 +147,15 @@ async def add_player_to_queue(
     )
     if len(queue_players) == queue.size:  # Pop!
         player_ids: list[int] = list(map(lambda x: x.player_id, queue_players))
-        players, win_prob = get_even_teams(player_ids)
+        players, win_prob = get_even_teams(player_ids, is_rated=queue.is_rated)
+        if queue.is_rated:
+            average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
+        else:
+            average_trueskill = mean(
+                list(map(lambda x: x.unrated_trueskill_mu, players))
+            )
         game = InProgressGame(
-            average_trueskill=mean(list(map(lambda x: x.trueskill_mu, players))),
+            average_trueskill=average_trueskill,
             queue_id=queue.id,
             team0_name=generate_be_name() if TEAM_NAMES else "Blood Eagle",
             team1_name=generate_ds_name() if TEAM_NAMES else "Diamond Sword",
@@ -821,9 +844,14 @@ async def decay_player(message: Message, args: list[str]):
     player: Player = (
         session.query(Player).filter(Player.id == message.mentions[0].id).first()
     )
-    trueskill_mu_before = player.trueskill_mu
-    trueskill_mu_after = player.trueskill_mu * (100 - decay_amount) / 100
-    player.trueskill_mu = trueskill_mu_after
+    rated_trueskill_mu_before = player.rated_trueskill_mu
+    rated_trueskill_mu_after = player.rated_trueskill_mu * (100 - decay_amount) / 100
+    unrated_trueskill_mu_before = player.unrated_trueskill_mu
+    unrated_trueskill_mu_after = (
+        player.unrated_trueskill_mu * (100 - decay_amount) / 100
+    )
+    player.rated_trueskill_mu = rated_trueskill_mu_after
+    player.unrated_trueskill_mu = unrated_trueskill_mu_after
     await send_message(
         message.channel,
         embed_description=f"{message.mentions[0].name} decayed by {decay_amount}%",
@@ -833,8 +861,10 @@ async def decay_player(message: Message, args: list[str]):
         PlayerDecay(
             player.id,
             decay_amount,
-            trueskill_mu_before=trueskill_mu_before,
-            trueskill_mu_after=trueskill_mu_after,
+            rated_trueskill_mu_before=rated_trueskill_mu_before,
+            rated_trueskill_mu_after=rated_trueskill_mu_after,
+            unrated_trueskill_mu_before=unrated_trueskill_mu_before,
+            unrated_trueskill_mu_after=unrated_trueskill_mu_after,
         )
     )
     session.commit()
@@ -1015,31 +1045,41 @@ async def finish_game(message: Message, args: list[str]):
         .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
         .all()
     )
-    team0_ratings_before = []
-    team1_ratings_before = []
+    team0_rated_ratings_before = []
+    team1_rated_ratings_before = []
+    team0_unrated_ratings_before = []
+    team1_unrated_ratings_before = []
     team0_players: list[InProgressGamePlayer] = []
     team1_players: list[InProgressGamePlayer] = []
     for in_progress_game_player in in_progress_game_players:
         player = players_by_id[in_progress_game_player.player_id]
         if in_progress_game_player.team == 0:
             team0_players.append(in_progress_game_player)
-            team0_ratings_before.append(
-                Rating(player.trueskill_mu, player.trueskill_sigma)
+            team0_rated_ratings_before.append(
+                Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+            )
+            team0_unrated_ratings_before.append(
+                Rating(player.unrated_trueskill_mu, player.unrated_trueskill_sigma)
             )
         else:
             team1_players.append(in_progress_game_player)
-            team1_ratings_before.append(
-                Rating(player.trueskill_mu, player.trueskill_sigma)
+            team1_rated_ratings_before.append(
+                Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
             )
+            team1_unrated_ratings_before.append(
+                Rating(player.unrated_trueskill_mu, player.unrated_trueskill_sigma)
+            )
+
     finished_game = FinishedGame(
         average_trueskill=in_progress_game.average_trueskill,
         finished_at=datetime.now(timezone.utc),
         game_id=in_progress_game.id,
+        is_rated=queue.is_rated,
         queue_name=queue.name,
         started_at=in_progress_game.created_at,
         team0_name=in_progress_game.team0_name,
         team1_name=in_progress_game.team1_name,
-        win_probability=win_probability(team0_ratings_before, team1_ratings_before),
+        win_probability=in_progress_game.win_probability,
         winning_team=winning_team,
     )
     session.add(finished_game)
@@ -1052,10 +1092,23 @@ async def finish_game(message: Message, args: list[str]):
     elif winning_team == 1:
         outcome = [1, 0]
 
-    team0_ratings_after: list[Rating]
-    team1_ratings_after: list[Rating]
-    team0_ratings_after, team1_ratings_after = rate(
-        [team0_ratings_before, team1_ratings_before], outcome
+    team0_rated_ratings_after: list[Rating]
+    team1_rated_ratings_after: list[Rating]
+    team0_unrated_ratings_after: list[Rating]
+    team1_unrated_ratings_after: list[Rating]
+    if queue.is_rated:
+        team0_rated_ratings_after, team1_rated_ratings_after = rate(
+            [team0_rated_ratings_before, team1_rated_ratings_before], outcome
+        )
+    else:
+        # Don't modify rated ratings if the queue isn't rated
+        team0_rated_ratings_after, team1_rated_ratings_after = (
+            team0_rated_ratings_before,
+            team1_rated_ratings_before,
+        )
+
+    team0_unrated_ratings_after, team1_unrated_ratings_after = rate(
+        [team0_unrated_ratings_before, team1_unrated_ratings_before], outcome
     )
 
     for i, team0_gip in enumerate(team0_players):
@@ -1065,13 +1118,19 @@ async def finish_game(message: Message, args: list[str]):
             player_id=player.id,
             player_name=player.name,
             team=team0_gip.team,
-            trueskill_mu_before=player.trueskill_mu,
-            trueskill_sigma_before=player.trueskill_sigma,
-            trueskill_mu_after=team0_ratings_after[i].mu,
-            trueskill_sigma_after=team0_ratings_after[i].sigma,
+            rated_trueskill_mu_before=player.rated_trueskill_mu,
+            rated_trueskill_sigma_before=player.rated_trueskill_sigma,
+            rated_trueskill_mu_after=team0_rated_ratings_after[i].mu,
+            rated_trueskill_sigma_after=team0_rated_ratings_after[i].sigma,
+            unrated_trueskill_mu_before=player.unrated_trueskill_mu,
+            unrated_trueskill_sigma_before=player.unrated_trueskill_sigma,
+            unrated_trueskill_mu_after=team0_unrated_ratings_after[i].mu,
+            unrated_trueskill_sigma_after=team0_unrated_ratings_after[i].sigma,
         )
-        player.trueskill_mu = team0_ratings_after[i].mu
-        player.trueskill_sigma = team0_ratings_after[i].sigma
+        player.rated_trueskill_mu = team0_rated_ratings_after[i].mu
+        player.rated_trueskill_sigma = team0_rated_ratings_after[i].sigma
+        player.unrated_trueskill_mu = team0_unrated_ratings_after[i].mu
+        player.unrated_trueskill_sigma = team0_unrated_ratings_after[i].sigma
         session.add(finished_game_player)
     for i, team1_gip in enumerate(team1_players):
         player = players_by_id[team1_gip.player_id]
@@ -1080,13 +1139,19 @@ async def finish_game(message: Message, args: list[str]):
             player_id=player.id,
             player_name=player.name,
             team=team1_gip.team,
-            trueskill_mu_before=player.trueskill_mu,
-            trueskill_sigma_before=player.trueskill_sigma,
-            trueskill_mu_after=team1_ratings_after[i].mu,
-            trueskill_sigma_after=team1_ratings_after[i].sigma,
+            rated_trueskill_mu_before=player.rated_trueskill_mu,
+            rated_trueskill_sigma_before=player.rated_trueskill_sigma,
+            rated_trueskill_mu_after=team1_rated_ratings_after[i].mu,
+            rated_trueskill_sigma_after=team1_rated_ratings_after[i].sigma,
+            unrated_trueskill_mu_before=player.rated_trueskill_mu,
+            unrated_trueskill_sigma_before=player.rated_trueskill_sigma,
+            unrated_trueskill_mu_after=team1_unrated_ratings_after[i].mu,
+            unrated_trueskill_sigma_after=team1_unrated_ratings_after[i].sigma,
         )
-        player.trueskill_mu = team1_ratings_after[i].mu
-        player.trueskill_sigma = team1_ratings_after[i].sigma
+        player.rated_trueskill_mu = team1_rated_ratings_after[i].mu
+        player.rated_trueskill_sigma = team1_rated_ratings_after[i].sigma
+        player.unrated_trueskill_mu = team1_unrated_ratings_after[i].mu
+        player.unrated_trueskill_sigma = team1_unrated_ratings_after[i].sigma
         session.add(finished_game_player)
 
     session.query(InProgressGamePlayer).filter(
@@ -1635,6 +1700,62 @@ async def set_command_prefix(message: Message, args: list[str]):
     )
 
 
+@require_admin
+async def set_queue_rated(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !setqueuerated <queue_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    if queue:
+        queue.is_rated = True
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {args[0]} is now rated",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {args[0]}",
+            colour=Colour.red(),
+        )
+    session.commit()
+
+
+@require_admin
+async def set_queue_unrated(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !setqueueunrated <queue_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    if queue:
+        queue.is_rated = False
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {args[0]} is now unrated",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {args[0]}",
+            colour=Colour.red(),
+        )
+    session.commit()
+
+
 async def show_game(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
@@ -1825,6 +1946,7 @@ async def sub(message: Message, args: list[str]):
     game: InProgressGame | None = callee_game or caller_game
     if not game:
         return
+    queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
 
     game_players = (
         session.query(InProgressGamePlayer)
@@ -1832,7 +1954,7 @@ async def sub(message: Message, args: list[str]):
         .all()
     )
     player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
-    players, win_prob = get_even_teams(player_ids)
+    players, win_prob = get_even_teams(player_ids, is_rated=queue.is_rated)
     for game_player in game_players:
         session.delete(game_player)
     game.win_probability = win_prob
@@ -1970,6 +2092,8 @@ COMMANDS = {
     "roll": roll,
     "setadddelay": set_add_delay,
     "setcommandprefix": set_command_prefix,
+    "setqueuerated": set_queue_rated,
+    "setqueueunrated": set_queue_unrated,
     "showgame": show_game,
     "status": status,
     "sub": sub,
