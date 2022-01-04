@@ -12,17 +12,22 @@ from discord_bots.commands import TRIBES_VOICE_CATEGORY_CHANNEL_ID
 from discord_bots.models import (
     AdminRole,
     Base,
+    CurrentMap,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
     InProgressGamePlayer,
+    MapVote,
     Player,
     PlayerDecay,
     Queue,
     QueuePlayer,
     QueueRole,
     QueueWaitlistPlayer,
+    RotationMap,
     Session,
+    SkipMapVote,
+    VoteableMap,
     engine,
 )
 
@@ -130,6 +135,12 @@ lyon = Member("lyon")
 def setup_tests():
     Base.metadata.create_all(engine)
     session = Session()
+    # TODO: Is there a single command to just do this
+    session.query(SkipMapVote).delete()
+    session.query(MapVote).delete()
+    session.query(RotationMap).delete()
+    session.query(VoteableMap).delete()
+    session.query(CurrentMap).delete()
     session.query(AdminRole).delete()
     session.query(QueueWaitlistPlayer).delete()
     session.query(QueuePlayer).delete()

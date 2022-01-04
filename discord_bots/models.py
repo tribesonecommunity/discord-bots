@@ -68,6 +68,34 @@ class AdminRole:
 
 @mapper_registry.mapped
 @dataclass
+class CurrentMap:
+    """
+    The current map up to play - not necessarily a rotation map. The rotation
+    index is stored so we can find the next map.
+
+    This table is intended to store one and only one row.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "current_map"
+
+    map_rotation_index: int = field(metadata={"sa": Column(Integer)})
+    full_name: str = field(metadata={"sa": Column(String)})
+    short_name: str = field(metadata={"sa": Column(String)})
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class CustomCommand:
     """
     A way for users to add custom text commands to the bot
@@ -260,6 +288,64 @@ class InProgressGameChannel:
     )
     channel_id: int = field(
         metadata={"sa": Column(Integer, nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class MapVote:
+    """
+    A player's vote to replace the current map
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "map_vote"
+    __table_args__ = (UniqueConstraint("player_id", "voteable_map_id"),)
+
+    player_id: int = field(
+        metadata={
+            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+        }
+    )
+    voteable_map_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("voteable_map.id"), nullable=False, index=True
+            )
+        },
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class SkipMapVote:
+    """
+    A player's vote to skip to the next map in the rotation
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "skip_map_vote"
+
+    player_id: int = field(
+        metadata={
+            "sa": Column(
+                Integer,
+                ForeignKey("player.id"),
+                nullable=False,
+                unique=True,
+                index=True,
+            )
+        },
     )
     id: str = field(
         init=False,
@@ -495,6 +581,54 @@ class QueueWaitlistPlayer:
     )
     player_id: int = field(
         metadata={"sa": Column(Integer, ForeignKey("player.id"), nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class RotationMap:
+    """
+    A map that's part of the fixed rotation
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "rotation_map"
+
+    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class VoteableMap:
+    """
+    A map that can be voted in to replace the current map in rotation
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "voteable_map"
+
+    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
     )
     id: str = field(
         init=False,

@@ -20,12 +20,14 @@ from names import generate_be_name, generate_ds_name
 from .models import (
     DB_NAME,
     AdminRole,
+    CurrentMap,
     CustomCommand,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
     InProgressGameChannel,
     InProgressGamePlayer,
+    MapVote,
     Player,
     PlayerDecay,
     Queue,
@@ -33,15 +35,19 @@ from .models import (
     QueueRole,
     QueueWaitlist,
     QueueWaitlistPlayer,
+    RotationMap,
     Session,
+    SkipMapVote,
+    VoteableMap,
 )
 
 AFK_TIME_MINUTES: int = 45
 COMMAND_PREFIX: str = "$"
-TEAM_NAMES: bool = True
-
+# The number of votes needed to succeed a map skip / replacement
+MAP_VOTE_THRESHOLD: int = 10
 # TODO: Bump to 45 once its live
 RE_ADD_DELAY: int = 15
+TEAM_NAMES: bool = True
 
 
 def get_even_teams(player_ids: list[int], is_rated: bool) -> tuple[list[Player], float]:
@@ -605,6 +611,66 @@ async def add_queue_role(message: Message, args: list[str]):
             colour=Colour.green(),
         )
         session.commit()
+
+
+@require_admin
+async def add_rotation_map(message: Message, args: list[str]):
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !addrotationmap <map_short_name> <map_full_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    session.add(RotationMap(args[1], args[0]))
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        await send_message(
+            message.channel,
+            embed_description=f"Error adding map {args[1]} ({args[0]}) to rotation. Does it already exist?",
+            colour=Colour.red(),
+        )
+        return
+
+    await send_message(
+        message.channel,
+        embed_description=f"{args[1]} ({args[0]}) added to map rotation",
+        colour=Colour.green(),
+    )
+
+
+@require_admin
+async def add_voteable_map(message: Message, args: list[str]):
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !addvoteablemap <map_short_name> <map_full_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    session.add(VoteableMap(args[1], args[0]))
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        await send_message(
+            message.channel,
+            embed_description=f"Error adding voteable map {args[1]} ({args[0]}). Does it already exist?",
+            colour=Colour.red(),
+        )
+        return
+
+    await send_message(
+        message.channel,
+        embed_description=f"{args[1]} ({args[0]}) added to voteable map pool",
+        colour=Colour.green(),
+    )
 
 
 @require_admin
@@ -1646,6 +1712,48 @@ async def remove_queue_role(message: Message, args: list[str]):
         session.commit()
 
 
+@require_admin
+async def remove_rotation_map(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !removerotationmap <map_short_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    session.query(RotationMap).filter(RotationMap.short_name == args[0]).delete()
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"{args[0]} removed from map rotation",
+        colour=Colour.green(),
+    )
+
+
+@require_admin
+async def remove_voteable_map(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !removevoteablemap <map_short_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    session.query(VoteableMap).filter(VoteableMap.short_name == args[0]).delete()
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"{args[0]} removed from voteable map pool",
+        colour=Colour.green(),
+    )
+
+
 async def roll(message: Message, args: list[str]):
     if len(args) != 2:
         await send_message(
@@ -1754,6 +1862,26 @@ async def set_queue_unrated(message: Message, args: list[str]):
             colour=Colour.red(),
         )
     session.commit()
+
+
+@require_admin
+async def set_map_vote_threshold(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !setmapvotethreshold <threshold>",
+            colour=Colour.red(),
+        )
+        return
+
+    global MAP_VOTE_THRESHOLD
+    MAP_VOTE_THRESHOLD = int(args[0])
+
+    await send_message(
+        message.channel,
+        embed_description=f"Map vote threshold set to {MAP_VOTE_THRESHOLD}",
+        colour=Colour.green(),
+    )
 
 
 async def show_game(message: Message, args: list[str]):
@@ -2050,6 +2178,167 @@ async def unlock_queue(message: Message, args: list[str]):
     )
 
 
+# TODO: Unvote for many maps at once
+async def unvote_map(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !unvotemap <map_short_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
+    if not voteable_map:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find voteable map: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+
+    map_vote: MapVote | None = (
+        session.query(MapVote)
+        .filter(
+            MapVote.player_id == message.author.id,
+            MapVote.voteable_map_id == voteable_map.id,
+        )
+        .first()
+    )
+    if not map_vote:
+        await send_message(
+            message.channel,
+            embed_description=f"You don't have a vote for: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+    else:
+        session.delete(map_vote)
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Your vote for {args[0]} was removed",
+        colour=Colour.red(),
+    )
+
+
+async def unvote_skip_map(message: Message, args: list[str]):
+    """
+    A player votes to go to the next map in rotation
+    """
+    session = Session()
+    skip_map_vote: SkipMapVote | None = (
+        session.query(SkipMapVote)
+        .filter(SkipMapVote.player_id == message.author.id)
+        .first()
+    )
+    if skip_map_vote:
+        session.delete(skip_map_vote)
+        session.commit()
+        await send_message(
+            message.channel,
+            embed_description="Your vote to skip the current map was removed.",
+            colour=Colour.green(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description="You don't have a vote to skip the current map.",
+            colour=Colour.green(),
+        )
+
+
+# TODO: Vote for many maps at once
+async def vote_map(message: Message, args: list[str]):
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !votemap <map_short_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
+    if not voteable_map:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find voteable map: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+
+    map_votes: list[MapVote] = (
+        session.query(MapVote).filter(MapVote.voteable_map_id == voteable_map.id).all()
+    )
+    if len(map_votes) == MAP_VOTE_THRESHOLD - 1:
+        current_map: CurrentMap | None = session.query(CurrentMap).first()
+        if current_map:
+            current_map.full_name = voteable_map.full_name
+            current_map.short_name = voteable_map.short_name
+        else:
+            session.add(
+                CurrentMap(
+                    full_name=voteable_map.full_name,
+                    map_rotation_index=0,
+                    short_name=voteable_map.short_name,
+                )
+            )
+        await send_message(
+            message.channel,
+            embed_description=f"Map vote for {voteable_map.full_name} ({voteable_map.short_name}) passed!",
+            colour=Colour.green(),
+        )
+        # TODO: Show updated status
+        # TODO: Randomly add votes into queue
+        # TODO: What to do about players currently in queue?
+        # TODO: Buffer for 20 seconds?
+    else:
+        session.add(MapVote(message.author.id, voteable_map_id=voteable_map.id))
+        await send_message(
+            message.channel,
+            embed_description=f"Add map vote for {args[0]}",
+            colour=Colour.green(),
+        )
+    session.commit()
+
+
+# TODO: Vote for many maps at once
+async def vote_skip_map(message: Message, args: list[str]):
+    """
+    A player votes to go to the next map in rotation
+    """
+    session = Session()
+    session.add(SkipMapVote(message.author.id))
+    try:
+        session.commit()
+        skip_map_votes: list[SkipMapVote] = Session().query(SkipMapVote).all()
+        if len(skip_map_votes) >= MAP_VOTE_THRESHOLD:
+            await send_message(
+                message.channel,
+                embed_description=f"Vote to skip the current map passed!",
+                colour=Colour.green(),
+            )
+            current_map: CurrentMap = session.query(CurrentMap).first()
+            rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+            next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+                rotation_maps
+            )
+            current_map.map_rotation_index = next_rotation_map_index
+            current_map.full_name = rotation_maps[next_rotation_map_index].full_name
+            current_map.short_name = rotation_maps[next_rotation_map_index].short_name
+            session.commit()
+        else:
+            await send_message(
+                message.channel,
+                embed_description="You voted to skip the current map",
+                colour=Colour.green(),
+            )
+    except IntegrityError:
+        session.rollback()
+
+
 # Commands end here
 
 
@@ -2058,6 +2347,8 @@ COMMANDS = {
     "addadmin": add_admin,
     "addadminrole": add_admin_role,
     "addqueuerole": add_queue_role,
+    "addrotationmap": add_rotation_map,
+    "addvoteablemap": add_voteable_map,
     "ban": ban,
     "cancelgame": cancel_game,
     "coinflip": coinflip,
@@ -2077,8 +2368,10 @@ COMMANDS = {
     "listbans": list_bans,
     "listdbbackups": list_db_backups,
     "listcommands": list_commands,
+    # "listmaprotation": list_map_rotation,
     "listplayerdecays": list_player_decays,
     "listqueueroles": list_queue_roles,
+    # "listvoteablemaps": list_voteable_maps,
     "lockqueue": lock_queue,
     "gamehistory": game_history,
     "mockrandomqueue": mock_random_queue,
@@ -2089,16 +2382,23 @@ COMMANDS = {
     "removedbbackup": remove_db_backup,
     "removequeuerole": remove_queue_role,
     "removequeue": remove_queue,
+    "removerotationmap": remove_rotation_map,
+    "removevoteablemap": remove_voteable_map,
     "roll": roll,
     "setadddelay": set_add_delay,
     "setcommandprefix": set_command_prefix,
     "setqueuerated": set_queue_rated,
     "setqueueunrated": set_queue_unrated,
+    "setmapvotethreshold": set_map_vote_threshold,
     "showgame": show_game,
     "status": status,
     "sub": sub,
     "unban": unban,
     "unlockqueue": unlock_queue,
+    "unvotemap": unvote_map,
+    "unvoteskipmap": unvote_skip_map,
+    "votemap": vote_map,
+    "voteskipmap": vote_skip_map,
 }
 
 

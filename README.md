@@ -3,6 +3,7 @@
 ## Installation
 
 1. Install Python 3.1.0: https://docs.python-guide.org/starting/install3/osx/
+
    - (optional) Install Python with pyenv instead:
    - `brew install pyenv`
    - `pyenv install 3.10.0`
@@ -20,6 +21,7 @@
    - `python scripts/import_match_history.py`
 
 ## Running the bot
+
 1. `cd discord-bots`
 1. `source .venv/bin/activate`
 1. `python scripts/run.py`
@@ -86,24 +88,27 @@ To create new migrations:
 - Commit your migration: `git add alembic/versions`
 
 Common issues:
-- Alembic does not pick up certain changes like renaming tables or columns
-correctly. For these changes you'll need to manually edit the migration file.
-See here for a full list of changes Alembic will not detect correctly:
-https://alembic.sqlalchemy.org/en/latest/autogenerate.html#what-does-autogenerate-detect-and-what-does-it-not-detect
-- To set a default value for a column, you'll need to use `server_default`:
-https://docs.sqlalchemy.org/en/14/core/defaults.html#server-defaults. This sets
-a default on the database side.
-- Alembic also sometimes has issues with constraints and naming. If you run into
-an issue like this, you may need to hand edit the migration. See here:
-https://alembic.sqlalchemy.org/en/latest/naming.html
 
+- Alembic does not pick up certain changes like renaming tables or columns
+  correctly. For these changes you'll need to manually edit the migration file.
+  See here for a full list of changes Alembic will not detect correctly:
+  https://alembic.sqlalchemy.org/en/latest/autogenerate.html#what-does-autogenerate-detect-and-what-does-it-not-detect
+- To set a default value for a column, you'll need to use `server_default`:
+  https://docs.sqlalchemy.org/en/14/core/defaults.html#server-defaults. This sets
+  a default on the database side.
+- Alembic also sometimes has issues with constraints and naming. If you run into
+  an issue like this, you may need to hand edit the migration. See here:
+  https://alembic.sqlalchemy.org/en/latest/naming.html
 
 # To-do list
 
 Feel free to help out!
 
 TODO:
+
+- Map picking / rotation
 - Update migration to rename / alter column rather than drop/replace: `alembic/versions/20220103111554_fdb66df22216_add_rated_and_unrated_trueskill.py`
+- Mark mock games as mock games for easier deletion
 
 Nice to have
 
@@ -114,7 +119,6 @@ Nice to have
 MVP+
 
 - In-server queue
-- Map picking / rotation
 - Queue notifications
 - Shazbucks
 - Expose Flask API: https://flask.palletsprojects.com/en/2.0.x/

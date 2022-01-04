@@ -5,9 +5,15 @@ from discord import Message
 from pytest import approx, fixture
 from trueskill import Rating
 
-from discord_bots.commands import COMMAND_PREFIX, handle_message, is_in_game
+from discord_bots.commands import (
+    COMMAND_PREFIX,
+    MAP_VOTE_THRESHOLD,
+    handle_message,
+    is_in_game,
+)
 from discord_bots.models import (
     AdminRole,
+    CurrentMap,
     CustomCommand,
     FinishedGame,
     FinishedGamePlayer,
@@ -19,7 +25,9 @@ from discord_bots.models import (
     QueuePlayer,
     QueueRole,
     QueueWaitlistPlayer,
+    RotationMap,
     Session,
+    VoteableMap,
 )
 from discord_bots.utils import short_uuid
 
@@ -857,8 +865,245 @@ async def test_decay_player_should_decay_player():
 
     session = Session()
     stork_player: Player = session.query(Player).filter(Player.id == stork.id).first()
-    print(stork_player)
     assert stork_player.rated_trueskill_mu == Rating().mu * 0.90
     assert stork_player.unrated_trueskill_mu == Rating().mu * 0.90
     player_decays = session.query(PlayerDecay).all()
     assert len(player_decays) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_rotation_map_should_add_rotation_map():
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+
+    rotation_maps: list[RotationMap] = Session().query(RotationMap).all()
+    assert len(rotation_maps) == 1
+
+
+@pytest.mark.asyncio
+async def test_remove_rotation_map_with_short_name_should_remove_rotation_map():
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "removerotationmap dx"))
+
+    rotation_maps: list[RotationMap] = Session().query(RotationMap).all()
+    assert len(rotation_maps) == 0
+
+
+@pytest.mark.asyncio
+async def test_remove_rotation_map_with_long_name_should_not_remove_rotation_map():
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "removerotationmap dangerouscrossing"))
+
+    rotation_maps: list[RotationMap] = Session().query(RotationMap).all()
+    assert len(rotation_maps) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_rotation_map_with_duplicate_short_name_should_not_add_rotation_map():
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "addrotationmap dx foo"))
+
+    rotation_maps: list[RotationMap] = Session().query(RotationMap).all()
+    assert len(rotation_maps) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_rotation_map_with_duplicate_full_name_should_not_add_rotation_map():
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "addrotationmap foo dangerouscrossing"))
+
+    rotation_maps: list[RotationMap] = Session().query(RotationMap).all()
+    assert len(rotation_maps) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_voteable_map_should_add_voteable_map():
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    voteable_maps: list[VoteableMap] = Session().query(VoteableMap).all()
+    assert len(voteable_maps) == 1
+
+
+@pytest.mark.asyncio
+async def test_remove_voteable_map_with_short_name_should_remove_voteable_map():
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "removevoteablemap dx"))
+
+    voteable_maps: list[VoteableMap] = Session().query(VoteableMap).all()
+    assert len(voteable_maps) == 0
+
+
+@pytest.mark.asyncio
+async def test_remove_voteable_map_with_long_name_should_not_remove_voteable_map():
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "removevoteablemap dangerouscrossing"))
+
+    voteable_maps: list[VoteableMap] = Session().query(VoteableMap).all()
+    assert len(voteable_maps) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_voteable_map_with_duplicate_short_name_should_not_add_voteable_map():
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "addvoteablemap dx foo"))
+
+    voteable_maps: list[VoteableMap] = Session().query(VoteableMap).all()
+    assert len(voteable_maps) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_voteable_map_with_duplicate_full_name_should_not_add_voteable_map():
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "addvoteablemap foo dangerouscrossing"))
+
+    voteable_maps: list[VoteableMap] = Session().query(VoteableMap).all()
+    assert len(voteable_maps) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.xfail
+async def test_set_map_vote_threshold_should_set_map_vote_threshold():
+    await handle_message(Message(opsayo, "setmapvotethreshold 1"))
+
+    assert MAP_VOTE_THRESHOLD == 1
+
+
+@pytest.mark.asyncio
+async def test_vote_map_with_votes_below_threshold_should_not_change_current_map():
+    session = Session()
+    session.add(CurrentMap(0, "stonehenge", "sh"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "votemap dx"))
+
+    current_map: CurrentMap = Session().query(CurrentMap).first()
+    assert current_map.short_name == "sh"
+
+
+@pytest.mark.asyncio
+async def test_unvote_map_should_remove_vote():
+    session = Session()
+    session.add(CurrentMap(0, "stonehenge", "sh"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "votemap dx"))
+    await handle_message(Message(opsayo, "unvotemap dx"))
+    await handle_message(Message(stork, "votemap dx"))
+
+    current_map: CurrentMap = Session().query(CurrentMap).first()
+    assert current_map.short_name == "sh"
+
+
+@pytest.mark.asyncio
+async def test_vote_map_with_votes_equal_to_threshold_should_change_current_map():
+    session = Session()
+    session.add(CurrentMap(0, "stonehenge", "sh"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "votemap dx"))
+    await handle_message(Message(stork, "votemap dx"))
+
+    current_map: CurrentMap = Session().query(CurrentMap).first()
+    assert current_map.short_name == "dx"
+
+
+@pytest.mark.asyncio
+async def test_vote_map_with_votes_equal_to_threshold_should_not_change_rotation_index():
+    session = Session()
+    session.add(CurrentMap(0, "stonehenge", "sh"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addvoteablemap dx dangerouscrossing"))
+
+    await handle_message(Message(opsayo, "votemap dx"))
+    await handle_message(Message(stork, "votemap dx"))
+
+    current_map: CurrentMap = Session().query(CurrentMap).first()
+    assert current_map.map_rotation_index == 0
+
+
+@pytest.mark.asyncio
+async def test_vote_skip_map_with_votes_below_threshold_should_not_change_current_map():
+    session = Session()
+    session.add(CurrentMap(0, "dangerouscrossing", "dx"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+    await handle_message(Message(opsayo, "addrotationmap sh stonehenge"))
+
+    await handle_message(Message(opsayo, "voteskipmap"))
+
+    current_map: CurrentMap = Session().query(CurrentMap).first()
+    assert current_map.short_name == "dx"
+    assert current_map.map_rotation_index == 0
+
+
+@pytest.mark.asyncio
+async def test_unvote_skip_map_should_remove_vote():
+    session = Session()
+    session.add(CurrentMap(0, "dangerouscrossing", "dx"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+    await handle_message(Message(opsayo, "addrotationmap sh stonehenge"))
+
+    await handle_message(Message(opsayo, "voteskipmap"))
+    await handle_message(Message(opsayo, "unvoteskipmap"))
+    await handle_message(Message(stork, "voteskipmap"))
+
+    current_map: CurrentMap = Session().query(CurrentMap).first()
+    assert current_map.short_name == "dx"
+    assert current_map.map_rotation_index == 0
+
+
+@pytest.mark.asyncio
+async def test_vote_skip_map_with_votes_equal_to_threshold_should_change_to_next_map_in_rotation():
+    session = Session()
+    session.add(CurrentMap(0, "dangerouscrossing", "dx"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+    await handle_message(Message(opsayo, "addrotationmap sh stonehenge"))
+
+    await handle_message(Message(opsayo, "voteskipmap"))
+    await handle_message(Message(stork, "voteskipmap"))
+
+    current_map: CurrentMap = Session().query(CurrentMap).first()
+    assert current_map.short_name == "sh"
+    assert current_map.map_rotation_index == 1
+
+
+@pytest.mark.asyncio
+async def test_vote_skip_map_with_rotation_at_end_should_rollover_rotation_to_beginning():
+    session = Session()
+    session.add(CurrentMap(1, "stonehenge", "sh"))
+    session.commit()
+    await handle_message(Message(opsayo, "setmapvotethreshold 2"))
+    await handle_message(Message(opsayo, "addrotationmap dx dangerouscrossing"))
+    await handle_message(Message(opsayo, "addrotationmap sh stonehenge"))
+
+    await handle_message(Message(opsayo, "voteskipmap"))
+    await handle_message(Message(stork, "voteskipmap"))
+
+    current_map: CurrentMap = Session().query(CurrentMap).first()
+    assert current_map.short_name == "dx"
+    assert current_map.map_rotation_index == 0
+
+
+# TODO:
+# AFK tasks should remove votes
+# Votes should be removed when a map pops or when a vote succeeds
+# Remove votes when a map is removed from voteable map pool or map rotation
