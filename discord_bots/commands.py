@@ -658,7 +658,6 @@ async def add_rotation_map(message: Message, args: list[str]):
     )
 
 
-@require_admin
 async def add_voteable_map(message: Message, args: list[str]):
     if len(args) != 2:
         await send_message(
