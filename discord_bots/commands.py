@@ -47,7 +47,7 @@ from .models import (
 )
 
 AFK_TIME_MINUTES: int = 45
-COMMAND_PREFIX: str = "$"
+COMMAND_PREFIX: str = "!"
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 10
 # TODO: Bump to 45 once its live
@@ -1423,13 +1423,13 @@ async def mock_random_queue(message: Message, args: list[str]):
     """
     Helper test method for adding random players to queues
     """
-    # if message.author.id != 115204465589616646:
-    #     await send_message(
-    #         message.channel,
-    #         embed_description="Only special people can use this command",
-    #         colour=Colour.red(),
-    #     )
-    #     return
+    if message.author.id != 115204465589616646:
+        await send_message(
+            message.channel,
+            embed_description="Only special people can use this command",
+            colour=Colour.red(),
+        )
+        return
 
     if len(args) != 2:
         await send_message(

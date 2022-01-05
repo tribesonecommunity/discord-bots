@@ -68,15 +68,20 @@ for i, match in enumerate(data):
     elif match["winningTeam"] == 2:
         outcome = [1, 0]
     is_rated = match["queue"]["name"] != "LTunrated"
-    if is_rated:
-        rated_team1_new_ratings, rated_team2_new_ratings = rate(
-            [rated_team1_ratings, rated_team2_ratings], outcome
-        )
-    else:
-        rated_team1_new_ratings, rated_team2_new_ratings = (
-            rated_team1_ratings,
-            rated_team2_ratings,
-        )
+    try:
+        if is_rated:
+            rated_team1_new_ratings, rated_team2_new_ratings = rate(
+                [rated_team1_ratings, rated_team2_ratings], outcome
+            )
+        else:
+            rated_team1_new_ratings, rated_team2_new_ratings = (
+                rated_team1_ratings,
+                rated_team2_ratings,
+            )
+    except Exception as e:
+        print(e, match)
+        print(e)
+        continue
 
     unrated_team1_new_ratings, unrated_team2_new_ratings = rate(
         [unrated_team1_ratings, unrated_team2_ratings], outcome
@@ -89,6 +94,8 @@ for i, match in enumerate(data):
         game_id=str(uuid4()),
         finished_at=datetime.fromtimestamp(match["timestamp"] // 1000),
         is_rated=is_rated,
+        map_full_name="",
+        map_short_name="",
         queue_name=match["queue"]["name"],
         started_at=datetime.fromtimestamp(match["completionTimestamp"] // 1000),
         win_probability=win_prob,
