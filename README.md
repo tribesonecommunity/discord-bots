@@ -2,7 +2,7 @@
 
 ## Installation
 
-1. Install Python 3.1.0: https://docs.python-guide.org/starting/install3/osx/
+1. Install Python 3.10.0: https://docs.python-guide.org/starting/install3/osx/
 
    - (optional) Install Python with pyenv instead:
    - `brew install pyenv`
@@ -102,7 +102,7 @@ Common issues:
 
 # To-do list
 
-- Helper methods to force map votes
+- Update player name when they add to a queue
 - Map change queue waitlist (just like finished game queue waitlist)
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?

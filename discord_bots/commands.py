@@ -2683,6 +2683,7 @@ async def handle_message(message: Message):
             print("[handle_message] message author banned:", command)
             return
         else:
+            player.name = message.author.name
             player.last_activity_at = datetime.now(timezone.utc)
 
     session.commit()
