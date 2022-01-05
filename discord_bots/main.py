@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
 import os
 import traceback
+from datetime import datetime, timezone
 
 from discord import Member, Message, Reaction
 from discord.abc import User
@@ -10,10 +10,7 @@ from dotenv import load_dotenv
 from .bot import bot
 from .commands import handle_message
 from .models import Player, QueuePlayer, Session
-from .tasks import (
-    afk_timer_task,
-    queue_waitlist_task,
-)
+from .tasks import afk_timer_task, queue_waitlist_task
 
 afk_timer_task.start()
 queue_waitlist_task.start()
@@ -46,8 +43,9 @@ async def on_ready():
 async def on_message(message: Message):
     if type(message.channel) is TextChannel or type(message.channel) is GroupChannel:
         if (
-            message.channel.name == "bullies-bot"
-            and message.author.id != BULLIEST_BOT_ID
+            # message.channel.name == "bullies-bot" and
+            message.author.id
+            != BULLIEST_BOT_ID
         ):
             print("[on_message]", message)
             try:

@@ -13,6 +13,10 @@ data = json.load(open(DATA_FILE))
 
 session = Session()
 
+session.query(FinishedGamePlayer).delete()
+session.query(FinishedGame).delete()
+session.query(Player).delete()
+
 for i, match in enumerate(data):
     print(i, len(data), i / len(data))
     if match["queue"]["name"] == "bottest":
@@ -92,12 +96,12 @@ for i, match in enumerate(data):
     finished_game = FinishedGame(
         average_trueskill=0.0,
         game_id=str(uuid4()),
-        finished_at=datetime.fromtimestamp(match["timestamp"] // 1000),
+        finished_at=datetime.fromtimestamp(match["completionTimestamp"] // 1000),
         is_rated=is_rated,
         map_full_name="",
         map_short_name="",
         queue_name=match["queue"]["name"],
-        started_at=datetime.fromtimestamp(match["completionTimestamp"] // 1000),
+        started_at=datetime.fromtimestamp(match["timestamp"] // 1000),
         win_probability=win_prob,
         winning_team=match["winningTeam"] - 1,
     )

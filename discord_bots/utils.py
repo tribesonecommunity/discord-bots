@@ -11,7 +11,7 @@ def pretty_format_team(
     team_name: str, win_probability: float, players: list[Player]
 ) -> str:
     player_names = ", ".join(sorted([player.name for player in players]))
-    return f"**{team_name}** ({round(win_probability, 1)}%): {player_names}\n"
+    return f"**{team_name}** ({round(100 * win_probability, 1)}%): {player_names}\n"
 
 
 def short_uuid(uuid: str) -> str:

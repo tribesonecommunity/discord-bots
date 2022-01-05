@@ -230,7 +230,9 @@ async def add_player_to_queue(
             InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
         )
 
-        session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).delete()
+        session.query(QueuePlayer).filter(
+            QueuePlayer.player_id.in_(player_ids)
+        ).delete()
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
         session.commit()
@@ -1986,7 +1988,9 @@ async def status(message: Message, args: list[str]):
 
         output += f"**Map: {current_map.full_name} ({current_map.short_name})**\n_Next: {next_map.full_name} ({next_map.short_name})_\n"
     skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-    output += f"_Votes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+    output += (
+        f"_Votes to skip (voteskipmap): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+    )
 
     # TODO: This is duplicated
     map_votes: list[MapVote] = session.query(MapVote).all()
@@ -2000,7 +2004,7 @@ async def status(message: Message, args: list[str]):
             for voted_map in voted_maps
         ]
     )
-    output += f"_Votes to swap: {voted_maps_str}_\n\n"
+    output += f"_Votes to swap (voteswapmap): {voted_maps_str}_\n\n"
 
     for i, queue in enumerate(queues):
         if i > 0:
@@ -2187,7 +2191,7 @@ async def sub(message: Message, args: list[str]):
     channel_message = f"New teams ({short_game_id}):"
     channel_embed = ""
     channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
-    channel_embed += pretty_format_team(game.team1_name, win_prob, team1_players)
+    channel_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
 
     await send_message(
         message.channel,
@@ -2412,7 +2416,7 @@ async def vote_swap_map(message: Message, args: list[str]):
         )
         await send_message(
             message.channel,
-            embed_description=f"Added map vote to swap to {args[0]}.\nVotes to swap: {voted_maps_str}",
+            embed_description=f"Added map vote to swap to {args[0]}. !unvoteswapmap to remove your vote.\nVotes to swap: {voted_maps_str}",
             colour=Colour.green(),
         )
 
@@ -2447,7 +2451,7 @@ async def vote_skip_map(message: Message, args: list[str]):
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
         await send_message(
             message.channel,
-            embed_description=f"Added vote to skip the current map\nVotes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]",
+            embed_description=f"Added vote to skip the current map. !unvoteskipmap to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]",
             colour=Colour.green(),
         )
 
@@ -2544,7 +2548,7 @@ async def handle_message(message: Message):
 
     session.commit()
 
-    command = command[1:]
+    command = command[1:].lower()
     if command not in COMMANDS:
         custom_command: CustomCommand | None = (
             session.query(CustomCommand).filter(CustomCommand.name == command).first()
