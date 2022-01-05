@@ -108,6 +108,7 @@ Common issues:
   - Give queuers a chance to del when vote succeeds?
 - Allow voting for multiple maps at once
 - Ping when queue pops
+- Auto-rotate map after time
 
 Feel free to help out!
 
