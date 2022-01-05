@@ -780,6 +780,118 @@ async def cancel_game(message: Message, args: list[str]):
     )
 
 
+@require_admin
+async def change_game_map(message: Message, args: list[str]):
+    """
+    TODO: tests
+    """
+    if len(args) != 2:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !changegamemap <game_id> <map_short_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    ipg: InProgressGame | None = (
+        session.query(InProgressGame)
+        .filter(InProgressGame.id.startswith(args[0]))
+        .first()
+    )
+    if not ipg:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find game: {args[0]}",
+            colour=Colour.red(),
+        )
+        return
+
+    rotation_map: RotationMap | None = (
+        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[1])).first()
+    )
+    if rotation_map:
+        ipg.map_full_name = rotation_map.full_name
+        ipg.map_short_name = rotation_map.short_name
+        session.commit()
+    else:
+        voteable_map: VoteableMap | None = (
+            session.query(VoteableMap)
+            .filter(VoteableMap.short_name.ilike(args[1]))
+            .first()
+        )
+        if voteable_map:
+            ipg.map_full_name = voteable_map.full_name
+            ipg.map_short_name = voteable_map.short_name
+            session.commit()
+        else:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find map: {args[1]}. Add to rotation or voteable map pool first.",
+                colour=Colour.red(),
+            )
+            return
+
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Map for game {args[0]} changed to {args[1]}",
+        colour=Colour.green(),
+    )
+
+
+@require_admin
+async def change_queue_map(message: Message, args: list[str]):
+    """
+    TODO: tests
+    """
+    if len(args) != 1:
+        await send_message(
+            message.channel,
+            embed_description="Usage: !changequeuememap <map_short_name>",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    current_map: CurrentMap = session.query(CurrentMap).first()
+    rotation_map: RotationMap | None = (
+        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[0])).first()
+    )
+    if rotation_map:
+        rotation_maps: list[RotationMap] = (
+            session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()
+        )
+        rotation_map_index = rotation_maps.index(rotation_map)
+        current_map.full_name = rotation_map.full_name
+        current_map.short_name = rotation_map.short_name
+        current_map.map_rotation_index = rotation_map_index
+        session.commit()
+    else:
+        voteable_map: VoteableMap | None = (
+            session.query(VoteableMap)
+            .filter(VoteableMap.short_name.ilike(args[0]))
+            .first()
+        )
+        if voteable_map:
+            current_map.full_name = voteable_map.full_name
+            current_map.short_name = voteable_map.short_name
+            session.commit()
+        else:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find map: {args[0]}. Add to rotation or voteable map pool first.",
+                colour=Colour.red(),
+            )
+            return
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Queue map changed to {args[0]}",
+        colour=Colour.green(),
+    )
+
+
 async def commands(message: Message, args: list[str]):
     output = "Commands:"
     for command in COMMANDS:
@@ -1986,7 +2098,7 @@ async def status(message: Message, args: list[str]):
         )
         next_map = rotation_maps[next_rotation_map_index]
 
-        output += f"**Map: {current_map.full_name} ({current_map.short_name})**\n_Next: {next_map.full_name} ({next_map.short_name})_\n"
+        output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
     skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
     output += (
         f"_Votes to skip (voteskipmap): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
@@ -2468,6 +2580,8 @@ COMMANDS = {
     "addvoteablemap": add_voteable_map,
     "ban": ban,
     "cancelgame": cancel_game,
+    "changegamemap": change_game_map,
+    "changequeuemap": change_queue_map,
     "coinflip": coinflip,
     "commands": commands,
     "createcommand": create_command,

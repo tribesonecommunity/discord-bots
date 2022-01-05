@@ -1181,3 +1181,15 @@ async def test_popping_the_queue_should_update_map_rotation():
     current_map: CurrentMap = Session().query(CurrentMap).first()
     assert current_map.short_name == "sh"
     assert current_map.map_rotation_index == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.skip()
+async def test_change_game_map():
+    pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.skip()
+async def test_change_queue_map():
+    pass
