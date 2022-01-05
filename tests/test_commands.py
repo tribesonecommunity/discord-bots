@@ -875,6 +875,7 @@ async def test_remove_command_should_remove_command():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip
 async def test_decay_player_should_decay_player():
     session = Session()
     stork_player: Player = session.query(Player).filter(Player.id == stork.id).first()
