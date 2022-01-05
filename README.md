@@ -107,7 +107,7 @@ Common issues:
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
 - Allow voting for multiple maps at once
-- Change map of game in progress
+- Ping when queue pops
 
 Feel free to help out!
 

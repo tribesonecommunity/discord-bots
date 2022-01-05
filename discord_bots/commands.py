@@ -334,7 +334,7 @@ def finished_game_str(finished_game: FinishedGame) -> str:
     team0_names = ", ".join(sorted([player.name for player in team0_players]))
     team1_names = ", ".join(sorted([player.name for player in team1_players]))
     team0_win_prob = round(100 * finished_game.win_probability, 1)
-    team1_win_prob = 100 - team0_win_prob
+    team1_win_prob = round(100 - team0_win_prob, 1)
     if finished_game.winning_team == 0:
         output += f"\n**{finished_game.team0_name} ({team0_win_prob}%): {team0_names}**"
         output += f"\n{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
@@ -1886,7 +1886,6 @@ async def remove_rotation_map(message: Message, args: list[str]):
         )
 
 
-@require_admin
 async def remove_voteable_map(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
@@ -2371,6 +2370,23 @@ async def unlock_queue(message: Message, args: list[str]):
     )
 
 
+async def unvote(message: Message, args: list[str]):
+    """
+    Remove all of a player's votes
+    """
+    session = Session()
+    session.query(MapVote).filter(MapVote.player_id == message.author.id).delete()
+    session.query(SkipMapVote).filter(
+        SkipMapVote.player_id == message.author.id
+    ).delete()
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description="All map votes deleted",
+        colour=Colour.green(),
+    )
+
+
 # TODO: Unvote for many maps at once
 async def unvote_swap_map(message: Message, args: list[str]):
     if len(args) != 1:
@@ -2601,9 +2617,12 @@ COMMANDS = {
     "listdbbackups": list_db_backups,
     "listcommands": list_commands,
     "listmaprotation": list_map_rotation,
+    "listmr": list_map_rotation,
     # "listplayerdecays": list_player_decays,
     "listqueueroles": list_queue_roles,
+    "listqr": list_queue_roles,
     "listvoteablemaps": list_voteable_maps,
+    "listvm": list_voteable_maps,
     "lockqueue": lock_queue,
     "gamehistory": game_history,
     "mockrandomqueue": mock_random_queue,
@@ -2615,7 +2634,9 @@ COMMANDS = {
     "removequeuerole": remove_queue_role,
     "removequeue": remove_queue,
     "removerotationmap": remove_rotation_map,
+    "removerm": remove_rotation_map,
     "removevoteablemap": remove_voteable_map,
+    "removevm": remove_voteable_map,
     "roll": roll,
     "setadddelay": set_add_delay,
     "setcommandprefix": set_command_prefix,
@@ -2627,9 +2648,14 @@ COMMANDS = {
     "sub": sub,
     "unban": unban,
     "unlockqueue": unlock_queue,
+    "unvote": unvote,
+    "unvoteswap": unvote_swap_map,
     "unvoteswapmap": unvote_swap_map,
+    "unvoteskip": unvote_skip_map,
     "unvoteskipmap": unvote_skip_map,
+    "voteswap": vote_swap_map,
     "voteswapmap": vote_swap_map,
+    "voteskip": vote_skip_map,
     "voteskipmap": vote_skip_map,
 }
 
