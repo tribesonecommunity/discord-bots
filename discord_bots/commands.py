@@ -20,7 +20,6 @@ from discord_bots.utils import (
     update_current_map_to_next_map_in_rotation,
     win_probability,
 )
-from names import generate_be_name, generate_ds_name
 
 from .models import (
     DB_NAME,
@@ -45,13 +44,13 @@ from .models import (
     SkipMapVote,
     VoteableMap,
 )
+from .names import generate_be_name, generate_ds_name
 
 AFK_TIME_MINUTES: int = 45
 COMMAND_PREFIX: str = "!"
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 10
-# TODO: Bump to 45 once its live
-RE_ADD_DELAY: int = 15
+RE_ADD_DELAY: int = 45
 TEAM_NAMES: bool = True
 
 
