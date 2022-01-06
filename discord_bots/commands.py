@@ -1407,12 +1407,12 @@ async def finish_game(message: Message, args: list[str]):
         tzinfo=timezone.utc
     ) - in_progress_game.created_at.replace(tzinfo=timezone.utc)
     if winning_team == 0:
-        embed_description = f"**Winner:** {in_progress_game.team0_name}. **Duration:** {duration.seconds // 60} minutes"
+        embed_description = f"**Winner:** {in_progress_game.team0_name}\n**Duration:** {duration.seconds // 60} minutes"
     elif winning_team == 1:
-        embed_description = f"**Winner:** {in_progress_game.team1_name}. **Duration:** {duration.seconds // 60} minutes"
+        embed_description = f"**Winner:** {in_progress_game.team1_name}\n**Duration:** {duration.seconds // 60} minutes"
     else:
         embed_description = (
-            f"**Tie game**. **Duration:** {duration.seconds // 60} minutes"
+            f"**Tie game**\n**Duration:** {duration.seconds // 60} minutes"
         )
 
     queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
@@ -2289,6 +2289,9 @@ async def sub(message: Message, args: list[str]):
             )
         )
         session.delete(caller_game_player)
+
+        # Remove the person subbed in from queues
+        session.query(QueuePlayer).filter(QueuePlayer.player_id == callee.id).delete()
         session.commit()
     elif callee_game:
         callee_game_player = (
@@ -2307,6 +2310,9 @@ async def sub(message: Message, args: list[str]):
             )
         )
         session.delete(callee_game_player)
+
+        # Remove the person subbing in from queues
+        session.query(QueuePlayer).filter(QueuePlayer.player_id == caller.id).delete()
         session.commit()
 
     await send_message(
@@ -2595,7 +2601,7 @@ async def vote_swap_map(message: Message, args: list[str]):
         )
         await send_message(
             message.channel,
-            embed_description=f"Added map vote to swap to {args[0]}. !unvoteswapmap to remove your vote.\nVotes to swap: {voted_maps_str}",
+            embed_description=f"Added map vote to swap to {args[0]}.\n!unvoteswapmap to remove your vote.\nVotes to swap: {voted_maps_str}",
             colour=Colour.green(),
         )
 
@@ -2630,7 +2636,7 @@ async def vote_skip_map(message: Message, args: list[str]):
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
         await send_message(
             message.channel,
-            embed_description=f"Added vote to skip the current map. !unvoteskipmap to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]",
+            embed_description=f"Added vote to skip the current map.\n!unvoteskipmap to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]",
             colour=Colour.green(),
         )
 

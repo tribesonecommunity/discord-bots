@@ -125,6 +125,9 @@ class Member:
         """
         return TEST_GUILD
 
+    async def send(*args, **kwargs):
+        pass
+
 
 opsayo = Member("opsayo")
 stork = Member("stork")

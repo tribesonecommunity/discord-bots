@@ -722,6 +722,32 @@ async def test_sub_with_subber_not_in_game_and_subbee_in_game_should_substitute_
 
 
 @pytest.mark.asyncio
+async def test_sub_with_subber_in_game_and_subbee_not_in_game_should_remove_subbee_from_queues():
+    await handle_message(Message(opsayo, "createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "add"))
+    await handle_message(Message(lyon, "add"))
+    await handle_message(Message(stork, "add"))
+
+    await handle_message(Message(opsayo, "sub @stork"))
+
+    queue_players: list[QueuePlayer] = Session().query(QueuePlayer).all()
+    assert len(queue_players) == 0
+
+
+@pytest.mark.asyncio
+async def test_sub_with_subber_not_in_game_and_subbee_in_game_should_remove_subber_from_queues():
+    await handle_message(Message(opsayo, "createqueue LTpug 2"))
+    await handle_message(Message(opsayo, "add"))
+    await handle_message(Message(lyon, "add"))
+    await handle_message(Message(stork, "add"))
+
+    await handle_message(Message(stork, "sub @opsayo"))
+
+    queue_players: list[QueuePlayer] = Session().query(QueuePlayer).all()
+    assert len(queue_players) == 0
+
+
+@pytest.mark.asyncio
 async def test_sub_with_subber_in_game_and_subbee_in_game_should_not_substitute_players():
     await handle_message(Message(opsayo, "createqueue LTpug 2"))
     await handle_message(Message(opsayo, "add"))
