@@ -81,3 +81,13 @@ async def test_afk_timer_with_inactive_player_should_delete_player_votes(bot):
     session = Session()
     assert len(session.query(MapVote).all()) == 0
     assert len(session.query(SkipMapVote).all()) == 0
+
+
+@pytest.mark.asyncio
+async def test_map_rotation_task_should_rotate_map():
+    pass
+
+
+@pytest.mark.asyncio
+async def test_map_rotation_task_should_stop_on_first_map():
+    pass

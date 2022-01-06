@@ -10,9 +10,18 @@ from discord.colour import Colour
 from discord.ext import tasks
 from discord.member import Member
 
+from discord_bots.utils import update_current_map_to_next_map_in_rotation
+
 from .bot import bot
-from .commands import AFK_TIME_MINUTES, add_player_to_queue, is_in_game, send_message
+from .commands import (
+    AFK_TIME_MINUTES,
+    MAP_ROTATION_MINUTES,
+    add_player_to_queue,
+    is_in_game,
+    send_message,
+)
 from .models import (
+    CurrentMap,
     InProgressGameChannel,
     MapVote,
     Player,
@@ -171,3 +180,27 @@ async def queue_waitlist_task():
         ).delete()
         session.delete(queue_waitlist)
     session.commit()
+
+
+# @tasks.loop(minutes=1)
+@tasks.loop(seconds=1)
+async def map_rotation_task():
+    """Rotate the map automatically, stopping on the 0th map
+    TODO: tests
+    """
+    session = Session()
+    current_map: CurrentMap | None = session.query(CurrentMap).first()
+    if not current_map:
+        return
+
+    if current_map.map_rotation_index == 0:
+        # Stop at the first map
+        return
+
+    time_since_update: timedelta = datetime.now(
+        timezone.utc
+    ) - current_map.updated_at.replace(tzinfo=timezone.utc)
+    if time_since_update.seconds > MAP_ROTATION_MINUTES:
+        # TODO: Need to announce to the server, get a handle to a channel /
+        # guild
+        update_current_map_to_next_map_in_rotation()

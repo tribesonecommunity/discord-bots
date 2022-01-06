@@ -50,6 +50,7 @@ from .names import generate_be_name, generate_ds_name
 AFK_TIME_MINUTES: int = 45
 # TODO: Revert after testing
 COMMAND_PREFIX: str = "$"
+MAP_ROTATION_MINUTES: int = 15  # back to 30
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 10
 # TODO: Revert after testing
@@ -898,6 +899,7 @@ async def change_queue_map(message: Message, args: list[str]):
         current_map.full_name = rotation_map.full_name
         current_map.short_name = rotation_map.short_name
         current_map.map_rotation_index = rotation_map_index
+        current_map.updated_at = datetime.now(timezone.utc)
         session.commit()
     else:
         voteable_map: VoteableMap | None = (
@@ -2159,7 +2161,14 @@ async def status(message: Message, args: list[str]):
         )
         next_map = rotation_maps[next_rotation_map_index]
 
-        output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+        time_since_update: timedelta = datetime.now(
+            timezone.utc
+        ) - current_map.updated_at.replace(tzinfo=timezone.utc)
+        time_until_rotation = MAP_ROTATION_MINUTES - time_since_update.seconds
+        if current_map.map_rotation_index == 0:
+            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+        else:
+            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
     skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
     output += (
         f"_Votes to skip (voteskipmap): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"

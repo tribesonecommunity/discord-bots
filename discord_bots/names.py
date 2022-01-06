@@ -149,6 +149,7 @@ E = [
     "Espanol",
     "Estheticians",
     "Empire",
+    "Enunciators",
     "Elbows",
     "Eggplants",
     "Empanadas",

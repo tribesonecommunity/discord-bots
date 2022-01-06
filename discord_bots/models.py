@@ -18,6 +18,7 @@ from sqlalchemy import (
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
+from sqlalchemy.sql import func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
 DB_NAME = "tribes"
@@ -81,10 +82,15 @@ class CurrentMap:
     map_rotation_index: int = field(metadata={"sa": Column(Integer)})
     full_name: str = field(metadata={"sa": Column(String)})
     short_name: str = field(metadata={"sa": Column(String)})
+    updated_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, nullable=False, server_default=func.now())},
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
-        metadata={"sa": Column(DateTime, index=True)},
+        metadata={"sa": Column(DateTime, nullable=False)},
     )
     id: str = field(
         init=False,

@@ -10,9 +10,10 @@ from dotenv import load_dotenv
 from .bot import bot
 from .commands import handle_message
 from .models import Player, QueuePlayer, Session
-from .tasks import afk_timer_task, queue_waitlist_task
+from .tasks import afk_timer_task, map_rotation_task, queue_waitlist_task
 
 afk_timer_task.start()
+map_rotation_task.start()
 queue_waitlist_task.start()
 
 

@@ -1,6 +1,7 @@
 # Misc helper functions
 import itertools
 import math
+from datetime import datetime, timezone, tzinfo
 
 from trueskill import Rating, global_env
 
@@ -31,6 +32,7 @@ def update_current_map_to_next_map_in_rotation():
             current_map.map_rotation_index = next_rotation_map_index
             current_map.full_name = next_map.full_name
             current_map.short_name = next_map.short_name
+            current_map.updated_at = datetime.now(timezone.utc)
         else:
             next_map = rotation_maps[0]
             session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
