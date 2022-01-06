@@ -515,7 +515,18 @@ async def add(message: Message, args: list[str]):
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
 
-        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
+        in_progress_games: list[InProgressGame] = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.queue_id == queue.id)
+            .all()
+        )
+
+        if len(in_progress_games) > 0:
+            queue_statuses.append(
+                f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*"
+            )
+        else:
+            queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
 
     if is_waitlist and waitlist_message:
         await send_message(
