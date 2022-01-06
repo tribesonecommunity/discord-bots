@@ -41,6 +41,14 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: Message):
+    session = Session()
+    player: Player | None = (
+        session.query(Player).filter(Player.id == message.author.id).first()
+    )
+    if player:
+        player.last_activity_at = datetime.now(timezone.utc)
+        session.commit()
+
     if type(message.channel) is TextChannel or type(message.channel) is GroupChannel:
         if (
             # message.channel.name == "bullies-bot" and

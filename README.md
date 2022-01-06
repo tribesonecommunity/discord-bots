@@ -102,13 +102,15 @@ Common issues:
 
 # To-do list
 
-- Update player name when they add to a queue
+- Add the ability to report bugs
+- Commands can be more than one word
 - Map change queue waitlist (just like finished game queue waitlist)
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
 - Allow voting for multiple maps at once
 - Ping when queue pops
 - Auto-rotate map after time
+- Sub leaves player in queue (might go both ways)
 
 Feel free to help out!
 

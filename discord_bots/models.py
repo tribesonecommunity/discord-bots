@@ -579,8 +579,11 @@ class QueueWaitlistPlayer:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue_waitlist_player"
-    __table_args__ = (UniqueConstraint("queue_waitlist_id", "player_id"),)
+    __table_args__ = (UniqueConstraint("queue_id", "queue_waitlist_id", "player_id"),)
 
+    queue_id: str | None = field(
+        metadata={"sa": Column(String, ForeignKey("queue.id"), nullable=True)}
+    )
     queue_waitlist_id: str = field(
         metadata={
             "sa": Column(

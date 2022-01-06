@@ -47,10 +47,12 @@ from .models import (
 from .names import generate_be_name, generate_ds_name
 
 AFK_TIME_MINUTES: int = 45
-COMMAND_PREFIX: str = "!"
+# TODO: Revert after testing
+COMMAND_PREFIX: str = "$"
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 10
-RE_ADD_DELAY: int = 45
+# TODO: Revert after testing
+RE_ADD_DELAY: int = 5
 TEAM_NAMES: bool = True
 
 
@@ -468,6 +470,7 @@ async def add(message: Message, args: list[str]):
             if queue_waitlist:
                 session.add(
                     QueueWaitlistPlayer(
+                        queue_id=queue.id,
                         queue_waitlist_id=queue_waitlist.id,
                         player_id=message.author.id,
                     )
@@ -1090,6 +1093,19 @@ async def del_(message: Message, args: list[str]):
         session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == message.author.id
         ).delete()
+        # TODO: Test this part
+        queue_waitlist: QueueWaitlist | None = (
+            session.query(QueueWaitlist)
+            .filter(
+                QueueWaitlist.queue_id == queue.id,
+            )
+            .first()
+        )
+        if queue_waitlist:
+            session.query(QueueWaitlistPlayer).filter(
+                QueueWaitlistPlayer.player_id == message.author.id,
+                QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
+            ).delete()
 
     queue_statuses = []
     queue: Queue
@@ -1230,7 +1246,7 @@ async def finish_game(message: Message, args: list[str]):
             InProgressGamePlayer.player_id == Player.id,
             InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
         )
-    )
+    ).all()
     players_by_id: dict[int, Player] = {player.id: player for player in players}
     in_progress_game_players = (
         session.query(InProgressGamePlayer)
@@ -1291,9 +1307,15 @@ async def finish_game(message: Message, args: list[str]):
     team0_unrated_ratings_after: list[Rating]
     team1_unrated_ratings_after: list[Rating]
     if queue.is_rated:
-        team0_rated_ratings_after, team1_rated_ratings_after = rate(
-            [team0_rated_ratings_before, team1_rated_ratings_before], outcome
-        )
+        if len(players) > 1:
+            team0_rated_ratings_after, team1_rated_ratings_after = rate(
+                [team0_rated_ratings_before, team1_rated_ratings_before], outcome
+            )
+        else:
+            team0_rated_ratings_after, team1_rated_ratings_after = (
+                team0_rated_ratings_before,
+                team1_rated_ratings_before,
+            )
     else:
         # Don't modify rated ratings if the queue isn't rated
         team0_rated_ratings_after, team1_rated_ratings_after = (
@@ -1301,9 +1323,15 @@ async def finish_game(message: Message, args: list[str]):
             team1_rated_ratings_before,
         )
 
-    team0_unrated_ratings_after, team1_unrated_ratings_after = rate(
-        [team0_unrated_ratings_before, team1_unrated_ratings_before], outcome
-    )
+    if len(players) > 1:
+        team0_unrated_ratings_after, team1_unrated_ratings_after = rate(
+            [team0_unrated_ratings_before, team1_unrated_ratings_before], outcome
+        )
+    else:
+        team0_unrated_ratings_after, team1_unrated_ratings_after = (
+            team0_unrated_ratings_before,
+            team1_unrated_ratings_before,
+        )
 
     for i, team0_gip in enumerate(team0_players):
         player = players_by_id[team0_gip.player_id]

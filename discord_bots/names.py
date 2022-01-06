@@ -482,6 +482,7 @@ S = [
     "Shaft",
     "Starwolves",
     "Surgeons",
+    "Slingers",
 ]
 
 

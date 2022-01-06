@@ -26,6 +26,8 @@ from .models import (
 
 @tasks.loop(minutes=1)
 async def afk_timer_task():
+    # TODO: Revert after testing
+    return
     session = Session()
     timeout: datetime = datetime.now(timezone.utc) - timedelta(minutes=AFK_TIME_MINUTES)
 
@@ -137,12 +139,22 @@ async def queue_waitlist_task():
                 continue
 
             if channel and guild and isinstance(channel, TextChannel):
-                await add_player_to_queue(
-                    queue_waitlist.queue_id,
-                    queue_waitlist_player.player_id,
-                    channel,
-                    guild,
-                )
+                # Bugfix - TODO: Add tests
+                if queue_waitlist_player.queue_id:
+                    await add_player_to_queue(
+                        queue_waitlist_player.queue_id,
+                        queue_waitlist_player.player_id,
+                        channel,
+                        guild,
+                    )
+                else:
+                    # Legacy behavior
+                    await add_player_to_queue(
+                        queue_waitlist.queue_id,
+                        queue_waitlist_player.player_id,
+                        channel,
+                        guild,
+                    )
 
         for igp_channel in session.query(InProgressGameChannel).filter(
             InProgressGameChannel.in_progress_game_id
