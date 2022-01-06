@@ -922,7 +922,7 @@ async def commands(message: Message, args: list[str]):
 
 
 async def create_command(message: Message, args: list[str]):
-    if len(args) != 2:
+    if len(args) < 2:
         await send_message(
             message.channel,
             embed_description="Usage: !createcommand <name> <output>",
@@ -930,7 +930,7 @@ async def create_command(message: Message, args: list[str]):
         )
         return
     name = args[0]
-    output = args[1]
+    output = message.content.split(" ", 2)[2]
 
     session = Session()
     exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()

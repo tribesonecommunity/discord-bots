@@ -147,6 +147,7 @@ E = [
     "Echoes",
     "Eclipse",
     "Espanol",
+    "Estheticians",
     "Empire",
     "Elbows",
     "Eggplants",
@@ -483,6 +484,8 @@ S = [
     "Starwolves",
     "Surgeons",
     "Slingers",
+    "Stars",
+    "Strings",
 ]
 
 
