@@ -1403,12 +1403,17 @@ async def finish_game(message: Message, args: list[str]):
     ).delete()
 
     embed_description = ""
+    duration: timedelta = finished_game.finished_at.replace(
+        tzinfo=timezone.utc
+    ) - in_progress_game.created_at.replace(tzinfo=timezone.utc)
     if winning_team == 0:
-        embed_description = f"**Winner:** {in_progress_game.team0_name}"
+        embed_description = f"**Winner:** {in_progress_game.team0_name}. **Duration:** {duration.seconds // 60} minutes"
     elif winning_team == 1:
-        embed_description = f"**Winner:** {in_progress_game.team1_name}"
+        embed_description = f"**Winner:** {in_progress_game.team1_name}. **Duration:** {duration.seconds // 60} minutes"
     else:
-        embed_description = "**Tie game**"
+        embed_description = (
+            f"**Tie game**. **Duration:** {duration.seconds // 60} minutes"
+        )
 
     queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     if message.guild:
