@@ -102,15 +102,17 @@ Common issues:
 
 # To-do list
 
-- Add the ability to report bugs
 - Map change queue waitlist (just like finished game queue waitlist)
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
-- Allow voting for multiple maps at once
 - Mark mock games as mock games for easier deletion
 - Map-specific trueskill rating
 - Store map with game
 - Rename "voteable map" to "map pool" naming
+## Good first tickets
+- PM !commands rather than printing to channel
+- Allow voting for multiple maps at once
+- Add the ability to report bugs
 
 MVP+
 
