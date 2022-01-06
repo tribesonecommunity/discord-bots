@@ -110,6 +110,7 @@ Common issues:
 - Mark mock games as mock games for easier deletion
 - Map-specific trueskill rating
 - Store map with game
+- Rename "voteable map" to "map pool" naming
 
 MVP+
 
