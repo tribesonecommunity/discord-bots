@@ -11,6 +11,7 @@ from typing import Awaitable, Callable
 import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.guild import Guild
+from discord.member import Member
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
@@ -182,6 +183,15 @@ async def add_player_to_queue(
         team1_players = players[len(players) // 2 :]
 
         for player in team0_players:
+            member: Member | None = guild.get_member(player.id)
+            if member:
+                await member.send(
+                    embed=Embed(
+                        description=f"Your game '{queue.name}' has begun!",
+                        colour=Colour.green(),
+                    )
+                )
+
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
                 player_id=player.id,
@@ -190,6 +200,15 @@ async def add_player_to_queue(
             session.add(game_player)
 
         for player in team1_players:
+            member: Member | None = guild.get_member(player.id)
+            if member:
+                await member.send(
+                    embed=Embed(
+                        description=f"Your game '{queue.name}' has begun!",
+                        colour=Colour.green(),
+                    )
+                )
+
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
                 player_id=player.id,
