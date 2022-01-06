@@ -103,19 +103,13 @@ Common issues:
 # To-do list
 
 - Add the ability to report bugs
-- Commands can be more than one word
 - Map change queue waitlist (just like finished game queue waitlist)
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
 - Allow voting for multiple maps at once
-- Ping when queue pops
-- Auto-rotate map after time
-- Sub leaves player in queue (might go both ways)
-
-Feel free to help out!
-
-- Update migration to rename / alter column rather than drop/replace: `alembic/versions/20220103111554_fdb66df22216_add_rated_and_unrated_trueskill.py`
 - Mark mock games as mock games for easier deletion
+- Map-specific trueskill rating
+- Store map with game
 
 MVP+
 

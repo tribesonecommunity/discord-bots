@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from glob import glob
@@ -12,6 +13,7 @@ import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.guild import Guild
 from discord.member import Member
+from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
@@ -47,14 +49,14 @@ from .models import (
 )
 from .names import generate_be_name, generate_ds_name
 
+load_dotenv()
+
 AFK_TIME_MINUTES: int = 45
-# TODO: Revert after testing
-COMMAND_PREFIX: str = "$"
-MAP_ROTATION_MINUTES: int = 15  # back to 30
+COMMAND_PREFIX: str = os.getenv("COMMAND_PREFIX") or "!"
+MAP_ROTATION_MINUTES: int = 30
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 10
-# TODO: Revert after testing
-RE_ADD_DELAY: int = 5
+RE_ADD_DELAY: int = 30
 TEAM_NAMES: bool = True
 
 
@@ -2164,7 +2166,7 @@ async def status(message: Message, args: list[str]):
         time_since_update: timedelta = datetime.now(
             timezone.utc
         ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-        time_until_rotation = MAP_ROTATION_MINUTES - time_since_update.seconds
+        time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
         if current_map.map_rotation_index == 0:
             output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
         else:

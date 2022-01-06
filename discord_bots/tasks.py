@@ -35,8 +35,6 @@ from .models import (
 
 @tasks.loop(minutes=1)
 async def afk_timer_task():
-    # TODO: Revert after testing
-    return
     session = Session()
     timeout: datetime = datetime.now(timezone.utc) - timedelta(minutes=AFK_TIME_MINUTES)
 
@@ -182,8 +180,7 @@ async def queue_waitlist_task():
     session.commit()
 
 
-# @tasks.loop(minutes=1)
-@tasks.loop(seconds=1)
+@tasks.loop(minutes=1)
 async def map_rotation_task():
     """Rotate the map automatically, stopping on the 0th map
     TODO: tests
@@ -200,7 +197,7 @@ async def map_rotation_task():
     time_since_update: timedelta = datetime.now(
         timezone.utc
     ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-    if time_since_update.seconds > MAP_ROTATION_MINUTES:
+    if (time_since_update.seconds // 60) > MAP_ROTATION_MINUTES:
         # TODO: Need to announce to the server, get a handle to a channel /
         # guild
         update_current_map_to_next_map_in_rotation()
