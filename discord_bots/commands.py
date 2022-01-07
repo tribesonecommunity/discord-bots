@@ -2744,7 +2744,7 @@ COMMANDS = {
 
 
 async def handle_message(message: Message):
-    print("[handle_message] message:", message)
+    # print("[handle_message] message:", message)
     command = message.content.split(" ")[0]
 
     if not command.startswith(COMMAND_PREFIX):
@@ -2782,10 +2782,10 @@ async def handle_message(message: Message):
             )
             return
 
-        print("[handle_message] exiting - command not found:", command)
+        # print("[handle_message] exiting - command not found:", command)
         return
 
-    print("[handle_message] executing command:", command)
+    # print("[handle_message] executing command:", command)
 
     args = message.content.split(" ")
     await COMMANDS[command](message, args[1:])

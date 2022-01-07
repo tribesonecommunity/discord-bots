@@ -1,7 +1,10 @@
 from random import choice
 
 B = [
+    "Ballistic",
     "Barbaric",
+    "Bunion",
+    "Bratwurst",
     "Breaded",
     "Bold",
     "Brewed",
@@ -205,6 +208,8 @@ E = [
     "Experts",
     "Endeavor",
     "Englishmen",
+    "Ewoks",
+    "Engineers",
     "Eukaryotes",
     "Eclairs",
     "Elders",
@@ -485,6 +490,8 @@ S = [
     "Starwolves",
     "Surgeons",
     "Slingers",
+    "Shits",
+    "Shitstains",
     "Stars",
     "Strings",
 ]
