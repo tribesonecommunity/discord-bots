@@ -53,7 +53,7 @@ load_dotenv()
 
 AFK_TIME_MINUTES: int = 45
 COMMAND_PREFIX: str = os.getenv("COMMAND_PREFIX") or "!"
-MAP_ROTATION_MINUTES: int = 30
+MAP_ROTATION_MINUTES: int = 60
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 10
 RE_ADD_DELAY: int = 30
