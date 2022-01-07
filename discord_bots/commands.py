@@ -188,12 +188,15 @@ async def add_player_to_queue(
         for player in team0_players:
             member: Member | None = guild.get_member(player.id)
             if member:
-                await member.send(
-                    embed=Embed(
-                        description=f"Your game '{queue.name}' has begun!",
-                        colour=Colour.green(),
+                try:
+                    await member.send(
+                        embed=Embed(
+                            description=f"Your game '{queue.name}' has begun!",
+                            colour=Colour.green(),
+                        )
                     )
-                )
+                except Exception:
+                    pass
 
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
