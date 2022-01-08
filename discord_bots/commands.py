@@ -2235,40 +2235,42 @@ async def status(ctx: Context, *args):
             games_by_queue[game.queue_id].append(game)
 
     output = ""
-    current_map: CurrentMap | None = session.query(CurrentMap).first()
-    if current_map:
-        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-        next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-            rotation_maps
+    # Only show map if they didn't request a specific queue
+    if len(args) == 0:
+        current_map: CurrentMap | None = session.query(CurrentMap).first()
+        if current_map:
+            rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+            next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+                rotation_maps
+            )
+            next_map = rotation_maps[next_rotation_map_index]
+
+            time_since_update: timedelta = datetime.now(
+                timezone.utc
+            ) - current_map.updated_at.replace(tzinfo=timezone.utc)
+            time_until_rotation = MAP_ROTATION_MINUTES - (
+                time_since_update.seconds // 60
+            )
+            if current_map.map_rotation_index == 0:
+                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+            else:
+                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+        skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
+        output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+
+        # TODO: This is duplicated
+        map_votes: list[MapVote] = session.query(MapVote).all()
+        voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
+        voted_maps: list[VoteableMap] = (
+            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
         )
-        next_map = rotation_maps[next_rotation_map_index]
-
-        time_since_update: timedelta = datetime.now(
-            timezone.utc
-        ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-        time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
-        if current_map.map_rotation_index == 0:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
-        else:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
-    skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-    output += (
-        f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
-    )
-
-    # TODO: This is duplicated
-    map_votes: list[MapVote] = session.query(MapVote).all()
-    voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-    voted_maps: list[VoteableMap] = (
-        session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
-    )
-    voted_maps_str = ", ".join(
-        [
-            f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
-            for voted_map in voted_maps
-        ]
-    )
-    output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
+        voted_maps_str = ", ".join(
+            [
+                f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
+                for voted_map in voted_maps
+            ]
+        )
+        output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
 
     for i, queue in enumerate(queues):
         if i > 0:
