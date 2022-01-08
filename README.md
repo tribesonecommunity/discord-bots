@@ -105,12 +105,17 @@ Common issues:
 - Map change queue waitlist (just like finished game queue waitlist)
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
-- Mark mock games as mock games for easier deletion
-- Map-specific trueskill rating
 - Store map with game
+- Map-specific trueskill rating
 - Rename "voteable map" to "map pool" naming
+- Store player w/l
+- Use Cogs for commands: https://discordpy.readthedocs.io/en/stable/ext/commands/cogs.html
+- De-prioritize queue that just popped
+- Map rotation after game finishes
+
+
 ## Good first tickets
-- PM !commands rather than printing to channel
+- Store player display name alongside regular name
 - Allow voting for multiple maps at once
 - Add the ability to report bugs
 
@@ -126,3 +131,4 @@ MVP+
 Maybe?
 
 - Strict typing configuration
+- Mark mock games as mock games for easier deletion

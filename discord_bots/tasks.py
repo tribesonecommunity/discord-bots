@@ -2,6 +2,7 @@
 # use queues to be able to execute discord actions from child threads.
 # https://stackoverflow.com/a/67996748
 
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from random import shuffle
 
@@ -25,6 +26,7 @@ from .models import (
     InProgressGameChannel,
     MapVote,
     Player,
+    Queue,
     QueuePlayer,
     QueueWaitlist,
     QueueWaitlistPlayer,
@@ -126,6 +128,7 @@ async def queue_waitlist_task():
     TODO: Tests for this method
     """
     session = Session()
+    queues: list[Queue] = session.query(Queue).order_by(Queue.created_at.asc())  # type: ignore
     queue_waitlist: QueueWaitlist
     for queue_waitlist in session.query(QueueWaitlist).filter(
         QueueWaitlist.end_waitlist_at < datetime.now(timezone.utc)
@@ -139,29 +142,37 @@ async def queue_waitlist_task():
             .filter(QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id)
             .all()
         )
-        shuffle(queue_waitlist_players)
-        for queue_waitlist_player in queue_waitlist_players:
-            if is_in_game(queue_waitlist_player.player_id):
-                session.delete(queue_waitlist_player)
-                continue
+        qwp_by_queue_id: dict[str, list[QueueWaitlistPlayer]] = defaultdict(list)
+        for qwp in queue_waitlist_players:
+            if qwp.queue_id:
+                qwp_by_queue_id[qwp.queue_id].append(qwp)
+        # Ensure that we process the queues in the order the queues were
+        # created. TODO: Make the last queue that popped the lowest priority
+        for queue in queues:
+            qwps_for_queue = qwp_by_queue_id[queue.id]
+            shuffle(qwps_for_queue)
+            for queue_waitlist_player in qwps_for_queue:
+                if is_in_game(queue_waitlist_player.player_id):
+                    session.delete(queue_waitlist_player)
+                    continue
 
-            if channel and guild and isinstance(channel, TextChannel):
-                # Bugfix - TODO: Add tests
-                if queue_waitlist_player.queue_id:
-                    await add_player_to_queue(
-                        queue_waitlist_player.queue_id,
-                        queue_waitlist_player.player_id,
-                        channel,
-                        guild,
-                    )
-                else:
-                    # Legacy behavior
-                    await add_player_to_queue(
-                        queue_waitlist.queue_id,
-                        queue_waitlist_player.player_id,
-                        channel,
-                        guild,
-                    )
+                if channel and guild and isinstance(channel, TextChannel):
+                    # Bugfix - TODO: Add tests
+                    if queue_waitlist_player.queue_id:
+                        await add_player_to_queue(
+                            queue_waitlist_player.queue_id,
+                            queue_waitlist_player.player_id,
+                            channel,
+                            guild,
+                        )
+                    else:
+                        # Legacy behavior
+                        await add_player_to_queue(
+                            queue_waitlist.queue_id,
+                            queue_waitlist_player.player_id,
+                            channel,
+                            guild,
+                        )
 
         for igp_channel in session.query(InProgressGameChannel).filter(
             InProgressGameChannel.in_progress_game_id

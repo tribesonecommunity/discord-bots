@@ -11,9 +11,9 @@ from typing import Awaitable, Callable
 
 import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
+from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
-from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
@@ -24,6 +24,7 @@ from discord_bots.utils import (
     win_probability,
 )
 
+from .bot import COMMAND_PREFIX, bot
 from .models import (
     DB_NAME,
     AdminRole,
@@ -49,10 +50,7 @@ from .models import (
 )
 from .names import generate_be_name, generate_ds_name
 
-load_dotenv()
-
 AFK_TIME_MINUTES: int = 45
-COMMAND_PREFIX: str = os.getenv("COMMAND_PREFIX") or "!"
 MAP_ROTATION_MINUTES: int = 60
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 10
@@ -185,15 +183,24 @@ async def add_player_to_queue(
         team0_players = players[: len(players) // 2]
         team1_players = players[len(players) // 2 :]
 
+        short_game_id = short_uuid(game.id)
+        message_content = f"Game '{queue.name}' ({short_game_id}) has begun!"
+        message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})**\n"
+        message_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
+        message_embed += pretty_format_team(
+            game.team1_name, 1 - win_prob, team1_players
+        )
+
         for player in team0_players:
             member: Member | None = guild.get_member(player.id)
             if member:
                 try:
                     await member.send(
+                        content=message_content,
                         embed=Embed(
-                            description=f"Your game '{queue.name}' has begun!",
-                            colour=Colour.green(),
-                        )
+                            description=f"{message_content}\n{message_embed}",
+                            colour=Colour.blue(),
+                        ),
                     )
                 except Exception:
                     pass
@@ -208,12 +215,16 @@ async def add_player_to_queue(
         for player in team1_players:
             member: Member | None = guild.get_member(player.id)
             if member:
-                await member.send(
-                    embed=Embed(
-                        description=f"Your game '{queue.name}' has begun!",
-                        colour=Colour.green(),
+                try:
+                    await member.send(
+                        content=message_content,
+                        embed=Embed(
+                            description=f"{message_content}\n{message_embed}",
+                            colour=Colour.blue(),
+                        ),
                     )
-                )
+                except Exception:
+                    pass
 
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
@@ -222,20 +233,10 @@ async def add_player_to_queue(
             )
             session.add(game_player)
 
-        short_game_id = short_uuid(game.id)
-        # channel_message = f"Game '{queue.name}' ({short_game_id}) (TS: {round(game.average_trueskill, 2)}) has begun!"
-        channel_message = f"Game '{queue.name}' ({short_game_id}) has begun!"
-        channel_embed = ""
-        channel_embed += f"**Map: {game.map_full_name} ({game.map_short_name})**\n"
-        channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
-        channel_embed += pretty_format_team(
-            game.team1_name, 1 - win_prob, team1_players
-        )
-
         await send_message(
             channel,
-            content=channel_message,
-            embed_description=channel_embed,
+            content=message_content,
+            embed_description=message_embed,
             colour=Colour.blue(),
         )
 
@@ -258,7 +259,7 @@ async def add_player_to_queue(
         )
 
         session.query(QueuePlayer).filter(
-            QueuePlayer.player_id.in_(player_ids)
+            QueuePlayer.player_id.in_(player_ids)  # type: ignore
         ).delete()
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
@@ -371,15 +372,17 @@ def finished_game_str(finished_game: FinishedGame) -> str:
     else:
         output += f"\n{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
         output += f"\n{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
-    minutes_ago = (
-        datetime.now(timezone.utc)
-        - finished_game.finished_at.replace(tzinfo=timezone.utc)
-    ).seconds // 60
-    if minutes_ago < 60:
-        output += f"\n@ {minutes_ago} minutes ago\n"
-    else:
-        hours_ago = minutes_ago // 60
+    delta: timedelta = datetime.now(timezone.utc) - finished_game.finished_at.replace(
+        tzinfo=timezone.utc
+    )
+    if delta.days > 0:
+        output += f"\n@ {delta.days} days ago\n"
+    elif delta.seconds > 3600:
+        hours_ago = delta.seconds // 3600
         output += f"\n@ {hours_ago} hours ago\n"
+    else:
+        minutes_ago = delta.seconds // 60
+        output += f"\n@ {minutes_ago} minutes ago\n"
 
     return output
 
@@ -697,11 +700,11 @@ async def add_rotation_map(message: Message, args: list[str]):
     )
 
 
-async def add_voteable_map(message: Message, args: list[str]):
+async def add_map(message: Message, args: list[str]):
     if len(args) != 2:
         await send_message(
             message.channel,
-            embed_description="Usage: !addvoteablemap <map_short_name> <map_full_name>",
+            embed_description="Usage: !addmap <map_short_name> <map_full_name>",
             colour=Colour.red(),
         )
         return
@@ -714,14 +717,14 @@ async def add_voteable_map(message: Message, args: list[str]):
         session.rollback()
         await send_message(
             message.channel,
-            embed_description=f"Error adding voteable map {args[1]} ({args[0]}). Does it already exist?",
+            embed_description=f"Error adding map {args[1]} ({args[0]}). Does it already exist?",
             colour=Colour.red(),
         )
         return
 
     await send_message(
         message.channel,
-        embed_description=f"{args[1]} ({args[0]}) added to voteable map pool",
+        embed_description=f"{args[1]} ({args[0]}) added to map pool",
         colour=Colour.green(),
     )
 
@@ -846,7 +849,7 @@ async def change_game_map(message: Message, args: list[str]):
         return
 
     rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[1])).first()
+        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[1])).first()  # type: ignore
     )
     if rotation_map:
         ipg.map_full_name = rotation_map.full_name
@@ -855,7 +858,7 @@ async def change_game_map(message: Message, args: list[str]):
     else:
         voteable_map: VoteableMap | None = (
             session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(args[1]))
+            .filter(VoteableMap.short_name.ilike(args[1]))  # type: ignore
             .first()
         )
         if voteable_map:
@@ -865,7 +868,7 @@ async def change_game_map(message: Message, args: list[str]):
         else:
             await send_message(
                 message.channel,
-                embed_description=f"Could not find map: {args[1]}. Add to rotation or voteable map pool first.",
+                embed_description=f"Could not find map: {args[1]}. Add to rotation or map pool first.",
                 colour=Colour.red(),
             )
             return
@@ -894,11 +897,11 @@ async def change_queue_map(message: Message, args: list[str]):
     session = Session()
     current_map: CurrentMap = session.query(CurrentMap).first()
     rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[0])).first()
+        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[0])).first()  # type: ignore
     )
     if rotation_map:
         rotation_maps: list[RotationMap] = (
-            session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()
+            session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
         )
         rotation_map_index = rotation_maps.index(rotation_map)
         current_map.full_name = rotation_map.full_name
@@ -909,7 +912,7 @@ async def change_queue_map(message: Message, args: list[str]):
     else:
         voteable_map: VoteableMap | None = (
             session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(args[0]))
+            .filter(VoteableMap.short_name.ilike(args[0]))  # type: ignore
             .first()
         )
         if voteable_map:
@@ -919,7 +922,7 @@ async def change_queue_map(message: Message, args: list[str]):
         else:
             await send_message(
                 message.channel,
-                embed_description=f"Could not find map: {args[0]}. Add to rotation or voteable map pool first.",
+                embed_description=f"Could not find map: {args[0]}. Add to rotation or map pool first.",
                 colour=Colour.red(),
             )
             return
@@ -932,11 +935,25 @@ async def change_queue_map(message: Message, args: list[str]):
 
 
 async def commands(message: Message, args: list[str]):
+    guild = message.guild
+    if not guild:
+        return
+    member: Member | None = guild.get_member(message.author.id)
+    if not member:
+        return
+
     output = "Commands:"
     for command in COMMANDS:
         output += f"\n- {COMMAND_PREFIX}{command}"
-
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+    try:
+        await member.send(embed=Embed(description=output, colour=Colour.blue()))
+        await send_message(
+            message.channel,
+            embed_description="Commands sent via private message",
+            colour=Colour.blue(),
+        )
+    except Exception:
+        pass
 
 
 async def create_command(message: Message, args: list[str]):
@@ -1563,7 +1580,7 @@ async def list_queue_roles(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-async def list_voteable_maps(message: Message, args: list[str]):
+async def list_maps(message: Message, args: list[str]):
     output = "Voteable map pool"
     voteable_map: VoteableMap
     for voteable_map in Session().query(VoteableMap).order_by(VoteableMap.full_name):
@@ -1598,6 +1615,49 @@ async def lock_queue(message: Message, args: list[str]):
         embed_description=f"Queue {args[0]} locked",
         colour=Colour.green(),
     )
+
+
+@bot.command(name="map")
+async def map_(ctx: Context):
+    # TODO: This is duplicated
+    session = Session()
+    output = ""
+    current_map: CurrentMap | None = session.query(CurrentMap).first()
+    if current_map:
+        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+        next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+            rotation_maps
+        )
+        next_map = rotation_maps[next_rotation_map_index]
+
+        time_since_update: timedelta = datetime.now(
+            timezone.utc
+        ) - current_map.updated_at.replace(tzinfo=timezone.utc)
+        time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
+        if current_map.map_rotation_index == 0:
+            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+        else:
+            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+    skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
+    output += (
+        f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+    )
+
+    # TODO: This is duplicated
+    map_votes: list[MapVote] = session.query(MapVote).all()
+    voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
+    voted_maps: list[VoteableMap] = (
+        session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
+    )
+    voted_maps_str = ", ".join(
+        [
+            f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
+            for voted_map in voted_maps
+        ]
+    )
+    output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
+    session.close()
+    await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
 
 
 @require_admin
@@ -1956,11 +2016,11 @@ async def remove_rotation_map(message: Message, args: list[str]):
         )
 
 
-async def remove_voteable_map(message: Message, args: list[str]):
+async def remove_map(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
             message.channel,
-            embed_description="Usage: !removevoteablemap <map_short_name>",
+            embed_description="Usage: !removemap <map_short_name>",
             colour=Colour.red(),
         )
         return
@@ -1976,7 +2036,7 @@ async def remove_voteable_map(message: Message, args: list[str]):
         session.delete(voteable_map)
         await send_message(
             message.channel,
-            embed_description=f"{args[0]} removed from voteable map pool",
+            embed_description=f"{args[0]} removed from map pool",
             colour=Colour.green(),
         )
     else:
@@ -2149,9 +2209,26 @@ async def show_game(message: Message, args: list[str]):
     )
 
 
-async def status(message: Message, args: list[str]):
+@bot.command()
+async def status(ctx: Context, *args):
     session = Session()
-    queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+    queues: list[Queue] = []
+    all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+    if len(args) == 0:
+        queues: list[Queue] = all_queues
+    else:
+        for arg in args:
+            # Try adding by integer index first, then try string name
+            try:
+                queue_index = int(arg) - 1
+                queues.append(all_queues[queue_index])
+            except ValueError:
+                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                if queue:
+                    queues.append(queue)
+            except IndexError:
+                continue
+
     games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
     for game in session.query(InProgressGame):
         if game.queue_id:
@@ -2176,7 +2253,7 @@ async def status(message: Message, args: list[str]):
             output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
     skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
     output += (
-        f"_Votes to skip (voteskipmap): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+        f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
     )
 
     # TODO: This is duplicated
@@ -2191,7 +2268,7 @@ async def status(message: Message, args: list[str]):
             for voted_map in voted_maps
         ]
     )
-    output += f"_Votes to swap (voteswapmap): {voted_maps_str}_\n\n"
+    output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
 
     for i, queue in enumerate(queues):
         if i > 0:
@@ -2257,7 +2334,9 @@ async def status(message: Message, args: list[str]):
     if len(output) == 0:
         output = "No queues or games"
 
-    await send_message(message.channel, embed_description=output, colour=Colour.green())
+    await send_message(
+        ctx.message.channel, embed_description=output, colour=Colour.blue()
+    )
 
 
 async def sub(message: Message, args: list[str]):
@@ -2471,11 +2550,11 @@ async def unvote(message: Message, args: list[str]):
 
 
 # TODO: Unvote for many maps at once
-async def unvote_swap_map(message: Message, args: list[str]):
+async def unvote_map(message: Message, args: list[str]):
     if len(args) != 1:
         await send_message(
             message.channel,
-            embed_description="Usage: !unvoteswapmap <map_short_name>",
+            embed_description="Usage: !unvotemap <map_short_name>",
             colour=Colour.red(),
         )
         return
@@ -2509,12 +2588,12 @@ async def unvote_swap_map(message: Message, args: list[str]):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"Your swap vote for {args[0]} was removed",
+        embed_description=f"Your vote for {args[0]} was removed",
         colour=Colour.green(),
     )
 
 
-async def unvote_skip_map(message: Message, args: list[str]):
+async def unvote_skip(message: Message, args: list[str]):
     """
     A player votes to go to the next map in rotation
     """
@@ -2541,7 +2620,7 @@ async def unvote_skip_map(message: Message, args: list[str]):
 
 
 # TODO: Vote for many maps at once
-async def vote_swap_map(message: Message, args: list[str]):
+async def vote_map(message: Message, args: list[str]):
     session = Session()
     if len(args) != 1:
         voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
@@ -2551,7 +2630,7 @@ async def vote_swap_map(message: Message, args: list[str]):
 
         await send_message(
             message.channel,
-            embed_description=f"Usage: !voteswapmap <map_short_name>\nVoteable maps: {voteable_map_str}",
+            embed_description=f"Usage: !votemap <map_short_name>\nVoteable maps: {voteable_map_str}",
             colour=Colour.red(),
         )
         return
@@ -2603,7 +2682,7 @@ async def vote_swap_map(message: Message, args: list[str]):
 
         await send_message(
             message.channel,
-            embed_description=f"Vote to swap to {voteable_map.full_name} ({voteable_map.short_name}) passed!\n**New map: {voteable_map.full_name} ({voteable_map.short_name})**",
+            embed_description=f"Vote for {voteable_map.full_name} ({voteable_map.short_name}) passed!\n**New map: {voteable_map.full_name} ({voteable_map.short_name})**",
             colour=Colour.green(),
         )
         session.query(MapVote).delete()
@@ -2626,14 +2705,14 @@ async def vote_swap_map(message: Message, args: list[str]):
         )
         await send_message(
             message.channel,
-            embed_description=f"Added map vote to swap to {args[0]}.\n!unvoteswapmap to remove your vote.\nVotes to swap: {voted_maps_str}",
+            embed_description=f"Added map vote for {args[0]}.\n!unvotemap to remove your vote.\nVotes: {voted_maps_str}",
             colour=Colour.green(),
         )
 
     session.commit()
 
 
-async def vote_skip_map(message: Message, args: list[str]):
+async def vote_skip(message: Message, args: list[str]):
     """
     A player votes to go to the next map in rotation
     """
@@ -2661,7 +2740,7 @@ async def vote_skip_map(message: Message, args: list[str]):
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
         await send_message(
             message.channel,
-            embed_description=f"Added vote to skip the current map.\n!unvoteskipmap to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]",
+            embed_description=f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]",
             colour=Colour.green(),
         )
 
@@ -2675,7 +2754,7 @@ COMMANDS = {
     "addadminrole": add_admin_role,
     "addqueuerole": add_queue_role,
     "addrotationmap": add_rotation_map,
-    "addvoteablemap": add_voteable_map,
+    "addmap": add_map,
     "ban": ban,
     "cancelgame": cancel_game,
     "changegamemap": change_game_map,
@@ -2700,12 +2779,9 @@ COMMANDS = {
     "listdbbackups": list_db_backups,
     "listcommands": list_commands,
     "listmaprotation": list_map_rotation,
-    "listmr": list_map_rotation,
     # "listplayerdecays": list_player_decays,
     "listqueueroles": list_queue_roles,
-    "listqr": list_queue_roles,
-    "listvoteablemaps": list_voteable_maps,
-    "listvm": list_voteable_maps,
+    "listmaps": list_maps,
     "lockqueue": lock_queue,
     "gamehistory": game_history,
     "mockrandomqueue": mock_random_queue,
@@ -2717,9 +2793,7 @@ COMMANDS = {
     "removequeuerole": remove_queue_role,
     "removequeue": remove_queue,
     "removerotationmap": remove_rotation_map,
-    "removerm": remove_rotation_map,
-    "removevoteablemap": remove_voteable_map,
-    "removevm": remove_voteable_map,
+    "removemap": remove_map,
     "roll": roll,
     "setadddelay": set_add_delay,
     "setcommandprefix": set_command_prefix,
@@ -2727,25 +2801,22 @@ COMMANDS = {
     "setqueueunrated": set_queue_unrated,
     "setmapvotethreshold": set_map_vote_threshold,
     "showgame": show_game,
-    "status": status,
     "sub": sub,
     "unban": unban,
     "unlockqueue": unlock_queue,
     "unvote": unvote,
-    "unvoteswap": unvote_swap_map,
-    "unvoteswapmap": unvote_swap_map,
-    "unvoteskip": unvote_skip_map,
-    "unvoteskipmap": unvote_skip_map,
-    "voteswap": vote_swap_map,
-    "voteswapmap": vote_swap_map,
-    "voteskip": vote_skip_map,
-    "voteskipmap": vote_skip_map,
+    "unvotemap": unvote_map,
+    "unvoteskip": unvote_skip,
+    "votemap": vote_map,
+    "voteskip": vote_skip,
 }
 
 
 async def handle_message(message: Message):
     # print("[handle_message] message:", message)
     command = message.content.split(" ")[0]
+
+    await bot.process_commands(message)
 
     if not command.startswith(COMMAND_PREFIX):
         return

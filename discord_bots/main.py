@@ -49,6 +49,7 @@ async def on_message(message: Message):
     if player:
         player.last_activity_at = datetime.now(timezone.utc)
         session.commit()
+    session.close()
 
     if type(message.channel) is TextChannel or type(message.channel) is GroupChannel:
         if (
@@ -56,7 +57,7 @@ async def on_message(message: Message):
             message.author.id
             != BULLIEST_BOT_ID
         ):
-            print("[on_message]", message)
+            # print("[on_message]", message)
             try:
                 await handle_message(message)
             except Exception as e:
