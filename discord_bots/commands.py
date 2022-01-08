@@ -14,6 +14,7 @@ from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
+from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
@@ -50,12 +51,21 @@ from .models import (
 )
 from .names import generate_be_name, generate_ds_name
 
+load_dotenv()
+
 AFK_TIME_MINUTES: int = 45
+DEBUG: bool = bool(os.getenv("DEBUG")) or False
 MAP_ROTATION_MINUTES: int = 60
 # The number of votes needed to succeed a map skip / replacement
-MAP_VOTE_THRESHOLD: int = 10
+MAP_VOTE_THRESHOLD: int = 8
 RE_ADD_DELAY: int = 30
 TEAM_NAMES: bool = True
+
+
+def debug_print(*args):
+    global DEBUG
+    if DEBUG:
+        print(args)
 
 
 def get_even_teams(player_ids: list[int], is_rated: bool) -> tuple[list[Player], float]:
@@ -2815,7 +2825,7 @@ COMMANDS = {
 
 
 async def handle_message(message: Message):
-    # print("[handle_message] message:", message)
+    debug_print("[handle_message] message:", message)
     command = message.content.split(" ")[0]
 
     await bot.process_commands(message)
@@ -2855,10 +2865,10 @@ async def handle_message(message: Message):
             )
             return
 
-        # print("[handle_message] exiting - command not found:", command)
+        debug_print("[handle_message] exiting - command not found:", command)
         return
 
-    # print("[handle_message] executing command:", command)
+    debug_print("[handle_message] executing command:", command)
 
     args = message.content.split(" ")
     await COMMANDS[command](message, args[1:])
