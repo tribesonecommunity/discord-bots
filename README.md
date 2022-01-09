@@ -108,12 +108,10 @@ Common issues:
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
 - Map-specific trueskill rating
-- Store player w/l
 - De-prioritize queue that just popped
-- Map rotation after game finishes
+- Start map rotation only after game finishes
 - Convert from sqlite to postgres
 - Use converters for commands: https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#discord-converters
-- Decorator to handle bans
 
 
 ## Good first tickets
@@ -133,5 +131,7 @@ MVP+
 
 Maybe?
 
+- Cache things like queues, admins, bans in memory - save some DB round trips?
 - Strict typing configuration
 - Mark mock games as mock games for easier deletion
+- Store player w/l (not sure about this since games are made using TS)
