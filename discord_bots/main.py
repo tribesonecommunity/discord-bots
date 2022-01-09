@@ -34,7 +34,6 @@ if player:
 session.close()
 
 
-
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
@@ -101,3 +100,7 @@ def main():
         bot.run(API_KEY)
     else:
         print("You must define DISCORD_API_KEY!")
+
+
+if __name__ == "__main__":
+    main()

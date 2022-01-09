@@ -107,17 +107,17 @@ Common issues:
   - Give queuers a chance to del when vote succeeds?
 - Store map with game
 - Map-specific trueskill rating
-- Rename "voteable map" to "map pool" naming
 - Store player w/l
-- Use Cogs for commands: https://discordpy.readthedocs.io/en/stable/ext/commands/cogs.html
 - De-prioritize queue that just popped
 - Map rotation after game finishes
+- Convert from sqlite to postgres
 
 
 ## Good first tickets
 - Store player display name alongside regular name
 - Allow voting for multiple maps at once
 - Add the ability to report bugs
+- Convert commands to @bot.command decorator: https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html
 
 MVP+
 
