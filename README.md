@@ -100,11 +100,14 @@ Common issues:
   an issue like this, you may need to hand edit the migration. See here:
   https://alembic.sqlalchemy.org/en/latest/naming.html
 
+# Bugs
+
 # To-do list
 
 - Map change queue waitlist (just like finished game queue waitlist)
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
+- Send updated teams with sub
 - Store map with game
 - Map-specific trueskill rating
 - Store player w/l

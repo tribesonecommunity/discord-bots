@@ -5,13 +5,13 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from random import shuffle
+from re import I
 
 from discord.channel import TextChannel
 from discord.colour import Colour
 from discord.ext import tasks
+from discord.guild import Guild
 from discord.member import Member
-
-from discord_bots.utils import update_current_map_to_next_map_in_rotation
 
 from .bot import bot
 from .commands import (
@@ -23,6 +23,7 @@ from .commands import (
 )
 from .models import (
     CurrentMap,
+    InProgressGame,
     InProgressGameChannel,
     MapVote,
     Player,
@@ -33,6 +34,8 @@ from .models import (
     Session,
     SkipMapVote,
 )
+from .queues import AddPlayerQueueMessage, add_player_queue
+from .utils import update_current_map_to_next_map_in_rotation
 
 
 @tasks.loop(minutes=1)
@@ -130,11 +133,15 @@ async def queue_waitlist_task():
     session = Session()
     queues: list[Queue] = session.query(Queue).order_by(Queue.created_at.asc())  # type: ignore
     queue_waitlist: QueueWaitlist
+    channel = None
+    guild: Guild | None = None
     for queue_waitlist in session.query(QueueWaitlist).filter(
         QueueWaitlist.end_waitlist_at < datetime.now(timezone.utc)
     ):
-        channel = bot.get_channel(queue_waitlist.channel_id)
-        guild = bot.get_guild(queue_waitlist.guild_id)
+        if not channel:
+            channel = bot.get_channel(queue_waitlist.channel_id)
+        if not guild:
+            guild = bot.get_guild(queue_waitlist.guild_id)
 
         queue_waitlist_players: list[QueueWaitlistPlayer]
         queue_waitlist_players = (
@@ -146,6 +153,7 @@ async def queue_waitlist_task():
         for qwp in queue_waitlist_players:
             if qwp.queue_id:
                 qwp_by_queue_id[qwp.queue_id].append(qwp)
+
         # Ensure that we process the queues in the order the queues were
         # created. TODO: Make the last queue that popped the lowest priority
         for queue in queues:
@@ -156,23 +164,34 @@ async def queue_waitlist_task():
                     session.delete(queue_waitlist_player)
                     continue
 
-                if channel and guild and isinstance(channel, TextChannel):
-                    # Bugfix - TODO: Add tests
-                    if queue_waitlist_player.queue_id:
-                        await add_player_to_queue(
-                            queue_waitlist_player.queue_id,
+                if isinstance(channel, TextChannel) and guild:
+                    player = (
+                        session.query(Player)
+                        .filter(Player.id == queue_waitlist_player.player_id)
+                        .first()
+                    )
+
+                    add_player_queue.put(
+                        AddPlayerQueueMessage(
                             queue_waitlist_player.player_id,
+                            player.name,
+                            # TODO: This is sucky to do it one at a time
+                            [queue.id],
+                            False,
                             channel,
                             guild,
                         )
-                    else:
-                        # Legacy behavior
-                        await add_player_to_queue(
-                            queue_waitlist.queue_id,
-                            queue_waitlist_player.player_id,
-                            channel,
-                            guild,
-                        )
+                    )
+
+                # if channel and guild and isinstance(channel, TextChannel):
+                #     # Bugfix - TODO: Add tests
+                #     if queue_waitlist_player.queue_id:
+                #         await add_player_to_queue(
+                #             queue_waitlist_player.queue_id,
+                #             queue_waitlist_player.player_id,
+                #             channel,
+                #             guild,
+                #         )
 
         for igp_channel in session.query(InProgressGameChannel).filter(
             InProgressGameChannel.in_progress_game_id
@@ -212,3 +231,66 @@ async def map_rotation_task():
         # TODO: Need to announce to the server, get a handle to a channel /
         # guild
         update_current_map_to_next_map_in_rotation()
+
+
+@tasks.loop(seconds=1)
+async def add_player_task():
+    """
+    Handle adding players in a task that pulls messages off of a queue.
+
+    This helps with concurrency issues since players can be added from multiple
+    sources (waitlist vs normal add command)
+    """
+    queues: list[Queue] = Session().query(Queue).all()
+    queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
+    while not add_player_queue.empty():
+        queues_added_to: list[str] = []
+        message: AddPlayerQueueMessage = add_player_queue.get()
+        queue_popped = False
+        for queue_id in message.queue_ids:
+            queue: Queue = queue_by_id[queue_id]
+            if queue.is_locked:
+                continue
+
+            added_to_queue, queue_popped = await add_player_to_queue(
+                queue.id, message.player_id, message.channel, message.guild
+            )
+            if queue_popped:
+                print("queue popped", message)
+                break
+            if added_to_queue:
+                queues_added_to.append(queue.name)
+
+        if not queue_popped and message.should_print_status:
+            queue_statuses = []
+            queue: Queue
+            session = Session()
+            for queue in queues:
+                queue_players = (
+                    Session()
+                    .query(QueuePlayer)
+                    .filter(QueuePlayer.queue_id == queue.id)
+                    .all()
+                )
+
+                in_progress_games: list[InProgressGame] = (
+                    session.query(InProgressGame)
+                    .filter(InProgressGame.queue_id == queue.id)
+                    .all()
+                )
+
+                if len(in_progress_games) > 0:
+                    queue_statuses.append(
+                        f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*"
+                    )
+                else:
+                    queue_statuses.append(
+                        f"{queue.name} [{len(queue_players)}/{queue.size}]"
+                    )
+
+            await send_message(
+                message.channel,
+                content=f"{message.player_name} added to: {', '.join(queues_added_to)}",
+                embed_description=" ".join(queue_statuses),
+                colour=Colour.green(),
+            )

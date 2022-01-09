@@ -18,13 +18,6 @@ from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
-from discord_bots.utils import (
-    pretty_format_team,
-    short_uuid,
-    update_current_map_to_next_map_in_rotation,
-    win_probability,
-)
-
 from .bot import COMMAND_PREFIX, bot
 from .models import (
     DB_NAME,
@@ -50,6 +43,13 @@ from .models import (
     VoteableMap,
 )
 from .names import generate_be_name, generate_ds_name
+from .queues import AddPlayerQueueMessage, add_player_queue
+from .utils import (
+    pretty_format_team,
+    short_uuid,
+    update_current_map_to_next_map_in_rotation,
+    win_probability,
+)
 
 load_dotenv()
 
@@ -151,6 +151,9 @@ async def add_player_to_queue(
         has_role = len(queue_role_ids.intersection(player_role_ids)) > 0
         if not has_role:
             return False, False
+
+    if is_in_game(player_id):
+        return False, False
 
     session.add(
         QueuePlayer(
@@ -436,7 +439,6 @@ async def add(message: Message, args: list[str]):
 
     Players can also add to a queue by its index. The index starts at 1.
     """
-    session = Session()
     if is_in_game(message.author.id):
         await send_message(
             message.channel,
@@ -445,6 +447,7 @@ async def add(message: Message, args: list[str]):
         )
         return
 
+    session = Session()
     most_recent_game: FinishedGame | None = (
         session.query(FinishedGame)
         .join(FinishedGamePlayer)
@@ -454,20 +457,6 @@ async def add(message: Message, args: list[str]):
         .order_by(FinishedGame.finished_at.desc())  # type: ignore
         .first()
     )
-
-    is_waitlist: bool = False
-    waitlist_message: str | None = None
-    if most_recent_game and most_recent_game.finished_at:
-        # The timezone info seems to get lost in the round trip to the database
-        finish_time: datetime = most_recent_game.finished_at.replace(
-            tzinfo=timezone.utc
-        )
-        current_time: datetime = datetime.now(timezone.utc)
-        difference: float = (current_time - finish_time).total_seconds()
-        if difference < RE_ADD_DELAY:
-            time_to_wait: int = floor(RE_ADD_DELAY - difference)
-            waitlist_message = f"Your game has just finished, you will be randomized into the queue in {time_to_wait} seconds"
-            is_waitlist = True
 
     queues_to_add: list[Queue] = []
     all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
@@ -494,12 +483,23 @@ async def add(message: Message, args: list[str]):
         )
         return
 
-    queues_added_to = []
-    for queue in queues_to_add:
-        if queue.is_locked:
-            continue
+    is_waitlist: bool = False
+    waitlist_message: str | None = None
+    if most_recent_game and most_recent_game.finished_at:
+        # The timezone info seems to get lost in the round trip to the database
+        finish_time: datetime = most_recent_game.finished_at.replace(
+            tzinfo=timezone.utc
+        )
+        current_time: datetime = datetime.now(timezone.utc)
+        difference: float = (current_time - finish_time).total_seconds()
+        if difference < RE_ADD_DELAY:
+            time_to_wait: int = floor(RE_ADD_DELAY - difference)
+            waitlist_message = f"Your game has just finished, you will be randomized into the queue in {time_to_wait} seconds"
+            is_waitlist = True
 
-        if is_waitlist and most_recent_game:
+    if is_waitlist and most_recent_game:
+        for queue in queues_to_add:
+            # TODO: Check player eligibility here
             queue_waitlist = (
                 session.query(QueueWaitlist)
                 .filter(QueueWaitlist.finished_game_id == most_recent_game.id)
@@ -517,51 +517,28 @@ async def add(message: Message, args: list[str]):
                     session.commit()
                 except IntegrityError:
                     session.rollback()
-        else:
-            if message.guild:
-                added_to_queue, queue_popped = await add_player_to_queue(
-                    queue.id, message.author.id, message.channel, message.guild
-                )
-                if queue_popped:
-                    return
-                if added_to_queue:
-                    queues_added_to.append(queue)
 
-    queue_statuses = []
-    queue: Queue
-    for queue in all_queues:
-        queue_players = (
-            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
-        )
-
-        in_progress_games: list[InProgressGame] = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.queue_id == queue.id)
-            .all()
-        )
-
-        if len(in_progress_games) > 0:
-            queue_statuses.append(
-                f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*"
-            )
-        else:
-            queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
-
-    if is_waitlist and waitlist_message:
         await send_message(
             message.channel,
-            content=f"{message.author.name} added to: {', '.join([queue.name for queue in queues_added_to])}",
+            # TODO: Populate this message with the queues the player was
+            # eligible for
+            content=f"{message.author.name} added to:",
             embed_description=waitlist_message,
             colour=Colour.green(),
         )
-    else:
-        await send_message(
-            message.channel,
-            content=f"{message.author.name} added to: {', '.join([queue.name for queue in queues_added_to])}",
-            embed_description=" ".join(queue_statuses),
-            colour=Colour.green(),
+        return
+
+    if isinstance(message.channel, TextChannel) and message.guild:
+        add_player_queue.put(
+            AddPlayerQueueMessage(
+                message.author.id,
+                message.author.name,
+                [q.id for q in queues_to_add],
+                True,
+                message.channel,
+                message.guild,
+            )
         )
-    session.commit()
 
 
 @require_admin
@@ -1706,15 +1683,20 @@ async def mock_random_queue(message: Message, args: list[str]):
     for player in numpy.random.choice(
         players_from_last_30_days, size=int(args[1]), replace=False
     ):
-        if message.guild:
-            await add_player_to_queue(
-                queue.id, player.id, message.channel, message.guild
+        if isinstance(message.channel, TextChannel) and message.guild:
+            add_player_queue.put(
+                AddPlayerQueueMessage(
+                    player.id,
+                    player.name,
+                    [queue.id],
+                    False,
+                    message.channel,
+                    message.guild,
+                )
             )
-        player.last_activity_at = datetime.now(timezone.utc)
-        session.add(player)
-    session.commit()
-    if int(args[1]) != queue.size:
-        await status(message, args)
+            player.last_activity_at = datetime.now(timezone.utc)
+            session.add(player)
+            session.commit()
 
 
 @require_admin
@@ -2356,7 +2338,7 @@ async def sub(message: Message, args: list[str]):
     Substitute one player in a game for another
     """
     session = Session()
-    if len(args) != 1:
+    if len(args) != 1 or len(message.mentions) < 1:
         await send_message(
             channel=message.channel,
             embed_description="Usage: !sub @<player_name>",
