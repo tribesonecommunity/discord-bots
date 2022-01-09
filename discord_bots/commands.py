@@ -947,7 +947,8 @@ async def changequeuemap(ctx: Context, *args):
 @bot.command()
 async def commands(ctx: Context, *args):
     output = "Commands:"
-    for command in bot.commands:
+    commands = sorted([command.name for command in bot.commands])
+    for command in commands:
         output += f"\n- {COMMAND_PREFIX}{command}"
 
     message = ctx.message
