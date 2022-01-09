@@ -1538,7 +1538,7 @@ async def listdbbackups(ctx: Context, *args):
 
 
 @bot.command()
-async def list_map_rotation(ctx: Context, *args):
+async def listmaprotation(ctx: Context, *args):
     message = ctx.message
     output = "Map rotation:"
     rotation_map: RotationMap
@@ -1570,7 +1570,7 @@ async def list_player_decays(ctx: Context, *args):
 
 
 @bot.command()
-async def list_queue_roles(ctx: Context, *args):
+async def listqueueroles(ctx: Context, *args):
     message = ctx.message
     if not message.guild:
         return
@@ -1592,7 +1592,7 @@ async def list_queue_roles(ctx: Context, *args):
 
 
 @bot.command()
-async def list_maps(ctx: Context, *args):
+async def listmaps(ctx: Context, *args):
     message = ctx.message
     output = "Voteable map pool"
     voteable_map: VoteableMap
@@ -1603,7 +1603,7 @@ async def list_maps(ctx: Context, *args):
 
 @require_admin
 @bot.command()
-async def lock_queue(ctx: Context, *args):
+async def lockqueue(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
         await send_message(
@@ -1632,7 +1632,7 @@ async def lock_queue(ctx: Context, *args):
     )
 
 
-@bot.command()
+@bot.command(name="map")
 async def map_(ctx: Context):
     # TODO: This is duplicated
     session = Session()
@@ -1677,7 +1677,7 @@ async def map_(ctx: Context):
 
 @require_admin
 @bot.command()
-async def mock_random_queue(ctx: Context, *args):
+async def mockrandomqueue(ctx: Context, *args):
     message = ctx.message
     """
     Helper test method for adding random players to queues
@@ -1731,7 +1731,7 @@ async def mock_random_queue(ctx: Context, *args):
 
 @require_admin
 @bot.command()
-async def game_history(ctx: Context, *args):
+async def gamehistory(ctx: Context, *args):
     message = ctx.message
     """
     Display recent game history
@@ -1772,7 +1772,7 @@ async def game_history(ctx: Context, *args):
 
 @require_admin
 @bot.command()
-async def remove_admin(ctx: Context, *args):
+async def removeadmin(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
@@ -1811,7 +1811,7 @@ async def remove_admin(ctx: Context, *args):
 
 @require_admin
 @bot.command()
-async def remove_admin_role(ctx: Context, *args):
+async def removeadminrole(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
         await send_message(
@@ -1857,7 +1857,7 @@ async def remove_admin_role(ctx: Context, *args):
 
 
 @bot.command()
-async def remove_command(ctx: Context, *args):
+async def removecommand(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
         await send_message(
@@ -1890,7 +1890,7 @@ async def remove_command(ctx: Context, *args):
 
 @require_admin
 @bot.command()
-async def remove_queue(ctx: Context, *args):
+async def removequeue(ctx: Context, *args):
     message = ctx.message
     if len(args) == 0:
         await send_message(
@@ -1934,7 +1934,7 @@ async def remove_queue(ctx: Context, *args):
 
 @require_admin
 @bot.command()
-async def remove_db_backup(ctx: Context, *args):
+async def removedbbackup(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
         await send_message(
@@ -1963,7 +1963,7 @@ async def remove_db_backup(ctx: Context, *args):
 
 @require_admin
 @bot.command()
-async def remove_queue_role(ctx: Context, *args):
+async def removequeuerole(ctx: Context, *args):
     message = ctx.message
     if len(args) != 2:
         await send_message(

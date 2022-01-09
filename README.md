@@ -24,7 +24,7 @@
 
 1. `cd discord-bots`
 1. `source .venv/bin/activate`
-1. `python scripts/run.py`
+1. `python -m discord_bots.main`
 
 # Development
 
