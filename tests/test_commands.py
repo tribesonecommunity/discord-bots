@@ -1,3 +1,8 @@
+"""
+TODO: Fix these tests - they no longer pass after converting commands to bot
+commands:
+https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#commands
+"""
 from unittest.mock import Mock
 
 import pytest
@@ -1190,6 +1195,12 @@ async def test_vote_skip_map_with_rotation_at_end_should_rollover_rotation_to_be
     current_map: CurrentMap = Session().query(CurrentMap).first()
     assert current_map.short_name == "dx"
     assert current_map.map_rotation_index == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.skip
+async def test_successful_vote_swap_should_create_vote_passed_waitlist():
+    pass
 
 
 @pytest.mark.asyncio

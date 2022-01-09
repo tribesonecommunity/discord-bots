@@ -107,13 +107,13 @@ Common issues:
 - Map change queue waitlist (just like finished game queue waitlist)
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
-- Send updated teams with sub
-- Store map with game
 - Map-specific trueskill rating
 - Store player w/l
 - De-prioritize queue that just popped
 - Map rotation after game finishes
 - Convert from sqlite to postgres
+- Use converters for commands: https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#discord-converters
+- Decorator to handle bans
 
 
 ## Good first tickets

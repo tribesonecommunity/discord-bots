@@ -8,7 +8,6 @@ from discord.channel import GroupChannel, TextChannel
 from dotenv import load_dotenv
 
 from .bot import bot
-from .commands import handle_message
 from .models import Player, QueuePlayer, Session
 from .tasks import (
     add_player_task,
@@ -54,21 +53,16 @@ async def on_message(message: Message):
     if player:
         player.last_activity_at = datetime.now(timezone.utc)
         session.commit()
+    else:
+        session.add(
+            Player(
+                id=message.author.id,
+                name=message.author.name,
+                last_activity_at=datetime.now(timezone.utc),
+            )
+        )
     session.close()
-
-    if type(message.channel) is TextChannel or type(message.channel) is GroupChannel:
-        if (
-            # message.channel.name == "bullies-bot" and
-            message.author.id
-            != BULLIEST_BOT_ID
-        ):
-            # print("[on_message]", message)
-            try:
-                await handle_message(message)
-            except Exception as e:
-                print(e)
-                traceback.print_exc()
-                await message.channel.send(f"Encountered exception: {e}")
+    await bot.process_commands(message)
 
 
 @bot.event
@@ -78,6 +72,7 @@ async def on_reaction_add(reaction: Reaction, user: User | Member):
     if player:
         player.last_activity_at = datetime.now(timezone.utc)
         session.commit()
+    session.close()
 
 
 @bot.event
@@ -90,6 +85,7 @@ async def on_join(member: Member):
     else:
         session.add(Player(id=member.id, name=member.name))
         session.commit()
+    session.close()
 
 
 @bot.event

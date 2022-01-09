@@ -59,7 +59,6 @@ MAP_ROTATION_MINUTES: int = 60
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 8
 RE_ADD_DELAY: int = 30
-TEAM_NAMES: bool = True
 
 
 def debug_print(*args):
@@ -134,6 +133,8 @@ async def add_player_to_queue(
     """
     Helper function to add player to a queue and pop if needed.
 
+    TODO: Remove this function, it's only called in one place so just inline it
+
     :returns: A tuple of booleans - the first represents whether the player was
     added to the queue, the second represents whether the queue popped as a
     result.
@@ -187,8 +188,8 @@ async def add_player_to_queue(
             map_full_name=current_map.full_name if current_map else "",
             map_short_name=current_map.short_name if current_map else "",
             queue_id=queue.id,
-            team0_name=generate_be_name() if TEAM_NAMES else "Blood Eagle",
-            team1_name=generate_ds_name() if TEAM_NAMES else "Diamond Sword",
+            team0_name=generate_be_name(),
+            team1_name=generate_ds_name(),
             win_probability=win_prob,
         )
         session.add(game)
@@ -433,12 +434,14 @@ def get_player_game(player_id: int, session=Session()) -> InProgressGame | None:
 # Commands start here
 
 
-async def add(message: Message, args: list[str]):
+@bot.command()
+async def add(ctx: Context, *args):
     """
     Players adds self to queue(s). If no args to all existing queues
 
     Players can also add to a queue by its index. The index starts at 1.
     """
+    message = ctx.message
     if is_in_game(message.author.id):
         await send_message(
             message.channel,
@@ -542,7 +545,9 @@ async def add(message: Message, args: list[str]):
 
 
 @require_admin
-async def add_admin(message: Message, args: list[str]):
+@bot.command()
+async def addadmin(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
             message.channel,
@@ -584,7 +589,9 @@ async def add_admin(message: Message, args: list[str]):
 
 
 @require_admin
-async def add_admin_role(message: Message, args: list[str]):
+@bot.command()
+async def addadminrole(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -616,7 +623,9 @@ async def add_admin_role(message: Message, args: list[str]):
 
 
 @require_admin
-async def add_queue_role(message: Message, args: list[str]):
+@bot.command()
+async def addqueuerole(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -658,7 +667,9 @@ async def add_queue_role(message: Message, args: list[str]):
 
 
 @require_admin
-async def add_rotation_map(message: Message, args: list[str]):
+@bot.command()
+async def addrotationmap(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -687,7 +698,9 @@ async def add_rotation_map(message: Message, args: list[str]):
     )
 
 
-async def add_map(message: Message, args: list[str]):
+@bot.command()
+async def addmap(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -717,7 +730,9 @@ async def add_map(message: Message, args: list[str]):
 
 
 @require_admin
-async def ban(message: Message, args: list[str]):
+@bot.command()
+async def ban(ctx: Context, *args):
+    message = ctx.message
     """TODO: remove player from queues"""
     if len(args) != 1:
         await send_message(
@@ -759,12 +774,16 @@ async def ban(message: Message, args: list[str]):
             )
 
 
-async def coinflip(message: Message, args: list[str]):
+@bot.command()
+async def coinflip(ctx: Context, *args):
+    message = ctx.message
     result = "HEADS" if floor(random() * 2) == 0 else "TAILS"
     await send_message(message.channel, embed_description=result, colour=Colour.blue())
 
 
-async def cancel_game(message: Message, args: list[str]):
+@bot.command()
+async def cancelgame(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -809,7 +828,9 @@ async def cancel_game(message: Message, args: list[str]):
 
 
 @require_admin
-async def change_game_map(message: Message, args: list[str]):
+@bot.command()
+async def changegamemap(ctx: Context, *args):
+    message = ctx.message
     """
     TODO: tests
     """
@@ -869,7 +890,9 @@ async def change_game_map(message: Message, args: list[str]):
 
 
 @require_admin
-async def change_queue_map(message: Message, args: list[str]):
+@bot.command()
+async def changequeuemap(ctx: Context, *args):
+    message = ctx.message
     """
     TODO: tests
     """
@@ -921,17 +944,19 @@ async def change_queue_map(message: Message, args: list[str]):
     )
 
 
-async def commands(message: Message, args: list[str]):
+@bot.command()
+async def commands(ctx: Context, *args):
+    output = "Commands:"
+    for command in bot.commands:
+        output += f"\n- {COMMAND_PREFIX}{command}"
+
+    message = ctx.message
     guild = message.guild
     if not guild:
         return
     member: Member | None = guild.get_member(message.author.id)
     if not member:
         return
-
-    output = "Commands:"
-    for command in COMMANDS:
-        output += f"\n- {COMMAND_PREFIX}{command}"
     try:
         await member.send(embed=Embed(description=output, colour=Colour.blue()))
         await send_message(
@@ -943,7 +968,9 @@ async def commands(message: Message, args: list[str]):
         pass
 
 
-async def create_command(message: Message, args: list[str]):
+@bot.command()
+async def createcommand(ctx: Context, *args):
+    message = ctx.message
     if len(args) < 2:
         await send_message(
             message.channel,
@@ -975,7 +1002,9 @@ async def create_command(message: Message, args: list[str]):
 
 
 @require_admin
-async def create_db_backup(message: Message, args: list[str]):
+@bot.command()
+async def createdbbackup(ctx: Context, *args):
+    message = ctx.message
     date_string = datetime.now().strftime("%Y-%m-%d")
     copyfile(f"{DB_NAME}.db", f"{DB_NAME}_{date_string}.db")
     await send_message(
@@ -986,7 +1015,9 @@ async def create_db_backup(message: Message, args: list[str]):
 
 
 @require_admin
-async def clear_queue(message: Message, args: list[str]):
+@bot.command()
+async def clearqueue(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -1015,7 +1046,9 @@ async def clear_queue(message: Message, args: list[str]):
 
 
 @require_admin
-async def create_queue(message: Message, args: list[str]):
+@bot.command()
+async def createqueue(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -1045,8 +1078,9 @@ async def create_queue(message: Message, args: list[str]):
         )
 
 
-@require_admin
-async def decay_player(message: Message, args: list[str]):
+# @require_admin
+async def decayplayer(ctx: Context, *args):
+    message = ctx.message
     """
     Manually adjust a player's trueskill rating downward by a percentage
     """
@@ -1106,7 +1140,9 @@ async def decay_player(message: Message, args: list[str]):
     session.commit()
 
 
-async def del_(message: Message, args: list[str]):
+@bot.command(name="del")
+async def del_(ctx: Context, *args):
+    message = ctx.message
     """
     Players deletes self from queue(s)
 
@@ -1166,18 +1202,9 @@ async def del_(message: Message, args: list[str]):
 
 
 @require_admin
-async def disable_team_names(message: Message, args: list[str]):
-    global TEAM_NAMES
-    TEAM_NAMES = False
-    await send_message(
-        message.channel,
-        embed_description="Team names disabled",
-        colour=Colour.blue(),
-    )
-
-
-@require_admin
-async def edit_game_winner(message: Message, args: list[str]):
+@bot.command()
+async def editgamewinner(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -1224,18 +1251,9 @@ async def edit_game_winner(message: Message, args: list[str]):
     )
 
 
-@require_admin
-async def enable_team_names(message: Message, args: list[str]):
-    global TEAM_NAMES
-    TEAM_NAMES = True
-    await send_message(
-        message.channel,
-        embed_description="Team names enabled",
-        colour=Colour.blue(),
-    )
-
-
-async def finish_game(message: Message, args: list[str]):
+@bot.command()
+async def finishgame(ctx: Context, *args):
+    message = ctx.message
     if len(args) == 0:
         await send_message(
             message.channel,
@@ -1462,7 +1480,9 @@ async def finish_game(message: Message, args: list[str]):
     )
 
 
-async def list_admins(message: Message, args: list[str]):
+@bot.command()
+async def listadmins(ctx: Context, *args):
+    message = ctx.message
     output = "Admins:"
     player: Player
     for player in Session().query(Player).filter(Player.is_admin == True).all():
@@ -1471,7 +1491,9 @@ async def list_admins(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-async def list_admin_roles(message: Message, args: list[str]):
+@bot.command()
+async def listadminroles(ctx: Context, *args):
+    message = ctx.message
     output = "Admin roles:"
     if not message.guild:
         return
@@ -1491,7 +1513,9 @@ async def list_admin_roles(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-async def list_bans(message: Message, args: list[str]):
+@bot.command()
+async def listbans(ctx: Context, *args):
+    message = ctx.message
     output = "Bans:"
     for player in Session().query(Player).filter(Player.is_banned == True):
         output += f"\n- {player.name}"
@@ -1499,7 +1523,9 @@ async def list_bans(message: Message, args: list[str]):
 
 
 @require_admin
-async def list_db_backups(message: Message, args: list[str]):
+@bot.command()
+async def listdbbackups(ctx: Context, *args):
+    message = ctx.message
     output = "Backups:"
     for filename in glob("tribes_*.db"):
         output += f"\n- {filename}"
@@ -1511,14 +1537,9 @@ async def list_db_backups(message: Message, args: list[str]):
     )
 
 
-async def list_commands(message: Message, args: list[str]):
-    output = "Commands:"
-    for command in Session().query(CustomCommand):
-        output += f"\n- {command.name}"
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-async def list_map_rotation(message: Message, args: list[str]):
+@bot.command()
+async def list_map_rotation(ctx: Context, *args):
+    message = ctx.message
     output = "Map rotation:"
     rotation_map: RotationMap
     for rotation_map in Session().query(RotationMap).order_by(RotationMap.created_at.asc()):  # type: ignore
@@ -1526,7 +1547,8 @@ async def list_map_rotation(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-async def list_player_decays(message: Message, args: list[str]):
+async def list_player_decays(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -1547,7 +1569,9 @@ async def list_player_decays(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-async def list_queue_roles(message: Message, args: list[str]):
+@bot.command()
+async def list_queue_roles(ctx: Context, *args):
+    message = ctx.message
     if not message.guild:
         return
 
@@ -1567,7 +1591,9 @@ async def list_queue_roles(message: Message, args: list[str]):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-async def list_maps(message: Message, args: list[str]):
+@bot.command()
+async def list_maps(ctx: Context, *args):
+    message = ctx.message
     output = "Voteable map pool"
     voteable_map: VoteableMap
     for voteable_map in Session().query(VoteableMap).order_by(VoteableMap.full_name):
@@ -1576,7 +1602,9 @@ async def list_maps(message: Message, args: list[str]):
 
 
 @require_admin
-async def lock_queue(message: Message, args: list[str]):
+@bot.command()
+async def lock_queue(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -1604,7 +1632,7 @@ async def lock_queue(message: Message, args: list[str]):
     )
 
 
-@bot.command(name="map")
+@bot.command()
 async def map_(ctx: Context):
     # TODO: This is duplicated
     session = Session()
@@ -1648,7 +1676,9 @@ async def map_(ctx: Context):
 
 
 @require_admin
-async def mock_random_queue(message: Message, args: list[str]):
+@bot.command()
+async def mock_random_queue(ctx: Context, *args):
+    message = ctx.message
     """
     Helper test method for adding random players to queues
     """
@@ -1700,7 +1730,9 @@ async def mock_random_queue(message: Message, args: list[str]):
 
 
 @require_admin
-async def game_history(message: Message, args: list[str]):
+@bot.command()
+async def game_history(ctx: Context, *args):
+    message = ctx.message
     """
     Display recent game history
     """
@@ -1738,22 +1770,10 @@ async def game_history(message: Message, args: list[str]):
     )
 
 
-async def random_names(message: Message, args: list[str]):
-    count = int(args[0])
-
-    output = ""
-    for _ in range(count):
-        output += f"{generate_be_name()} vs {generate_ds_name()}\n"
-
-    await send_message(
-        message.channel,
-        embed_description=output,
-        colour=Colour.blue(),
-    )
-
-
 @require_admin
-async def remove_admin(message: Message, args: list[str]):
+@bot.command()
+async def remove_admin(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
             message.channel,
@@ -1790,7 +1810,9 @@ async def remove_admin(message: Message, args: list[str]):
 
 
 @require_admin
-async def remove_admin_role(message: Message, args: list[str]):
+@bot.command()
+async def remove_admin_role(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -1834,7 +1856,9 @@ async def remove_admin_role(message: Message, args: list[str]):
             return
 
 
-async def remove_command(message: Message, args: list[str]):
+@bot.command()
+async def remove_command(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -1865,7 +1889,9 @@ async def remove_command(message: Message, args: list[str]):
 
 
 @require_admin
-async def remove_queue(message: Message, args: list[str]):
+@bot.command()
+async def remove_queue(ctx: Context, *args):
+    message = ctx.message
     if len(args) == 0:
         await send_message(
             message.channel,
@@ -1907,7 +1933,9 @@ async def remove_queue(message: Message, args: list[str]):
 
 
 @require_admin
-async def remove_db_backup(message: Message, args: list[str]):
+@bot.command()
+async def remove_db_backup(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -1934,7 +1962,9 @@ async def remove_db_backup(message: Message, args: list[str]):
 
 
 @require_admin
-async def remove_queue_role(message: Message, args: list[str]):
+@bot.command()
+async def remove_queue_role(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -1979,7 +2009,9 @@ async def remove_queue_role(message: Message, args: list[str]):
 
 
 @require_admin
-async def remove_rotation_map(message: Message, args: list[str]):
+@bot.command()
+async def removerotationmap(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2008,7 +2040,9 @@ async def remove_rotation_map(message: Message, args: list[str]):
         )
 
 
-async def remove_map(message: Message, args: list[str]):
+@bot.command()
+async def removemap(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2041,7 +2075,9 @@ async def remove_map(message: Message, args: list[str]):
     session.commit()
 
 
-async def roll(message: Message, args: list[str]):
+@bot.command()
+async def roll(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 2:
         await send_message(
             message.channel,
@@ -2058,7 +2094,9 @@ async def roll(message: Message, args: list[str]):
 
 
 @require_admin
-async def set_add_delay(message: Message, args: list[str]):
+@bot.command()
+async def setadddelay(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2077,7 +2115,9 @@ async def set_add_delay(message: Message, args: list[str]):
 
 
 @require_admin
-async def set_command_prefix(message: Message, args: list[str]):
+@bot.command()
+async def setcommandprefix(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2096,7 +2136,9 @@ async def set_command_prefix(message: Message, args: list[str]):
 
 
 @require_admin
-async def set_queue_rated(message: Message, args: list[str]):
+@bot.command()
+async def setqueuerated(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2124,7 +2166,9 @@ async def set_queue_rated(message: Message, args: list[str]):
 
 
 @require_admin
-async def set_queue_unrated(message: Message, args: list[str]):
+@bot.command()
+async def setqueueunrated(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2152,7 +2196,9 @@ async def set_queue_unrated(message: Message, args: list[str]):
 
 
 @require_admin
-async def set_map_vote_threshold(message: Message, args: list[str]):
+@bot.command()
+async def setmapvotethreshold(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2171,7 +2217,9 @@ async def set_map_vote_threshold(message: Message, args: list[str]):
     )
 
 
-async def show_game(message: Message, args: list[str]):
+@bot.command()
+async def showgame(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2333,7 +2381,9 @@ async def status(ctx: Context, *args):
     )
 
 
-async def sub(message: Message, args: list[str]):
+@bot.command()
+async def sub(ctx: Context, *args):
+    message = ctx.message
     """
     Substitute one player in a game for another
     """
@@ -2499,7 +2549,9 @@ async def sub(message: Message, args: list[str]):
 
 
 @require_admin
-async def unban(message: Message, args: list[str]):
+@bot.command()
+async def unban(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1 or len(message.mentions) == 0:
         await send_message(
             message.channel,
@@ -2528,7 +2580,9 @@ async def unban(message: Message, args: list[str]):
 
 
 @require_admin
-async def unlock_queue(message: Message, args: list[str]):
+@bot.command()
+async def unlockqueue(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2556,7 +2610,9 @@ async def unlock_queue(message: Message, args: list[str]):
     )
 
 
-async def unvote(message: Message, args: list[str]):
+@bot.command()
+async def unvote(ctx: Context, *args):
+    message = ctx.message
     """
     Remove all of a player's votes
     """
@@ -2574,7 +2630,9 @@ async def unvote(message: Message, args: list[str]):
 
 
 # TODO: Unvote for many maps at once
-async def unvote_map(message: Message, args: list[str]):
+@bot.command()
+async def unvotemap(ctx: Context, *args):
+    message = ctx.message
     if len(args) != 1:
         await send_message(
             message.channel,
@@ -2617,7 +2675,9 @@ async def unvote_map(message: Message, args: list[str]):
     )
 
 
-async def unvote_skip(message: Message, args: list[str]):
+@bot.command()
+async def unvoteskip(ctx: Context, *args):
+    message = ctx.message
     """
     A player votes to go to the next map in rotation
     """
@@ -2644,7 +2704,9 @@ async def unvote_skip(message: Message, args: list[str]):
 
 
 # TODO: Vote for many maps at once
-async def vote_map(message: Message, args: list[str]):
+@bot.command()
+async def votemap(ctx: Context, *args):
+    message = ctx.message
     session = Session()
     if len(args) != 1:
         voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
@@ -2736,7 +2798,9 @@ async def vote_map(message: Message, args: list[str]):
     session.commit()
 
 
-async def vote_skip(message: Message, args: list[str]):
+@bot.command()
+async def voteskip(ctx: Context, *args):
+    message = ctx.message
     """
     A player votes to go to the next map in rotation
     """
@@ -2767,120 +2831,3 @@ async def vote_skip(message: Message, args: list[str]):
             embed_description=f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]",
             colour=Colour.green(),
         )
-
-
-# Commands end here
-
-
-COMMANDS = {
-    "add": add,
-    "addadmin": add_admin,
-    "addadminrole": add_admin_role,
-    "addqueuerole": add_queue_role,
-    "addrotationmap": add_rotation_map,
-    "addmap": add_map,
-    "ban": ban,
-    "cancelgame": cancel_game,
-    "changegamemap": change_game_map,
-    "changequeuemap": change_queue_map,
-    "coinflip": coinflip,
-    "commands": commands,
-    "createcommand": create_command,
-    "createdbbackup": create_db_backup,
-    "createqueue": create_queue,
-    "clearqueue": clear_queue,
-    # "decayplayer": decay_player,
-    "del": del_,
-    "disableteamnames": disable_team_names,
-    "editgamewinner": edit_game_winner,
-    "enableteamnames": enable_team_names,
-    "finishgame": finish_game,
-    # "forcemapswap": force_swap_map,
-    # "forcemaprotation": force_map_rotation,
-    "listadmins": list_admins,
-    "listadminroles": list_admin_roles,
-    "listbans": list_bans,
-    "listdbbackups": list_db_backups,
-    "listcommands": list_commands,
-    "listmaprotation": list_map_rotation,
-    # "listplayerdecays": list_player_decays,
-    "listqueueroles": list_queue_roles,
-    "listmaps": list_maps,
-    "lockqueue": lock_queue,
-    "gamehistory": game_history,
-    "mockrandomqueue": mock_random_queue,
-    "randomnames": random_names,
-    "removeadmin": remove_admin,
-    "removeadminrole": remove_admin_role,
-    "removecommand": remove_command,
-    "removedbbackup": remove_db_backup,
-    "removequeuerole": remove_queue_role,
-    "removequeue": remove_queue,
-    "removerotationmap": remove_rotation_map,
-    "removemap": remove_map,
-    "roll": roll,
-    "setadddelay": set_add_delay,
-    "setcommandprefix": set_command_prefix,
-    "setqueuerated": set_queue_rated,
-    "setqueueunrated": set_queue_unrated,
-    "setmapvotethreshold": set_map_vote_threshold,
-    "showgame": show_game,
-    "sub": sub,
-    "unban": unban,
-    "unlockqueue": unlock_queue,
-    "unvote": unvote,
-    "unvotemap": unvote_map,
-    "unvoteskip": unvote_skip,
-    "votemap": vote_map,
-    "voteskip": vote_skip,
-}
-
-
-async def handle_message(message: Message):
-    debug_print("[handle_message] message:", message)
-    command = message.content.split(" ")[0]
-
-    await bot.process_commands(message)
-
-    if not command.startswith(COMMAND_PREFIX):
-        return
-
-    session = Session()
-    player = session.query(Player).filter(Player.id == message.author.id).first()
-    if not player:
-        # Create player for the first time
-        session.add(
-            Player(
-                id=message.author.id,
-                name=message.author.name,
-                last_activity_at=datetime.now(timezone.utc),
-            )
-        )
-    elif player:
-        if player.is_banned:
-            print("[handle_message] message author banned:", command)
-            return
-        else:
-            player.name = message.author.name
-            player.last_activity_at = datetime.now(timezone.utc)
-
-    session.commit()
-
-    command = command[1:].lower()
-    if command not in COMMANDS:
-        custom_command: CustomCommand | None = (
-            session.query(CustomCommand).filter(CustomCommand.name == command).first()
-        )
-        if custom_command:
-            await send_message(
-                message.channel, content=custom_command.output, embed_content=False
-            )
-            return
-
-        debug_print("[handle_message] exiting - command not found:", command)
-        return
-
-    debug_print("[handle_message] executing command:", command)
-
-    args = message.content.split(" ")
-    await COMMANDS[command](message, args[1:])
