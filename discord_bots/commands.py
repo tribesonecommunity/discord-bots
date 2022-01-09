@@ -211,7 +211,7 @@ async def add_player_to_queue(
                     await member.send(
                         content=message_content,
                         embed=Embed(
-                            description=f"{message_content}\n{message_embed}",
+                            description=f"{message_embed}",
                             colour=Colour.blue(),
                         ),
                     )
@@ -232,7 +232,7 @@ async def add_player_to_queue(
                     await member.send(
                         content=message_content,
                         embed=Embed(
-                            description=f"{message_content}\n{message_embed}",
+                            description=f"{message_embed}",
                             colour=Colour.blue(),
                         ),
                     )
@@ -2437,7 +2437,28 @@ async def sub(message: Message, args: list[str]):
     team0_players = players[: len(players) // 2]
     team1_players = players[len(players) // 2 :]
 
+    short_game_id = short_uuid(game.id)
+    channel_message = f"New teams ({short_game_id}):"
+    channel_embed = ""
+    channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
+    channel_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
+
     for player in team0_players:
+        # TODO: This block is duplicated
+        if message.guild:
+            member: Member | None = message.guild.get_member(player.id)
+            if member:
+                try:
+                    await member.send(
+                        content=channel_message,
+                        embed=Embed(
+                            description=f"{channel_embed}",
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
+
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
@@ -2446,18 +2467,27 @@ async def sub(message: Message, args: list[str]):
         session.add(game_player)
 
     for player in team1_players:
+        # TODO: This block is duplicated
+        if message.guild:
+            member: Member | None = message.guild.get_member(player.id)
+            if member:
+                try:
+                    await member.send(
+                        content=channel_message,
+                        embed=Embed(
+                            description=f"{channel_embed}",
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
+
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
             team=1,
         )
         session.add(game_player)
-
-    short_game_id = short_uuid(game.id)
-    channel_message = f"New teams ({short_game_id}):"
-    channel_embed = ""
-    channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
-    channel_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
 
     await send_message(
         message.channel,
