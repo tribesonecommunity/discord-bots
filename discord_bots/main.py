@@ -8,7 +8,7 @@ from discord.channel import GroupChannel, TextChannel
 from dotenv import load_dotenv
 
 from .bot import bot
-from .models import Player, QueuePlayer, Session
+from .models import Player, QueuePlayer, QueueWaitlistPlayer, Session
 from .tasks import (
     add_player_task,
     afk_timer_task,
@@ -78,6 +78,14 @@ async def on_reaction_add(reaction: Reaction, user: User | Member):
     if player:
         player.last_activity_at = datetime.now(timezone.utc)
         session.commit()
+    else:
+        session.add(
+            Player(
+                id=reaction.message.author.id,
+                name=reaction.message.author.name,
+                last_activity_at=datetime.now(timezone.utc),
+            )
+        )
     session.close()
 
 
@@ -98,6 +106,9 @@ async def on_join(member: Member):
 async def on_leave(member: Member):
     session = Session()
     session.query(QueuePlayer).filter(QueuePlayer.player_id == member.id).delete()
+    session.query(QueueWaitlistPlayer).filter(
+        QueueWaitlistPlayer.player_id == member.id
+    ).delete()
     session.commit()
 
 
