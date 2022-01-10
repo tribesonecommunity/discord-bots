@@ -12,6 +12,7 @@ from typing import Awaitable, Callable
 import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.abc import User
+from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
@@ -308,45 +309,43 @@ async def send_message(
         print("[send_message] exception:", e)
 
 
-def require_admin(command_func: Callable[[Message, list[str]], Awaitable[None]]):
-    """
-    Decorator to wrap functions that require being called by an admin
-    """
 
-    async def wrapper(*args, **kwargs):
-        session = Session()
-        message: Message = args[0]
-        caller = (
-            session.query(Player)
-            .filter(Player.id == message.author.id, Player.is_admin == True)
-            .first()
+async def is_admin(ctx: Context):
+    """
+    Check to wrap functions that require admin
+
+    https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
+    """
+    session = Session()
+    message: Message = ctx.message
+    caller = (
+        session.query(Player)
+        .filter(Player.id == message.author.id, Player.is_admin == True)
+        .first()
+    )
+    if caller:
+        return True
+
+    if not message.guild:
+        return False
+
+    member = message.guild.get_member(message.author.id)
+    if not member:
+        return False
+
+    admin_roles = session.query(AdminRole).all()
+    admin_role_ids = map(lambda x: x.role_id, admin_roles)
+    member_role_ids = map(lambda x: x.id, member.roles)
+    is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
+    if is_admin:
+        return True
+    else:
+        await send_message(
+            message.channel,
+            embed_description="You must be an admin to use that command",
+            colour=Colour.red(),
         )
-        if caller:
-            await command_func(*args, **kwargs)
-            return
-
-        if not message.guild:
-            print("No message guild?")
-            return
-
-        member = message.guild.get_member(message.author.id)
-        if not member:
-            return
-
-        admin_roles = session.query(AdminRole).all()
-        admin_role_ids = map(lambda x: x.role_id, admin_roles)
-        member_role_ids = map(lambda x: x.id, member.roles)
-        is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
-        if is_admin:
-            await command_func(*args, **kwargs)
-        else:
-            await send_message(
-                message.channel,
-                embed_description="You must be an admin to use that command",
-                colour=Colour.red(),
-            )
-
-    return wrapper
+        return False
 
 
 def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
@@ -461,6 +460,8 @@ def get_player_game(player_id: int, session=Session()) -> InProgressGame | None:
 async def is_not_banned(ctx: Context):
     """
     Global check to ensure that banned users can't use commands
+
+    https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
     """
     is_banned = (
         Session()
@@ -581,8 +582,8 @@ async def add(ctx: Context, *args):
         )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def addadmin(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1 or len(message.mentions) == 0:
@@ -594,19 +595,22 @@ async def addadmin(ctx: Context, *args):
         return
 
     session = Session()
-    players = session.query(Player).filter(Player.id == message.author.id).all()
-    if len(players) == 0:
+    player: Player | None = (
+        session.query(Player).filter(Player.id == message.mentions[0].id).first()
+    )
+    if not player:
         session.add(
-            Player(id=message.author.id, name=message.author.name, is_admin=True)
+            Player(
+                id=message.mentions[0].id, name=message.mentions[0].name, is_admin=True
+            )
         )
         await send_message(
             message.channel,
-            embed_description=f"{message.author.name} added to admins",
+            embed_description=f"{message.mentions[0].name} added to admins",
             colour=Colour.green(),
         )
         session.commit()
     else:
-        player = players[0]
         if player.is_admin:
             await send_message(
                 message.channel,
@@ -623,8 +627,8 @@ async def addadmin(ctx: Context, *args):
             )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def addadminrole(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -657,8 +661,8 @@ async def addadminrole(ctx: Context, *args):
         session.commit()
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def addqueuerole(ctx: Context, *args):
     message = ctx.message
     if len(args) != 2:
@@ -701,8 +705,8 @@ async def addqueuerole(ctx: Context, *args):
         session.commit()
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def addrotationmap(ctx: Context, *args):
     message = ctx.message
     if len(args) != 2:
@@ -764,8 +768,8 @@ async def addmap(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def ban(ctx: Context, *args):
     message = ctx.message
     """TODO: remove player from queues"""
@@ -817,6 +821,7 @@ async def coinflip(ctx: Context, *args):
 
 
 @bot.command()
+@commands.check(is_admin)
 async def cancelgame(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -862,7 +867,6 @@ async def cancelgame(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
 async def changegamemap(ctx: Context, *args):
     message = ctx.message
@@ -924,8 +928,8 @@ async def changegamemap(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def changequeuemap(ctx: Context, *args):
     message = ctx.message
     """
@@ -979,8 +983,8 @@ async def changequeuemap(ctx: Context, *args):
     )
 
 
-@bot.command()
-async def commands(ctx: Context, *args):
+@bot.command(name="commands")
+async def commands_(ctx: Context, *args):
     output = "Commands:"
     commands = sorted([command.name for command in bot.commands])
     for command in commands:
@@ -1037,8 +1041,8 @@ async def createcommand(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def createdbbackup(ctx: Context, *args):
     message = ctx.message
     date_string = datetime.now().strftime("%Y-%m-%d")
@@ -1050,8 +1054,8 @@ async def createdbbackup(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def clearqueue(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -1081,8 +1085,8 @@ async def clearqueue(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def createqueue(ctx: Context, *args):
     message = ctx.message
     if len(args) != 2:
@@ -1114,7 +1118,7 @@ async def createqueue(ctx: Context, *args):
         )
 
 
-# @require_admin
+@commands.check(is_admin)
 async def decayplayer(ctx: Context, *args):
     message = ctx.message
     """
@@ -1237,8 +1241,8 @@ async def del_(ctx: Context, *args):
     session.commit()
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def editgamewinner(ctx: Context, *args):
     message = ctx.message
     if len(args) != 2:
@@ -1558,8 +1562,8 @@ async def listbans(ctx: Context, *args):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def listdbbackups(ctx: Context, *args):
     message = ctx.message
     output = "Backups:"
@@ -1637,8 +1641,8 @@ async def listmaps(ctx: Context, *args):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def lockqueue(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -1711,8 +1715,8 @@ async def map_(ctx: Context):
     await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def mockrandomqueue(ctx: Context, *args):
     message = ctx.message
     """
@@ -1765,8 +1769,8 @@ async def mockrandomqueue(ctx: Context, *args):
             session.commit()
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def gamehistory(ctx: Context, *args):
     message = ctx.message
     """
@@ -1806,8 +1810,8 @@ async def gamehistory(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def removeadmin(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1 or len(message.mentions) == 0:
@@ -1818,13 +1822,13 @@ async def removeadmin(ctx: Context, *args):
         )
         return
 
-    if message.mentions[0].id == message.author.id:
-        await send_message(
-            message.channel,
-            embed_description="You cannot remove yourself as an admin",
-            colour=Colour.red(),
-        )
-        return
+    # if message.mentions[0].id == message.author.id:
+    #     await send_message(
+    #         message.channel,
+    #         embed_description="You cannot remove yourself as an admin",
+    #         colour=Colour.red(),
+    #     )
+    #     return
 
     session = Session()
     players = session.query(Player).filter(Player.id == message.mentions[0].id).all()
@@ -1845,8 +1849,8 @@ async def removeadmin(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def removeadminrole(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -1924,8 +1928,8 @@ async def removecommand(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def removequeue(ctx: Context, *args):
     message = ctx.message
     if len(args) == 0:
@@ -1968,8 +1972,8 @@ async def removequeue(ctx: Context, *args):
         )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def removedbbackup(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -1997,8 +2001,8 @@ async def removedbbackup(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def removequeuerole(ctx: Context, *args):
     message = ctx.message
     if len(args) != 2:
@@ -2044,8 +2048,8 @@ async def removequeuerole(ctx: Context, *args):
         session.commit()
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def removerotationmap(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -2129,8 +2133,8 @@ async def roll(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def setadddelay(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -2150,8 +2154,8 @@ async def setadddelay(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def setcommandprefix(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -2171,8 +2175,8 @@ async def setcommandprefix(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def setqueuerated(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -2201,8 +2205,8 @@ async def setqueuerated(ctx: Context, *args):
     session.commit()
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def setqueueunrated(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -2231,8 +2235,8 @@ async def setqueueunrated(ctx: Context, *args):
     session.commit()
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def setmapvotethreshold(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
@@ -2605,8 +2609,8 @@ async def sub(ctx: Context, *args):
     session.commit()
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def unban(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1 or len(message.mentions) == 0:
@@ -2636,8 +2640,8 @@ async def unban(ctx: Context, *args):
     )
 
 
-@require_admin
 @bot.command()
+@commands.check(is_admin)
 async def unlockqueue(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
