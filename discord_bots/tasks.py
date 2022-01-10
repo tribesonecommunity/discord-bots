@@ -183,16 +183,6 @@ async def queue_waitlist_task():
                         )
                     )
 
-                # if channel and guild and isinstance(channel, TextChannel):
-                #     # Bugfix - TODO: Add tests
-                #     if queue_waitlist_player.queue_id:
-                #         await add_player_to_queue(
-                #             queue_waitlist_player.queue_id,
-                #             queue_waitlist_player.player_id,
-                #             channel,
-                #             guild,
-                #         )
-
         for igp_channel in session.query(InProgressGameChannel).filter(
             InProgressGameChannel.in_progress_game_id
             == queue_waitlist.in_progress_game_id
