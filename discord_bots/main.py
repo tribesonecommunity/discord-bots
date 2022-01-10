@@ -61,14 +61,8 @@ async def on_message(message: Message):
                 last_activity_at=datetime.now(timezone.utc),
             )
         )
-    is_banned: Player | None = (
-        session.query(Player)
-        .filter(Player.id == message.author.id, Player.is_banned == True)
-        .first()
-    )
     session.close()
-    if not is_banned:
-        await bot.process_commands(message)
+    await bot.process_commands(message)
 
 
 @bot.event

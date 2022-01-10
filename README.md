@@ -108,17 +108,16 @@ Common issues:
   - Buffer voters into queue when vote succeeds?
   - Give queuers a chance to del when vote succeeds?
 - Map-specific trueskill rating
-- De-prioritize queue that just popped
 - Start map rotation only after game finishes
 - Convert from sqlite to postgres
 - Use converters for commands: https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#discord-converters
+- Refactor commands file
 
 
 ## Good first tickets
 - Store player display name alongside regular name
 - Allow voting for multiple maps at once
 - Add the ability to report bugs
-- Convert commands to @bot.command decorator: https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html
 
 MVP+
 

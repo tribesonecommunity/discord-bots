@@ -11,6 +11,7 @@ from typing import Awaitable, Callable
 
 import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
+from discord.abc import User
 from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
@@ -456,6 +457,20 @@ def get_player_game(player_id: int, session=Session()) -> InProgressGame | None:
 # Commands start here
 
 
+@bot.check
+async def is_not_banned(ctx: Context):
+    """
+    Global check to ensure that banned users can't use commands
+    """
+    is_banned = (
+        Session()
+        .query(Player)
+        .filter(Player.id == ctx.message.author.id, Player.is_banned)
+        .first()
+    )
+    return not is_banned
+
+
 @bot.command()
 async def add(ctx: Context, *args):
     """
@@ -579,16 +594,14 @@ async def addadmin(ctx: Context, *args):
         return
 
     session = Session()
-    players = session.query(Player).filter(Player.id == message.mentions[0].id).all()
+    players = session.query(Player).filter(Player.id == message.author.id).all()
     if len(players) == 0:
         session.add(
-            Player(
-                id=message.mentions[0].id, name=message.mentions[0].name, is_admin=True
-            )
+            Player(id=message.author.id, name=message.author.name, is_admin=True)
         )
         await send_message(
             message.channel,
-            embed_description=f"{message.mentions[0].name} added to admins",
+            embed_description=f"{message.author.name} added to admins",
             colour=Colour.green(),
         )
         session.commit()
