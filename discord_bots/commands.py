@@ -348,15 +348,17 @@ def require_admin(command_func: Callable[[Message, list[str]], Awaitable[None]])
     return wrapper
 
 
-def finished_game_str(finished_game: FinishedGame) -> str:
+def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     """
     Helper method to pretty print a finished game
     """
     output = ""
     session = Session()
     short_game_id = short_uuid(finished_game.game_id)
-    # output += f"**{finished_game.queue_name}** ({short_game_id}) (TS: {round(finished_game.average_trueskill, 2)})"
-    output += f"**{finished_game.queue_name}** ({short_game_id})"
+    if debug:
+        output += f"**{finished_game.queue_name}** ({short_game_id}) (TS: {round(finished_game.average_trueskill, 2)})"
+    else:
+        output += f"**{finished_game.queue_name}** ({short_game_id})"
     team0_fg_players: list[FinishedGamePlayer] = session.query(
         FinishedGamePlayer
     ).filter(
@@ -371,10 +373,30 @@ def finished_game_str(finished_game: FinishedGame) -> str:
     )
     team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
     team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
+    team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_fg_players}
+    team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_fg_players}
     team0_players = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
     team1_players = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
-    team0_names = ", ".join(sorted([player.name for player in team0_players]))
-    team1_names = ", ".join(sorted([player.name for player in team1_players]))
+    if debug:
+        team0_names = ", ".join(
+            sorted(
+                [
+                    f"{player.name} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                    for player in team0_players
+                ]
+            )
+        )
+        team1_names = ", ".join(
+            sorted(
+                [
+                    f"{player.name} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                    for player in team1_players
+                ]
+            )
+        )
+    else:
+        team0_names = ", ".join(sorted([player.name for player in team0_players]))
+        team1_names = ", ".join(sorted([player.name for player in team1_players]))
     team0_win_prob = round(100 * finished_game.win_probability, 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
     if finished_game.winning_team == 0:
@@ -2221,7 +2243,7 @@ async def setmapvotethreshold(ctx: Context, *args):
 @bot.command()
 async def showgame(ctx: Context, *args):
     message = ctx.message
-    if len(args) != 1:
+    if len(args) < 1:
         await send_message(
             message.channel,
             embed_description="Usage: !showgame <game_id>",
@@ -2243,11 +2265,32 @@ async def showgame(ctx: Context, *args):
         )
         return
 
-    await send_message(
-        message.channel,
-        embed_description=finished_game_str(finished_game),
-        colour=Colour.blue(),
-    )
+    debug = False
+    if len(args) > 1 and args[1] == "debug":
+        is_admin: Player | None = (
+            session.query(Player)
+            .filter(Player.id == message.author.id, Player.is_admin == True)
+            .first()
+        )
+        if is_admin:
+            debug = True
+
+    game_str = finished_game_str(finished_game, debug)
+    if debug:
+        await message.author.send(
+            embed=Embed(description=game_str, colour=Colour.blue())
+        )
+        await send_message(
+            message.channel,
+            embed_description="Game sent to PM",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=finished_game_str(finished_game, debug),
+            colour=Colour.blue(),
+        )
 
 
 @bot.command()
