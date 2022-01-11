@@ -1118,6 +1118,7 @@ async def createqueue(ctx: Context, *args):
         )
 
 
+@bot.command()
 @commands.check(is_admin)
 async def decayplayer(ctx: Context, *args):
     message = ctx.message
@@ -1587,6 +1588,8 @@ async def listmaprotation(ctx: Context, *args):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
+@bot.command(name="listplayerdecays")
+@commands.check(is_admin)
 async def list_player_decays(ctx: Context, *args):
     message = ctx.message
     if len(args) != 1:
