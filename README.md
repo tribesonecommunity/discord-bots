@@ -104,20 +104,16 @@ Common issues:
 
 # To-do list
 
-- Map change queue waitlist (just like finished game queue waitlist)
-  - Buffer voters into queue when vote succeeds?
-  - Give queuers a chance to del when vote succeeds?
 - Map-specific trueskill rating
 - Start map rotation only after game finishes
 - Convert from sqlite to postgres
-- Use converters for commands: https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#discord-converters
 - Refactor commands file
-
+- Automatically show rotation maps in voteable maps and when a rotation map is voted, just rotate to it
+- Deploy to heroku
 
 ## Good first tickets
 - Store player display name alongside regular name
 - Allow voting for multiple maps at once
-- Add the ability to report bugs
 - !add only shows queues that were added, but !del shows all queues regardless of whether the player was in it
 
 MVP+

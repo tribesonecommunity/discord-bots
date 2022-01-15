@@ -7,8 +7,8 @@ from discord.abc import User
 from discord.channel import GroupChannel, TextChannel
 from dotenv import load_dotenv
 
-from .bot import bot
-from .models import Player, QueuePlayer, QueueWaitlistPlayer, Session
+from .bot import COMMAND_PREFIX, bot
+from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
 from .tasks import (
     add_player_task,
     afk_timer_task,
@@ -65,6 +65,21 @@ async def on_message(message: Message):
         )
     session.close()
     await bot.process_commands(message)
+
+    # Custom commands below
+    if not message.content.startswith(COMMAND_PREFIX):
+        return
+
+    bot_commands = {command.name for command in bot.commands}
+    command_name = message.content.split(" ")[0][1:]
+    if command_name not in bot_commands:
+        custom_command: CustomCommand | None = (
+            session.query(CustomCommand)
+            .filter(CustomCommand.name == command_name)
+            .first()
+        )
+        if custom_command:
+            await message.channel.send(content=custom_command.output)
 
 
 @bot.event
