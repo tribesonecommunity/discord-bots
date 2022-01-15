@@ -5,7 +5,6 @@ import pytest
 from discord.channel import TextChannel
 from pytest import fixture
 
-from discord_bots.commands import handle_message
 from discord_bots.models import (
     FinishedGame,
     InProgressGame,

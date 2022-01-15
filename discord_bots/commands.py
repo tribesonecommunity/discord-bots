@@ -43,6 +43,8 @@ from .models import (
     Session,
     SkipMapVote,
     VoteableMap,
+    VotePassedWaitlist,
+    VotePassedWaitlistPlayer,
 )
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
@@ -59,7 +61,7 @@ AFK_TIME_MINUTES: int = 45
 DEBUG: bool = bool(os.getenv("DEBUG")) or False
 MAP_ROTATION_MINUTES: int = 60
 # The number of votes needed to succeed a map skip / replacement
-MAP_VOTE_THRESHOLD: int = 8
+MAP_VOTE_THRESHOLD: int = 7
 RE_ADD_DELAY: int = 30
 
 
@@ -260,12 +262,10 @@ async def add_player_to_queue(
         tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
 
         be_channel = await guild.create_voice_channel(
-            f"{game.team0_name}",
-            category=tribes_voice_category,
+            f"{game.team0_name}", category=tribes_voice_category, bitrate=128000
         )
         ds_channel = await guild.create_voice_channel(
-            f"{game.team1_name}",
-            category=tribes_voice_category,
+            f"{game.team1_name}", category=tribes_voice_category, bitrate=128000
         )
         session.add(
             InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
@@ -307,7 +307,6 @@ async def send_message(
         await channel.send(content=content, embed=embed)
     except Exception as e:
         print("[send_message] exception:", e)
-
 
 
 async def is_admin(ctx: Context):
@@ -524,6 +523,40 @@ async def add(ctx: Context, *args):
         )
         return
 
+    vpw: VotePassedWaitlist | None = session.query(VotePassedWaitlist).first()
+    if vpw:
+        for queue in queues_to_add:
+            session.add(
+                VotePassedWaitlistPlayer(
+                    vote_passed_waitlist_id=vpw.id,
+                    player_id=message.author.id,
+                    queue_id=queue.id,
+                )
+            )
+            try:
+                session.commit()
+            except IntegrityError as exc:
+                print("integrity error?", exc)
+                session.rollback()
+
+        current_time: datetime = datetime.now(timezone.utc)
+        # The assumption is the end timestamp is later than now, otherwise it
+        # would have been processed
+        difference: float = (
+            vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
+        ).total_seconds()
+        if difference < RE_ADD_DELAY:
+            waitlist_message = f"A vote just passed, you will be randomized into the queue in {floor(difference)} seconds"
+            await send_message(
+                message.channel,
+                # TODO: Populate this message with the queues the player was
+                # eligible for
+                content=f"{message.author.name} added to:",
+                embed_description=waitlist_message,
+                colour=Colour.green(),
+            )
+        return
+
     is_waitlist: bool = False
     waitlist_message: str | None = None
     if most_recent_game and most_recent_game.finished_at:
@@ -540,7 +573,7 @@ async def add(ctx: Context, *args):
 
     if is_waitlist and most_recent_game:
         for queue in queues_to_add:
-            # TODO: Check player eligibility here
+            # TODO: Check player eligibility here?
             queue_waitlist = (
                 session.query(QueueWaitlist)
                 .filter(QueueWaitlist.finished_game_id == most_recent_game.id)
@@ -2837,6 +2870,18 @@ async def votemap(ctx: Context, *args):
         )
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
+        if message.guild:
+            # TODO: Check if another vote already exists
+            session.add(
+                VotePassedWaitlist(
+                    channel_id=message.channel.id,
+                    guild_id=message.guild.id,
+                    end_waitlist_at=datetime.now(timezone.utc)
+                    + timedelta(seconds=RE_ADD_DELAY),
+                )
+            )
+        session.commit()
+
         # TODO: Show updated status
         # TODO: Randomly add votes into queue
         # TODO: What to do about players currently in queue?
@@ -2887,6 +2932,18 @@ async def voteskip(ctx: Context, *args):
 
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
+        if message.guild:
+            # TODO: Might be bugs if two votes pass one after the other
+            vpw: VotePassedWaitlist | None = session.query(VotePassedWaitlist).first()
+            if not vpw:
+                session.add(
+                    VotePassedWaitlist(
+                        channel_id=message.channel.id,
+                        guild_id=message.guild.id,
+                        end_waitlist_at=datetime.now(timezone.utc)
+                        + timedelta(seconds=RE_ADD_DELAY),
+                    )
+                )
         session.commit()
     else:
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()

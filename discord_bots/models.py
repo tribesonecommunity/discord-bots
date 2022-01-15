@@ -539,6 +539,8 @@ class QueueWaitlist:
     """
     A waitlist to buffer players after they finish game. Players are randomly
     added from this waitlist into queues.
+
+    :in_progress_game_id: Needed to close channels after processing waitlist
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -648,6 +650,58 @@ class VoteableMap:
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class VotePassedWaitlist:
+    """
+    Queue players from adding after a vote passes. This is to avoid the race
+    that might happen after a vote passes, and also allow players to delete if
+    they don't want to play the map that just passed.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "vote_passed_waitlist"
+
+    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    guild_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    end_waitlist_at: datetime = field(
+        metadata={"sa": Column(DateTime, index=True, nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class VotePassedWaitlistPlayer:
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "vote_passed_waitlist_player"
+    __table_args__ = (UniqueConstraint("player_id", "queue_id"),)
+
+    vote_passed_waitlist_id: str = field(
+        metadata={
+            "sa": Column(
+                String,
+                ForeignKey("vote_passed_waitlist.id"),
+                nullable=False,
+                index=True,
+            )
+        }
+    )
+    player_id: int = field(
+        metadata={"sa": Column(Integer, ForeignKey("player.id"), nullable=False)},
+    )
+    queue_id: str = field(metadata={"sa": Column(String, ForeignKey("queue.id"))})
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),

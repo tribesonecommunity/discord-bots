@@ -14,12 +14,14 @@ from .tasks import (
     afk_timer_task,
     map_rotation_task,
     queue_waitlist_task,
+    vote_passed_waitlist_task,
 )
 
 add_player_task.start()
 afk_timer_task.start()
 map_rotation_task.start()
 queue_waitlist_task.start()
+vote_passed_waitlist_task.start()
 
 
 BULLIEST_BOT_ID = 912605788781035541

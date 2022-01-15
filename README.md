@@ -118,6 +118,7 @@ Common issues:
 - Store player display name alongside regular name
 - Allow voting for multiple maps at once
 - Add the ability to report bugs
+- !add only shows queues that were added, but !del shows all queues regardless of whether the player was in it
 
 MVP+
 
