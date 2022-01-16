@@ -110,6 +110,8 @@ Common issues:
 - Refactor commands file
 - Automatically show rotation maps in voteable maps and when a rotation map is voted, just rotate to it
 - Deploy to heroku
+- Fix tests
+- Remove all manual to-dos
 
 ## Good first tickets
 - Store player display name alongside regular name

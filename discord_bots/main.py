@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
-from discord.ext.commands import CommandError, Context
+from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
 
 from .bot import COMMAND_PREFIX, bot
@@ -47,12 +47,15 @@ async def on_ready():
 
 @bot.event
 async def on_command_error(ctx: Context, error: CommandError):
-    await ctx.channel.send(
-        embed=Embed(
-            description=f"Usage: {COMMAND_PREFIX}{ctx.command.name} {ctx.command.signature}",
-            colour=Colour.red(),
+    if isinstance(error, UserInputError):
+        await ctx.channel.send(
+            embed=Embed(
+                description=f"Usage: {COMMAND_PREFIX}{ctx.command.name} {ctx.command.signature}",
+                colour=Colour.red(),
+            )
         )
-    )
+    else:
+        print("Error:", error, "command:", ctx.command.name)
 
 
 @bot.event
