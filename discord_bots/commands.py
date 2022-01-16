@@ -615,29 +615,15 @@ async def add(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def addadmin(ctx: Context, *args):
+async def addadmin(ctx: Context, member: Member):
     message = ctx.message
-    if len(args) != 1 or len(message.mentions) == 0:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !addadmin <player_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
-    player: Player | None = (
-        session.query(Player).filter(Player.id == message.mentions[0].id).first()
-    )
+    player: Player | None = session.query(Player).filter(Player.id == member.id).first()
     if not player:
-        session.add(
-            Player(
-                id=message.mentions[0].id, name=message.mentions[0].name, is_admin=True
-            )
-        )
+        session.add(Player(id=member.id, name=member.name, is_admin=True))
         await send_message(
             message.channel,
-            embed_description=f"{message.mentions[0].name} added to admins",
+            embed_description=f"{member.name} added to admins",
             colour=Colour.green(),
         )
         session.commit()
@@ -660,17 +646,8 @@ async def addadmin(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def addadminrole(ctx: Context, *args):
+async def addadminrole(ctx: Context, role_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !addadminrole <role_name>",
-            colour=Colour.red(),
-        )
-        return
-
-    role_name = args[0]
     if message.guild:
         session = Session()
         role_name_to_role_id: dict[str, int] = {
@@ -694,19 +671,8 @@ async def addadminrole(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def addqueuerole(ctx: Context, *args):
+async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !addqueuerole <queue_name> <role_name>",
-            colour=Colour.red(),
-        )
-        return
-
-    queue_name = args[0]
-    role_name = args[1]
-
     session = Session()
     queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
     if not queue:
@@ -738,91 +704,63 @@ async def addqueuerole(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def addrotationmap(ctx: Context, *args):
+async def addrotationmap(ctx: Context, map_short_name: str, map_full_name: str):
     message = ctx.message
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !addrotationmap <map_short_name> <map_full_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
-    session.add(RotationMap(args[1], args[0]))
+    session.add(RotationMap(map_full_name, map_short_name))
     try:
         session.commit()
     except IntegrityError:
         session.rollback()
         await send_message(
             message.channel,
-            embed_description=f"Error adding map {args[1]} ({args[0]}) to rotation. Does it already exist?",
+            embed_description=f"Error adding map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
             colour=Colour.red(),
         )
         return
 
     await send_message(
         message.channel,
-        embed_description=f"{args[1]} ({args[0]}) added to map rotation",
+        embed_description=f"{map_full_name} ({map_short_name}) added to map rotation",
         colour=Colour.green(),
     )
 
 
 @bot.command()
-async def addmap(ctx: Context, *args):
+async def addmap(ctx: Context, map_short_name: str, map_full_name: str):
     message = ctx.message
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !addmap <map_short_name> <map_full_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
-    session.add(VoteableMap(args[1], args[0]))
+    session.add(VoteableMap(map_full_name, map_short_name))
     try:
         session.commit()
     except IntegrityError:
         session.rollback()
         await send_message(
             message.channel,
-            embed_description=f"Error adding map {args[1]} ({args[0]}). Does it already exist?",
+            embed_description=f"Error adding map {map_full_name} ({map_short_name}). Does it already exist?",
             colour=Colour.red(),
         )
         return
 
     await send_message(
         message.channel,
-        embed_description=f"{args[1]} ({args[0]}) added to map pool",
+        embed_description=f"{map_full_name} ({map_short_name}) added to map pool",
         colour=Colour.green(),
     )
 
 
 @bot.command()
 @commands.check(is_admin)
-async def ban(ctx: Context, *args):
-    message = ctx.message
+async def ban(ctx: Context, member: Member):
     """TODO: remove player from queues"""
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description=f"Usage: !ban @<player_name>",
-            colour=Colour.red(),
-        )
-        return
-
+    message = ctx.message
     session = Session()
-    players = session.query(Player).filter(Player.id == message.mentions[0].id).all()
+    players = session.query(Player).filter(Player.id == member.id).all()
     if len(players) == 0:
-        session.add(
-            Player(
-                id=message.mentions[0].id, name=message.mentions[0].name, is_banned=True
-            )
-        )
+        session.add(Player(id=member.id, name=member.name, is_banned=True))
         await send_message(
             message.channel,
-            embed_description=f"{message.mentions[0].name} banned",
+            embed_description=f"{member.name} banned",
             colour=Colour.green(),
         )
         session.commit()
@@ -845,7 +783,7 @@ async def ban(ctx: Context, *args):
 
 
 @bot.command()
-async def coinflip(ctx: Context, *args):
+async def coinflip(ctx: Context):
     message = ctx.message
     result = "HEADS" if floor(random() * 2) == 0 else "TAILS"
     await send_message(message.channel, embed_description=result, colour=Colour.blue())
@@ -853,26 +791,18 @@ async def coinflip(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def cancelgame(ctx: Context, *args):
+async def cancelgame(ctx: Context, game_id: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !cancelgame <game_id>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
     game = (
         session.query(InProgressGame)
-        .filter(InProgressGame.id.startswith(args[0]))
+        .filter(InProgressGame.id.startswith(game_id))
         .first()
     )
     if not game:
         await send_message(
             message.channel,
-            embed_description=f"Could not find game: {args[0]}",
+            embed_description=f"Could not find game: {game_id}",
             colour=Colour.red(),
         )
         return
@@ -893,41 +823,33 @@ async def cancelgame(ctx: Context, *args):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"Game {args[0]} cancelled",
+        embed_description=f"Game {game_id} cancelled",
         colour=Colour.blue(),
     )
 
 
 @bot.command()
-async def changegamemap(ctx: Context, *args):
+async def changegamemap(ctx: Context, game_id: str, map_short_name: str):
     message = ctx.message
     """
     TODO: tests
     """
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !changegamemap <game_id> <map_short_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
     ipg: InProgressGame | None = (
         session.query(InProgressGame)
-        .filter(InProgressGame.id.startswith(args[0]))
+        .filter(InProgressGame.id.startswith(game_id))
         .first()
     )
     if not ipg:
         await send_message(
             message.channel,
-            embed_description=f"Could not find game: {args[0]}",
+            embed_description=f"Could not find game: {game_id}",
             colour=Colour.red(),
         )
         return
 
     rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[1])).first()  # type: ignore
+        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
     )
     if rotation_map:
         ipg.map_full_name = rotation_map.full_name
@@ -936,7 +858,7 @@ async def changegamemap(ctx: Context, *args):
     else:
         voteable_map: VoteableMap | None = (
             session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(args[1]))  # type: ignore
+            .filter(VoteableMap.short_name.ilike(map_short_name))  # type: ignore
             .first()
         )
         if voteable_map:
@@ -946,7 +868,7 @@ async def changegamemap(ctx: Context, *args):
         else:
             await send_message(
                 message.channel,
-                embed_description=f"Could not find map: {args[1]}. Add to rotation or map pool first.",
+                embed_description=f"Could not find map: {map_short_name}. Add to rotation or map pool first.",
                 colour=Colour.red(),
             )
             return
@@ -954,30 +876,22 @@ async def changegamemap(ctx: Context, *args):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"Map for game {args[0]} changed to {args[1]}",
+        embed_description=f"Map for game {game_id} changed to {map_short_name}",
         colour=Colour.green(),
     )
 
 
 @bot.command()
 @commands.check(is_admin)
-async def changequeuemap(ctx: Context, *args):
+async def changequeuemap(ctx: Context, map_short_name: str):
     message = ctx.message
     """
     TODO: tests
     """
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !changequeuememap <map_short_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
     current_map: CurrentMap = session.query(CurrentMap).first()
     rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[0])).first()  # type: ignore
+        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
     )
     if rotation_map:
         rotation_maps: list[RotationMap] = (
@@ -992,7 +906,7 @@ async def changequeuemap(ctx: Context, *args):
     else:
         voteable_map: VoteableMap | None = (
             session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(args[0]))  # type: ignore
+            .filter(VoteableMap.short_name.ilike(map_short_name))  # type: ignore
             .first()
         )
         if voteable_map:
@@ -1002,20 +916,20 @@ async def changequeuemap(ctx: Context, *args):
         else:
             await send_message(
                 message.channel,
-                embed_description=f"Could not find map: {args[0]}. Add to rotation or map pool first.",
+                embed_description=f"Could not find map: {map_short_name}. Add to rotation or map pool first.",
                 colour=Colour.red(),
             )
             return
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"Queue map changed to {args[0]}",
+        embed_description=f"Queue map changed to {map_short_name}",
         colour=Colour.green(),
     )
 
 
 @bot.command(name="commands")
-async def commands_(ctx: Context, *args):
+async def commands_(ctx: Context):
     output = "Commands:"
     commands = sorted([command.name for command in bot.commands])
     for command in commands:
@@ -1064,7 +978,7 @@ async def createcommand(ctx: Context, name, *, output):
 
 @bot.command()
 @commands.check(is_admin)
-async def createdbbackup(ctx: Context, *args):
+async def createdbbackup(ctx: Context):
     message = ctx.message
     date_string = datetime.now().strftime("%Y-%m-%d")
     copyfile(f"{DB_NAME}.db", f"{DB_NAME}_{date_string}.db")
@@ -1077,22 +991,14 @@ async def createdbbackup(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def clearqueue(ctx: Context, *args):
+async def clearqueue(ctx: Context, queue_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !clearqueue <queue_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         await send_message(
             message.channel,
-            embed_description=f"Could not find queue: {args[0]}",
+            embed_description=f"Could not find queue: {queue_name}",
             colour=Colour.red(),
         )
         return
@@ -1101,25 +1007,16 @@ async def clearqueue(ctx: Context, *args):
 
     await send_message(
         message.channel,
-        embed_description=f"Queue cleared: {args[0]}",
+        embed_description=f"Queue cleared: {queue_name}",
         colour=Colour.green(),
     )
 
 
 @bot.command()
 @commands.check(is_admin)
-async def createqueue(ctx: Context, *args):
+async def createqueue(ctx: Context, queue_name: str, queue_size: int):
     message = ctx.message
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !createqueue <queue_name> <queue_size>",
-            colour=Colour.red(),
-        )
-        return
-
-    queue_size = int(args[1])
-    queue = Queue(name=args[0], size=queue_size)
+    queue = Queue(name=queue_name, size=queue_size)
     session = Session()
 
     try:
@@ -1141,21 +1038,12 @@ async def createqueue(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def decayplayer(ctx: Context, *args):
+async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
     message = ctx.message
     """
     Manually adjust a player's trueskill rating downward by a percentage
     """
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !decayplayer @<player> <decay_amount_percent>%",
-            colour=Colour.red(),
-        )
-        return
-
-    decay_amount = args[1]
-    if not decay_amount.endswith("%"):
+    if not decay_amount_percent.endswith("%"):
         await send_message(
             message.channel,
             embed_description="Decay amount must end with %",
@@ -1163,7 +1051,7 @@ async def decayplayer(ctx: Context, *args):
         )
         return
 
-    decay_amount = int(decay_amount[:-1])
+    decay_amount = int(decay_amount_percent[:-1])
     if decay_amount <= 0 or decay_amount > 10:
         await send_message(
             message.channel,
@@ -1186,7 +1074,7 @@ async def decayplayer(ctx: Context, *args):
     player.unrated_trueskill_mu = unrated_trueskill_mu_after
     await send_message(
         message.channel,
-        embed_description=f"{message.mentions[0].name} decayed by {decay_amount}%",
+        embed_description=f"{member.name} decayed by {decay_amount}%",
         colour=Colour.green(),
     )
     session.add(
@@ -1204,12 +1092,12 @@ async def decayplayer(ctx: Context, *args):
 
 @bot.command(name="del")
 async def del_(ctx: Context, *args):
-    message = ctx.message
     """
     Players deletes self from queue(s)
 
     If no args deletes from existing queues
     """
+    message = ctx.message
     session = Session()
     queues_to_del: list[Queue] = []
     all_queues: list(Queue) = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
@@ -1263,32 +1151,24 @@ async def del_(ctx: Context, *args):
     session.commit()
 
 
-@bot.command()
+@bot.command(usage="<game_id> <tie|be|ds>")
 @commands.check(is_admin)
-async def editgamewinner(ctx: Context, *args):
+async def editgamewinner(ctx: Context, game_id: str, outcome: str):
     message = ctx.message
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !editgamewinner <game_id> <tie|be|ds>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
     game: FinishedGame | None = (
         session.query(FinishedGame)
-        .filter(FinishedGame.game_id.startswith(args[0]))
+        .filter(FinishedGame.game_id.startswith(game_id))
         .first()
     )
     if not game:
         await send_message(
             message.channel,
-            embed_description=f"Could not find game: {args[0]}",
+            embed_description=f"Could not find game: {game_id}",
             colour=Colour.red(),
         )
         return
-    outcome = args[1].lower()
+    outcome = outcome.lower()
     if outcome == "tie":
         game.winning_team = -1
     elif outcome == "be":
@@ -1307,23 +1187,15 @@ async def editgamewinner(ctx: Context, *args):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"Game {args[0]} outcome changed:\n\n"
+        embed_description=f"Game {game_id} outcome changed:\n\n"
         + finished_game_str(game),
         colour=Colour.green(),
     )
 
 
-@bot.command()
-async def finishgame(ctx: Context, *args):
+@bot.command(usage="<win|loss|tie>")
+async def finishgame(ctx: Context, outcome: str):
     message = ctx.message
-    if len(args) == 0:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !finishgame <win|loss|tie>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
     game_player = (
         session.query(InProgressGamePlayer)
@@ -1347,11 +1219,11 @@ async def finishgame(ctx: Context, *args):
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )
     winning_team = -1
-    if args[0] == "win":
+    if outcome == "win":
         winning_team = game_player.team
-    elif args[0] == "loss":
+    elif outcome == "loss":
         winning_team = (game_player.team + 1) % 2
-    elif args[0] == "tie":
+    elif outcome == "tie":
         winning_team = -1
     else:
         await send_message(
@@ -1415,13 +1287,13 @@ async def finishgame(ctx: Context, *args):
     )
     session.add(finished_game)
 
-    outcome = None
+    result = None
     if winning_team == -1:
-        outcome = [0, 0]
+        result = [0, 0]
     elif winning_team == 0:
-        outcome = [0, 1]
+        result = [0, 1]
     elif winning_team == 1:
-        outcome = [1, 0]
+        oresult = [1, 0]
 
     team0_rated_ratings_after: list[Rating]
     team1_rated_ratings_after: list[Rating]
@@ -1430,7 +1302,7 @@ async def finishgame(ctx: Context, *args):
     if queue.is_rated:
         if len(players) > 1:
             team0_rated_ratings_after, team1_rated_ratings_after = rate(
-                [team0_rated_ratings_before, team1_rated_ratings_before], outcome
+                [team0_rated_ratings_before, team1_rated_ratings_before], result
             )
         else:
             team0_rated_ratings_after, team1_rated_ratings_after = (
@@ -1446,7 +1318,7 @@ async def finishgame(ctx: Context, *args):
 
     if len(players) > 1:
         team0_unrated_ratings_after, team1_unrated_ratings_after = rate(
-            [team0_unrated_ratings_before, team1_unrated_ratings_before], outcome
+            [team0_unrated_ratings_before, team1_unrated_ratings_before], result
         )
     else:
         team0_unrated_ratings_after, team1_unrated_ratings_after = (
@@ -1543,7 +1415,7 @@ async def finishgame(ctx: Context, *args):
 
 
 @bot.command()
-async def listadmins(ctx: Context, *args):
+async def listadmins(ctx: Context):
     message = ctx.message
     output = "Admins:"
     player: Player
@@ -1554,7 +1426,7 @@ async def listadmins(ctx: Context, *args):
 
 
 @bot.command()
-async def listadminroles(ctx: Context, *args):
+async def listadminroles(ctx: Context):
     message = ctx.message
     output = "Admin roles:"
     if not message.guild:
@@ -1576,7 +1448,7 @@ async def listadminroles(ctx: Context, *args):
 
 
 @bot.command()
-async def listbans(ctx: Context, *args):
+async def listbans(ctx: Context):
     message = ctx.message
     output = "Bans:"
     for player in Session().query(Player).filter(Player.is_banned == True):
@@ -1586,7 +1458,7 @@ async def listbans(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def listdbbackups(ctx: Context, *args):
+async def listdbbackups(ctx: Context):
     message = ctx.message
     output = "Backups:"
     for filename in glob("tribes_*.db"):
@@ -1600,7 +1472,7 @@ async def listdbbackups(ctx: Context, *args):
 
 
 @bot.command()
-async def listmaprotation(ctx: Context, *args):
+async def listmaprotation(ctx: Context):
     message = ctx.message
     output = "Map rotation:"
     rotation_map: RotationMap
@@ -1609,20 +1481,12 @@ async def listmaprotation(ctx: Context, *args):
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
-@bot.command(name="listplayerdecays")
+@bot.command()
 @commands.check(is_admin)
-async def list_player_decays(ctx: Context, *args):
+async def listplayerdecays(ctx: Context, member: Member):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !listplayerdecays @<player>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
-    player = session.query(Player).filter(Player.id == message.mentions[0].id).first()
+    player = session.query(Player).filter(Player.id == member.id).first()
     player_decays: list[PlayerDecay] = session.query(PlayerDecay).filter(
         PlayerDecay.player_id == player.id
     )
@@ -1634,7 +1498,7 @@ async def list_player_decays(ctx: Context, *args):
 
 
 @bot.command()
-async def listqueueroles(ctx: Context, *args):
+async def listqueueroles(ctx: Context):
     message = ctx.message
     if not message.guild:
         return
@@ -1656,7 +1520,7 @@ async def listqueueroles(ctx: Context, *args):
 
 
 @bot.command()
-async def listmaps(ctx: Context, *args):
+async def listmaps(ctx: Context):
     message = ctx.message
     output = "Voteable map pool"
     voteable_map: VoteableMap
@@ -1667,21 +1531,14 @@ async def listmaps(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def lockqueue(ctx: Context, *args):
+async def lockqueue(ctx: Context, queue_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !lock_queue <queue_name>",
-        )
-        return
-
     session = Session()
-    queue: Queue | None = session.query(Queue).filter(Queue.name == args[0]).first()
+    queue: Queue | None = session.query(Queue).filter(Queue.name == queue_name).first()
     if not queue:
         await send_message(
             message.channel,
-            embed_description=f"Could not find queue: {args[0]}",
+            embed_description=f"Could not find queue: {queue_name}",
             colour=Colour.red(),
         )
         return
@@ -1691,7 +1548,7 @@ async def lockqueue(ctx: Context, *args):
 
     await send_message(
         message.channel,
-        embed_description=f"Queue {args[0]} locked",
+        embed_description=f"Queue {queue_name} locked",
         colour=Colour.green(),
     )
 
@@ -1795,19 +1652,11 @@ async def mockrandomqueue(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def gamehistory(ctx: Context, *args):
+async def gamehistory(ctx: Context, count: int):
     message = ctx.message
     """
     Display recent game history
     """
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !gamehistory <count>",
-            colour=Colour.red(),
-        )
-        return
-    count = int(args[0])
     if count > 10:
         await send_message(
             message.channel,
@@ -1836,30 +1685,14 @@ async def gamehistory(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def removeadmin(ctx: Context, *args):
+async def removeadmin(ctx: Context, member: Member):
     message = ctx.message
-    if len(args) != 1 or len(message.mentions) == 0:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !removeadmin @<player_name>",
-            colour=Colour.red(),
-        )
-        return
-
-    # if message.mentions[0].id == message.author.id:
-    #     await send_message(
-    #         message.channel,
-    #         embed_description="You cannot remove yourself as an admin",
-    #         colour=Colour.red(),
-    #     )
-    #     return
-
     session = Session()
-    players = session.query(Player).filter(Player.id == message.mentions[0].id).all()
+    players = session.query(Player).filter(Player.id == member.id).all()
     if len(players) == 0 or not players[0].is_admin:
         await send_message(
             message.channel,
-            embed_description=f"{message.mentions[0].name} is not an admin",
+            embed_description=f"{member.name} is not an admin",
             colour=Colour.red(),
         )
         return
@@ -1868,24 +1701,15 @@ async def removeadmin(ctx: Context, *args):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"{message.mentions[0].name} removed from admins",
+        embed_description=f"{member.name} removed from admins",
         colour=Colour.green(),
     )
 
 
 @bot.command()
 @commands.check(is_admin)
-async def removeadminrole(ctx: Context, *args):
+async def removeadminrole(ctx: Context, role_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !removeadminrole <role_name>",
-            colour=Colour.red(),
-        )
-        return
-
-    role_name = args[0]
     if message.guild:
         session = Session()
         role_name_to_role_id: dict[str, int] = {
@@ -1921,17 +1745,8 @@ async def removeadminrole(ctx: Context, *args):
 
 
 @bot.command()
-async def removecommand(ctx: Context, *args):
+async def removecommand(ctx: Context, name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !removecommand <name>",
-            colour=Colour.red(),
-        )
-        return
-
-    name = args[0]
     session = Session()
     exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
     if not exists:
@@ -1954,19 +1769,11 @@ async def removecommand(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def removequeue(ctx: Context, *args):
+async def removequeue(ctx: Context, queue_name: str):
     message = ctx.message
-    if len(args) == 0:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !remove_queue <queue_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
 
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         games_in_progress = (
             session.query(InProgressGame)
@@ -1976,7 +1783,7 @@ async def removequeue(ctx: Context, *args):
         if len(games_in_progress) > 0:
             await send_message(
                 message.channel,
-                embed_description=f"Cannot remove queue with game in progress: {args[0]}",
+                embed_description=f"Cannot remove queue with game in progress: {queue_name}",
                 colour=Colour.red(),
             )
             return
@@ -1985,30 +1792,21 @@ async def removequeue(ctx: Context, *args):
             session.commit()
             await send_message(
                 message.channel,
-                embed_description=f"Queue removed: {args[0]}",
+                embed_description=f"Queue removed: {queue_name}",
                 colour=Colour.blue(),
             )
     else:
         await send_message(
             message.channel,
-            embed_description=f"Queue not found: {args[0]}",
+            embed_description=f"Queue not found: {queue_name}",
             colour=Colour.red(),
         )
 
 
 @bot.command()
 @commands.check(is_admin)
-async def removedbbackup(ctx: Context, *args):
+async def removedbbackup(ctx: Context, db_filename: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !removedbbackup <db_filename>",
-            colour=Colour.red(),
-        )
-        return
-
-    db_filename = args[0]
     if not db_filename.startswith("tribes") or not db_filename.endswith(".db"):
         await send_message(
             message.channel,
@@ -2027,19 +1825,8 @@ async def removedbbackup(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def removequeuerole(ctx: Context, *args):
+async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !removequeuerole <queue_name> <role_name>",
-            colour=Colour.red(),
-        )
-        return
-
-    queue_name = args[0]
-    role_name = args[1]
-
     session = Session()
     queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
     if not queue:
@@ -2074,50 +1861,34 @@ async def removequeuerole(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def removerotationmap(ctx: Context, *args):
+async def removerotationmap(ctx: Context, map_short_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !removerotationmap <map_short_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
     rotation_map = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(args[0])).first()  # type: ignore
+        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
     )
     if rotation_map:
         session.delete(rotation_map)
         session.commit()
         await send_message(
             message.channel,
-            embed_description=f"{args[0]} removed from map rotation",
+            embed_description=f"{map_short_name} removed from map rotation",
             colour=Colour.green(),
         )
     else:
         await send_message(
             message.channel,
-            embed_description=f"Could not find rotation map: {args[0]}",
+            embed_description=f"Could not find rotation map: {map_short_name}",
             colour=Colour.red(),
         )
 
 
 @bot.command()
-async def removemap(ctx: Context, *args):
+async def removemap(ctx: Context, map_short_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !removemap <map_short_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
     voteable_map = (
-        session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
+        session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
     )
     if voteable_map:
         session.query(MapVote).filter(
@@ -2126,13 +1897,13 @@ async def removemap(ctx: Context, *args):
         session.delete(voteable_map)
         await send_message(
             message.channel,
-            embed_description=f"{args[0]} removed from map pool",
+            embed_description=f"{map_short_name} removed from map pool",
             colour=Colour.green(),
         )
     else:
         await send_message(
             message.channel,
-            embed_description=f"Could not find vote for map: {args[0]}",
+            embed_description=f"Could not find vote for map: {map_short_name}",
             colour=Colour.red(),
         )
 
@@ -2140,37 +1911,21 @@ async def removemap(ctx: Context, *args):
 
 
 @bot.command()
-async def roll(ctx: Context, *args):
+async def roll(ctx: Context, low_range: int, high_range: int):
     message = ctx.message
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !roll <low_range> <high_range>",
-            colour=Colour.red(),
-        )
-        return
-
     await send_message(
         message.channel,
-        embed_description=f"You rolled: {randint(int(args[0]), int(args[1]))}",
+        embed_description=f"You rolled: {randint(low_range, high_range)}",
         colour=Colour.blue(),
     )
 
 
 @bot.command()
 @commands.check(is_admin)
-async def setadddelay(ctx: Context, *args):
+async def setadddelay(ctx: Context, delay_seconds: int):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !setadddelay <delay_seconds>",
-            colour=Colour.red(),
-        )
-        return
-
     global RE_ADD_DELAY
-    RE_ADD_DELAY = int(args[0])
+    RE_ADD_DELAY = delay_seconds
     await send_message(
         message.channel,
         embed_description=f"Delay between games set to {RE_ADD_DELAY}",
@@ -2180,18 +1935,10 @@ async def setadddelay(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def setcommandprefix(ctx: Context, *args):
+async def setcommandprefix(ctx: Context, prefix: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !setcommandprefix <prefix>",
-            colour=Colour.red(),
-        )
-        return
-
     global COMMAND_PREFIX
-    COMMAND_PREFIX = args[0]
+    COMMAND_PREFIX = prefix
     await send_message(
         message.channel,
         embed_description=f"Command prefix set to {COMMAND_PREFIX}",
@@ -2201,29 +1948,21 @@ async def setcommandprefix(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def setqueuerated(ctx: Context, *args):
+async def setqueuerated(ctx: Context, queue_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !setqueuerated <queue_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.is_rated = True
         await send_message(
             message.channel,
-            embed_description=f"Queue {args[0]} is now rated",
+            embed_description=f"Queue {queue_name} is now rated",
             colour=Colour.blue(),
         )
     else:
         await send_message(
             message.channel,
-            embed_description=f"Queue not found: {args[0]}",
+            embed_description=f"Queue not found: {queue_name}",
             colour=Colour.red(),
         )
     session.commit()
@@ -2231,29 +1970,21 @@ async def setqueuerated(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def setqueueunrated(ctx: Context, *args):
+async def setqueueunrated(ctx: Context, queue_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !setqueueunrated <queue_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.is_rated = False
         await send_message(
             message.channel,
-            embed_description=f"Queue {args[0]} is now unrated",
+            embed_description=f"Queue {queue_name} is now unrated",
             colour=Colour.blue(),
         )
     else:
         await send_message(
             message.channel,
-            embed_description=f"Queue not found: {args[0]}",
+            embed_description=f"Queue not found: {queue_name}",
             colour=Colour.red(),
         )
     session.commit()
@@ -2261,18 +1992,10 @@ async def setqueueunrated(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def setmapvotethreshold(ctx: Context, *args):
+async def setmapvotethreshold(ctx: Context, threshold: int):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !setmapvotethreshold <threshold>",
-            colour=Colour.red(),
-        )
-        return
-
     global MAP_VOTE_THRESHOLD
-    MAP_VOTE_THRESHOLD = int(args[0])
+    MAP_VOTE_THRESHOLD = threshold
 
     await send_message(
         message.channel,
@@ -2282,42 +2005,35 @@ async def setmapvotethreshold(ctx: Context, *args):
 
 
 @bot.command()
-async def showgame(ctx: Context, *args):
+async def showgame(ctx: Context, game_id: str):
     message = ctx.message
-    if len(args) < 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !showgame <game_id>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
     finished_game = (
         session.query(FinishedGame)
-        .filter(FinishedGame.game_id.startswith(args[0]))
+        .filter(FinishedGame.game_id.startswith(game_id))
         .first()
     )
     if not finished_game:
         await send_message(
             message.channel,
-            embed_description=f"Could not find game: {args[0]}",
+            embed_description=f"Could not find game: {game_id}",
             colour=Colour.red(),
         )
         return
 
-    debug = False
-    if len(args) > 1 and args[1] == "debug":
-        is_admin: Player | None = (
-            session.query(Player)
-            .filter(Player.id == message.author.id, Player.is_admin == True)
-            .first()
-        )
-        if is_admin:
-            debug = True
+    # TODO: reintroduce
+    # debug = False
+    # if len(args) > 1 and args[1] == "debug":
+    #     is_admin: Player | None = (
+    #         session.query(Player)
+    #         .filter(Player.id == message.author.id, Player.is_admin == True)
+    #         .first()
+    #     )
+    #     if is_admin:
+    #         debug = True
 
-    game_str = finished_game_str(finished_game, debug)
-    if debug:
+    game_str = finished_game_str(finished_game, False)
+    if False:
         await message.author.send(
             embed=Embed(description=game_str, colour=Colour.blue())
         )
@@ -2329,7 +2045,7 @@ async def showgame(ctx: Context, *args):
     else:
         await send_message(
             message.channel,
-            embed_description=finished_game_str(finished_game, debug),
+            embed_description=finished_game_str(finished_game, False),
             colour=Colour.blue(),
         )
 
@@ -2467,23 +2183,15 @@ async def status(ctx: Context, *args):
 
 
 @bot.command()
-async def sub(ctx: Context, *args):
+async def sub(ctx: Context, member: Member):
     message = ctx.message
     """
     Substitute one player in a game for another
     """
     session = Session()
-    if len(args) != 1 or len(message.mentions) < 1:
-        await send_message(
-            channel=message.channel,
-            embed_description="Usage: !sub @<player_name>",
-            colour=Colour.red(),
-        )
-        return
-
     caller = message.author
     caller_game = get_player_game(caller.id, session)
-    callee = message.mentions[0]
+    callee = member
     callee_game = get_player_game(callee.id, session)
 
     if caller_game and callee_game:
@@ -2581,10 +2289,10 @@ async def sub(ctx: Context, *args):
     for player in team0_players:
         # TODO: This block is duplicated
         if message.guild:
-            member: Member | None = message.guild.get_member(player.id)
-            if member:
+            member_: Member | None = message.guild.get_member(player.id)
+            if member_:
                 try:
-                    await member.send(
+                    await member_.send(
                         content=channel_message,
                         embed=Embed(
                             description=f"{channel_embed}",
@@ -2604,10 +2312,10 @@ async def sub(ctx: Context, *args):
     for player in team1_players:
         # TODO: This block is duplicated
         if message.guild:
-            member: Member | None = message.guild.get_member(player.id)
-            if member:
+            member_: Member | None = message.guild.get_member(player.id)
+            if member_:
                 try:
-                    await member.send(
+                    await member_.send(
                         content=channel_message,
                         embed=Embed(
                             description=f"{channel_embed}",
@@ -2635,22 +2343,14 @@ async def sub(ctx: Context, *args):
 
 @bot.command()
 @commands.check(is_admin)
-async def unban(ctx: Context, *args):
+async def unban(ctx: Context, member: Member):
     message = ctx.message
-    if len(args) != 1 or len(message.mentions) == 0:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !iban @<player_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
-    players = session.query(Player).filter(Player.id == message.mentions[0].id).all()
+    players = session.query(Player).filter(Player.id == member.id).all()
     if len(players) == 0 or not players[0].is_banned:
         await send_message(
             message.channel,
-            embed_description=f"{message.mentions[0].name} is not banned",
+            embed_description=f"{member.name} is not banned",
             colour=Colour.red(),
         )
         return
@@ -2659,28 +2359,21 @@ async def unban(ctx: Context, *args):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"{message.mentions[0].name} unbanned",
+        embed_description=f"{member.name} unbanned",
         colour=Colour.green(),
     )
 
 
 @bot.command()
 @commands.check(is_admin)
-async def unlockqueue(ctx: Context, *args):
+async def unlockqueue(ctx: Context, queue_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !unlock_queue <queue_name>",
-        )
-        return
-
     session = Session()
-    queue: Queue | None = session.query(Queue).filter(Queue.name == args[0]).first()
+    queue: Queue | None = session.query(Queue).filter(Queue.name == queue_name).first()
     if not queue:
         await send_message(
             message.channel,
-            embed_description=f"Could not find queue: {args[0]}",
+            embed_description=f"Could not find queue: {queue_name}",
             colour=Colour.red(),
         )
         return
@@ -2690,13 +2383,13 @@ async def unlockqueue(ctx: Context, *args):
 
     await send_message(
         message.channel,
-        embed_description=f"Queue {args[0]} unlocked",
+        embed_description=f"Queue {queue_name} unlocked",
         colour=Colour.green(),
     )
 
 
 @bot.command()
-async def unvote(ctx: Context, *args):
+async def unvote(ctx: Context):
     message = ctx.message
     """
     Remove all of a player's votes
@@ -2716,22 +2409,14 @@ async def unvote(ctx: Context, *args):
 
 # TODO: Unvote for many maps at once
 @bot.command()
-async def unvotemap(ctx: Context, *args):
+async def unvotemap(ctx: Context, map_short_name: str):
     message = ctx.message
-    if len(args) != 1:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !unvotemap <map_short_name>",
-            colour=Colour.red(),
-        )
-        return
-
     session = Session()
     voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
     if not voteable_map:
         await send_message(
             message.channel,
-            embed_description=f"Could not find voteable map: {args[0]}",
+            embed_description=f"Could not find voteable map: {map_short_name}",
             colour=Colour.red(),
         )
         return
@@ -2746,7 +2431,7 @@ async def unvotemap(ctx: Context, *args):
     if not map_vote:
         await send_message(
             message.channel,
-            embed_description=f"You don't have a vote for: {args[0]}",
+            embed_description=f"You don't have a vote for: {map_short_name}",
             colour=Colour.red(),
         )
         return
@@ -2755,13 +2440,13 @@ async def unvotemap(ctx: Context, *args):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"Your vote for {args[0]} was removed",
+        embed_description=f"Your vote for {map_short_name} was removed",
         colour=Colour.green(),
     )
 
 
 @bot.command()
-async def unvoteskip(ctx: Context, *args):
+async def unvoteskip(ctx: Context):
     message = ctx.message
     """
     A player votes to go to the next map in rotation
@@ -2788,33 +2473,21 @@ async def unvoteskip(ctx: Context, *args):
         )
 
 
+def get_voteable_maps_str():
+    voteable_maps: list[VoteableMap] = Session().query(VoteableMap).all()
+    return ", ".join([voteable_map.short_name for voteable_map in voteable_maps])
+
+
 # TODO: Vote for many maps at once
-@bot.command()
-async def votemap(ctx: Context, *args):
+@bot.command(usage=f"<map_short_name>\nMaps:{get_voteable_maps_str()}")
+async def votemap(ctx: Context, map_short_name: str):
     message = ctx.message
     session = Session()
-    if len(args) != 1:
-        voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
-        voteable_map_str = ", ".join(
-            [voteable_map.short_name for voteable_map in voteable_maps]
-        )
-
-        await send_message(
-            message.channel,
-            embed_description=f"Usage: !votemap <map_short_name>\nVoteable maps: {voteable_map_str}",
-            colour=Colour.red(),
-        )
-        return
-
-    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
+    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
     if not voteable_map:
-        voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
-        voteable_map_str = ", ".join(
-            [voteable_map.short_name for voteable_map in voteable_maps]
-        )
         await send_message(
             message.channel,
-            embed_description=f"Could not find voteable map: {args[0]}\nVoteable maps: {voteable_map_str}",
+            embed_description=f"Could not find voteable map: {map_short_name}\nMaps: {get_voteable_maps_str()}",
             colour=Colour.red(),
         )
         return
@@ -2888,7 +2561,7 @@ async def votemap(ctx: Context, *args):
         )
         await send_message(
             message.channel,
-            embed_description=f"Added map vote for {args[0]}.\n!unvotemap to remove your vote.\nVotes: {voted_maps_str}",
+            embed_description=f"Added map vote for {map_short_name}.\n!unvotemap to remove your vote.\nVotes: {voted_maps_str}",
             colour=Colour.green(),
         )
 
@@ -2896,7 +2569,7 @@ async def votemap(ctx: Context, *args):
 
 
 @bot.command()
-async def voteskip(ctx: Context, *args):
+async def voteskip(ctx: Context):
     message = ctx.message
     """
     A player votes to go to the next map in rotation
