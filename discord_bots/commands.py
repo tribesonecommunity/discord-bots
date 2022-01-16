@@ -2005,7 +2005,7 @@ async def setmapvotethreshold(ctx: Context, threshold: int):
 
 
 @bot.command()
-async def showgame(ctx: Context, game_id: str):
+async def showgame(ctx: Context, game_id: str, debug_: str = ""):
     message = ctx.message
     session = Session()
     finished_game = (
@@ -2022,18 +2022,18 @@ async def showgame(ctx: Context, game_id: str):
         return
 
     # TODO: reintroduce
-    # debug = False
-    # if len(args) > 1 and args[1] == "debug":
-    #     is_admin: Player | None = (
-    #         session.query(Player)
-    #         .filter(Player.id == message.author.id, Player.is_admin == True)
-    #         .first()
-    #     )
-    #     if is_admin:
-    #         debug = True
+    debug = False
+    if debug_ == "debug":
+        is_admin: Player | None = (
+            session.query(Player)
+            .filter(Player.id == message.author.id, Player.is_admin == True)
+            .first()
+        )
+        if is_admin:
+            debug = True
 
-    game_str = finished_game_str(finished_game, False)
-    if False:
+    game_str = finished_game_str(finished_game, debug)
+    if debug:
         await message.author.send(
             embed=Embed(description=game_str, colour=Colour.blue())
         )
@@ -2045,7 +2045,7 @@ async def showgame(ctx: Context, game_id: str):
     else:
         await send_message(
             message.channel,
-            embed_description=finished_game_str(finished_game, False),
+            embed_description=game_str,
             colour=Colour.blue(),
         )
 

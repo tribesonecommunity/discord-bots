@@ -112,12 +112,12 @@ Common issues:
 - Deploy to heroku
 - Fix tests
 - Add !notify ltpug 9 command
-- "Removed from map votes for inactivity" message twice
 
 ## Good first tickets
 - Store player display name alongside regular name
 - Allow voting for multiple maps at once
 - !add only shows queues that were added, but !del shows all queues regardless of whether the player was in it
+- Store total games played
 
 MVP+
 
