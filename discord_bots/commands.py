@@ -7,11 +7,9 @@ from os import remove
 from random import randint, random, shuffle
 from shutil import copyfile
 from statistics import mean
-from typing import Awaitable, Callable
 
 import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
-from discord.abc import User
 from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
@@ -1042,18 +1040,8 @@ async def commands_(ctx: Context, *args):
 
 
 @bot.command()
-async def createcommand(ctx: Context, *args):
+async def createcommand(ctx: Context, name, *, output):
     message = ctx.message
-    if len(args) < 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !createcommand <name> <output>",
-            colour=Colour.red(),
-        )
-        return
-    name = args[0]
-    output = message.content.split(" ", 2)[2]
-
     session = Session()
     exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
     if exists is not None:
