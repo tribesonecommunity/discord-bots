@@ -2021,7 +2021,6 @@ async def showgame(ctx: Context, game_id: str, debug_: str = ""):
         )
         return
 
-    # TODO: reintroduce
     debug = False
     if debug_ == "debug":
         is_admin: Player | None = (
