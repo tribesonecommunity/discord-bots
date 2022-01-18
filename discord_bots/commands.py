@@ -928,29 +928,29 @@ async def changequeuemap(ctx: Context, map_short_name: str):
     )
 
 
-@bot.command(name="commands")
-async def commands_(ctx: Context):
-    output = "Commands:"
-    commands = sorted([command.name for command in bot.commands])
-    for command in commands:
-        output += f"\n- {COMMAND_PREFIX}{command}"
+# @bot.command(name="commands")
+# async def commands_(ctx: Context):
+#     output = "Commands:"
+#     commands = sorted([command.name for command in bot.commands])
+#     for command in commands:
+#         output += f"\n- {COMMAND_PREFIX}{command}"
 
-    message = ctx.message
-    guild = message.guild
-    if not guild:
-        return
-    member: Member | None = guild.get_member(message.author.id)
-    if not member:
-        return
-    try:
-        await member.send(embed=Embed(description=output, colour=Colour.blue()))
-        await send_message(
-            message.channel,
-            embed_description="Commands sent via private message",
-            colour=Colour.blue(),
-        )
-    except Exception:
-        pass
+#     message = ctx.message
+#     guild = message.guild
+#     if not guild:
+#         return
+#     member: Member | None = guild.get_member(message.author.id)
+#     if not member:
+#         return
+#     try:
+#         await member.send(embed=Embed(description=output, colour=Colour.blue()))
+#         await send_message(
+#             message.channel,
+#             embed_description="Commands sent via private message",
+#             colour=Colour.blue(),
+#         )
+#     except Exception:
+#         pass
 
 
 @bot.command()
@@ -1287,13 +1287,12 @@ async def finishgame(ctx: Context, outcome: str):
     )
     session.add(finished_game)
 
-    result = None
     if winning_team == -1:
         result = [0, 0]
     elif winning_team == 0:
         result = [0, 1]
     elif winning_team == 1:
-        oresult = [1, 0]
+        result = [1, 0]
 
     team0_rated_ratings_after: list[Rating]
     team1_rated_ratings_after: list[Rating]

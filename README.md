@@ -118,6 +118,7 @@ Common issues:
 - Allow voting for multiple maps at once
 - !add only shows queues that were added, but !del shows all queues regardless of whether the player was in it
 - Store total games played
+- Add created_at timestamps to all tables (esp finished_game_player)
 
 MVP+
 
