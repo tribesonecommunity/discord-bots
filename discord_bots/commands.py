@@ -7,6 +7,7 @@ from os import remove
 from random import randint, random, shuffle
 from shutil import copyfile
 from statistics import mean
+from typing import Union
 
 import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
@@ -33,6 +34,7 @@ from .models import (
     Player,
     PlayerDecay,
     Queue,
+    QueueNotification,
     QueuePlayer,
     QueueRole,
     QueueWaitlist,
@@ -280,6 +282,30 @@ async def add_player_to_queue(
         session.commit()
         update_current_map_to_next_map_in_rotation()
         return True, True
+
+    queue_notifications: list[QueueNotification] = (
+        session.query(QueueNotification)
+        .filter(
+            QueueNotification.queue_id == queue_id,
+            QueueNotification.size == len(queue_players),
+        )
+        .all()
+    )
+    for queue_notification in queue_notifications:
+        member: Member | None = guild.get_member(queue_notification.player_id)
+        if member:
+            try:
+                await member.send(
+                    embed=Embed(
+                        description=f"'{queue.name}' is at {queue_notification.size} players!",
+                        colour=Colour.blue(),
+                    )
+                )
+            except Exception:
+                pass
+        session.delete(queue_notification)
+    session.commit()
+
     return True, False
 
 
@@ -1482,6 +1508,22 @@ async def listmaprotation(ctx: Context):
 
 
 @bot.command()
+async def listnotifications(ctx: Context):
+    message = ctx.message
+    session = Session()
+    queue_notifications: list[QueueNotification] = session.query(
+        QueueNotification
+    ).filter(QueueNotification.player_id == ctx.author.id)
+    output = "Queue notifications:"
+    for queue_notification in queue_notifications:
+        queue = (
+            session.query(Queue).filter(Queue.id == queue_notification.queue_id).first()
+        )
+        output += f"\n- {queue.name} {queue_notification.size}"
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
+@bot.command()
 @commands.check(is_admin)
 async def listplayerdecays(ctx: Context, member: Member):
     message = ctx.message
@@ -1650,6 +1692,61 @@ async def mockrandomqueue(ctx: Context, *args):
             session.commit()
 
 
+# async def notify(ctx: Context, queue_name_or_index: str | int, size: int):
+@bot.command()
+async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
+    message = ctx.message
+    if size <= 0:
+        await send_message(
+            message.channel,
+            embed_description="size must be greater than 0",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    if isinstance(queue_name_or_index, str):
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name_or_index)).first()
+        )
+        if not queue:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find queue: {queue_name_or_index}",
+                colour=Colour.red(),
+            )
+            return
+        session.add(
+            QueueNotification(queue_id=queue.id, player_id=ctx.author.id, size=size)
+        )
+        await send_message(
+            message.channel,
+            embed_description=f"Notification added for {queue.name} at {size} players.",
+            colour=Colour.green(),
+        )
+    else:
+        all_queues: list[Queue] = (
+            session.query(Queue).order_by(Queue.created_at.asc()).all()
+        )
+        if queue_name_or_index < 1 or queue_name_or_index >= len(all_queues):
+            await send_message(
+                message.channel,
+                embed_description=f"Invalid queue index",
+                colour=Colour.red(),
+            )
+            return
+        queue = all_queues[queue_name_or_index - 1]
+        session.add(
+            QueueNotification(queue_id=queue.id, player_id=ctx.author.id, size=size)
+        )
+        await send_message(
+            message.channel,
+            embed_description=f"Notification added for {queue.name} at {size} players.",
+            colour=Colour.green(),
+        )
+    session.commit()
+
+
 @bot.command()
 @commands.check(is_admin)
 async def gamehistory(ctx: Context, count: int):
@@ -1763,6 +1860,22 @@ async def removecommand(ctx: Context, name: str):
     await send_message(
         message.channel,
         embed_description=f"Command `{name}` removed",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def removenotifications(ctx: Context):
+    message = ctx.message
+    session = Session()
+    session.query(QueueNotification).filter(
+        QueueNotification.player_id == ctx.author.id
+    ).delete()
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"All queue notifications removed",
         colour=Colour.green(),
     )
 

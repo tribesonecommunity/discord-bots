@@ -479,6 +479,39 @@ class Queue:
 
 @mapper_registry.mapped
 @dataclass
+class QueueNotification:
+    """
+    Notify a player via DM when a queue first reaches a certain size
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "queue_notification"
+
+    queue_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("queue.id"), nullable=False, index=True)
+        },
+    )
+    player_id: int = field(
+        metadata={
+            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    size: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class QueuePlayer:
     """
     Players currently waiting in a queue
