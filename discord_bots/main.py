@@ -77,7 +77,6 @@ async def on_message(message: Message):
     )
     if player:
         player.last_activity_at = datetime.now(timezone.utc)
-        session.commit()
     else:
         session.add(
             Player(
@@ -86,7 +85,7 @@ async def on_message(message: Message):
                 last_activity_at=datetime.now(timezone.utc),
             )
         )
-    session.close()
+    session.commit()
     await bot.process_commands(message)
 
     # Custom commands below
