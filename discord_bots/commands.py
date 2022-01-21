@@ -2117,8 +2117,9 @@ async def setmapvotethreshold(ctx: Context, threshold: int):
     )
 
 
+# async def showgame(ctx: Context, game_id: str, debug_: str = ""):
 @bot.command()
-async def showgame(ctx: Context, game_id: str, debug_: str = ""):
+async def showgame(ctx: Context, game_id: str):
     message = ctx.message
     session = Session()
     finished_game = (
@@ -2135,14 +2136,14 @@ async def showgame(ctx: Context, game_id: str, debug_: str = ""):
         return
 
     debug = False
-    if debug_ == "debug":
-        is_admin: Player | None = (
-            session.query(Player)
-            .filter(Player.id == message.author.id, Player.is_admin == True)
-            .first()
-        )
-        if is_admin:
-            debug = True
+    # if debug_ == "debug":
+    #     is_admin: Player | None = (
+    #         session.query(Player)
+    #         .filter(Player.id == message.author.id, Player.is_admin == True)
+    #         .first()
+    #     )
+    #     if is_admin:
+    #         debug = True
 
     game_str = finished_game_str(finished_game, debug)
     if debug:
