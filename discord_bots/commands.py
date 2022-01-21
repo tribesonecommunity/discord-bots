@@ -674,7 +674,7 @@ async def addadminrole(ctx: Context, role_name: str):
 async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
     session = Session()
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         await send_message(
             message.channel,
@@ -1287,6 +1287,7 @@ async def finishgame(ctx: Context, outcome: str):
     )
     session.add(finished_game)
 
+    result = None
     if winning_team == -1:
         result = [0, 0]
     elif winning_team == 0:
