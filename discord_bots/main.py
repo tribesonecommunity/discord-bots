@@ -86,6 +86,7 @@ async def on_message(message: Message):
             )
         )
     session.commit()
+    session.close()
     await bot.process_commands(message)
 
     # Custom commands below
@@ -96,7 +97,8 @@ async def on_message(message: Message):
     command_name = message.content.split(" ")[0][1:]
     if command_name not in bot_commands:
         custom_command: CustomCommand | None = (
-            session.query(CustomCommand)
+            session()
+            .query(CustomCommand)
             .filter(CustomCommand.name == command_name)
             .first()
         )
