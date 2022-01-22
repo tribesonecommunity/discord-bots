@@ -95,15 +95,16 @@ async def on_message(message: Message):
 
     bot_commands = {command.name for command in bot.commands}
     command_name = message.content.split(" ")[0][1:]
+    session = Session()
     if command_name not in bot_commands:
         custom_command: CustomCommand | None = (
-            session()
-            .query(CustomCommand)
+            session.query(CustomCommand)
             .filter(CustomCommand.name == command_name)
             .first()
         )
         if custom_command:
             await message.channel.send(content=custom_command.output)
+    session.close()
 
 
 @bot.event
