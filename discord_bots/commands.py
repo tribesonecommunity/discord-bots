@@ -171,6 +171,7 @@ async def add_player_to_queue(
         session.commit()
     except IntegrityError:
         session.rollback()
+        session.close()
         return False, False
 
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
@@ -305,6 +306,7 @@ async def add_player_to_queue(
                 pass
         session.delete(queue_notification)
     session.commit()
+    session.close()
 
     return True, False
 
@@ -347,13 +349,16 @@ async def is_admin(ctx: Context):
         .first()
     )
     if caller:
+        session.close()
         return True
 
     if not message.guild:
+        session.close()
         return False
 
     member = message.guild.get_member(message.author.id)
     if not member:
+        session.close()
         return False
 
     admin_roles = session.query(AdminRole).all()
@@ -361,6 +366,7 @@ async def is_admin(ctx: Context):
     member_role_ids = map(lambda x: x.id, member.roles)
     is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
     if is_admin:
+        session.close()
         return True
     else:
         await send_message(
@@ -368,6 +374,7 @@ async def is_admin(ctx: Context):
             embed_description="You must be an admin to use that command",
             colour=Colour.red(),
         )
+        session.close()
         return False
 
 
@@ -442,7 +449,7 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     else:
         minutes_ago = delta.seconds // 60
         output += f"\n@ {minutes_ago} minutes ago\n"
-
+    session.close()
     return output
 
 
@@ -453,13 +460,17 @@ def is_in_game(player_id: int) -> bool:
     return get_player_game(player_id, Session()) is not None
 
 
-def get_player_game(player_id: int, session=Session()) -> InProgressGame | None:
+def get_player_game(player_id: int, session=None) -> InProgressGame | None:
     """
     Find the game a player is currently in
 
     :session: Pass in a session if you want to do something with the game that
     gets returned
     """
+    should_close = False
+    if not session:
+        should_close = True
+        session = Session()
     ipg_player = (
         session.query(InProgressGamePlayer)
         .join(InProgressGame)
@@ -467,12 +478,16 @@ def get_player_game(player_id: int, session=Session()) -> InProgressGame | None:
         .first()
     )
     if ipg_player:
+        if should_close:
+            session.close()
         return (
             session.query(InProgressGame)
             .filter(InProgressGame.id == ipg_player.in_progress_game_id)
             .first()
         )
     else:
+        if should_close:
+            session.close()
         return None
 
 
@@ -1245,11 +1260,11 @@ async def finishgame(ctx: Context, outcome: str):
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )
     winning_team = -1
-    if outcome == "win":
+    if outcome.lower() == "win":
         winning_team = game_player.team
-    elif outcome == "loss":
+    elif outcome.lower() == "loss":
         winning_team = (game_player.team + 1) % 2
-    elif outcome == "tie":
+    elif outcome.lower() == "tie":
         winning_team = -1
     else:
         await send_message(
