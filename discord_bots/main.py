@@ -40,6 +40,11 @@ if player:
 session.close()
 
 
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+if CHANNEL_ID:
+    CHANNEL_ID = int(CHANNEL_ID)
+
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
@@ -72,39 +77,40 @@ async def on_command_error(ctx: Context, error: CommandError):
 @bot.event
 async def on_message(message: Message):
     session = Session()
-    player: Player | None = (
-        session.query(Player).filter(Player.id == message.author.id).first()
-    )
-    if player:
-        player.last_activity_at = datetime.now(timezone.utc)
-    else:
-        session.add(
-            Player(
-                id=message.author.id,
-                name=message.author.name,
-                last_activity_at=datetime.now(timezone.utc),
+    if CHANNEL_ID and message.channel.id == CHANNEL_ID:
+        player: Player | None = (
+            session.query(Player).filter(Player.id == message.author.id).first()
+        )
+        if player:
+            player.last_activity_at = datetime.now(timezone.utc)
+        else:
+            session.add(
+                Player(
+                    id=message.author.id,
+                    name=message.author.name,
+                    last_activity_at=datetime.now(timezone.utc),
+                )
             )
-        )
-    session.commit()
-    session.close()
-    await bot.process_commands(message)
+        session.commit()
+        session.close()
+        await bot.process_commands(message)
 
-    # Custom commands below
-    if not message.content.startswith(COMMAND_PREFIX):
-        return
+        # Custom commands below
+        if not message.content.startswith(COMMAND_PREFIX):
+            return
 
-    bot_commands = {command.name for command in bot.commands}
-    command_name = message.content.split(" ")[0][1:]
-    session = Session()
-    if command_name not in bot_commands:
-        custom_command: CustomCommand | None = (
-            session.query(CustomCommand)
-            .filter(CustomCommand.name == command_name)
-            .first()
-        )
-        if custom_command:
-            await message.channel.send(content=custom_command.output)
-    session.close()
+        bot_commands = {command.name for command in bot.commands}
+        command_name = message.content.split(" ")[0][1:]
+        session = Session()
+        if command_name not in bot_commands:
+            custom_command: CustomCommand | None = (
+                session.query(CustomCommand)
+                .filter(CustomCommand.name == command_name)
+                .first()
+            )
+            if custom_command:
+                await message.channel.send(content=custom_command.output)
+        session.close()
 
 
 @bot.event
