@@ -125,6 +125,8 @@ B = [
     "Bloodshot",
 ]
 E = [
+    "Engorged",
+    "Enormous",
     "Enigma",
     "Embezzler",
     "Elwoods",
@@ -244,6 +246,7 @@ E = [
     "Ejaculators",
 ]
 D = [
+    "Dixie",
     "Debonair",
     "Distressed",
     "Deflated",

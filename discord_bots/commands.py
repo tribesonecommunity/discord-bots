@@ -1151,9 +1151,9 @@ async def del_(ctx: Context, *args):
     message = ctx.message
     session = Session()
     queues_to_del: list[Queue] = []
-    all_queues: list(Queue) = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+    all_queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == message.author.id).order_by(Queue.created_at.asc()).all()  # type: ignore
     if len(args) == 0:
-        queues_to_del += session.query(Queue).all()
+        queues_to_del = all_queues
     else:
         for arg in args:
             # Try remove by integer index first, then try string name
@@ -1187,7 +1187,7 @@ async def del_(ctx: Context, *args):
 
     queue_statuses = []
     queue: Queue
-    for queue in all_queues:  # type: ignore
+    for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
