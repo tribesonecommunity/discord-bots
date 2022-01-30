@@ -18,7 +18,7 @@ from sqlalchemy import (
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
-from sqlalchemy.sql import func
+from sqlalchemy.sql import expression, func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
 DB_NAME = "tribes"
@@ -452,6 +452,12 @@ class PlayerDecay:
 @mapper_registry.mapped
 @dataclass
 class Queue:
+    """
+    :is_isolated: A queue that doesn't interact with the other queues. No
+    auto-adds, no waitlists, doesn't affect map rotation, and doesn't affect
+    trueskill. Useful for things like 1v1s, duels, etc.
+    """
+
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue"
 
@@ -464,6 +470,14 @@ class Queue:
     )
     is_locked: bool = field(
         default=False, metadata={"sa": Column(Boolean, nullable=False)}
+    )
+    is_isolated: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(
+                Boolean, index=True, nullable=False, server_default=expression.false()
+            )
+        },
     )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),

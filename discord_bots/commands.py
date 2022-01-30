@@ -72,7 +72,9 @@ def debug_print(*args):
         print(args)
 
 
-def get_even_teams(player_ids: list[int], is_rated: bool) -> tuple[list[Player], float]:
+def get_even_teams(
+    player_ids: list[int], team_size: int, is_rated: bool
+) -> tuple[list[Player], float]:
     """
     TODO: Tests
 
@@ -88,7 +90,7 @@ def get_even_teams(player_ids: list[int], is_rated: bool) -> tuple[list[Player],
     best_win_prob_so_far: float = 0.0
     best_teams_so_far: list[Player] = []
 
-    for team0 in combinations(players, 5):
+    for team0 in combinations(players, team_size):
         team1 = [p for p in players if p not in team0]
         if is_rated:
             team0_ratings = list(
@@ -179,7 +181,14 @@ async def add_player_to_queue(
     )
     if len(queue_players) == queue.size:  # Pop!
         player_ids: list[int] = list(map(lambda x: x.player_id, queue_players))
-        players, win_prob = get_even_teams(player_ids, is_rated=queue.is_rated)
+        if len(player_ids) == 1:
+            # Useful for debugging, no real world application
+            players = session.query(Player).filter(Player.id == player_ids[0]).all()
+            win_prob = 0
+        else:
+            players, win_prob = get_even_teams(
+                player_ids, len(player_ids) // 2, is_rated=queue.is_rated
+            )
         if queue.is_rated:
             average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
         else:
@@ -280,7 +289,8 @@ async def add_player_to_queue(
         session.query(MapVote).delete()
         session.query(SkipMapVote).delete()
         session.commit()
-        update_current_map_to_next_map_in_rotation()
+        if not queue.is_isolated:
+            update_current_map_to_next_map_in_rotation()
         return True, True
 
     queue_notifications: list[QueueNotification] = (
@@ -537,10 +547,11 @@ async def add(ctx: Context, *args):
     )
 
     queues_to_add: list[Queue] = []
-    all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
     if len(args) == 0:
-        queues_to_add += all_queues
+        # Don't auto-add to isolated queues
+        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.created_at.asc()).all()  # type: ignore
     else:
+        all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
         for arg in args:
             # Try adding by integer index first, then try string name
             try:
@@ -1339,12 +1350,14 @@ async def finishgame(ctx: Context, outcome: str):
     team1_rated_ratings_after: list[Rating]
     team0_unrated_ratings_after: list[Rating]
     team1_unrated_ratings_after: list[Rating]
-    if queue.is_rated:
+    if queue.is_rated and not queue.is_isolated:
         if len(players) > 1:
             team0_rated_ratings_after, team1_rated_ratings_after = rate(
                 [team0_rated_ratings_before, team1_rated_ratings_before], result
             )
         else:
+            # Mostly useful for creating solo queues for testing, no real world
+            # application
             team0_rated_ratings_after, team1_rated_ratings_after = (
                 team0_rated_ratings_before,
                 team1_rated_ratings_before,
@@ -1356,7 +1369,7 @@ async def finishgame(ctx: Context, outcome: str):
             team1_rated_ratings_before,
         )
 
-    if len(players) > 1:
+    if len(players) > 1 and not queue.is_isolated:
         team0_unrated_ratings_after, team1_unrated_ratings_after = rate(
             [team0_unrated_ratings_before, team1_unrated_ratings_before], result
         )
@@ -1452,6 +1465,28 @@ async def finishgame(ctx: Context, outcome: str):
         embed_description=embed_description,
         colour=Colour.green(),
     )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def isolatequeue(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.is_isolated = True
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} is now isolated (unrated, no map rotation, no auto-adds)",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
+    session.commit()
 
 
 @bot.command()
@@ -2400,7 +2435,9 @@ async def sub(ctx: Context, member: Member):
         .all()
     )
     player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
-    players, win_prob = get_even_teams(player_ids, is_rated=queue.is_rated)
+    players, win_prob = get_even_teams(
+        player_ids, len(player_ids) // 2, is_rated=queue.is_rated
+    )
     for game_player in game_players:
         session.delete(game_player)
     game.win_probability = win_prob
@@ -2489,6 +2526,28 @@ async def unban(ctx: Context, member: Member):
         embed_description=f"{member.name} unbanned",
         colour=Colour.green(),
     )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def unisolatequeue(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.is_isolated = False
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} is now unisolated",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
+    session.commit()
 
 
 @bot.command()
