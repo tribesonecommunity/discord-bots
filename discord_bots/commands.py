@@ -2,9 +2,10 @@ import os
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from glob import glob
+from itertools import combinations
 from math import floor
 from os import remove
-from random import randint, random, shuffle
+from random import randint, random, sample, shuffle
 from shutil import copyfile
 from statistics import mean
 from typing import Union
@@ -87,34 +88,32 @@ def get_even_teams(player_ids: list[int], is_rated: bool) -> tuple[list[Player],
     best_win_prob_so_far: float = 0.0
     best_teams_so_far: list[Player] = []
 
-    # Use a fixed number of shuffles instead of generating permutations. There
-    # are 3.6 million permutations!
-    for _ in range(500):
-        shuffle(players)
+    for team0 in combinations(players, 5):
+        team1 = [p for p in players if p not in team0]
         if is_rated:
             team0_ratings = list(
                 map(
                     lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
-                    players[: len(players) // 2],
+                    team0,
                 )
             )
             team1_ratings = list(
                 map(
                     lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
-                    players[len(players) // 2 :],
+                    team1,
                 )
             )
         else:
             team0_ratings = list(
                 map(
                     lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
-                    players[: len(players) // 2],
+                    team0,
                 )
             )
             team1_ratings = list(
                 map(
                     lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
-                    players[len(players) // 2 :],
+                    team1,
                 )
             )
 
