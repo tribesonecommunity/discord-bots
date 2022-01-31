@@ -124,7 +124,7 @@ def get_even_teams(
         best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
         if current_team_evenness < best_team_evenness_so_far:
             best_win_prob_so_far = win_prob
-            best_teams_so_far = players[:]
+            best_teams_so_far = list(team0) + list(team1)
 
     return best_teams_so_far, best_win_prob_so_far
 
@@ -2166,9 +2166,9 @@ async def setmapvotethreshold(ctx: Context, threshold: int):
     )
 
 
-# async def showgame(ctx: Context, game_id: str, debug_: str = ""):
+# async def showgame(ctx: Context, game_id: str):
 @bot.command()
-async def showgame(ctx: Context, game_id: str):
+async def showgame(ctx: Context, game_id: str, debug_: str = ""):
     message = ctx.message
     session = Session()
     finished_game = (
@@ -2185,14 +2185,14 @@ async def showgame(ctx: Context, game_id: str):
         return
 
     debug = False
-    # if debug_ == "debug":
-    #     is_admin: Player | None = (
-    #         session.query(Player)
-    #         .filter(Player.id == message.author.id, Player.is_admin == True)
-    #         .first()
-    #     )
-    #     if is_admin:
-    #         debug = True
+    if debug_ == "debug":
+        is_admin: Player | None = (
+            session.query(Player)
+            .filter(Player.id == message.author.id, Player.is_admin == True)
+            .first()
+        )
+        if is_admin:
+            debug = True
 
     game_str = finished_game_str(finished_game, debug)
     if debug:
