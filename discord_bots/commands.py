@@ -414,9 +414,9 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
     team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_fg_players}
     team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_fg_players}
-    team0_players = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
-    team1_players = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
-    if debug:
+    team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+    team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+    if debug and False:
         team0_names = ", ".join(
             sorted(
                 [
@@ -438,15 +438,36 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         team1_names = ", ".join(sorted([player.name for player in team1_players]))
     team0_win_prob = round(100 * finished_game.win_probability, 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
-    if finished_game.winning_team == 0:
-        output += f"\n**{finished_game.team0_name} ({team0_win_prob}%): {team0_names}**"
-        output += f"\n{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
-    elif finished_game.winning_team == 1:
-        output += f"\n{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
-        output += f"\n**{finished_game.team1_name} ({team1_win_prob}%): {team1_names}**"
+    if finished_game.is_rated:
+        team0_tsr = round(
+            mean([player.rated_trueskill_mu for player in team0_players]), 1
+        )
+        team1_tsr = round(
+            mean([player.rated_trueskill_mu for player in team1_players]), 1
+        )
     else:
-        output += f"\n{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
-        output += f"\n{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
+        team0_tsr = round(
+            mean([player.unrated_trueskill_mu for player in team0_players]), 1
+        )
+        team1_tsr = round(
+            mean([player.unrated_trueskill_mu for player in team1_players]), 1
+        )
+    if debug:
+        team0_str = f"{finished_game.team0_name} ({team0_win_prob}% - {team0_tsr}): {team0_names}"
+        team1_str = f"{finished_game.team1_name} ({team1_win_prob}% - {team1_tsr}): {team1_names}"
+    else:
+        team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
+        team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
+
+    if finished_game.winning_team == 0:
+        output += f"\n**{team0_str}**"
+        output += f"\n{team1_str}"
+    elif finished_game.winning_team == 1:
+        output += f"\n{team0_str}"
+        output += f"\n**{team1_str}**"
+    else:
+        output += f"\n{team0_str}"
+        output += f"\n{team1_str}**"
     delta: timedelta = datetime.now(timezone.utc) - finished_game.finished_at.replace(
         tzinfo=timezone.utc
     )
@@ -2166,9 +2187,8 @@ async def setmapvotethreshold(ctx: Context, threshold: int):
     )
 
 
-# async def showgame(ctx: Context, game_id: str):
 @bot.command()
-async def showgame(ctx: Context, game_id: str, debug_: str = ""):
+async def showgame(ctx: Context, game_id: str):
     message = ctx.message
     session = Session()
     finished_game = (
@@ -2184,32 +2204,39 @@ async def showgame(ctx: Context, game_id: str, debug_: str = ""):
         )
         return
 
-    debug = False
-    if debug_ == "debug":
-        is_admin: Player | None = (
-            session.query(Player)
-            .filter(Player.id == message.author.id, Player.is_admin == True)
-            .first()
-        )
-        if is_admin:
-            debug = True
+    game_str = finished_game_str(finished_game)
+    await send_message(
+        message.channel,
+        embed_description=game_str,
+        colour=Colour.blue(),
+    )
 
-    game_str = finished_game_str(finished_game, debug)
-    if debug:
-        await message.author.send(
-            embed=Embed(description=game_str, colour=Colour.blue())
-        )
+
+@bot.command()
+@commands.check(is_admin)
+async def showgamedebug(ctx: Context, game_id: str):
+    message = ctx.message
+    session = Session()
+    finished_game = (
+        session.query(FinishedGame)
+        .filter(FinishedGame.game_id.startswith(game_id))
+        .first()
+    )
+    if not finished_game:
         await send_message(
             message.channel,
-            embed_description="Game sent to PM",
-            colour=Colour.blue(),
+            embed_description=f"Could not find game: {game_id}",
+            colour=Colour.red(),
         )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=game_str,
-            colour=Colour.blue(),
-        )
+        return
+
+    game_str = finished_game_str(finished_game, debug=True)
+    await message.author.send(embed=Embed(description=game_str, colour=Colour.blue()))
+    await send_message(
+        message.channel,
+        embed_description="Game sent to PM",
+        colour=Colour.blue(),
+    )
 
 
 @bot.command()
