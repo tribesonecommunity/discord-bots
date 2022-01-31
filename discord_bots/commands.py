@@ -124,7 +124,7 @@ def get_even_teams(
         best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
         if current_team_evenness < best_team_evenness_so_far:
             best_win_prob_so_far = win_prob
-            best_teams_so_far = list(team0) + list(team1)
+            best_teams_so_far = list(team0[:]) + list(team1[:])
 
     return best_teams_so_far, best_win_prob_so_far
 
