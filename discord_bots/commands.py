@@ -983,6 +983,7 @@ async def changequeuemap(ctx: Context, map_short_name: str):
         if voteable_map:
             current_map.full_name = voteable_map.full_name
             current_map.short_name = voteable_map.short_name
+            current_map.updated_at = datetime.now(timezone.utc)
             session.commit()
         else:
             await send_message(
