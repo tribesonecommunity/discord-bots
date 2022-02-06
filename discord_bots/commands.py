@@ -65,7 +65,6 @@ MAP_ROTATION_MINUTES: int = 60
 MAP_VOTE_THRESHOLD: int = 7
 RE_ADD_DELAY: int = 30
 
-
 def debug_print(*args):
     global DEBUG
     if DEBUG:
@@ -467,8 +466,100 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         output += f"\n**{team1_str}**"
     else:
         output += f"\n{team0_str}"
-        output += f"\n{team1_str}**"
+        output += f"\n{team1_str}"
     delta: timedelta = datetime.now(timezone.utc) - finished_game.finished_at.replace(
+        tzinfo=timezone.utc
+    )
+    if delta.days > 0:
+        output += f"\n@ {delta.days} days ago\n"
+    elif delta.seconds > 3600:
+        hours_ago = delta.seconds // 3600
+        output += f"\n@ {hours_ago} hours ago\n"
+    else:
+        minutes_ago = delta.seconds // 60
+        output += f"\n@ {minutes_ago} minutes ago\n"
+    session.close()
+    return output
+
+
+def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) -> str:
+    """
+    Helper method to pretty print a finished game
+    """
+    output = ""
+    session = Session()
+    short_game_id = short_uuid(in_progress_game.id)
+    queue: Queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+    if debug:
+        output += f"**{queue.name}** ({short_game_id}) (TS: {round(in_progress_game.average_trueskill, 2)})"
+    else:
+        output += f"**{queue.name}** ({short_game_id})"
+    team0_igp_players: list[InProgressGamePlayer] = session.query(
+        InProgressGamePlayer
+    ).filter(
+        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+        InProgressGamePlayer.team == 0,
+    )
+    team1_igp_players: list[InProgressGamePlayer] = session.query(
+        InProgressGamePlayer
+    ).filter(
+        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+        InProgressGamePlayer.team == 1,
+    )
+    team0_player_ids = set(map(lambda x: x.player_id, team0_igp_players))
+    team1_player_ids = set(map(lambda x: x.player_id, team1_igp_players))
+    team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_igp_players}
+    team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_igp_players}
+    team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+    team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+    if debug and False:
+        team0_names = ", ".join(
+            sorted(
+                [
+                    f"{player.name} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                    for player in team0_players
+                ]
+            )
+        )
+        team1_names = ", ".join(
+            sorted(
+                [
+                    f"{player.name} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                    for player in team1_players
+                ]
+            )
+        )
+    else:
+        team0_names = ", ".join(sorted([player.name for player in team0_players]))
+        team1_names = ", ".join(sorted([player.name for player in team1_players]))
+    # TODO: Include win prob
+    # team0_win_prob = round(100 * finished_game.win_probability, 1)
+    # team1_win_prob = round(100 - team0_win_prob, 1)
+    if queue.is_rated:
+        team0_tsr = round(
+            mean([player.rated_trueskill_mu for player in team0_players]), 1
+        )
+        team1_tsr = round(
+            mean([player.rated_trueskill_mu for player in team1_players]), 1
+        )
+    else:
+        team0_tsr = round(
+            mean([player.unrated_trueskill_mu for player in team0_players]), 1
+        )
+        team1_tsr = round(
+            mean([player.unrated_trueskill_mu for player in team1_players]), 1
+        )
+    # TODO: Include win prob
+    if debug:
+        team0_str = f"{in_progress_game.team0_name} ({team0_tsr}): {team0_names}"
+        team1_str = f"{in_progress_game.team1_name} ({team1_tsr}): {team1_names}"
+    else:
+        team0_str = f"{in_progress_game.team0_name} ({team0_names}"
+        team1_str = f"{in_progress_game.team1_name} ({team1_names}"
+
+    output += f"\n{team0_str}"
+    output += f"\n{team1_str}**"
+    delta: timedelta = datetime.now(timezone.utc) - in_progress_game.created_at.replace(
         tzinfo=timezone.utc
     )
     if delta.days > 0:
@@ -984,6 +1075,7 @@ async def changequeuemap(ctx: Context, map_short_name: str):
         if voteable_map:
             current_map.full_name = voteable_map.full_name
             current_map.short_name = voteable_map.short_name
+            current_map.updated_at = datetime.now(timezone.utc)
             session.commit()
         else:
             await send_message(
@@ -1000,33 +1092,8 @@ async def changequeuemap(ctx: Context, map_short_name: str):
     )
 
 
-# @bot.command(name="commands")
-# async def commands_(ctx: Context):
-#     output = "Commands:"
-#     commands = sorted([command.name for command in bot.commands])
-#     for command in commands:
-#         output += f"\n- {COMMAND_PREFIX}{command}"
-
-#     message = ctx.message
-#     guild = message.guild
-#     if not guild:
-#         return
-#     member: Member | None = guild.get_member(message.author.id)
-#     if not member:
-#         return
-#     try:
-#         await member.send(embed=Embed(description=output, colour=Colour.blue()))
-#         await send_message(
-#             message.channel,
-#             embed_description="Commands sent via private message",
-#             colour=Colour.blue(),
-#         )
-#     except Exception:
-#         pass
-
-
 @bot.command()
-async def createcommand(ctx: Context, name, *, output):
+async def createcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
     session = Session()
     exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
@@ -1221,6 +1288,72 @@ async def del_(ctx: Context, *args):
         colour=Colour.green(),
     )
     session.commit()
+
+
+@bot.command(usage="<player>")
+@commands.check(is_admin)
+async def delplayer(ctx: Context, member: Member, *args):
+    """
+    Admin command to delete player from all queues
+    """
+    message = ctx.message
+    session = Session()
+    queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(Queue.created_at.asc()).all()  # type: ignore
+    for queue in queues:
+        session.query(QueuePlayer).filter(
+            QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id).delete()
+        # TODO: Test this part
+        queue_waitlist: QueueWaitlist | None = (
+            session.query(QueueWaitlist)
+            .filter(
+                QueueWaitlist.queue_id == queue.id,
+            )
+            .first()
+        )
+        if queue_waitlist:
+            session.query(QueueWaitlistPlayer).filter(
+                QueueWaitlistPlayer.player_id == member.id,
+                QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
+            ).delete()
+
+    queue_statuses = []
+    queue: Queue
+    for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
+        queue_players = (
+            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
+        )
+        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
+
+    await send_message(
+        message.channel,
+        content=f"{member.name} removed from: {', '.join([queue.name for queue in queues])}",
+        embed_description=" ".join(queue_statuses),
+        colour=Colour.green(),
+    )
+    session.commit()
+
+
+@bot.command(usage="<command_name> <output>")
+async def editcommand(ctx: Context, name: str, *, output: str):
+    message = ctx.message
+    session = Session()
+    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
+    if exists is None:
+        await send_message(
+            message.channel,
+            embed_description="Could not find a command with that name",
+            colour=Colour.red(),
+        )
+        return
+
+    exists.output = output
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Command `{name}` updated",
+        colour=Colour.green(),
+    )
 
 
 @bot.command(usage="<game_id> <tie|be|ds>")
@@ -2222,21 +2355,36 @@ async def showgamedebug(ctx: Context, game_id: str):
         .filter(FinishedGame.game_id.startswith(game_id))
         .first()
     )
-    if not finished_game:
+    if finished_game:
+        game_str = finished_game_str(finished_game, debug=True)
+        await message.author.send(embed=Embed(description=game_str, colour=Colour.blue()))
         await send_message(
             message.channel,
-            embed_description=f"Could not find game: {game_id}",
-            colour=Colour.red(),
+            embed_description="Game sent to PM",
+            colour=Colour.blue(),
         )
-        return
+    else:
+        in_progress_game: InProgressGame | None = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id.startswith(game_id))
+            .first()
+        )
+        if not in_progress_game:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find game: {game_id}",
+                colour=Colour.red(),
+            )
+            return
+        else:
+            game_str = in_progress_game_str(in_progress_game, debug=True)
+            await message.author.send(embed=Embed(description=game_str, colour=Colour.blue()))
+            await send_message(
+                message.channel,
+                embed_description="Game sent to PM",
+                colour=Colour.blue(),
+            )
 
-    game_str = finished_game_str(finished_game, debug=True)
-    await message.author.send(embed=Embed(description=game_str, colour=Colour.blue()))
-    await send_message(
-        message.channel,
-        embed_description="Game sent to PM",
-        colour=Colour.blue(),
-    )
 
 
 @bot.command()
@@ -2724,6 +2872,7 @@ async def votemap(ctx: Context, map_short_name: str):
         if current_map:
             current_map.full_name = voteable_map.full_name
             current_map.short_name = voteable_map.short_name
+            current_map.updated_at = datetime.now(timezone.utc)
         else:
             session.add(
                 CurrentMap(
@@ -2755,11 +2904,6 @@ async def votemap(ctx: Context, map_short_name: str):
                 )
             )
         session.commit()
-
-        # TODO: Show updated status
-        # TODO: Randomly add votes into queue
-        # TODO: What to do about players currently in queue?
-        # TODO: Buffer for 20 seconds?
     else:
         map_votes: list[MapVote] = session.query(MapVote).all()
         voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
