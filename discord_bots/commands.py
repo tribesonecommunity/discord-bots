@@ -65,7 +65,6 @@ MAP_ROTATION_MINUTES: int = 60
 MAP_VOTE_THRESHOLD: int = 7
 RE_ADD_DELAY: int = 30
 
-
 def debug_print(*args):
     global DEBUG
     if DEBUG:
@@ -1026,7 +1025,7 @@ async def changequeuemap(ctx: Context, map_short_name: str):
 
 
 @bot.command()
-async def createcommand(ctx: Context, name, *, output):
+async def createcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
     session = Session()
     exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
@@ -1221,6 +1220,30 @@ async def del_(ctx: Context, *args):
         colour=Colour.green(),
     )
     session.commit()
+
+
+@bot.command(usage="<command_name> <output>")
+async def editcommand(ctx: Context, name: str, *, output: str):
+    message = ctx.message
+    session = Session()
+    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
+    if exists is None:
+        await send_message(
+            message.channel,
+            embed_description="Could not find a command with that name",
+            colour=Colour.red(),
+        )
+        return
+
+    exists.output = output
+    # session.add(CustomCommand(name, output))
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Command `{name}` updated",
+        colour=Colour.green(),
+    )
 
 
 @bot.command(usage="<game_id> <tie|be|ds>")
