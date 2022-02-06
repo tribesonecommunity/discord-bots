@@ -2722,6 +2722,7 @@ async def votemap(ctx: Context, map_short_name: str):
         if current_map:
             current_map.full_name = voteable_map.full_name
             current_map.short_name = voteable_map.short_name
+            current_map.updated_at = datetime.now(timezone.utc)
         else:
             session.add(
                 CurrentMap(
@@ -2753,11 +2754,6 @@ async def votemap(ctx: Context, map_short_name: str):
                 )
             )
         session.commit()
-
-        # TODO: Show updated status
-        # TODO: Randomly add votes into queue
-        # TODO: What to do about players currently in queue?
-        # TODO: Buffer for 20 seconds?
     else:
         map_votes: list[MapVote] = session.query(MapVote).all()
         voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
