@@ -1290,6 +1290,49 @@ async def del_(ctx: Context, *args):
     session.commit()
 
 
+@bot.command(usage="<player>")
+@commands.check(is_admin)
+async def delplayer(ctx: Context, member: Member, *args):
+    """
+    Admin command to delete player from all queues
+    """
+    message = ctx.message
+    session = Session()
+    queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(Queue.created_at.asc()).all()  # type: ignore
+    for queue in queues:
+        session.query(QueuePlayer).filter(
+            QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id).delete()
+        # TODO: Test this part
+        queue_waitlist: QueueWaitlist | None = (
+            session.query(QueueWaitlist)
+            .filter(
+                QueueWaitlist.queue_id == queue.id,
+            )
+            .first()
+        )
+        if queue_waitlist:
+            session.query(QueueWaitlistPlayer).filter(
+                QueueWaitlistPlayer.player_id == member.id,
+                QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
+            ).delete()
+
+    queue_statuses = []
+    queue: Queue
+    for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
+        queue_players = (
+            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
+        )
+        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
+
+    await send_message(
+        message.channel,
+        content=f"{member.name} removed from: {', '.join([queue.name for queue in queues])}",
+        embed_description=" ".join(queue_statuses),
+        colour=Colour.green(),
+    )
+    session.commit()
+
+
 @bot.command(usage="<command_name> <output>")
 async def editcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
