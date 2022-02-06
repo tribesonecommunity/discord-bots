@@ -999,31 +999,6 @@ async def changequeuemap(ctx: Context, map_short_name: str):
     )
 
 
-# @bot.command(name="commands")
-# async def commands_(ctx: Context):
-#     output = "Commands:"
-#     commands = sorted([command.name for command in bot.commands])
-#     for command in commands:
-#         output += f"\n- {COMMAND_PREFIX}{command}"
-
-#     message = ctx.message
-#     guild = message.guild
-#     if not guild:
-#         return
-#     member: Member | None = guild.get_member(message.author.id)
-#     if not member:
-#         return
-#     try:
-#         await member.send(embed=Embed(description=output, colour=Colour.blue()))
-#         await send_message(
-#             message.channel,
-#             embed_description="Commands sent via private message",
-#             colour=Colour.blue(),
-#         )
-#     except Exception:
-#         pass
-
-
 @bot.command()
 async def createcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
@@ -1236,7 +1211,6 @@ async def editcommand(ctx: Context, name: str, *, output: str):
         return
 
     exists.output = output
-    # session.add(CustomCommand(name, output))
     session.commit()
 
     await send_message(
