@@ -65,6 +65,7 @@ MAP_ROTATION_MINUTES: int = 60
 MAP_VOTE_THRESHOLD: int = 7
 RE_ADD_DELAY: int = 30
 
+
 def debug_print(*args):
     global DEBUG
     if DEBUG:
@@ -489,7 +490,9 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
     output = ""
     session = Session()
     short_game_id = short_uuid(in_progress_game.id)
-    queue: Queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+    queue: Queue = (
+        session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+    )
     if debug:
         output += f"**{queue.name}** ({short_game_id}) (TS: {round(in_progress_game.average_trueskill, 2)})"
     else:
@@ -1301,7 +1304,8 @@ async def delplayer(ctx: Context, member: Member, *args):
     queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(Queue.created_at.asc()).all()  # type: ignore
     for queue in queues:
         session.query(QueuePlayer).filter(
-            QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id).delete()
+            QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id
+        ).delete()
         # TODO: Test this part
         queue_waitlist: QueueWaitlist | None = (
             session.query(QueueWaitlist)
@@ -2251,6 +2255,23 @@ async def setadddelay(ctx: Context, delay_seconds: int):
 
 @bot.command()
 @commands.check(is_admin)
+async def setbias(ctx: Context, member: Member, amount: float):
+    if amount < -100 or amount > 100:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Amount must be between -100 and 100",
+            colour=Colour.red(),
+        )
+        return
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Team bias for {member.name} set to `{amount}%`",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
 async def setcommandprefix(ctx: Context, prefix: str):
     message = ctx.message
     global COMMAND_PREFIX
@@ -2357,7 +2378,9 @@ async def showgamedebug(ctx: Context, game_id: str):
     )
     if finished_game:
         game_str = finished_game_str(finished_game, debug=True)
-        await message.author.send(embed=Embed(description=game_str, colour=Colour.blue()))
+        await message.author.send(
+            embed=Embed(description=game_str, colour=Colour.blue())
+        )
         await send_message(
             message.channel,
             embed_description="Game sent to PM",
@@ -2378,13 +2401,14 @@ async def showgamedebug(ctx: Context, game_id: str):
             return
         else:
             game_str = in_progress_game_str(in_progress_game, debug=True)
-            await message.author.send(embed=Embed(description=game_str, colour=Colour.blue()))
+            await message.author.send(
+                embed=Embed(description=game_str, colour=Colour.blue())
+            )
             await send_message(
                 message.channel,
                 embed_description="Game sent to PM",
                 colour=Colour.blue(),
             )
-
 
 
 @bot.command()
