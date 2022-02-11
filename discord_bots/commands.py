@@ -786,7 +786,13 @@ async def addadmin(ctx: Context, member: Member):
     session = Session()
     player: Player | None = session.query(Player).filter(Player.id == member.id).first()
     if not player:
-        session.add(Player(id=member.id, name=member.name, is_admin=True))
+        session.add(
+            Player(
+                id=member.id,
+                name=member.name,
+                is_admin=True,
+            )
+        )
         await send_message(
             message.channel,
             embed_description=f"{member.name} added to admins",
@@ -923,7 +929,13 @@ async def ban(ctx: Context, member: Member):
     session = Session()
     players = session.query(Player).filter(Player.id == member.id).all()
     if len(players) == 0:
-        session.add(Player(id=member.id, name=member.name, is_banned=True))
+        session.add(
+            Player(
+                id=member.id,
+                name=member.name,
+                is_banned=True,
+            )
+        )
         await send_message(
             message.channel,
             embed_description=f"{member.name} banned",
@@ -2540,6 +2552,124 @@ async def status(ctx: Context, *args):
 
     await send_message(
         ctx.message.channel, embed_description=output, colour=Colour.blue()
+    )
+
+
+@bot.command()
+async def stats(ctx: Context):
+    player_id = ctx.message.author.id
+    session = Session()
+    fgps = (
+        session.query(FinishedGamePlayer)
+        .filter(FinishedGamePlayer.player_id == player_id)
+        .all()
+    )
+    finished_game_ids = [fgp.finished_game_id for fgp in fgps]
+    fgs = (
+        session.query(FinishedGame).filter(FinishedGame.id.in_(finished_game_ids)).all()
+    )
+    fgps_by_finished_game_id: dict[str, FinishedGamePlayer] = {
+        fgp.finished_game_id: fgp for fgp in fgps
+    }
+
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    players: list[Player] = session.query(Player).all()
+    trueskills = list(
+        reversed(
+            sorted(
+                [
+                    round(p.rated_trueskill_mu - 3 * p.rated_trueskill_sigma, 2)
+                    for p in players
+                ]
+            )
+        )
+    )
+    trueskill_index = trueskills.index(
+        round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)
+    )
+    trueskill_ratio = trueskill_index / len(trueskills)
+    if trueskill_ratio <= 0.05:
+        trueskill_pct = "Top 5%"
+    elif trueskill_ratio <= 0.10:
+        trueskill_pct = "Top 10%"
+    elif trueskill_ratio <= 0.25:
+        trueskill_pct = "Top 25%"
+    elif trueskill_ratio <= 0.50:
+        trueskill_pct = "Top 50%"
+    elif trueskill_ratio <= 0.75:
+        trueskill_pct = "Top 75%"
+    else:
+        trueskill_pct = "Top 100%"
+
+    def is_win(finished_game: FinishedGame) -> bool:
+        if (
+            fgps_by_finished_game_id[finished_game.id].team
+            == finished_game.winning_team
+        ):
+            return True
+        return False
+
+    def is_loss(finished_game: FinishedGame) -> bool:
+        if (
+            fgps_by_finished_game_id[finished_game.id].team
+            != finished_game.winning_team
+            and finished_game.winning_team != -1
+        ):
+            return True
+        return False
+
+    def is_tie(finished_game: FinishedGame) -> bool:
+        return finished_game.winning_team == -1
+
+    wins = list(filter(is_win, fgs))
+    losses = list(filter(is_loss, fgs))
+    ties = list(filter(is_tie, fgs))
+    total_games = len(fgs)
+
+    def last_month(finished_game: FinishedGame) -> bool:
+        return finished_game.finished_at > datetime.now() - timedelta(days=30)
+
+    def last_three_months(finished_game: FinishedGame) -> bool:
+        return finished_game.finished_at > datetime.now() - timedelta(days=60)
+
+    def last_six_months(finished_game: FinishedGame) -> bool:
+        return finished_game.finished_at > datetime.now() - timedelta(days=180)
+
+    def last_year(finished_game: FinishedGame) -> bool:
+        return finished_game.finished_at > datetime.now() - timedelta(days=365)
+
+    games_last_month = list(filter(last_month, fgs))
+    games_last_three_months = list(filter(last_three_months, fgs))
+    games_last_six_months = list(filter(last_six_months, fgs))
+    games_last_year = list(filter(last_year, fgs))
+    wins_last_month = len(list(filter(is_win, games_last_month)))
+    losses_last_month = len(list(filter(is_loss, games_last_month)))
+    ties_last_month = len(list(filter(is_tie, games_last_month)))
+    wins_last_three_months = len(list(filter(is_win, games_last_three_months)))
+    losses_last_three_months = len(list(filter(is_loss, games_last_three_months)))
+    ties_last_three_months = len(list(filter(is_tie, games_last_three_months)))
+    wins_last_six_months = len(list(filter(is_win, games_last_six_months)))
+    losses_last_six_months = len(list(filter(is_loss, games_last_six_months)))
+    ties_last_six_months = len(list(filter(is_tie, games_last_six_months)))
+    wins_last_year = len(list(filter(is_win, games_last_year)))
+    losses_last_year = len(list(filter(is_loss, games_last_year)))
+    ties_last_year = len(list(filter(is_tie, games_last_year)))
+
+    output = ""
+    output += f"**Trueskill:** {trueskill_pct}"
+    output += f"\n**Wins / Losses/ Ties:**"
+    output += (
+        f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} ({total_games})"
+    )
+    output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} ({len(games_last_month)})"
+    output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} ({len(games_last_three_months)})"
+    output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} ({len(games_last_six_months)})"
+    output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} ({len(games_last_year)})"
+
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description=output,
+        colour=Colour.blue(),
     )
 
 
