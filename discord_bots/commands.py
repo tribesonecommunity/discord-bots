@@ -2657,7 +2657,7 @@ async def stats(ctx: Context):
 
     output = ""
     output += f"**Trueskill:** {trueskill_pct}"
-    output += f"\n**Wins / Losses/ Ties:**"
+    output += f"\n\n**Wins / Losses / Ties:**"
     output += (
         f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} ({total_games})"
     )
