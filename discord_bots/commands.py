@@ -7,7 +7,6 @@ from math import floor
 from os import remove
 from random import randint, random, sample, shuffle
 from shutil import copyfile
-from statistics import mean
 from typing import Union
 
 import numpy
@@ -50,6 +49,7 @@ from .models import (
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .utils import (
+    mean,
     pretty_format_team,
     short_uuid,
     update_current_map_to_next_map_in_rotation,
@@ -393,22 +393,51 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     output = ""
     session = Session()
     short_game_id = short_uuid(finished_game.game_id)
-    if debug:
-        output += f"**{finished_game.queue_name}** ({short_game_id}) (TS: {round(finished_game.average_trueskill, 2)})"
-    else:
-        output += f"**{finished_game.queue_name}** ({short_game_id})"
     team0_fg_players: list[FinishedGamePlayer] = session.query(
         FinishedGamePlayer
     ).filter(
         FinishedGamePlayer.finished_game_id == finished_game.id,
         FinishedGamePlayer.team == 0,
-    )
+    ).all()
     team1_fg_players: list[FinishedGamePlayer] = session.query(
         FinishedGamePlayer
     ).filter(
         FinishedGamePlayer.finished_game_id == finished_game.id,
         FinishedGamePlayer.team == 1,
-    )
+    ).all()
+
+    if finished_game.is_rated:
+        average_mu = mean(
+            [
+                fgp.rated_trueskill_mu_before
+                for fgp in team0_fg_players + team1_fg_players
+            ]
+        )
+        average_sigma = mean(
+            [
+                fgp.rated_trueskill_sigma_before
+                for fgp in team0_fg_players + team1_fg_players
+            ]
+        )
+    else:
+        average_mu = mean(
+            [
+                fgp.unrated_trueskill_mu_before
+                for fgp in team0_fg_players + team1_fg_players
+            ]
+        )
+        average_sigma = mean(
+            [
+                fgp.unrated_trueskill_sigma_before
+                for fgp in team0_fg_players + team1_fg_players
+            ]
+        )
+
+    if debug:
+        output += f"**{finished_game.queue_name}** ({short_game_id}) (mu: {round(average_mu, 2)}, sigma: {round(average_sigma, 2)})"
+    else:
+        output += f"**{finished_game.queue_name}** ({short_game_id})"
+
     team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
     team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
     team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_fg_players}
@@ -438,22 +467,34 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     team0_win_prob = round(100 * finished_game.win_probability, 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
     if finished_game.is_rated:
-        team0_tsr = round(
-            mean([player.rated_trueskill_mu for player in team0_players]), 1
+        team0_mu = round(
+            mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
         )
-        team1_tsr = round(
-            mean([player.rated_trueskill_mu for player in team1_players]), 1
+        team1_mu = round(
+            mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
+        )
+        team0_sigma = round(
+            mean([player.rated_trueskill_sigma_before for player in team0_fg_players]), 2
+        )
+        team1_sigma = round(
+            mean([player.rated_trueskill_sigma_before for player in team1_fg_players]), 2
         )
     else:
-        team0_tsr = round(
-            mean([player.unrated_trueskill_mu for player in team0_players]), 1
+        team0_mu = round(
+            mean([player.unrated_trueskill_mu_before for player in team0_fg_players]), 2
         )
-        team1_tsr = round(
-            mean([player.unrated_trueskill_mu for player in team1_players]), 1
+        team1_mu = round(
+            mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
+        )
+        team0_sigma = round(
+            mean([player.unrated_trueskill_sigma_before for player in team0_fg_players]), 2
+        )
+        team1_sigma = round(
+            mean([player.unrated_trueskill_sigma_before for player in team1_fg_players]), 2
         )
     if debug:
-        team0_str = f"{finished_game.team0_name} ({team0_win_prob}% - {team0_tsr}): {team0_names}"
-        team1_str = f"{finished_game.team1_name} ({team1_win_prob}% - {team1_tsr}): {team1_names}"
+        team0_str = f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
+        team1_str = f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
     else:
         team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
         team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
