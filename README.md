@@ -2,6 +2,7 @@
 
 ## Installation
 
+### MacOS
 1. Install Python 3.10.0: https://docs.python-guide.org/starting/install3/osx/
 
    - (optional) Install Python with pyenv instead:
@@ -19,6 +20,16 @@
 1. (optional) Import match history:
    - `curl "http://50.116.36.119/api/server/127155819698454529/games/1546300801000" > out.json`
    - `python scripts/import_match_history.py`
+
+### Windows
+1. Install Python
+1. Set up a virtualenv
+  - `python3 -m venv .venv`
+  - `source .venv/bin/activate`. If you see this error:
+    ```
+    File <>\discord-bots\.venv\Scripts\Activate.ps1 cannot be loaded because running scripts is disabled on this system. For more information, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170.
+    ```
+    You may need to adjust your windows execution policy: https://stackoverflow.com/a/18713789
 
 ## Running the bot
 
@@ -57,7 +68,7 @@ This enforces type checks for the types declared
 
 Use python black: https://github.com/psf/black
 
-- Go to vscode preferences (cmd + `,` on mac)
+- Go to vscode preferences (cmd + `,` on mac, ctrl + `,` on windows)
 - Type "python formatting" in the search bar
 - For the option `Python > Formatting: Provider` select `black`
 
