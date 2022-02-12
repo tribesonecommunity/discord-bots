@@ -1,11 +1,19 @@
 # Misc helper functions
 import itertools
 import math
+import statistics
 from datetime import datetime, timezone, tzinfo
 
 from trueskill import Rating, global_env
 
 from discord_bots.models import CurrentMap, Player, RotationMap, Session
+
+# Convenience mean function that can handle lists of 0 or 1 length
+def mean(values: list[any]) -> float:
+    if len(values) == 0:
+        return -1
+    else:
+        return statistics.mean(values)
 
 
 def pretty_format_team(
