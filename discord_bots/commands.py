@@ -2387,7 +2387,6 @@ async def showgame(ctx: Context, game_id: str):
 
 
 @bot.command()
-@commands.check(is_admin)
 async def showgamedebug(ctx: Context, game_id: str):
     message = ctx.message
     session = Session()
@@ -2398,10 +2397,9 @@ async def showgamedebug(ctx: Context, game_id: str):
     )
     if finished_game:
         game_str = finished_game_str(finished_game, debug=True)
-        await message.author.send(embed=Embed(description=game_str, colour=Colour.blue()))
         await send_message(
             message.channel,
-            embed_description="Game sent to PM",
+            embed_description=game_str,
             colour=Colour.blue(),
         )
     else:
@@ -2419,10 +2417,9 @@ async def showgamedebug(ctx: Context, game_id: str):
             return
         else:
             game_str = in_progress_game_str(in_progress_game, debug=True)
-            await message.author.send(embed=Embed(description=game_str, colour=Colour.blue()))
             await send_message(
                 message.channel,
-                embed_description="Game sent to PM",
+                embed_description=game_str,
                 colour=Colour.blue(),
             )
 
