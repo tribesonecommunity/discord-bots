@@ -9,7 +9,6 @@ from os import remove
 from random import randint, random, shuffle
 from shutil import copyfile
 from typing import Union
-from unittest import mock
 
 import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
@@ -17,6 +16,7 @@ from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
+from discord.utils import escape_markdown
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
@@ -562,8 +562,8 @@ def mock_teams_str(
             for p in team1_players
         ]
 
-    team0_names = ", ".join(sorted([player.name for player in team0_players]))
-    team1_names = ", ".join(sorted([player.name for player in team1_players]))
+    team0_names = ", ".join(sorted([escape_markdown(player.name) for player in team0_players]))
+    team1_names = ", ".join(sorted([escape_markdown(player.name) for player in team1_players]))
     team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
     if is_rated:
@@ -596,8 +596,8 @@ def mock_teams_str(
             mean([player.unrated_trueskill_sigma for player in team1_players]),
             2,
         )
-    output += f"**\nBE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
-    output += f"**\nDS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
+    output += f"\n**BE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
+    output += f"\n**DS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
     return output
 
 
@@ -638,8 +638,8 @@ def mock_finished_game_teams_str(
     team1_players: list[Player] = session.query(Player).filter(
         Player.id.in_(team1_player_ids)
     )
-    team0_names = ", ".join(sorted([player.name for player in team0_players]))
-    team1_names = ", ".join(sorted([player.name for player in team1_players]))
+    team0_names = ", ".join(sorted([escape_markdown(player.name) for player in team0_players]))
+    team1_names = ", ".join(sorted([escape_markdown(player.name) for player in team1_players]))
     team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
     if is_rated:
@@ -676,8 +676,8 @@ def mock_finished_game_teams_str(
             ),
             2,
         )
-    output += f"**\nBE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
-    output += f"**\nDS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
+    output += f"\n**BE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
+    output += f"\n**DS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
     return output
 
 
@@ -747,7 +747,7 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         team0_names = ", ".join(
             sorted(
                 [
-                    f"{player.name} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                    f"{escape_markdown(player.name)} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
                     for player in team0_players
                 ]
             )
@@ -755,14 +755,14 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         team1_names = ", ".join(
             sorted(
                 [
-                    f"{player.name} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                    f"{escape_markdown(player.name)} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
                     for player in team1_players
                 ]
             )
         )
     else:
-        team0_names = ", ".join(sorted([player.name for player in team0_players]))
-        team1_names = ", ".join(sorted([player.name for player in team1_players]))
+        team0_names = ", ".join(sorted([escape_markdown(player.name) for player in team0_players]))
+        team1_names = ", ".join(sorted([escape_markdown(player.name) for player in team1_players]))
     team0_win_prob = round(100 * finished_game.win_probability, 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
     if finished_game.is_rated:
@@ -866,7 +866,7 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
         team0_names = ", ".join(
             sorted(
                 [
-                    f"{player.name} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                    f"{escape_markdown(player.name)} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
                     for player in team0_players
                 ]
             )
@@ -874,14 +874,14 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
         team1_names = ", ".join(
             sorted(
                 [
-                    f"{player.name} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                    f"{escape_markdown(player.name)} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
                     for player in team1_players
                 ]
             )
         )
     else:
-        team0_names = ", ".join(sorted([player.name for player in team0_players]))
-        team1_names = ", ".join(sorted([player.name for player in team1_players]))
+        team0_names = ", ".join(sorted([escape_markdown(player.name) for player in team0_players]))
+        team1_names = ", ".join(sorted([escape_markdown(player.name) for player in team1_players]))
     # TODO: Include win prob
     # team0_win_prob = round(100 * finished_game.win_probability, 1)
     # team1_win_prob = round(100 - team0_win_prob, 1)
@@ -908,7 +908,7 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
         team1_str = f"{in_progress_game.team1_name} ({team1_names}"
 
     output += f"\n{team0_str}"
-    output += f"\n{team1_str}**"
+    output += f"\n{team1_str}"
     delta: timedelta = datetime.now(timezone.utc) - in_progress_game.created_at.replace(
         tzinfo=timezone.utc
     )
@@ -1107,7 +1107,7 @@ async def add(ctx: Context, *args):
             message.channel,
             # TODO: Populate this message with the queues the player was
             # eligible for
-            content=f"{message.author.name} added to:",
+            content=f"{escape_markdown(message.author.name)} added to:",
             embed_description=waitlist_message,
             colour=Colour.green(),
         )
@@ -1136,7 +1136,7 @@ async def addadmin(ctx: Context, member: Member):
         session.add(Player(id=member.id, name=member.name, is_admin=True))
         await send_message(
             message.channel,
-            embed_description=f"{member.name} added to admins",
+            embed_description=f"{escape_markdown(member.name)} added to admins",
             colour=Colour.green(),
         )
         session.commit()
@@ -1144,7 +1144,7 @@ async def addadmin(ctx: Context, member: Member):
         if player.is_admin:
             await send_message(
                 message.channel,
-                embed_description=f"{player.name} is already an admin",
+                embed_description=f"{escape_markdown(player.name)} is already an admin",
                 colour=Colour.red(),
             )
         else:
@@ -1152,7 +1152,7 @@ async def addadmin(ctx: Context, member: Member):
             session.commit()
             await send_message(
                 message.channel,
-                embed_description=f"{player.name} added to admins",
+                embed_description=f"{escape_markdown(player.name)} added to admins",
                 colour=Colour.green(),
             )
 
@@ -1273,7 +1273,7 @@ async def ban(ctx: Context, member: Member):
         session.add(Player(id=member.id, name=member.name, is_banned=True))
         await send_message(
             message.channel,
-            embed_description=f"{member.name} banned",
+            embed_description=f"{escape_markdown(member.name)} banned",
             colour=Colour.green(),
         )
         session.commit()
@@ -1282,7 +1282,7 @@ async def ban(ctx: Context, member: Member):
         if player.is_banned:
             await send_message(
                 message.channel,
-                embed_description=f"{player.name} is already banned",
+                embed_description=f"{escape_markdown(player.name)} is already banned",
                 colour=Colour.red(),
             )
         else:
@@ -1290,7 +1290,7 @@ async def ban(ctx: Context, member: Member):
             session.commit()
             await send_message(
                 message.channel,
-                embed_description=f"{player.name} banned",
+                embed_description=f"{escape_markdown(player.name)} banned",
                 colour=Colour.green(),
             )
 
@@ -1563,7 +1563,7 @@ async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
     player.unrated_trueskill_mu = unrated_trueskill_mu_after
     await send_message(
         message.channel,
-        embed_description=f"{member.name} decayed by {decay_amount}%",
+        embed_description=f"{escape_markdown(member.name)} decayed by {decay_amount}%",
         colour=Colour.green(),
     )
     session.add(
@@ -1633,7 +1633,7 @@ async def del_(ctx: Context, *args):
 
     await send_message(
         message.channel,
-        content=f"{message.author.name} removed from: {', '.join([queue.name for queue in queues_to_del])}",
+        content=f"{escape_markdown(message.author.name)} removed from: {', '.join([queue.name for queue in queues_to_del])}",
         embed_description=" ".join(queue_statuses),
         colour=Colour.green(),
     )
@@ -1677,7 +1677,7 @@ async def delplayer(ctx: Context, member: Member, *args):
 
     await send_message(
         message.channel,
-        content=f"{member.name} removed from: {', '.join([queue.name for queue in queues])}",
+        content=f"{escape_markdown(member.name)} removed from: {', '.join([queue.name for queue in queues])}",
         embed_description=" ".join(queue_statuses),
         colour=Colour.green(),
     )
@@ -1965,7 +1965,6 @@ async def finishgame(ctx: Context, outcome: str):
     short_in_progress_game_id = in_progress_game.id.split("-")[0]
     await send_message(
         message.channel,
-        # content=f"Game '{queue.name}' ({short_in_progress_game_id}) (TS: {round(finished_game.average_trueskill, 2)}) finished",
         content=f"Game '{queue.name}' ({short_in_progress_game_id}) finished",
         embed_description=embed_description,
         colour=Colour.green(),
@@ -2000,7 +1999,7 @@ async def listadmins(ctx: Context):
     output = "Admins:"
     player: Player
     for player in Session().query(Player).filter(Player.is_admin == True).all():
-        output += f"\n- {player.name}"
+        output += f"\n- {escape_markdown(player.name)}"
 
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
@@ -2032,7 +2031,7 @@ async def listbans(ctx: Context):
     message = ctx.message
     output = "Bans:"
     for player in Session().query(Player).filter(Player.is_banned == True):
-        output += f"\n- {player.name}"
+        output += f"\n- {escape_markdown(player.name)}"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
@@ -2086,7 +2085,7 @@ async def listplayerdecays(ctx: Context, member: Member):
     player_decays: list[PlayerDecay] = session.query(PlayerDecay).filter(
         PlayerDecay.player_id == player.id
     )
-    output = f"Decays for {player.name}:"
+    output = f"Decays for {escape_markdown(player.name)}:"
     for player_decay in player_decays:
         output += f"\n- {player_decay.decayed_at.strftime('%Y-%m-%d')} - Amount: {player_decay.decay_percentage}%"
 
@@ -2343,7 +2342,7 @@ async def removeadmin(ctx: Context, member: Member):
     if len(players) == 0 or not players[0].is_admin:
         await send_message(
             message.channel,
-            embed_description=f"{member.name} is not an admin",
+            embed_description=f"{escape_markdown(member.name)} is not an admin",
             colour=Colour.red(),
         )
         return
@@ -2352,7 +2351,7 @@ async def removeadmin(ctx: Context, member: Member):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"{member.name} removed from admins",
+        embed_description=f"{escape_markdown(member.name)} removed from admins",
         colour=Colour.green(),
     )
 
@@ -2776,7 +2775,7 @@ async def showgamedebug(ctx: Context, game_id: str):
                 game_str += (
                     f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                 )
-            game_str += "\n\n**Least even team combinations:**"
+            game_str += "\n\n**Least even team combination:**"
             for _, worst_team in worst_teams:
                 team0_players = worst_team[: len(worst_team) // 2]
                 team1_players = worst_team[len(worst_team) // 2 :]
@@ -2871,7 +2870,7 @@ async def status(ctx: Context, *args):
 
         if len(players_in_queue) > 0:
             output += f"**IN QUEUE:** "
-            output += ", ".join(sorted([player.name for player in players_in_queue]))
+            output += ", ".join(sorted([escape_markdown(player.name) for player in players_in_queue]))
             output += "\n"
 
         if queue.id in games_by_queue:
@@ -2912,7 +2911,7 @@ async def status(ctx: Context, *args):
                     datetime.now(timezone.utc)
                     - game.created_at.replace(tzinfo=timezone.utc)
                 ).seconds // 60
-                output += f"**@ {minutes_ago} minutes ago**\n"
+                output += f"@ {minutes_ago} minutes ago\n"
 
     if len(output) == 0:
         output = "No queues or games"
@@ -2937,14 +2936,14 @@ async def sub(ctx: Context, member: Member):
     if caller_game and callee_game:
         await send_message(
             channel=message.channel,
-            embed_description=f"{caller.name} and {callee.name} are both already in a game",
+            embed_description=f"{escape_markdown(caller.name)} and {escape_markdown(callee.name)} are both already in a game",
             colour=Colour.red(),
         )
         return
     elif not caller_game and not callee_game:
         await send_message(
             channel=message.channel,
-            embed_description=f"{caller.name} and {callee.name} are not in a game",
+            embed_description=f"{escape_markdown(caller.name)} and {escape_markdown(callee.name)} are not in a game",
             colour=Colour.red(),
         )
         return
@@ -2998,7 +2997,7 @@ async def sub(ctx: Context, member: Member):
 
     await send_message(
         channel=message.channel,
-        embed_description=f"{callee.name} has been substituted with {caller.name}",
+        embed_description=f"{escape_markdown(callee.name)} has been substituted with {escape_markdown(caller.name)}",
         colour=Colour.green(),
     )
 
@@ -3092,7 +3091,7 @@ async def unban(ctx: Context, member: Member):
     if len(players) == 0 or not players[0].is_banned:
         await send_message(
             message.channel,
-            embed_description=f"{member.name} is not banned",
+            embed_description=f"{escape_markdown(member.name)} is not banned",
             colour=Colour.red(),
         )
         return
@@ -3101,7 +3100,7 @@ async def unban(ctx: Context, member: Member):
     session.commit()
     await send_message(
         message.channel,
-        embed_description=f"{member.name} unbanned",
+        embed_description=f"{escape_markdown(member.name)} unbanned",
         colour=Colour.green(),
     )
 
