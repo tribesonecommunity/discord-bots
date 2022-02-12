@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -216,6 +218,9 @@ class FinishedGamePlayer:
         metadata={"sa": Column(String, primary_key=True)},
     )
 
+    def __lt__(self, other: FinishedGamePlayer):
+        return self.player_id < other.player_id
+
 
 @mapper_registry.mapped
 @dataclass
@@ -407,6 +412,9 @@ class Player:
     unrated_trueskill_sigma: float = field(
         default=trueskill.Rating().sigma, metadata={"sa": Column(Float, nullable=False)}
     )
+
+    def __lt__(self, other: Player):
+        return self.id < other.id
 
 
 @mapper_registry.mapped

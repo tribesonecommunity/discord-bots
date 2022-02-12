@@ -1,3 +1,4 @@
+import heapq
 import os
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -5,9 +6,10 @@ from glob import glob
 from itertools import combinations
 from math import floor
 from os import remove
-from random import randint, random, sample, shuffle
+from random import randint, random, shuffle
 from shutil import copyfile
 from typing import Union
+from unittest import mock
 
 import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
@@ -65,6 +67,7 @@ MAP_ROTATION_MINUTES: int = 60
 MAP_VOTE_THRESHOLD: int = 7
 RE_ADD_DELAY: int = 30
 
+
 def debug_print(*args):
     global DEBUG
     if DEBUG:
@@ -76,6 +79,7 @@ def get_even_teams(
 ) -> tuple[list[Player], float]:
     """
     TODO: Tests
+    TODO: Re-use get_n_teams function
 
     Try to figure out even teams, the first half of the returning list is
     the first team, the second half is the second team.
@@ -83,13 +87,15 @@ def get_even_teams(
     :returns: list of players and win probability for the first team
     """
     session = Session()
-    players: list[Player] = (
-        session.query(Player).filter(Player.id.in_(player_ids)).all()  # type: ignore
-    )
+    shuffle(player_ids)
+    players: list[Player] = session.query(Player).filter(Player.id.in_(player_ids)).all()
     best_win_prob_so_far: float = 0.0
     best_teams_so_far: list[Player] = []
 
-    for team0 in combinations(players, team_size):
+    # We only take half the combinations because they end up repeating. i.e.
+    # [1,2] vs [3,4] is the same as [3,4] vs [1,2]
+    all_combinations = list(combinations(players, team_size))
+    for team0 in all_combinations[: len(all_combinations) // 2]:
         team1 = [p for p in players if p not in team0]
         if is_rated:
             team0_ratings = list(
@@ -126,6 +132,150 @@ def get_even_teams(
             best_teams_so_far = list(team0[:]) + list(team1[:])
 
     return best_teams_so_far, best_win_prob_so_far
+
+
+# Return n of the most even or least even teams
+# For best teams, use direction = 1, for worst teams use direction = -1
+def get_n_teams(
+    players: list[Player],
+    team_size: int,
+    is_rated: bool,
+    n: int,
+    direction: int = 1,
+) -> list[tuple[list[Player], float]]:
+    teams: list[tuple[float, list[Player]]] = []
+
+    # We only take half the combinations because they end up repeating. i.e.
+    # [1,2] vs [3,4] is the same as [3,4] vs [1,2]
+    all_combinations = list(combinations(players, team_size))
+    for team0 in all_combinations[: len(all_combinations) // 2]:
+        team1 = [p for p in players if p not in team0]
+        if is_rated:
+            team0_ratings = list(
+                map(
+                    lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+                    team0,
+                )
+            )
+            team1_ratings = list(
+                map(
+                    lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+                    team1,
+                )
+            )
+        else:
+            team0_ratings = list(
+                map(
+                    lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
+                    team0,
+                )
+            )
+            team1_ratings = list(
+                map(
+                    lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
+                    team1,
+                )
+            )
+
+        win_prob = win_probability(team0_ratings, team1_ratings)
+        current_team_evenness = abs(0.50 - win_prob)
+        heapq.heappush(
+            teams, (direction * current_team_evenness, list(team0[:]) + list(team1[:]))
+        )
+
+    teams_out = []
+    for _ in range(n):
+        teams_out.append(heapq.heappop(teams))
+
+    return teams_out
+
+
+def get_n_best_teams(
+    players: list[Player], team_size: int, is_rated: bool, n: int
+) -> list[tuple[list[Player], float]]:
+    return get_n_teams(players, team_size, is_rated, n, 1)
+
+
+def get_n_worst_teams(
+    players: list[Player], team_size: int, is_rated: bool, n: int
+) -> list[tuple[list[Player], float]]:
+    return get_n_teams(players, team_size, is_rated, n, -1)
+
+
+# Return n of the most even or least even teams
+# For best teams, use direction = 1, for worst teams use direction = -1
+def get_n_finished_game_teams(
+    fgps: list[FinishedGamePlayer],
+    team_size: int,
+    is_rated: bool,
+    n: int,
+    direction: int = 1,
+) -> list[tuple[list[FinishedGamePlayer], float]]:
+    teams: list[tuple[float, list[FinishedGamePlayer]]] = []
+
+    # We only take half the combinations because they end up repeating. i.e.
+    # [1,2] vs [3,4] is the same as [3,4] vs [1,2]
+    all_combinations = list(combinations(fgps, team_size))
+    for team0 in all_combinations[: len(all_combinations) // 2]:
+        team1 = [p for p in fgps if p not in team0]
+        if is_rated:
+            team0_ratings = list(
+                map(
+                    lambda x: Rating(
+                        x.rated_trueskill_mu_before, x.rated_trueskill_sigma_before
+                    ),
+                    team0,
+                )
+            )
+            team1_ratings = list(
+                map(
+                    lambda x: Rating(
+                        x.rated_trueskill_mu_before, x.rated_trueskill_sigma_before
+                    ),
+                    team1,
+                )
+            )
+        else:
+            team0_ratings = list(
+                map(
+                    lambda x: Rating(
+                        x.unrated_trueskill_mu_before, x.unrated_trueskill_sigma_before
+                    ),
+                    team0,
+                )
+            )
+            team1_ratings = list(
+                map(
+                    lambda x: Rating(
+                        x.unrated_trueskill_mu_before, x.unrated_trueskill_sigma_before
+                    ),
+                    team1,
+                )
+            )
+
+        win_prob = win_probability(team0_ratings, team1_ratings)
+        current_team_evenness = abs(0.50 - win_prob)
+        heapq.heappush(
+            teams, (direction * current_team_evenness, list(team0[:]) + list(team1[:]))
+        )
+
+    teams_out = []
+    for _ in range(n):
+        teams_out.append(heapq.heappop(teams))
+
+    return teams_out
+
+
+def get_n_best_finished_game_teams(
+    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+) -> list[tuple[list[FinishedGamePlayer], float]]:
+    return get_n_finished_game_teams(fgps, team_size, is_rated, n, 1)
+
+
+def get_n_worst_finished_game_teams(
+    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+) -> list[tuple[list[FinishedGamePlayer], float]]:
+    return get_n_finished_game_teams(fgps, team_size, is_rated, n, -1)
 
 
 async def add_player_to_queue(
@@ -386,6 +536,151 @@ async def is_admin(ctx: Context):
         return False
 
 
+def mock_teams_str(
+    team0_players: list[Player],
+    team1_players: list[Player],
+    is_rated: bool,
+) -> str:
+    """
+    Helper method to debug print teams if these were the players
+    """
+    output = ""
+    if is_rated:
+        team0_rating = [
+            Rating(p.rated_trueskill_mu, p.rated_trueskill_sigma) for p in team0_players
+        ]
+        team1_rating = [
+            Rating(p.rated_trueskill_mu, p.rated_trueskill_sigma) for p in team1_players
+        ]
+    else:
+        team0_rating = [
+            Rating(p.unrated_trueskill_mu, p.unrated_trueskill_sigma)
+            for p in team0_players
+        ]
+        team1_rating = [
+            Rating(p.unrated_trueskill_mu, p.unrated_trueskill_sigma)
+            for p in team1_players
+        ]
+
+    team0_names = ", ".join(sorted([player.name for player in team0_players]))
+    team1_names = ", ".join(sorted([player.name for player in team1_players]))
+    team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
+    team1_win_prob = round(100 - team0_win_prob, 1)
+    if is_rated:
+        team0_mu = round(
+            mean([player.rated_trueskill_mu for player in team0_players]), 2
+        )
+        team1_mu = round(
+            mean([player.rated_trueskill_mu for player in team1_players]), 2
+        )
+        team0_sigma = round(
+            mean([player.rated_trueskill_sigma for player in team0_players]),
+            2,
+        )
+        team1_sigma = round(
+            mean([player.rated_trueskill_sigma for player in team1_players]),
+            2,
+        )
+    else:
+        team0_mu = round(
+            mean([player.unrated_trueskill_mu for player in team0_players]), 2
+        )
+        team1_mu = round(
+            mean([player.unrated_trueskill_mu for player in team1_players]), 2
+        )
+        team0_sigma = round(
+            mean([player.unrated_trueskill_sigma for player in team0_players]),
+            2,
+        )
+        team1_sigma = round(
+            mean([player.unrated_trueskill_sigma for player in team1_players]),
+            2,
+        )
+    output += f"**\nBE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
+    output += f"**\nDS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
+    return output
+
+
+def mock_finished_game_teams_str(
+    team0_fg_players: list[FinishedGamePlayer],
+    team1_fg_players: list[FinishedGamePlayer],
+    is_rated: bool,
+) -> str:
+    """
+    Helper method to debug print teams if these were the players
+    """
+    output = ""
+    session = Session()
+    if is_rated:
+        team0_rating = [
+            Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
+            for fgp in team0_fg_players
+        ]
+        team1_rating = [
+            Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
+            for fgp in team1_fg_players
+        ]
+    else:
+        team0_rating = [
+            Rating(fgp.unrated_trueskill_mu_before, fgp.unrated_trueskill_sigma_before)
+            for fgp in team0_fg_players
+        ]
+        team1_rating = [
+            Rating(fgp.unrated_trueskill_mu_before, fgp.unrated_trueskill_sigma_before)
+            for fgp in team1_fg_players
+        ]
+
+    team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
+    team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
+    team0_players: list[Player] = session.query(Player).filter(
+        Player.id.in_(team0_player_ids)
+    )
+    team1_players: list[Player] = session.query(Player).filter(
+        Player.id.in_(team1_player_ids)
+    )
+    team0_names = ", ".join(sorted([player.name for player in team0_players]))
+    team1_names = ", ".join(sorted([player.name for player in team1_players]))
+    team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
+    team1_win_prob = round(100 - team0_win_prob, 1)
+    if is_rated:
+        team0_mu = round(
+            mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
+        )
+        team1_mu = round(
+            mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
+        )
+        team0_sigma = round(
+            mean([player.rated_trueskill_sigma_before for player in team0_fg_players]),
+            2,
+        )
+        team1_sigma = round(
+            mean([player.rated_trueskill_sigma_before for player in team1_fg_players]),
+            2,
+        )
+    else:
+        team0_mu = round(
+            mean([player.unrated_trueskill_mu_before for player in team0_fg_players]), 2
+        )
+        team1_mu = round(
+            mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
+        )
+        team0_sigma = round(
+            mean(
+                [player.unrated_trueskill_sigma_before for player in team0_fg_players]
+            ),
+            2,
+        )
+        team1_sigma = round(
+            mean(
+                [player.unrated_trueskill_sigma_before for player in team1_fg_players]
+            ),
+            2,
+        )
+    output += f"**\nBE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
+    output += f"**\nDS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
+    return output
+
+
 def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     """
     Helper method to pretty print a finished game
@@ -393,18 +688,22 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     output = ""
     session = Session()
     short_game_id = short_uuid(finished_game.game_id)
-    team0_fg_players: list[FinishedGamePlayer] = session.query(
-        FinishedGamePlayer
-    ).filter(
-        FinishedGamePlayer.finished_game_id == finished_game.id,
-        FinishedGamePlayer.team == 0,
-    ).all()
-    team1_fg_players: list[FinishedGamePlayer] = session.query(
-        FinishedGamePlayer
-    ).filter(
-        FinishedGamePlayer.finished_game_id == finished_game.id,
-        FinishedGamePlayer.team == 1,
-    ).all()
+    team0_fg_players: list[FinishedGamePlayer] = (
+        session.query(FinishedGamePlayer)
+        .filter(
+            FinishedGamePlayer.finished_game_id == finished_game.id,
+            FinishedGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team1_fg_players: list[FinishedGamePlayer] = (
+        session.query(FinishedGamePlayer)
+        .filter(
+            FinishedGamePlayer.finished_game_id == finished_game.id,
+            FinishedGamePlayer.team == 1,
+        )
+        .all()
+    )
 
     if finished_game.is_rated:
         average_mu = mean(
@@ -474,10 +773,12 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
             mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
         )
         team0_sigma = round(
-            mean([player.rated_trueskill_sigma_before for player in team0_fg_players]), 2
+            mean([player.rated_trueskill_sigma_before for player in team0_fg_players]),
+            2,
         )
         team1_sigma = round(
-            mean([player.rated_trueskill_sigma_before for player in team1_fg_players]), 2
+            mean([player.rated_trueskill_sigma_before for player in team1_fg_players]),
+            2,
         )
     else:
         team0_mu = round(
@@ -487,10 +788,16 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
             mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
         )
         team0_sigma = round(
-            mean([player.unrated_trueskill_sigma_before for player in team0_fg_players]), 2
+            mean(
+                [player.unrated_trueskill_sigma_before for player in team0_fg_players]
+            ),
+            2,
         )
         team1_sigma = round(
-            mean([player.unrated_trueskill_sigma_before for player in team1_fg_players]), 2
+            mean(
+                [player.unrated_trueskill_sigma_before for player in team1_fg_players]
+            ),
+            2,
         )
     if debug:
         team0_str = f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
@@ -530,7 +837,9 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
     output = ""
     session = Session()
     short_game_id = short_uuid(in_progress_game.id)
-    queue: Queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+    queue: Queue = (
+        session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+    )
     if debug:
         output += f"**{queue.name}** ({short_game_id}) (TS: {round(in_progress_game.average_trueskill, 2)})"
     else:
@@ -1342,7 +1651,8 @@ async def delplayer(ctx: Context, member: Member, *args):
     queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(Queue.created_at.asc()).all()  # type: ignore
     for queue in queues:
         session.query(QueuePlayer).filter(
-            QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id).delete()
+            QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id
+        ).delete()
         # TODO: Test this part
         queue_waitlist: QueueWaitlist | None = (
             session.query(QueueWaitlist)
@@ -2397,6 +2707,28 @@ async def showgamedebug(ctx: Context, game_id: str):
     )
     if finished_game:
         game_str = finished_game_str(finished_game, debug=True)
+        fgps: list[FinishedGamePlayer] = (
+            session.query(FinishedGamePlayer)
+            .filter(FinishedGamePlayer.finished_game_id == finished_game.id)
+            .all()
+        )
+        player_ids: list[int] = [fgp.player_id for fgp in fgps]
+        best_teams = get_n_best_finished_game_teams(
+            fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 5
+        )
+        worst_teams = get_n_worst_finished_game_teams(
+            fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 1
+        )
+        game_str += "\n**Most even team combinations:**"
+        for _, best_team in best_teams:
+            team0_players = best_team[: len(best_team) // 2]
+            team1_players = best_team[len(best_team) // 2 :]
+            game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
+        game_str += "\n\n**Least even team combination:**"
+        for _, worst_team in worst_teams:
+            team0_players = worst_team[: len(worst_team) // 2]
+            team1_players = worst_team[len(worst_team) // 2 :]
+            game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
         await send_message(
             message.channel,
             embed_description=game_str,
@@ -2417,12 +2749,45 @@ async def showgamedebug(ctx: Context, game_id: str):
             return
         else:
             game_str = in_progress_game_str(in_progress_game, debug=True)
+            queue: Queue = (
+                session.query(Queue)
+                .filter(Queue.id == in_progress_game.queue_id)
+                .first()
+            )
+            igps: list[InProgressGamePlayer] = (
+                session.query(InProgressGamePlayer)
+                .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
+                .all()
+            )
+            player_ids: list[int] = [igp.player_id for igp in igps]
+            players: list[Player] = session.query(Player).filter(
+                Player.id.in_(player_ids)
+            ).all()
+            best_teams = get_n_best_teams(
+                players, (len(players) + 1) // 2, queue.is_rated, 5
+            )
+            worst_teams = get_n_worst_teams(
+                players, (len(players) + 1) // 2, queue.is_rated, 1
+            )
+            game_str += "\n**Most even team combinations:**"
+            for _, best_team in best_teams:
+                team0_players = best_team[: len(best_team) // 2]
+                team1_players = best_team[len(best_team) // 2 :]
+                game_str += (
+                    f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
+                )
+            game_str += "\n\n**Least even team combinations:**"
+            for _, worst_team in worst_teams:
+                team0_players = worst_team[: len(worst_team) // 2]
+                team1_players = worst_team[len(worst_team) // 2 :]
+                game_str += (
+                    f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
+                )
             await send_message(
                 message.channel,
                 embed_description=game_str,
                 colour=Colour.blue(),
             )
-
 
 
 @bot.command()
