@@ -11,7 +11,7 @@ from shutil import copyfile
 from tempfile import NamedTemporaryFile
 from time import sleep
 from typing import Union
-from discord_bots.utils import upload_stats_screenshot
+from discord_bots.utils import upload_stats_screenshot, upload_stats_screenshot_2
 
 import discord
 import numpy
@@ -1996,6 +1996,13 @@ async def finishgame(ctx: Context, outcome: str):
 @commands.check(is_admin)
 async def imagetest(ctx: Context):
     await upload_stats_screenshot(ctx, False)
+
+@bot.command()
+@commands.check(is_admin)
+async def imagetest2(ctx: Context):
+    # await upload_stats_screenshot(ctx, False)
+    await upload_stats_screenshot_2(ctx, False)
+
 
 
 @bot.command()
