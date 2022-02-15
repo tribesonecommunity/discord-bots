@@ -13,7 +13,6 @@ click==8.0.3
 cryptography==36.0.1
 cycler==0.11.0
 discord==1.7.3
--e git+ssh://git@github.com/dwayneyuen/discord-bots.git@d6fba0e9cb5ecefaa917e413d80e082f87ad3734#egg=discord_bots
 discord.py==1.7.3
 discord.py-stubs==1.7.3
 distlib==0.3.4
@@ -23,6 +22,7 @@ greenlet==1.1.2
 h11==0.13.0
 identify==2.4.1
 idna==3.3
+imgkit==1.2.2
 iniconfig==1.1.1
 jq==1.2.1
 kiwisolver==1.3.2
