@@ -94,6 +94,11 @@ async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
 
     image_path = os.path.join(STATS_DIR, html_files[0] + ".png")
     imgkit.from_file(os.path.join(STATS_DIR, html_files[0]), image_path, options={"enable-local-file-access": None})
+    if os.getenv("STATS_WIDTH") and os.getenv("STATS_HEIGHT"):
+        image = Image.open(image_path)
+        # TODO: Un-hardcode these
+        cropped = image.crop((0, 0, int(os.getenv("STATS_WIDTH")), int(os.getenv("STATS_HEIGHT"))))
+        cropped.save(image_path)
 
     await ctx.message.channel.send(file=discord.File(image_path))
 
