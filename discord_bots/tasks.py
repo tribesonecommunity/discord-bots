@@ -12,6 +12,7 @@ from discord.colour import Colour
 from discord.ext import tasks
 from discord.guild import Guild
 from discord.member import Member
+from discord.utils import escape_markdown
 
 from .bot import bot
 from .commands import (
@@ -65,7 +66,7 @@ async def afk_timer_task():
                         channel,
                         content=member.mention,
                         embed_content=False,
-                        embed_description=f"{player.name} was removed from all queues for being inactive for {AFK_TIME_MINUTES} minutes",
+                        embed_description=f"{escape_markdown(player.name)} was removed from all queues for being inactive for {AFK_TIME_MINUTES} minutes",
                         colour=Colour.red(),
                     )
             session.query(QueuePlayer).filter(
@@ -91,7 +92,7 @@ async def afk_timer_task():
                         channel,
                         content=member.mention,
                         embed_content=False,
-                        embed_description=f"{player.name}'s votes removed for being inactive for {AFK_TIME_MINUTES} minutes",
+                        embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {AFK_TIME_MINUTES} minutes",
                         colour=Colour.red(),
                     )
                     votes_removed_sent = True
@@ -117,7 +118,7 @@ async def afk_timer_task():
                             channel,
                             content=member.mention,
                             embed_content=False,
-                            embed_description=f"{player.name}'s votes removed for being inactive for {AFK_TIME_MINUTES} minutes",
+                            embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {AFK_TIME_MINUTES} minutes",
                             colour=Colour.red(),
                         )
             session.query(SkipMapVote).filter(

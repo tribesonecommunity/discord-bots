@@ -8,9 +8,14 @@ from math import floor
 from os import remove
 from random import randint, random, shuffle
 from shutil import copyfile
+from tempfile import NamedTemporaryFile
+from time import sleep
 from typing import Union
+from discord_bots.utils import upload_stats_screenshot
 
+import discord
 import numpy
+from PIL import Image
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -18,6 +23,8 @@ from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 from dotenv import load_dotenv
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
@@ -1973,6 +1980,7 @@ async def finishgame(ctx: Context, outcome: str):
             )
         )
     session.commit()
+    session.close()
 
     short_in_progress_game_id = in_progress_game.id.split("-")[0]
     await send_message(
@@ -1981,6 +1989,13 @@ async def finishgame(ctx: Context, outcome: str):
         embed_description=embed_description,
         colour=Colour.green(),
     )
+    await upload_stats_screenshot(ctx)
+
+
+@bot.command()
+@commands.check(is_admin)
+async def imagetest(ctx: Context):
+    await upload_stats_screenshot(ctx, False)
 
 
 @bot.command()
@@ -2158,6 +2173,32 @@ async def lockqueue(ctx: Context, queue_name: str):
         embed_description=f"Queue {queue_name} locked",
         colour=Colour.green(),
     )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def lt(ctx: Context):
+    await send_message(
+        ctx.message.channel,
+        embed_description="Please wait, fetching data...",
+        colour=Colour.blue(),
+    )
+
+    query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132:28006&port=28006"
+    opts = FirefoxOptions()
+    opts.add_argument("--headless")
+    driver = webdriver.Firefox(options=opts)
+
+    driver.get(query_url)
+    # TODO: Better condition than just sleeping. I think loading.gif goes away
+    sleep(0.5)
+    ntf = NamedTemporaryFile(delete=True, suffix=".png")
+    driver.save_screenshot(ntf.name)
+    image = Image.open(ntf.name)
+    cropped = image.crop((0, 0, 455, 650))
+    cropped.save(ntf.name)
+    await ctx.message.channel.send(file=discord.File(ntf.name))
+    ntf.close()
 
 
 @bot.command(name="map")
