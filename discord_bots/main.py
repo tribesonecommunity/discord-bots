@@ -83,11 +83,12 @@ async def on_message(message: Message):
         )
         if player:
             player.last_activity_at = datetime.now(timezone.utc)
+            player.name = message.author.display_name
         else:
             session.add(
                 Player(
                     id=message.author.id,
-                    name=message.author.name,
+                    name=message.author.display_name,
                     last_activity_at=datetime.now(timezone.utc),
                 )
             )
@@ -124,7 +125,7 @@ async def on_reaction_add(reaction: Reaction, user: User | Member):
         session.add(
             Player(
                 id=reaction.message.author.id,
-                name=reaction.message.author.name,
+                name=reaction.message.author.display_name,
                 last_activity_at=datetime.now(timezone.utc),
             )
         )

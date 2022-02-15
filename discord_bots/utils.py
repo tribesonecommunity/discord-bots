@@ -1,21 +1,21 @@
 # Misc helper functions
-from datetime import datetime, timezone, tzinfo
 import itertools
 import math
 import os
 import statistics
+from datetime import datetime, timezone, tzinfo
 
 import discord
 import imgkit
-from PIL import Image
 from discord.ext.commands.context import Context
+from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
 
 from discord_bots.models import CurrentMap, Player, RotationMap, Session
 
-STATS_DIR = os.getenv("STATS_DIR")
+STATS_DIR: str = os.getenv("STATS_DIR")
 
 # Convenience mean function that can handle lists of 0 or 1 length
 def mean(values: list[any]) -> float:
