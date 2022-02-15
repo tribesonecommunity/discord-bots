@@ -56,7 +56,7 @@ def update_current_map_to_next_map_in_rotation():
         session.commit()
 
 
-async def upload_stats_screenshot(ctx: Context, cleanup=True):
+async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
     # Assume the most recently modified HTML file is the correct stat sheet
     html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(STATS_DIR)))
     html_files.sort(key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True)
@@ -84,7 +84,7 @@ async def upload_stats_screenshot(ctx: Context, cleanup=True):
                 os.remove(os.path.join(STATS_DIR, file_))
 
 
-async def upload_stats_screenshot_2(ctx: Context, cleanup=True):
+async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
     # Assume the most recently modified HTML file is the correct stat sheet
     html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(STATS_DIR)))
     html_files.sort(key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True)
@@ -94,6 +94,11 @@ async def upload_stats_screenshot_2(ctx: Context, cleanup=True):
 
     image_path = os.path.join(STATS_DIR, html_files[0] + ".png")
     imgkit.from_file(os.path.join(STATS_DIR, html_files[0]), image_path)
+    image = Image.open(image_path)
+    # TODO: Un-hardcode these
+    cropped = image.crop((0, 0, 750, 650))
+    cropped.save(image_path)
+
     await ctx.message.channel.send(file=discord.File(image_path))
 
     # Clean up everything
@@ -101,7 +106,6 @@ async def upload_stats_screenshot_2(ctx: Context, cleanup=True):
         for file_ in os.listdir(STATS_DIR):
             if file_.endswith(".png") or file_.endswith(".html"):
                 os.remove(os.path.join(STATS_DIR, file_))
-
 
 
 def win_probability(team0: list[Rating], team1: list[Rating]) -> float:

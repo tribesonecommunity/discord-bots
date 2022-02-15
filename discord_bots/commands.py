@@ -11,7 +11,7 @@ from shutil import copyfile
 from tempfile import NamedTemporaryFile
 from time import sleep
 from typing import Union
-from discord_bots.utils import upload_stats_screenshot, upload_stats_screenshot_2
+from discord_bots.utils import upload_stats_screenshot_selenium, upload_stats_screenshot_imgkit
 
 import discord
 import numpy
@@ -1989,19 +1989,18 @@ async def finishgame(ctx: Context, outcome: str):
         embed_description=embed_description,
         colour=Colour.green(),
     )
-    await upload_stats_screenshot(ctx)
+    await upload_stats_screenshot_imgkit(ctx)
 
 
 @bot.command()
 @commands.check(is_admin)
 async def imagetest(ctx: Context):
-    await upload_stats_screenshot(ctx, False)
+    await upload_stats_screenshot_selenium(ctx, False)
 
 @bot.command()
 @commands.check(is_admin)
 async def imagetest2(ctx: Context):
-    # await upload_stats_screenshot(ctx, False)
-    await upload_stats_screenshot_2(ctx, False)
+    await upload_stats_screenshot_imgkit(ctx, False)
 
 
 
