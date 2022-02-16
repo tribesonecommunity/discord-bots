@@ -3035,7 +3035,7 @@ async def status(ctx: Context, *args):
 
 
 def win_rate(wins, losses, ties):
-    return round(100 * (wins + 0.5 * ties) / (wins + losses + 0.5 * ties), 1)
+    return round(100 * (wins + 0.5 * ties) / (wins + losses + ties), 1)
 
 
 @bot.command()
