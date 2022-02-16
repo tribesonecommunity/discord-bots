@@ -1980,12 +1980,12 @@ async def finishgame(ctx: Context, outcome: str):
             )
         )
     session.commit()
+    queue_name = queue.name
     session.close()
-
     short_in_progress_game_id = in_progress_game.id.split("-")[0]
     await send_message(
         message.channel,
-        content=f"Game '{queue.name}' ({short_in_progress_game_id}) finished",
+        content=f"Game '{queue_name}' ({short_in_progress_game_id}) finished",
         embed_description=embed_description,
         colour=Colour.green(),
     )
