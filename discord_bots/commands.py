@@ -2377,7 +2377,6 @@ async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
 
 
 @bot.command()
-@commands.check(is_admin)
 async def gamehistory(ctx: Context, count: int):
     message = ctx.message
     """
