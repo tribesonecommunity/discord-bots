@@ -76,18 +76,20 @@ async def on_command_error(ctx: Context, error: CommandError):
 
 @bot.event
 async def on_message(message: Message):
-    session = Session()
     if CHANNEL_ID and message.channel.id == CHANNEL_ID:
+        session = Session()
         player: Player | None = (
             session.query(Player).filter(Player.id == message.author.id).first()
         )
         if player:
             player.last_activity_at = datetime.now(timezone.utc)
+            if player.name != message.author.display_name:
+                player.name = message.author.display_name
         else:
             session.add(
                 Player(
                     id=message.author.id,
-                    name=message.author.name,
+                    name=message.author.display_name,
                     last_activity_at=datetime.now(timezone.utc),
                 )
             )
@@ -124,7 +126,7 @@ async def on_reaction_add(reaction: Reaction, user: User | Member):
         session.add(
             Player(
                 id=reaction.message.author.id,
-                name=reaction.message.author.name,
+                name=reaction.message.author.display_name,
                 last_activity_at=datetime.now(timezone.utc),
             )
         )
