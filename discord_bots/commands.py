@@ -2679,6 +2679,27 @@ async def roll(ctx: Context, low_range: int, high_range: int):
         colour=Colour.blue(),
     )
 
+@bot.command()
+@commands.check(is_admin)
+async def resetplayertrueskill(ctx: Context, member: Member):
+    message = ctx.message
+    session = Session()
+    player: Player = (
+        session.query(Player).filter(Player.id == member.id).first()
+    )
+    default_rating = Rating(12.5)
+    player.rated_trueskill_mu = default_rating.mu
+    player.rated_trueskill_sigma = default_rating.sigma
+    player.unrated_trueskill_mu = default_rating.mu
+    player.unrated_trueskill_sigma = default_rating.sigma
+    session.commit()
+    session.close()
+    await send_message(
+        message.channel,
+        embed_description=f"{escape_markdown(member.name)} trueskill reset.",
+        colour=Colour.green(),
+    )
+
 
 @bot.command()
 @commands.check(is_admin)
