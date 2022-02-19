@@ -11,11 +11,10 @@ from shutil import copyfile
 from tempfile import NamedTemporaryFile
 from time import sleep
 from typing import Union
-from discord_bots.utils import upload_stats_screenshot_selenium, upload_stats_screenshot_imgkit
 
 import discord
+import imgkit
 import numpy
-from PIL import Image
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -23,10 +22,16 @@ from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 from dotenv import load_dotenv
+from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
+
+from discord_bots.utils import (
+    upload_stats_screenshot_imgkit,
+    upload_stats_screenshot_selenium,
+)
 
 from .bot import COMMAND_PREFIX, bot
 from .models import (
@@ -95,7 +100,9 @@ def get_even_teams(
     """
     session = Session()
     shuffle(player_ids)
-    players: list[Player] = session.query(Player).filter(Player.id.in_(player_ids)).all()
+    players: list[Player] = (
+        session.query(Player).filter(Player.id.in_(player_ids)).all()
+    )
     best_win_prob_so_far: float = 0.0
     best_teams_so_far: list[Player] = []
 
@@ -569,8 +576,12 @@ def mock_teams_str(
             for p in team1_players
         ]
 
-    team0_names = ", ".join(sorted([escape_markdown(player.name) for player in team0_players]))
-    team1_names = ", ".join(sorted([escape_markdown(player.name) for player in team1_players]))
+    team0_names = ", ".join(
+        sorted([escape_markdown(player.name) for player in team0_players])
+    )
+    team1_names = ", ".join(
+        sorted([escape_markdown(player.name) for player in team1_players])
+    )
     team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
     if is_rated:
@@ -645,8 +656,12 @@ def mock_finished_game_teams_str(
     team1_players: list[Player] = session.query(Player).filter(
         Player.id.in_(team1_player_ids)
     )
-    team0_names = ", ".join(sorted([escape_markdown(player.name) for player in team0_players]))
-    team1_names = ", ".join(sorted([escape_markdown(player.name) for player in team1_players]))
+    team0_names = ", ".join(
+        sorted([escape_markdown(player.name) for player in team0_players])
+    )
+    team1_names = ", ".join(
+        sorted([escape_markdown(player.name) for player in team1_players])
+    )
     team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
     if is_rated:
@@ -768,8 +783,12 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
             )
         )
     else:
-        team0_names = ", ".join(sorted([escape_markdown(player.name) for player in team0_players]))
-        team1_names = ", ".join(sorted([escape_markdown(player.name) for player in team1_players]))
+        team0_names = ", ".join(
+            sorted([escape_markdown(player.name) for player in team0_players])
+        )
+        team1_names = ", ".join(
+            sorted([escape_markdown(player.name) for player in team1_players])
+        )
     team0_win_prob = round(100 * finished_game.win_probability, 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
     if finished_game.is_rated:
@@ -887,8 +906,12 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
             )
         )
     else:
-        team0_names = ", ".join(sorted([escape_markdown(player.name) for player in team0_players]))
-        team1_names = ", ".join(sorted([escape_markdown(player.name) for player in team1_players]))
+        team0_names = ", ".join(
+            sorted([escape_markdown(player.name) for player in team0_players])
+        )
+        team1_names = ", ".join(
+            sorted([escape_markdown(player.name) for player in team1_players])
+        )
     # TODO: Include win prob
     # team0_win_prob = round(100 * finished_game.win_probability, 1)
     # team1_win_prob = round(100 - team0_win_prob, 1)
@@ -1069,7 +1092,7 @@ async def add(ctx: Context, *args):
                 message.channel,
                 # TODO: Populate this message with the queues the player was
                 # eligible for
-                content=f"{message.author.name} added to:",
+                content=f"{message.author.display_name} added to:",
                 embed_description=waitlist_message,
                 colour=Colour.green(),
             )
@@ -1114,7 +1137,7 @@ async def add(ctx: Context, *args):
             message.channel,
             # TODO: Populate this message with the queues the player was
             # eligible for
-            content=f"{escape_markdown(message.author.name)} added to:",
+            content=f"{escape_markdown(message.author.display_name)} added to:",
             embed_description=waitlist_message,
             colour=Colour.green(),
         )
@@ -1124,7 +1147,7 @@ async def add(ctx: Context, *args):
         add_player_queue.put(
             AddPlayerQueueMessage(
                 message.author.id,
-                message.author.name,
+                message.author.display_name,
                 [q.id for q in queues_to_add],
                 True,
                 message.channel,
@@ -1652,7 +1675,7 @@ async def del_(ctx: Context, *args):
 
     await send_message(
         message.channel,
-        content=f"{escape_markdown(message.author.name)} removed from: {', '.join([queue.name for queue in queues_to_del])}",
+        content=f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}",
         embed_description=" ".join(queue_statuses),
         colour=Colour.green(),
     )
@@ -1997,11 +2020,11 @@ async def finishgame(ctx: Context, outcome: str):
 async def imagetest(ctx: Context):
     await upload_stats_screenshot_selenium(ctx, False)
 
+
 @bot.command()
 @commands.check(is_admin)
 async def imagetest2(ctx: Context):
     await upload_stats_screenshot_imgkit(ctx, False)
-
 
 
 @bot.command()
@@ -2182,7 +2205,6 @@ async def lockqueue(ctx: Context, queue_name: str):
 
 
 @bot.command()
-@commands.check(is_admin)
 async def lt(ctx: Context):
     await send_message(
         ctx.message.channel,
@@ -2191,17 +2213,11 @@ async def lt(ctx: Context):
     )
 
     query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132:28006&port=28006"
-    opts = FirefoxOptions()
-    opts.add_argument("--headless")
-    driver = webdriver.Firefox(options=opts)
 
-    driver.get(query_url)
-    # TODO: Better condition than just sleeping. I think loading.gif goes away
-    sleep(0.5)
     ntf = NamedTemporaryFile(delete=True, suffix=".png")
-    driver.save_screenshot(ntf.name)
+    imgkit.from_url(query_url, ntf.name)
     image = Image.open(ntf.name)
-    cropped = image.crop((0, 0, 455, 650))
+    cropped = image.crop((0, 0, 450, 650))
     cropped.save(ntf.name)
     await ctx.message.channel.send(file=discord.File(ntf.name))
     ntf.close()
@@ -2390,6 +2406,25 @@ async def gamehistory(ctx: Context, count: int):
         embed_description=output,
         colour=Colour.blue(),
     )
+
+
+@bot.command()
+async def pug(ctx: Context):
+    await send_message(
+        ctx.message.channel,
+        embed_description="Please wait, fetching data...",
+        colour=Colour.blue(),
+    )
+
+    query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132&port=28001"
+
+    ntf = NamedTemporaryFile(delete=True, suffix=".png")
+    imgkit.from_url(query_url, ntf.name)
+    image = Image.open(ntf.name)
+    cropped = image.crop((0, 0, 450, 650))
+    cropped.save(ntf.name)
+    await ctx.message.channel.send(file=discord.File(ntf.name))
+    ntf.close()
 
 
 @bot.command()
@@ -2835,9 +2870,9 @@ async def showgamedebug(ctx: Context, game_id: str):
                 .all()
             )
             player_ids: list[int] = [igp.player_id for igp in igps]
-            players: list[Player] = session.query(Player).filter(
-                Player.id.in_(player_ids)
-            ).all()
+            players: list[Player] = (
+                session.query(Player).filter(Player.id.in_(player_ids)).all()
+            )
             best_teams = get_n_best_teams(
                 players, (len(players) + 1) // 2, queue.is_rated, 5
             )
@@ -2946,7 +2981,9 @@ async def status(ctx: Context, *args):
 
         if len(players_in_queue) > 0:
             output += f"**IN QUEUE:** "
-            output += ", ".join(sorted([escape_markdown(player.name) for player in players_in_queue]))
+            output += ", ".join(
+                sorted([escape_markdown(player.name) for player in players_in_queue])
+            )
             output += "\n"
 
         if queue.id in games_by_queue:
