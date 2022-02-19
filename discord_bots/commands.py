@@ -1,5 +1,6 @@
 import heapq
 import os
+from bisect import bisect
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from glob import glob
@@ -2376,7 +2377,6 @@ async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
 
 
 @bot.command()
-@commands.check(is_admin)
 async def gamehistory(ctx: Context, count: int):
     message = ctx.message
     """
@@ -3055,6 +3055,10 @@ async def status(ctx: Context, *args):
     )
 
 
+def win_rate(wins, losses, ties):
+    return round(100 * (wins + 0.5 * ties) / (wins + losses + ties), 1)
+
+
 @bot.command()
 async def stats(ctx: Context):
     player_id = ctx.message.author.id
@@ -3074,20 +3078,22 @@ async def stats(ctx: Context):
 
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     players: list[Player] = session.query(Player).all()
+
+    # Filter players that haven't played a game
+    players = list(filter(lambda x: x.rated_trueskill_mu != 25.0, players))
     trueskills = list(
-        reversed(
-            sorted(
-                [
-                    round(p.rated_trueskill_mu - 3 * p.rated_trueskill_sigma, 2)
-                    for p in players
-                ]
-            )
+        sorted(
+            [
+                round(p.rated_trueskill_mu - 3 * p.rated_trueskill_sigma, 2)
+                for p in players
+            ]
         )
     )
-    trueskill_index = trueskills.index(
-        round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)
+    trueskill_index = bisect(
+        trueskills,
+        round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
     )
-    trueskill_ratio = trueskill_index / len(trueskills)
+    trueskill_ratio = (len(trueskills) - trueskill_index) / len(trueskills)
     if trueskill_ratio <= 0.05:
         trueskill_pct = "Top 5%"
     elif trueskill_ratio <= 0.10:
@@ -3124,6 +3130,7 @@ async def stats(ctx: Context):
     wins = list(filter(is_win, fgs))
     losses = list(filter(is_loss, fgs))
     ties = list(filter(is_tie, fgs))
+    winrate = win_rate(len(wins), len(losses), len(ties))
     total_games = len(fgs)
 
     def last_month(finished_game: FinishedGame) -> bool:
@@ -3145,26 +3152,32 @@ async def stats(ctx: Context):
     wins_last_month = len(list(filter(is_win, games_last_month)))
     losses_last_month = len(list(filter(is_loss, games_last_month)))
     ties_last_month = len(list(filter(is_tie, games_last_month)))
+    winrate_last_month = win_rate(wins_last_month, losses_last_month, ties_last_month)
     wins_last_three_months = len(list(filter(is_win, games_last_three_months)))
     losses_last_three_months = len(list(filter(is_loss, games_last_three_months)))
     ties_last_three_months = len(list(filter(is_tie, games_last_three_months)))
+    winrate_last_three_months = win_rate(
+        wins_last_three_months, losses_last_three_months, ties_last_three_months
+    )
     wins_last_six_months = len(list(filter(is_win, games_last_six_months)))
     losses_last_six_months = len(list(filter(is_loss, games_last_six_months)))
     ties_last_six_months = len(list(filter(is_tie, games_last_six_months)))
+    winrate_last_six_months = win_rate(
+        wins_last_six_months, losses_last_six_months, ties_last_six_months
+    )
     wins_last_year = len(list(filter(is_win, games_last_year)))
     losses_last_year = len(list(filter(is_loss, games_last_year)))
     ties_last_year = len(list(filter(is_tie, games_last_year)))
+    winrate_last_year = win_rate(wins_last_year, losses_last_year, ties_last_year)
 
     output = ""
     output += f"**Trueskill:** {trueskill_pct}"
-    output += f"\n\n**Wins / Losses / Ties:**"
-    output += (
-        f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} ({total_games})"
-    )
-    output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} ({len(games_last_month)})"
-    output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} ({len(games_last_three_months)})"
-    output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} ({len(games_last_six_months)})"
-    output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} ({len(games_last_year)})"
+    output += f"\n\n**Wins / Losses / Ties / Total:**"
+    output += f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} / {total_games} _({winrate}%)_"
+    output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
+    output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
+    output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
+    output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
 
     await send_message(
         channel=ctx.message.channel,
