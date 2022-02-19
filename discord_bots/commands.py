@@ -1584,10 +1584,10 @@ async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
         return
 
     decay_amount = int(decay_amount_percent[:-1])
-    if decay_amount <= 0 or decay_amount > 10:
+    if decay_amount < 1 or decay_amount > 100:
         await send_message(
             message.channel,
-            embed_description="Decay amount must be between 0-10",
+            embed_description="Decay amount must be between 1-100",
             colour=Colour.red(),
         )
         return
