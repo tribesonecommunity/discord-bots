@@ -401,13 +401,13 @@ class Player:
         metadata={"sa": Column(DateTime)},
     )
     rated_trueskill_mu: float = field(
-        default=trueskill.Rating().mu, metadata={"sa": Column(Float, nullable=False)}
+        default=12.5, metadata={"sa": Column(Float, nullable=False)}
     )
     rated_trueskill_sigma: float = field(
         default=trueskill.Rating().sigma, metadata={"sa": Column(Float, nullable=False)}
     )
     unrated_trueskill_mu: float = field(
-        default=trueskill.Rating().mu, metadata={"sa": Column(Float, nullable=False)}
+        default=12.5, metadata={"sa": Column(Float, nullable=False)}
     )
     unrated_trueskill_sigma: float = field(
         default=trueskill.Rating().sigma, metadata={"sa": Column(Float, nullable=False)}
