@@ -24,8 +24,6 @@ from discord.member import Member
 from discord.utils import escape_markdown
 from dotenv import load_dotenv
 from PIL import Image
-from selenium import webdriver
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 
@@ -2207,13 +2205,8 @@ async def lockqueue(ctx: Context, queue_name: str):
 
 @bot.command()
 async def lt(ctx: Context):
-    await send_message(
-        ctx.message.channel,
-        embed_description="Please wait, fetching data...",
-        colour=Colour.blue(),
-    )
-
     query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132:28006&port=28006"
+    await ctx.message.channel.send(query_url)
 
     ntf = NamedTemporaryFile(delete=True, suffix=".png")
     imgkit.from_url(query_url, ntf.name)
@@ -2410,14 +2403,8 @@ async def gamehistory(ctx: Context, count: int):
 
 @bot.command()
 async def pug(ctx: Context):
-    await send_message(
-        ctx.message.channel,
-        embed_description="Please wait, fetching data...",
-        colour=Colour.blue(),
-    )
-
     query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132&port=28001"
-
+    await ctx.message.channel.send(query_url)
     ntf = NamedTemporaryFile(delete=True, suffix=".png")
     imgkit.from_url(query_url, ntf.name)
     image = Image.open(ntf.name)
@@ -2679,14 +2666,13 @@ async def roll(ctx: Context, low_range: int, high_range: int):
         colour=Colour.blue(),
     )
 
+
 @bot.command()
 @commands.check(is_admin)
 async def resetplayertrueskill(ctx: Context, member: Member):
     message = ctx.message
     session = Session()
-    player: Player = (
-        session.query(Player).filter(Player.id == member.id).first()
-    )
+    player: Player = session.query(Player).filter(Player.id == member.id).first()
     default_rating = Rating(12.5)
     player.rated_trueskill_mu = default_rating.mu
     player.rated_trueskill_sigma = default_rating.sigma
