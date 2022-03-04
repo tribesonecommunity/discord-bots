@@ -120,29 +120,16 @@ Common issues:
 - Convert from sqlite to postgres
 - Refactor commands file
 - Automatically show rotation maps in voteable maps and when a rotation map is voted, just rotate to it
-- Deploy to heroku
 - Fix tests
-- Add !notify ltpug 9 command
 
 ## Good first tickets
 - Store player display name alongside regular name
-- Allow voting for multiple maps at once
-- !add only shows queues that were added, but !del shows all queues regardless of whether the player was in it
 - Store total games played
 - Add created_at timestamps to all tables (esp finished_game_player)
 
 MVP+
 
-- In-server queue
-- Queue notifications
 - Shazbucks
 - Expose Flask API: https://flask.palletsprojects.com/en/2.0.x/
-- CI for Pyright: https://github.com/microsoft/pyright/blob/main/docs/command-line.md
-- CI for Tests
-
-Maybe?
-
-- Cache things like queues, admins, bans in memory - save some DB round trips?
-- Strict typing configuration
 - Mark mock games as mock games for easier deletion
 - Store player w/l (not sure about this since games are made using TS)

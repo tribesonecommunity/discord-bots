@@ -15,6 +15,7 @@ from .tasks import (
     queue_waitlist_task,
     vote_passed_waitlist_task,
 )
+from .utils import CHANNEL_ID
 
 add_player_task.start()
 afk_timer_task.start()
@@ -39,10 +40,6 @@ if player:
     session.commit()
 session.close()
 
-
-CHANNEL_ID = os.getenv("CHANNEL_ID")
-if CHANNEL_ID:
-    CHANNEL_ID = int(CHANNEL_ID)
 
 
 @bot.event

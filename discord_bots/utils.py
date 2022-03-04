@@ -7,15 +7,26 @@ from datetime import datetime, timezone, tzinfo
 
 import discord
 import imgkit
+from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel
 from discord.ext.commands.context import Context
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
 
-from discord_bots.models import CurrentMap, Player, RotationMap, Session
+from discord_bots.bot import bot
+from discord_bots.models import (
+    CurrentMap,
+    MapVote,
+    Player,
+    RotationMap,
+    Session,
+    SkipMapVote,
+)
 
-STATS_DIR: str = os.getenv("STATS_DIR")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+
+STATS_DIR: str | None = os.getenv("STATS_DIR")
 
 # Convenience mean function that can handle lists of 0 or 1 length
 def mean(values: list[any]) -> float:
@@ -36,7 +47,31 @@ def short_uuid(uuid: str) -> str:
     return uuid.split("-")[0]
 
 
-def update_current_map_to_next_map_in_rotation():
+async def send_message(
+    channel: (DMChannel | GroupChannel | TextChannel),
+    content: str | None = None,
+    embed_description: str | None = None,
+    colour: Colour | None = None,
+    embed_content: bool = True,
+):
+    """
+    :colour: red = fail, green = success, blue = informational
+    """
+    if content:
+        if embed_content:
+            content = f"`{content}`"
+    embed = None
+    if embed_description:
+        embed = Embed(description=embed_description)
+        if colour:
+            embed.colour = colour
+    try:
+        await channel.send(content=content, embed=embed)
+    except Exception as e:
+        print("[send_message] exception:", e)
+
+
+async def update_current_map_to_next_map_in_rotation():
     session = Session()
     current_map: CurrentMap = session.query(CurrentMap).first()
     rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
@@ -50,14 +85,36 @@ def update_current_map_to_next_map_in_rotation():
             current_map.full_name = next_map.full_name
             current_map.short_name = next_map.short_name
             current_map.updated_at = datetime.now(timezone.utc)
+            channel = bot.get_channel(CHANNEL_ID)
+            if isinstance(channel, discord.TextChannel):
+                await send_message(
+                    channel,
+                    embed_description=f"Map automatically rotated to **{next_map.full_name}**, all votes removed",
+                    colour=discord.Colour.blue(),
+                )
+            session.query(MapVote).delete()
+            session.query(SkipMapVote).delete()
         else:
             next_map = rotation_maps[0]
             session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
+            channel = bot.get_channel(CHANNEL_ID)
+            if isinstance(channel, discord.TextChannel):
+                await send_message(
+                    channel,
+                    embed_description=f"Map rotated to {next_map.full_name}, all votes removed",
+                    colour=discord.Colour.blue(),
+                )
+            session.query(MapVote).delete()
+            session.query(SkipMapVote).delete()
+
         session.commit()
 
 
 async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
     # Assume the most recently modified HTML file is the correct stat sheet
+    if not STATS_DIR:
+        return
+
     html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(STATS_DIR)))
     html_files.sort(key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True)
 
@@ -86,6 +143,9 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
 
 async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
     # Assume the most recently modified HTML file is the correct stat sheet
+    if not STATS_DIR:
+        return
+
     html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(STATS_DIR)))
     html_files.sort(key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True)
 

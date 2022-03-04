@@ -20,7 +20,6 @@ from .commands import (
     MAP_ROTATION_MINUTES,
     add_player_to_queue,
     is_in_game,
-    send_message,
 )
 from .models import (
     CurrentMap,
@@ -38,7 +37,7 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
-from .utils import update_current_map_to_next_map_in_rotation
+from .utils import send_message, update_current_map_to_next_map_in_rotation
 
 
 @tasks.loop(minutes=1)
@@ -295,9 +294,7 @@ async def map_rotation_task():
         timezone.utc
     ) - current_map.updated_at.replace(tzinfo=timezone.utc)
     if (time_since_update.seconds // 60) > MAP_ROTATION_MINUTES:
-        # TODO: Need to announce to the server, get a handle to a channel /
-        # guild
-        update_current_map_to_next_map_in_rotation()
+        await update_current_map_to_next_map_in_rotation()
 
 
 @tasks.loop(seconds=1)
