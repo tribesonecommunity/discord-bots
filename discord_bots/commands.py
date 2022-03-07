@@ -10,7 +10,6 @@ from os import remove
 from random import randint, random, shuffle
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from time import sleep
 from typing import Union
 
 import discord
@@ -64,6 +63,7 @@ from .queues import AddPlayerQueueMessage, add_player_queue
 from .utils import (
     mean,
     pretty_format_team,
+    send_message,
     short_uuid,
     update_current_map_to_next_map_in_rotation,
     win_probability,
@@ -480,30 +480,6 @@ async def add_player_to_queue(
     session.close()
 
     return True, False
-
-
-async def send_message(
-    channel: (DMChannel | GroupChannel | TextChannel),
-    content: str = None,
-    embed_description: str = None,
-    colour: Colour = None,
-    embed_content: bool = True,
-):
-    """
-    :colour: red = fail, green = success, blue = informational
-    """
-    if content:
-        if embed_content:
-            content = f"`{content}`"
-    embed = None
-    if embed_description:
-        embed = Embed(description=embed_description)
-        if colour:
-            embed.colour = colour
-    try:
-        await channel.send(content=content, embed=embed)
-    except Exception as e:
-        print("[send_message] exception:", e)
 
 
 async def is_admin(ctx: Context):

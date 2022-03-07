@@ -117,12 +117,11 @@ Common issues:
 - Convert from sqlite to postgres
 - Refactor commands file
 - Automatically show rotation maps in voteable maps and when a rotation map is voted, just rotate to it
-- Deploy to heroku
 - Fix tests
-- Add !notify ltpug 9 command
 
 ## Good first tickets
 - Store player display name alongside regular name
+- Store total games played
 - Allow voting for multiple maps at once
 - Store total games played, win/loss/tie record
 - Add created_at timestamps to all tables (esp finished_game_player)
