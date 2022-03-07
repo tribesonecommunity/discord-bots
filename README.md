@@ -17,9 +17,6 @@
 1. `pip install -U .`
 1. `cp .env.example .env`. Modify `.env` by adding your API key
 1. Setup the database: `alembic upgrade head`
-1. (optional) Import match history:
-   - `curl "http://50.116.36.119/api/server/127155819698454529/games/1546300801000" > out.json`
-   - `python scripts/import_match_history.py`
 
 ### Windows
 1. Install Python
@@ -125,11 +122,11 @@ Common issues:
 ## Good first tickets
 - Store player display name alongside regular name
 - Store total games played
+- Allow voting for multiple maps at once
+- Store total games played, win/loss/tie record
 - Add created_at timestamps to all tables (esp finished_game_player)
 
 MVP+
 
 - Shazbucks
 - Expose Flask API: https://flask.palletsprojects.com/en/2.0.x/
-- Mark mock games as mock games for easier deletion
-- Store player w/l (not sure about this since games are made using TS)
