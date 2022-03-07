@@ -17,9 +17,6 @@
 1. `pip install -U .`
 1. `cp .env.example .env`. Modify `.env` by adding your API key
 1. Setup the database: `alembic upgrade head`
-1. (optional) Import match history:
-   - `curl "http://50.116.36.119/api/server/127155819698454529/games/1546300801000" > out.json`
-   - `python scripts/import_match_history.py`
 
 ### Windows
 1. Install Python
