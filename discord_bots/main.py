@@ -23,23 +23,18 @@ map_rotation_task.start()
 queue_waitlist_task.start()
 vote_passed_waitlist_task.start()
 
-
-BULLIEST_BOT_ID = 912605788781035541
-LYON_ID = 193359832340889600
-OPSAYO_MEMBER_ID = 115204465589616646
-
-session = Session()
-# There always has to be at least one initial admin to add others!
-player = session.query(Player).filter(Player.id == OPSAYO_MEMBER_ID).first()
-if player:
-    player.is_admin = True
-    session.commit()
-player = session.query(Player).filter(Player.id == LYON_ID).first()
-if player:
-    player.is_admin = True
-    session.commit()
-session.close()
-
+load_dotenv()
+SEED_ADMIN_IDS = os.getenv("SEED_ADMIN_IDS")
+if SEED_ADMIN_IDS:
+    session = Session()
+    seed_admin_ids = SEED_ADMIN_IDS.split(",")
+    for seed_admin_id in seed_admin_ids:
+        # There always has to be at least one initial admin to add others!
+        player = session.query(Player).filter(Player.id == seed_admin_id).first()
+        if player:
+            player.is_admin = True
+            session.commit()
+    session.close()
 
 
 @bot.event
