@@ -452,7 +452,7 @@ async def add_player_to_queue(
         session.query(SkipMapVote).delete()
         session.commit()
         if not queue.is_isolated:
-            update_current_map_to_next_map_in_rotation()
+            await update_current_map_to_next_map_in_rotation()
         return True, True
 
     queue_notifications: list[QueueNotification] = (
@@ -2290,7 +2290,6 @@ async def mockrandomqueue(ctx: Context, *args):
             session.commit()
 
 
-# async def notify(ctx: Context, queue_name_or_index: str | int, size: int):
 @bot.command()
 async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
     message = ctx.message
