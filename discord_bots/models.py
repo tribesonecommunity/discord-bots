@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
+from dotenv import load_dotenv
 
 import trueskill
 from sqlalchemy import (
@@ -23,6 +25,7 @@ from sqlalchemy.orm import registry, sessionmaker  # type: ignore
 from sqlalchemy.sql import expression, func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
+load_dotenv()
 DB_NAME = "tribes"
 
 # It may be tempting, but do not set check_same_thread=False here. Sqlite
@@ -374,6 +377,11 @@ class SkipMapVote:
     )
 
 
+default_rating = trueskill.Rating()
+DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
+DEFAULT_TRUESKILL_SIGMA = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.sigma)
+
+
 @mapper_registry.mapped
 @dataclass
 class Player:
@@ -401,16 +409,16 @@ class Player:
         metadata={"sa": Column(DateTime)},
     )
     rated_trueskill_mu: float = field(
-        default=12.5, metadata={"sa": Column(Float, nullable=False)}
+        default=DEFAULT_TRUESKILL_MU, metadata={"sa": Column(Float, nullable=False)}
     )
     rated_trueskill_sigma: float = field(
-        default=trueskill.Rating().sigma, metadata={"sa": Column(Float, nullable=False)}
+        default=DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
     )
     unrated_trueskill_mu: float = field(
-        default=12.5, metadata={"sa": Column(Float, nullable=False)}
+        default=DEFAULT_TRUESKILL_MU, metadata={"sa": Column(Float, nullable=False)}
     )
     unrated_trueskill_sigma: float = field(
-        default=trueskill.Rating().sigma, metadata={"sa": Column(Float, nullable=False)}
+        default=DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
     )
 
     def __lt__(self, other: Player):
