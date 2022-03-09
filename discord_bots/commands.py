@@ -7,7 +7,7 @@ from glob import glob
 from itertools import combinations
 from math import floor
 from os import remove
-from random import randint, random, shuffle
+from random import choice, randint, random, shuffle
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
 from typing import Union
@@ -2389,6 +2389,18 @@ async def pug(ctx: Context):
     cropped.save(ntf.name)
     await ctx.message.channel.send(file=discord.File(ntf.name))
     ntf.close()
+
+
+@bot.command()
+async def randommap(ctx: Context):
+    session = Session()
+    voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
+    voteable_map = choice(voteable_maps)
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Random map selected: **{voteable_map.full_name} ({voteable_map.short_name})**",
+        colour=Colour.blue(),
+    )
 
 
 @bot.command()
