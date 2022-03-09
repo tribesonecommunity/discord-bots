@@ -929,7 +929,9 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
     return output
 
 
-TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = 462824101753520138
+TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = int(
+    os.getenv("TRIBES_VOICE_CATEGORY_CHANNEL_ID") or ""
+)
 
 
 def is_in_game(player_id: int) -> bool:
