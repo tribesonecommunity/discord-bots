@@ -3568,7 +3568,7 @@ async def voteskip(ctx: Context):
 
     skip_map_votes: list[SkipMapVote] = Session().query(SkipMapVote).all()
     if len(skip_map_votes) >= MAP_VOTE_THRESHOLD:
-        update_current_map_to_next_map_in_rotation()
+        await update_current_map_to_next_map_in_rotation()
         current_map: CurrentMap = Session().query(CurrentMap).first()
         await send_message(
             message.channel,
