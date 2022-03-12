@@ -3451,7 +3451,7 @@ async def streams(ctx: Context):
         embed_description=output,
         embed_thumbnail=game_box_art_url,
         embed_title=f"Players streaming {game_name}",
-        colour=Colour.red(),
+        colour=Colour.blue(),
     )
 
 

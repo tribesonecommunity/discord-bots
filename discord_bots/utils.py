@@ -64,7 +64,7 @@ async def send_message(
         if embed_content:
             content = f"`{content}`"
     embed = None
-    if embed_title or embed_thumbnail or embed_description:
+    if embed_title or embed_thumbnail or embed_description or colour:
         embed = Embed()
     if embed_title:
         embed.title = embed_title
@@ -72,8 +72,8 @@ async def send_message(
         embed.set_thumbnail(url=embed_thumbnail)
     if embed_description:
         embed.description = embed_description
-        if colour:
-            embed.colour = colour
+    if colour:
+        embed.colour = colour
     try:
         await channel.send(content=content, embed=embed)
     except Exception as e:
