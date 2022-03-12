@@ -45,9 +45,11 @@ from .models import (
     MapVote,
     Player,
     PlayerDecay,
+    PlayerRegionTrueskill,
     Queue,
     QueueNotification,
     QueuePlayer,
+    QueueRegion,
     QueueRole,
     QueueWaitlist,
     QueueWaitlistPlayer,
@@ -60,6 +62,7 @@ from .models import (
 )
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
+from .twitch import twitch
 from .utils import (
     mean,
     pretty_format_team,
@@ -86,7 +89,7 @@ def debug_print(*args):
 
 
 def get_even_teams(
-    player_ids: list[int], team_size: int, is_rated: bool
+    player_ids: list[int], team_size: int, is_rated: bool, queue_region_id: str | None
 ) -> tuple[list[Player], float]:
     """
     TODO: Tests
@@ -102,6 +105,16 @@ def get_even_teams(
     players: list[Player] = (
         session.query(Player).filter(Player.id.in_(player_ids)).all()
     )
+    if queue_region_id:
+        player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
+            PlayerRegionTrueskill.player_id.in_(player_ids),
+            PlayerRegionTrueskill.queue_region_id == queue_region_id,
+        )
+        player_region_trueskills = {
+            prt.player_id: prt for prt in player_region_trueskills
+        }
+    else:
+        player_region_trueskills = {}
     best_win_prob_so_far: float = 0.0
     best_teams_so_far: list[Player] = []
 
@@ -111,32 +124,67 @@ def get_even_teams(
     for team0 in all_combinations[: len(all_combinations) // 2]:
         team1 = [p for p in players if p not in team0]
         if is_rated:
-            team0_ratings = list(
-                map(
-                    lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
-                    team0,
-                )
-            )
-            team1_ratings = list(
-                map(
-                    lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
-                    team1,
-                )
-            )
+            team0_ratings = []
+            for player in team0:
+                if queue_region_id and player.id in player_region_trueskills:
+                    player_region_trueskill = player_region_trueskills[player.id]
+                    team0_ratings.append(
+                        Rating(
+                            player_region_trueskill.rated_trueskill_mu,
+                            player_region_trueskill.rated_trueskill_sigma,
+                        )
+                    )
+                else:
+                    team0_ratings.append(
+                        Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                    )
+            team1_ratings = []
+            for player in team1:
+                if queue_region_id and player.id in player_region_trueskills:
+                    player_region_trueskill = player_region_trueskills[player.id]
+                    team1_ratings.append(
+                        Rating(
+                            player_region_trueskill.rated_trueskill_mu,
+                            player_region_trueskill.rated_trueskill_sigma,
+                        )
+                    )
+                else:
+                    team1_ratings.append(
+                        Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                    )
         else:
-            team0_ratings = list(
-                map(
-                    lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
-                    team0,
-                )
-            )
-            team1_ratings = list(
-                map(
-                    lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
-                    team1,
-                )
-            )
-
+            team0_ratings = []
+            for player in team0:
+                if queue_region_id and player.id in player_region_trueskills:
+                    player_region_trueskill = player_region_trueskills[player.id]
+                    team0_ratings.append(
+                        Rating(
+                            player_region_trueskill.unrated_trueskill_mu,
+                            player_region_trueskill.unrated_trueskill_sigma,
+                        )
+                    )
+                else:
+                    team0_ratings.append(
+                        Rating(
+                            player.unrated_trueskill_mu, player.unrated_trueskill_sigma
+                        )
+                    )
+            team1_ratings = []
+            for player in team1:
+                if queue_region_id and player.id in player_region_trueskills:
+                    player_region_trueskill = player_region_trueskills[player.id]
+                    team1_ratings.append(
+                        Rating(
+                            player_region_trueskill.unrated_trueskill_mu,
+                            player_region_trueskill.unrated_trueskill_sigma,
+                        )
+                    )
+                else:
+                    team1_ratings.append(
+                        Rating(
+                            player.unrated_trueskill_mu, player.unrated_trueskill_sigma
+                        )
+                    )
         win_prob = win_probability(team0_ratings, team1_ratings)
         current_team_evenness = abs(0.50 - win_prob)
         best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
@@ -349,7 +397,10 @@ async def add_player_to_queue(
             win_prob = 0
         else:
             players, win_prob = get_even_teams(
-                player_ids, len(player_ids) // 2, is_rated=queue.is_rated
+                player_ids,
+                len(player_ids) // 2,
+                is_rated=queue.is_rated,
+                queue_region_id=queue.queue_region_id,
             )
         if queue.is_rated:
             average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
@@ -382,17 +433,17 @@ async def add_player_to_queue(
 
         for player in team0_players:
             member: Member | None = guild.get_member(player.id)
-            if member:
-                try:
-                    await member.send(
-                        content=message_content,
-                        embed=Embed(
-                            description=f"{message_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+            # if member:
+            #     try:
+            #         await member.send(
+            #             content=message_content,
+            #             embed=Embed(
+            #                 description=f"{message_embed}",
+            #                 colour=Colour.blue(),
+            #             ),
+            #         )
+            #     except Exception:
+            #         pass
 
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
@@ -403,17 +454,17 @@ async def add_player_to_queue(
 
         for player in team1_players:
             member: Member | None = guild.get_member(player.id)
-            if member:
-                try:
-                    await member.send(
-                        content=message_content,
-                        embed=Embed(
-                            description=f"{message_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+            # if member:
+            #     try:
+            #         await member.send(
+            #             content=message_content,
+            #             embed=Embed(
+            #                 description=f"{message_embed}",
+            #                 colour=Colour.blue(),
+            #             ),
+            #         )
+            #     except Exception:
+            #         pass
 
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
@@ -1197,6 +1248,32 @@ async def addadminrole(ctx: Context, role_name: str):
 
 @bot.command()
 @commands.check(is_admin)
+async def addqueueregion(ctx: Context, region_name: str):
+    session = Session()
+    exists = (
+        session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
+    )
+    if exists:
+        session.close()
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Region already exists: **{region_name}**",
+            colour=Colour.red(),
+        )
+        return
+
+    session.add(QueueRegion(region_name))
+    session.commit()
+    session.close()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Region added: **{region_name}**",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
 async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
     session = Session()
@@ -1815,7 +1892,21 @@ async def finishgame(ctx: Context, outcome: str):
             InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
         )
     ).all()
+    player_ids: list[str] = [player.id for player in players]
     players_by_id: dict[int, Player] = {player.id: player for player in players}
+    player_region_trueskills_by_id: dict[str, PlayerRegionTrueskill] = {}
+    if queue.queue_region_id:
+        player_region_trueskills: list[PlayerRegionTrueskill] = (
+            session.query(PlayerRegionTrueskill)
+            .filter(
+                PlayerRegionTrueskill.player_id.in_(player_ids),
+                PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
+            )
+            .all()
+        )
+        player_region_trueskills_by_id = {
+            prt.player_id: prt for prt in player_region_trueskills
+        }
     in_progress_game_players = (
         session.query(InProgressGamePlayer)
         .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
@@ -1831,20 +1922,48 @@ async def finishgame(ctx: Context, outcome: str):
         player = players_by_id[in_progress_game_player.player_id]
         if in_progress_game_player.team == 0:
             team0_players.append(in_progress_game_player)
-            team0_rated_ratings_before.append(
-                Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-            )
-            team0_unrated_ratings_before.append(
-                Rating(player.unrated_trueskill_mu, player.unrated_trueskill_sigma)
-            )
+            if queue.queue_region_id and player.id in player_region_trueskills_by_id:
+                prt = player_region_trueskills_by_id[player.id]
+                team0_rated_ratings_before.append(
+                    Rating(prt.rated_trueskill_mu, prt.rated_trueskill_sigma)
+                )
+                team0_unrated_ratings_before.append(
+                    Rating(prt.unrated_trueskill_mu, prt.unrated_trueskill_sigma)
+                )
+            else:
+                team0_rated_ratings_before.append(
+                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                )
+                team0_unrated_ratings_before.append(
+                    Rating(player.unrated_trueskill_mu, player.unrated_trueskill_sigma)
+                )
         else:
             team1_players.append(in_progress_game_player)
-            team1_rated_ratings_before.append(
-                Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-            )
-            team1_unrated_ratings_before.append(
-                Rating(player.unrated_trueskill_mu, player.unrated_trueskill_sigma)
-            )
+            if queue.queue_region_id and player.id in player_region_trueskills_by_id:
+                prt = player_region_trueskills_by_id[player.id]
+                team1_rated_ratings_before.append(
+                    Rating(prt.rated_trueskill_mu, prt.rated_trueskill_sigma)
+                )
+                team1_unrated_ratings_before.append(
+                    Rating(prt.unrated_trueskill_mu, prt.unrated_trueskill_sigma)
+                )
+            else:
+                team1_rated_ratings_before.append(
+                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                )
+                team1_unrated_ratings_before.append(
+                    Rating(player.unrated_trueskill_mu, player.unrated_trueskill_sigma)
+                )
+
+    if queue.queue_region_id:
+        queue_region_name = (
+            session.query(QueueRegion)
+            .filter(QueueRegion.id == queue.queue_region_id)
+            .first()
+            .name
+        )
+    else:
+        queue_region_name = None
 
     finished_game = FinishedGame(
         average_trueskill=in_progress_game.average_trueskill,
@@ -1854,6 +1973,7 @@ async def finishgame(ctx: Context, outcome: str):
         map_full_name=in_progress_game.map_full_name,
         map_short_name=in_progress_game.map_short_name,
         queue_name=queue.name,
+        queue_region_name=queue_region_name,
         started_at=in_progress_game.created_at,
         team0_name=in_progress_game.team0_name,
         team1_name=in_progress_game.team1_name,
@@ -1919,10 +2039,29 @@ async def finishgame(ctx: Context, outcome: str):
             unrated_trueskill_mu_after=team0_unrated_ratings_after[i].mu,
             unrated_trueskill_sigma_after=team0_unrated_ratings_after[i].sigma,
         )
-        player.rated_trueskill_mu = team0_rated_ratings_after[i].mu
-        player.rated_trueskill_sigma = team0_rated_ratings_after[i].sigma
-        player.unrated_trueskill_mu = team0_unrated_ratings_after[i].mu
-        player.unrated_trueskill_sigma = team0_unrated_ratings_after[i].sigma
+        if not queue.queue_region_id:
+            player.rated_trueskill_mu = team0_rated_ratings_after[i].mu
+            player.rated_trueskill_sigma = team0_rated_ratings_after[i].sigma
+            player.unrated_trueskill_mu = team0_unrated_ratings_after[i].mu
+            player.unrated_trueskill_sigma = team0_unrated_ratings_after[i].sigma
+        else:
+            if player.id in player_region_trueskills_by_id:
+                prt = player_region_trueskills_by_id[player.id]
+                prt.rated_trueskill_mu = team0_rated_ratings_after[i].mu
+                prt.rated_trueskill_sigma = team0_rated_ratings_after[i].sigma
+                prt.unrated_trueskill_mu = team0_unrated_ratings_after[i].mu
+                prt.unrated_trueskill_sigma = team0_unrated_ratings_after[i].sigma
+            else:
+                session.add(
+                    PlayerRegionTrueskill(
+                        player_id=player.id,
+                        queue_region_id=queue.queue_region_id,
+                        rated_trueskill_mu=team0_rated_ratings_after[i].mu,
+                        rated_trueskill_sigma=team0_rated_ratings_after[i].sigma,
+                        unrated_trueskill_mu=team0_unrated_ratings_after[i].mu,
+                        unrated_trueskill_sigma=team0_unrated_ratings_after[i].sigma,
+                    )
+                )
         session.add(finished_game_player)
     for i, team1_gip in enumerate(team1_players):
         player = players_by_id[team1_gip.player_id]
@@ -1940,10 +2079,29 @@ async def finishgame(ctx: Context, outcome: str):
             unrated_trueskill_mu_after=team1_unrated_ratings_after[i].mu,
             unrated_trueskill_sigma_after=team1_unrated_ratings_after[i].sigma,
         )
-        player.rated_trueskill_mu = team1_rated_ratings_after[i].mu
-        player.rated_trueskill_sigma = team1_rated_ratings_after[i].sigma
-        player.unrated_trueskill_mu = team1_unrated_ratings_after[i].mu
-        player.unrated_trueskill_sigma = team1_unrated_ratings_after[i].sigma
+        if not queue.queue_region_id:
+            player.rated_trueskill_mu = team1_rated_ratings_after[i].mu
+            player.rated_trueskill_sigma = team1_rated_ratings_after[i].sigma
+            player.unrated_trueskill_mu = team1_unrated_ratings_after[i].mu
+            player.unrated_trueskill_sigma = team1_unrated_ratings_after[i].sigma
+        else:
+            if player.id in player_region_trueskills_by_id:
+                prt = player_region_trueskills_by_id[player.id]
+                prt.rated_trueskill_mu = team1_rated_ratings_after[i].mu
+                prt.rated_trueskill_sigma = team1_rated_ratings_after[i].sigma
+                prt.unrated_trueskill_mu = team1_unrated_ratings_after[i].mu
+                prt.unrated_trueskill_sigma = team1_unrated_ratings_after[i].sigma
+            else:
+                session.add(
+                    PlayerRegionTrueskill(
+                        player_id=player.id,
+                        queue_region_id=queue.queue_region_id,
+                        rated_trueskill_mu=team1_rated_ratings_after[i].mu,
+                        rated_trueskill_sigma=team1_rated_ratings_after[i].sigma,
+                        unrated_trueskill_mu=team1_unrated_ratings_after[i].mu,
+                        unrated_trueskill_sigma=team1_unrated_ratings_after[i].sigma,
+                    )
+                )
         session.add(finished_game_player)
 
     session.query(InProgressGamePlayer).filter(
@@ -2126,6 +2284,19 @@ async def listplayerdecays(ctx: Context, member: Member):
 
 
 @bot.command()
+async def listqueueregions(ctx: Context):
+    output = "Regions:"
+    session = Session()
+    queue_region: QueueRegion
+    for queue_region in session.query(QueueRegion).all():
+        output += f"\n- {queue_region.name}"
+    session.close()
+    await send_message(
+        ctx.message.channel, embed_description=output, colour=Colour.blue()
+    )
+
+
+@bot.command()
 async def listqueueroles(ctx: Context):
     message = ctx.message
     if not message.guild:
@@ -2244,6 +2415,8 @@ async def mockrandomqueue(ctx: Context, *args):
     message = ctx.message
     """
     Helper test method for adding random players to queues
+
+    This will send PMs to players, create voice channels, etc. so be careful
     """
     if message.author.id != 115204465589616646:
         await send_message(
@@ -2528,13 +2701,13 @@ async def removequeue(ctx: Context, queue_name: str):
             session.commit()
             await send_message(
                 message.channel,
-                embed_description=f"Queue removed: {queue_name}",
+                embed_description=f"Queue removed: {queue.name}",
                 colour=Colour.blue(),
             )
     else:
         await send_message(
             message.channel,
-            embed_description=f"Queue not found: {queue_name}",
+            embed_description=f"Queue not found: {queue.name}",
             colour=Colour.red(),
         )
 
@@ -2556,6 +2729,32 @@ async def removedbbackup(ctx: Context, db_filename: str):
         message.channel,
         embed_description=f"DB backup {db_filename} removed",
         colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def removequeueregion(ctx: Context, region_name: str):
+    session = Session()
+    region = (
+        session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
+    )
+    if region:
+        session.delete(region)
+        session.commit()
+        session.close()
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Region removed: **{region_name}**",
+            colour=Colour.green(),
+        )
+        return
+
+    session.close()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Could not find region: **{region_name}**",
+        colour=Colour.red(),
     )
 
 
@@ -2743,6 +2942,41 @@ async def setqueuerated(ctx: Context, queue_name: str):
 
 @bot.command()
 @commands.check(is_admin)
+async def setqueueregion(ctx: Context, queue_name: str, region_name: str):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if not queue:
+        session.close()
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {queue_name}",
+            colour=Colour.red(),
+        )
+        return
+    queue_region: QueueRegion = (
+        session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
+    )
+    if not queue_region:
+        session.close()
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find region: {region_name}",
+            colour=Colour.red(),
+        )
+        return
+    queue.queue_region_id = queue_region.id
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Queue {queue.name} assigned to region {queue_region.name}",
+        colour=Colour.blue(),
+    )
+    session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
 async def setqueueunrated(ctx: Context, queue_name: str):
     message = ctx.message
     session = Session()
@@ -2804,6 +3038,12 @@ async def showgame(ctx: Context, game_id: str):
 
 @bot.command()
 async def showgamedebug(ctx: Context, game_id: str):
+    await send_message(
+        ctx.message.channel,
+        embed_description="Ice cream machine under maintenance",
+        colour=Colour.red(),
+    )
+    return
     message = ctx.message
     session = Session()
     finished_game = (
@@ -2968,12 +3208,23 @@ async def status(ctx: Context, *args):
             .filter(QueuePlayer.queue_id == queue.id)
             .all()
         )
-        if queue.is_locked:
-            output += (
-                f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+        queue_region: QueueRegion | None = None
+        if queue.queue_region_id:
+            queue_region = (
+                session.query(QueueRegion)
+                .filter(QueueRegion.id == queue.queue_region_id)
+                .first()
             )
+        if queue.is_locked:
+            if queue_region:
+                output += f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}] _(region: {queue_region.name}_\n"
+            else:
+                output += f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
         else:
-            output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+            if queue_region:
+                output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}] _(region: {queue_region.name})_\n"
+            else:
+                output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
         if len(players_in_queue) > 0:
             output += f"**IN QUEUE:** "
@@ -3054,8 +3305,12 @@ async def stats(ctx: Context):
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     players: list[Player] = session.query(Player).all()
 
+
+    default_rating = Rating()
+    DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
+
     # Filter players that haven't played a game
-    players = list(filter(lambda x: x.rated_trueskill_mu != 25.0, players))
+    players = list(filter(lambda x: x.rated_trueskill_mu != default_rating.mu and x.rated_trueskill_mu != DEFAULT_TRUESKILL_MU, players))
     trueskills = list(
         sorted(
             [
@@ -3161,6 +3416,45 @@ async def stats(ctx: Context):
     )
 
 
+TWITCH_GAME_NAME: str | None = os.getenv("TWITCH_GAME_NAME")
+
+@bot.command()
+async def streams(ctx: Context):
+    if not TWITCH_GAME_NAME:
+        await send_message(
+            channel=ctx.message.channel,
+            embed_description=f"TWITCH_GAME_NAME not set!",
+            colour=Colour.red(),
+        )
+        return
+
+    if not twitch:
+        await send_message(
+            channel=ctx.message.channel,
+            embed_description=f"TWITCH_CLIENT_ID or TWITCH_CLIENT_SECRET not set!",
+            colour=Colour.red(),
+        )
+        return
+
+    games_data = twitch.get_games(names=[TWITCH_GAME_NAME])
+    game_id = games_data["data"][0]["id"]
+    game_name = games_data["data"][0]["name"]
+    game_box_art_url = games_data["data"][0]["box_art_url"].replace("{width}", "40").replace("{height}", "40")
+
+    streams_data = twitch.get_streams(game_id=game_id)
+    output = ""
+    for stream_data in streams_data['data']:
+        output += f"\n**{stream_data['user_name']}** ([link](https://www.twitch.tv/{stream_data['user_name']})): {stream_data['title']}"
+
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description=output,
+        embed_image_url=game_box_art_url,
+        embed_title=f"Players streaming {game_name}",
+        colour=Colour.red(),
+    )
+
+
 @bot.command()
 async def sub(ctx: Context, member: Member):
     message = ctx.message
@@ -3253,7 +3547,10 @@ async def sub(ctx: Context, member: Member):
     )
     player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
     players, win_prob = get_even_teams(
-        player_ids, len(player_ids) // 2, is_rated=queue.is_rated
+        player_ids,
+        len(player_ids) // 2,
+        is_rated=queue.is_rated,
+        queue_region_id=queue.queue_region_id,
     )
     for game_player in game_players:
         session.delete(game_player)
@@ -3269,19 +3566,19 @@ async def sub(ctx: Context, member: Member):
 
     for player in team0_players:
         # TODO: This block is duplicated
-        if message.guild:
-            member_: Member | None = message.guild.get_member(player.id)
-            if member_:
-                try:
-                    await member_.send(
-                        content=channel_message,
-                        embed=Embed(
-                            description=f"{channel_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+        # if message.guild:
+        #     member_: Member | None = message.guild.get_member(player.id)
+        #     if member_:
+        #         try:
+        #             await member_.send(
+        #                 content=channel_message,
+        #                 embed=Embed(
+        #                     description=f"{channel_embed}",
+        #                     colour=Colour.blue(),
+        #                 ),
+        #             )
+        #         except Exception:
+        #             pass
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -3292,19 +3589,19 @@ async def sub(ctx: Context, member: Member):
 
     for player in team1_players:
         # TODO: This block is duplicated
-        if message.guild:
-            member_: Member | None = message.guild.get_member(player.id)
-            if member_:
-                try:
-                    await member_.send(
-                        content=channel_message,
-                        embed=Embed(
-                            description=f"{channel_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+        # if message.guild:
+        #     member_: Member | None = message.guild.get_member(player.id)
+        #     if member_:
+        #         try:
+        #             await member_.send(
+        #                 content=channel_message,
+        #                 embed=Embed(
+        #                     description=f"{channel_embed}",
+        #                     colour=Colour.blue(),
+        #                 ),
+        #             )
+        #         except Exception:
+        #             pass
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -3389,6 +3686,30 @@ async def unlockqueue(ctx: Context, queue_name: str):
         embed_description=f"Queue {queue_name} unlocked",
         colour=Colour.green(),
     )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def unsetqueueregion(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if not queue:
+        session.close()
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {queue_name}",
+            colour=Colour.red(),
+        )
+        return
+    queue.queue_region_id = None
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Region removed from queue {queue.name}",
+        colour=Colour.blue(),
+    )
+    session.commit()
 
 
 @bot.command()

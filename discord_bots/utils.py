@@ -10,6 +10,7 @@ import imgkit
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel
 from discord.ext.commands.context import Context
 from PIL import Image
+from matplotlib import image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
@@ -53,6 +54,8 @@ async def send_message(
     embed_description: str | None = None,
     colour: Colour | None = None,
     embed_content: bool = True,
+    embed_title: str | None = None,
+    embed_image_url: str | None = None,
 ):
     """
     :colour: red = fail, green = success, blue = informational
@@ -61,8 +64,14 @@ async def send_message(
         if embed_content:
             content = f"`{content}`"
     embed = None
+    if embed_title or embed_image_url or embed_description:
+        embed = Embed()
+    if embed_title:
+        embed.title = embed_title
+    if embed_image_url:
+        embed.set_image(url=embed_image_url)
     if embed_description:
-        embed = Embed(description=embed_description)
+        embed.description = embed_description
         if colour:
             embed.colour = colour
     try:
