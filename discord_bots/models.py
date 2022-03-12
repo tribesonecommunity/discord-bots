@@ -505,7 +505,6 @@ class Queue:
                 ForeignKey("queue_region.id"),
                 nullable=True,
                 index=True,
-                unique=True,
             )
         },
     )

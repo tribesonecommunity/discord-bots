@@ -1198,7 +1198,7 @@ async def addadminrole(ctx: Context, role_name: str):
 @commands.check(is_admin)
 async def addqueueregion(ctx: Context, region_name: str):
     session = Session()
-    exists = session.query(QueueRegion).filter(QueueRegion.name == region_name).first()
+    exists = session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
     if exists:
         session.close()
         await send_message(
@@ -2585,7 +2585,7 @@ async def removedbbackup(ctx: Context, db_filename: str):
 @commands.check(is_admin)
 async def removequeueregion(ctx: Context, region_name: str):
     session = Session()
-    region = session.query(QueueRegion).filter(QueueRegion.name == region_name).first()
+    region = session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
     if region:
         session.delete(region)
         session.commit()
@@ -2787,26 +2787,36 @@ async def setqueuerated(ctx: Context, queue_name: str):
     session.commit()
 
 
-# TODO
 @bot.command()
 @commands.check(is_admin)
 async def setqueueregion(ctx: Context, queue_name: str, region_name: str):
     message = ctx.message
     session = Session()
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.is_rated = True
+    if not queue:
+        session.close()
         await send_message(
             message.channel,
-            embed_description=f"Queue {queue_name} is now rated",
-            colour=Colour.blue(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
+            embed_description=f"Could not find queue: {queue_name}",
             colour=Colour.red(),
         )
+        return
+    queue_region: QueueRegion = session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
+    if not queue_region:
+        session.close()
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find region: {region_name}",
+            colour=Colour.red(),
+        )
+        return
+    queue.queue_region_id = queue_region.id
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Queue {queue.name} assigned to region {queue_region.name}",
+        colour=Colour.blue(),
+    )
     session.commit()
 
 
@@ -3037,12 +3047,23 @@ async def status(ctx: Context, *args):
             .filter(QueuePlayer.queue_id == queue.id)
             .all()
         )
+        queue_region: QueueRegion | None = None
+        if queue.queue_region_id:
+            queue_region = session.query(QueueRegion).filter(QueueRegion.id == queue.queue_region_id).first()
         if queue.is_locked:
-            output += (
-                f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
-            )
+            if queue_region:
+                output += (
+                    f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}] _(region: {queue_region.name}_\n"
+                )
+            else:
+                output += (
+                    f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+                )
         else:
-            output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+            if queue_region:
+                output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}] _(region: {queue_region.name})_\n"
+            else:
+                output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
         if len(players_in_queue) > 0:
             output += f"**IN QUEUE:** "
@@ -3458,6 +3479,30 @@ async def unlockqueue(ctx: Context, queue_name: str):
         embed_description=f"Queue {queue_name} unlocked",
         colour=Colour.green(),
     )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def unsetqueueregion(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if not queue:
+        session.close()
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {queue_name}",
+            colour=Colour.red(),
+        )
+        return
+    queue.queue_region_id = None
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Region removed from queue {queue.name}",
+        colour=Colour.blue(),
+    )
+    session.commit()
 
 
 @bot.command()
