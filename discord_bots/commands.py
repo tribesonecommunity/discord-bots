@@ -62,6 +62,7 @@ from .models import (
 )
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
+from .twitch import twitch
 from .utils import (
     mean,
     pretty_format_team,
@@ -3398,6 +3399,45 @@ async def stats(ctx: Context):
         channel=ctx.message.channel,
         embed_description=output,
         colour=Colour.blue(),
+    )
+
+
+TWITCH_GAME_NAME: str | None = os.getenv("TWITCH_GAME_NAME")
+
+@bot.command()
+async def streams(ctx: Context):
+    if not TWITCH_GAME_NAME:
+        await send_message(
+            channel=ctx.message.channel,
+            embed_description=f"TWITCH_GAME_NAME not set!",
+            colour=Colour.red(),
+        )
+        return
+
+    if not twitch:
+        await send_message(
+            channel=ctx.message.channel,
+            embed_description=f"TWITCH_CLIENT_ID or TWITCH_CLIENT_SECRET not set!",
+            colour=Colour.red(),
+        )
+        return
+
+    games_data = twitch.get_games(names=[TWITCH_GAME_NAME])
+    game_id = games_data["data"][0]["id"]
+    game_name = games_data["data"][0]["name"]
+    game_box_art_url = games_data["data"][0]["box_art_url"].replace("{width}", "40").replace("{height}", "40")
+
+    streams_data = twitch.get_streams(game_id=game_id)
+    output = ""
+    for stream_data in streams_data['data']:
+        output += f"\n**{stream_data['user_name']}** ([link](https://www.twitch.tv/{stream_data['user_name']})): {stream_data['title']}"
+
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description=output,
+        embed_image_url=game_box_art_url,
+        embed_title=f"Players streaming {game_name}",
+        colour=Colour.red(),
     )
 
 
