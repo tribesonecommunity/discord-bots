@@ -13,7 +13,6 @@ click==8.0.3
 cryptography==36.0.1
 cycler==0.11.0
 discord==1.7.3
-discord-bots==1.0
 discord.py==1.7.3
 discord.py-stubs==1.7.3
 distlib==0.3.4
