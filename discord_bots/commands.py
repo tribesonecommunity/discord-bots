@@ -3290,8 +3290,12 @@ async def stats(ctx: Context):
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     players: list[Player] = session.query(Player).all()
 
+
+    default_rating = Rating()
+    DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
+
     # Filter players that haven't played a game
-    players = list(filter(lambda x: x.rated_trueskill_mu != 25.0, players))
+    players = list(filter(lambda x: x.rated_trueskill_mu != default_rating.mu and x.rated_trueskill_mu != DEFAULT_TRUESKILL_MU, players))
     trueskills = list(
         sorted(
             [
