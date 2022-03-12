@@ -42,6 +42,7 @@ The following are optional
 - `COMMAND_PREFIX` - Use a different prefix instead of `!`
 - `RANDOM_MAP_ROTATION` - Declare this for the map rotation to be random
 - `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Declare this to set the default trueskill value for new players
+- `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
 
 
 ## Running the bot

@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 from PIL import Image
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
+from discord_bots.config import SHOW_TRUESKILL
 
 from discord_bots.utils import (
     upload_stats_screenshot_imgkit,
@@ -3312,7 +3313,7 @@ async def stats(ctx: Context):
         fgp.finished_game_id: fgp for fgp in fgps
     }
 
-    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player: Player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     players: list[Player] = session.query(Player).all()
 
 
@@ -3411,7 +3412,10 @@ async def stats(ctx: Context):
     winrate_last_year = win_rate(wins_last_year, losses_last_year, ties_last_year)
 
     output = ""
-    output += f"**Trueskill:** {trueskill_pct}"
+    if SHOW_TRUESKILL:
+        output += f"**Trueskill:** {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
+    else:
+        output += f"**Trueskill:** {trueskill_pct}"
     output += f"\n\n**Wins / Losses / Ties / Total:**"
     output += f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} / {total_games} _({winrate}%)_"
     output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
