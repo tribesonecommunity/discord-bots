@@ -434,17 +434,17 @@ async def add_player_to_queue(
 
         for player in team0_players:
             member: Member | None = guild.get_member(player.id)
-            # if member:
-            #     try:
-            #         await member.send(
-            #             content=message_content,
-            #             embed=Embed(
-            #                 description=f"{message_embed}",
-            #                 colour=Colour.blue(),
-            #             ),
-            #         )
-            #     except Exception:
-            #         pass
+            if member:
+                try:
+                    await member.send(
+                        content=message_content,
+                        embed=Embed(
+                            description=f"{message_embed}",
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
 
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
@@ -455,17 +455,17 @@ async def add_player_to_queue(
 
         for player in team1_players:
             member: Member | None = guild.get_member(player.id)
-            # if member:
-            #     try:
-            #         await member.send(
-            #             content=message_content,
-            #             embed=Embed(
-            #                 description=f"{message_embed}",
-            #                 colour=Colour.blue(),
-            #             ),
-            #         )
-            #     except Exception:
-            #         pass
+            if member:
+                try:
+                    await member.send(
+                        content=message_content,
+                        embed=Embed(
+                            description=f"{message_embed}",
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
 
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
@@ -3573,19 +3573,19 @@ async def sub(ctx: Context, member: Member):
 
     for player in team0_players:
         # TODO: This block is duplicated
-        # if message.guild:
-        #     member_: Member | None = message.guild.get_member(player.id)
-        #     if member_:
-        #         try:
-        #             await member_.send(
-        #                 content=channel_message,
-        #                 embed=Embed(
-        #                     description=f"{channel_embed}",
-        #                     colour=Colour.blue(),
-        #                 ),
-        #             )
-        #         except Exception:
-        #             pass
+        if message.guild:
+            member_: Member | None = message.guild.get_member(player.id)
+            if member_:
+                try:
+                    await member_.send(
+                        content=channel_message,
+                        embed=Embed(
+                            description=f"{channel_embed}",
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -3596,19 +3596,19 @@ async def sub(ctx: Context, member: Member):
 
     for player in team1_players:
         # TODO: This block is duplicated
-        # if message.guild:
-        #     member_: Member | None = message.guild.get_member(player.id)
-        #     if member_:
-        #         try:
-        #             await member_.send(
-        #                 content=channel_message,
-        #                 embed=Embed(
-        #                     description=f"{channel_embed}",
-        #                     colour=Colour.blue(),
-        #                 ),
-        #             )
-        #         except Exception:
-        #             pass
+        if message.guild:
+            member_: Member | None = message.guild.get_member(player.id)
+            if member_:
+                try:
+                    await member_.send(
+                        content=channel_message,
+                        embed=Embed(
+                            description=f"{channel_embed}",
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
