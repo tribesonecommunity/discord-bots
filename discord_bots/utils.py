@@ -55,7 +55,7 @@ async def send_message(
     colour: Colour | None = None,
     embed_content: bool = True,
     embed_title: str | None = None,
-    embed_image_url: str | None = None,
+    embed_thumbnail: str | None = None,
 ):
     """
     :colour: red = fail, green = success, blue = informational
@@ -64,12 +64,12 @@ async def send_message(
         if embed_content:
             content = f"`{content}`"
     embed = None
-    if embed_title or embed_image_url or embed_description:
+    if embed_title or embed_thumbnail or embed_description:
         embed = Embed()
     if embed_title:
         embed.title = embed_title
-    if embed_image_url:
-        embed.set_image(url=embed_image_url)
+    if embed_thumbnail:
+        embed.set_thumbnail(url=embed_thumbnail)
     if embed_description:
         embed.description = embed_description
         if colour:

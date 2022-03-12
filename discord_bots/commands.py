@@ -3449,7 +3449,7 @@ async def streams(ctx: Context):
     await send_message(
         channel=ctx.message.channel,
         embed_description=output,
-        embed_image_url=game_box_art_url,
+        embed_thumbnail=game_box_art_url,
         embed_title=f"Players streaming {game_name}",
         colour=Colour.red(),
     )
