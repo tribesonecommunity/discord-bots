@@ -77,6 +77,7 @@ load_dotenv()
 
 AFK_TIME_MINUTES: int = 45
 DEBUG: bool = bool(os.getenv("DEBUG")) or False
+DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 MAP_ROTATION_MINUTES: int = 60
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 7
@@ -433,18 +434,19 @@ async def add_player_to_queue(
         )
 
         for player in team0_players:
-            member: Member | None = guild.get_member(player.id)
-            if member:
-                try:
-                    await member.send(
-                        content=message_content,
-                        embed=Embed(
-                            description=f"{message_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+            if not DISABLE_PRIVATE_MESSAGES:
+                member: Member | None = guild.get_member(player.id)
+                if member:
+                    try:
+                        await member.send(
+                            content=message_content,
+                            embed=Embed(
+                                description=f"{message_embed}",
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
 
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
@@ -454,18 +456,19 @@ async def add_player_to_queue(
             session.add(game_player)
 
         for player in team1_players:
-            member: Member | None = guild.get_member(player.id)
-            if member:
-                try:
-                    await member.send(
-                        content=message_content,
-                        embed=Embed(
-                            description=f"{message_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+            if not DISABLE_PRIVATE_MESSAGES:
+                member: Member | None = guild.get_member(player.id)
+                if member:
+                    try:
+                        await member.send(
+                            content=message_content,
+                            embed=Embed(
+                                description=f"{message_embed}",
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
 
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
@@ -3573,19 +3576,20 @@ async def sub(ctx: Context, member: Member):
 
     for player in team0_players:
         # TODO: This block is duplicated
-        if message.guild:
-            member_: Member | None = message.guild.get_member(player.id)
-            if member_:
-                try:
-                    await member_.send(
-                        content=channel_message,
-                        embed=Embed(
-                            description=f"{channel_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+        if not DISABLE_PRIVATE_MESSAGES:
+            if message.guild:
+                member_: Member | None = message.guild.get_member(player.id)
+                if member_:
+                    try:
+                        await member_.send(
+                            content=channel_message,
+                            embed=Embed(
+                                description=f"{channel_embed}",
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -3596,19 +3600,20 @@ async def sub(ctx: Context, member: Member):
 
     for player in team1_players:
         # TODO: This block is duplicated
-        if message.guild:
-            member_: Member | None = message.guild.get_member(player.id)
-            if member_:
-                try:
-                    await member_.send(
-                        content=channel_message,
-                        embed=Embed(
-                            description=f"{channel_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+        if not DISABLE_PRIVATE_MESSAGES:
+            if message.guild:
+                member_: Member | None = message.guild.get_member(player.id)
+                if member_:
+                    try:
+                        await member_.send(
+                            content=channel_message,
+                            embed=Embed(
+                                description=f"{channel_embed}",
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
