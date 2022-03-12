@@ -37,7 +37,7 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
-from .utils import send_message, update_current_map_to_next_map_in_rotation
+from .utils import RANDOM_MAP_ROTATION, send_message, update_current_map_to_next_map_in_rotation
 
 
 @tasks.loop(minutes=1)
@@ -286,7 +286,7 @@ async def map_rotation_task():
     if not current_map:
         return
 
-    if current_map.map_rotation_index == 0:
+    if current_map.map_rotation_index == 0 and not RANDOM_MAP_ROTATION:
         # Stop at the first map
         return
 

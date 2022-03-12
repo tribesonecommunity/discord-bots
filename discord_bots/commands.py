@@ -64,6 +64,7 @@ from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
 from .utils import (
+    RANDOM_MAP_ROTATION,
     mean,
     pretty_format_team,
     send_message,
@@ -2383,10 +2384,13 @@ async def map_(ctx: Context):
             timezone.utc
         ) - current_map.updated_at.replace(tzinfo=timezone.utc)
         time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
-        if current_map.map_rotation_index == 0:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+        if RANDOM_MAP_ROTATION:
+            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
         else:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+            if current_map.map_rotation_index == 0:
+                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+            else:
+                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
     skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
     output += (
         f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
@@ -3178,10 +3182,13 @@ async def status(ctx: Context, *args):
             time_until_rotation = MAP_ROTATION_MINUTES - (
                 time_since_update.seconds // 60
             )
-            if current_map.map_rotation_index == 0:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+            if RANDOM_MAP_ROTATION:
+                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
             else:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+                if current_map.map_rotation_index == 0:
+                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                else:
+                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
         output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
 
