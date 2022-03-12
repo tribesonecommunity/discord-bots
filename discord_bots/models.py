@@ -162,6 +162,10 @@ class FinishedGame:
         default="Diamond Sword",
         metadata={"sa": Column(String, nullable=False, server_default="Diamond Sword")},
     )
+    queue_region_name: str = field(
+        default=None,
+        metadata={"sa": Column(String, index=True, nullable=True)},
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -459,6 +463,49 @@ class PlayerDecay:
         init=False,
         default_factory=lambda: datetime.now(timezone.utc),
         metadata={"sa": Column(DateTime)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class PlayerRegionTrueskill:
+    """
+    Separate a player's trueskill by region
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "player_region_trueskill"
+
+    player_id: int = field(
+        metadata={
+            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    queue_region_id: str = field(
+        metadata={
+            "sa": Column(
+                String,
+                ForeignKey("queue_region.id"),
+                nullable=False,
+                index=True,
+            )
+        },
+    )
+    rated_trueskill_mu: float = field(metadata={"sa": Column(Float, nullable=False)})
+    rated_trueskill_sigma: float = field(metadata={"sa": Column(Float, nullable=False)})
+    unrated_trueskill_mu: float = field(metadata={"sa": Column(Float, nullable=False)})
+    unrated_trueskill_sigma: float = field(
+        metadata={"sa": Column(Float, nullable=False)}
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
     )
     id: str = field(
         init=False,
