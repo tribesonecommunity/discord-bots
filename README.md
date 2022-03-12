@@ -28,6 +28,18 @@
     ```
     You may need to adjust your windows execution policy: https://stackoverflow.com/a/18713789
 
+
+## .env file configuration
+The following are required
+- `DISCORD_API_KEY`
+- `CHANNEL_ID` - The discord id of the channel the bot will live in
+- `TRIBES_VOICE_CATEGORY_CHANNEL_ID` - The id of the voice channel category (so the bot can make voice channels)
+
+The following are optional
+- `STATS_DIR`, `STATS_WIDTH`, `STATS_HEIGHT` - The bot assumes the last file dumped here is html file of the stats of the last game finished. It will take a screenshot and upload an image to the channel and delete it
+- `TWITCH_GAME_NAME`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` - These enable the `streams` command to list current streams of the specified game
+
+
 ## Running the bot
 
 1. `cd discord-bots`
@@ -74,6 +86,8 @@ Use python black: https://github.com/psf/black
 This project uses `darker` for formatting in a pre-commit hook. Install using `pre-commit install`
 
 ## Tests
+
+Tests don't currently work, so skip this step
 
 - `pytest`
 
