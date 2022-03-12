@@ -48,6 +48,7 @@ from .models import (
     Queue,
     QueueNotification,
     QueuePlayer,
+    QueueRegion,
     QueueRole,
     QueueWaitlist,
     QueueWaitlistPlayer,
@@ -1195,6 +1196,30 @@ async def addadminrole(ctx: Context, role_name: str):
 
 @bot.command()
 @commands.check(is_admin)
+async def addqueueregion(ctx: Context, region_name: str):
+    session = Session()
+    exists = session.query(QueueRegion).filter(QueueRegion.name == region_name).first()
+    if exists:
+        session.close()
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Region already exists: **{region_name}**",
+            colour=Colour.red(),
+        )
+        return
+
+    session.add(QueueRegion(region_name))
+    session.commit()
+    session.close()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Region added: **{region_name}**",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
 async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
     session = Session()
@@ -2124,6 +2149,17 @@ async def listplayerdecays(ctx: Context, member: Member):
 
 
 @bot.command()
+async def listqueueregions(ctx: Context):
+    output = "Regions:"
+    session = Session()
+    queue_region: QueueRegion
+    for queue_region in session.query(QueueRegion).all():
+        output += f"\n- {queue_region.name}"
+    session.close()
+    await send_message(ctx.message.channel, embed_description=output, colour=Colour.blue())
+
+
+@bot.command()
 async def listqueueroles(ctx: Context):
     message = ctx.message
     if not message.guild:
@@ -2547,6 +2583,30 @@ async def removedbbackup(ctx: Context, db_filename: str):
 
 @bot.command()
 @commands.check(is_admin)
+async def removequeueregion(ctx: Context, region_name: str):
+    session = Session()
+    region = session.query(QueueRegion).filter(QueueRegion.name == region_name).first()
+    if region:
+        session.delete(region)
+        session.commit()
+        session.close()
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Region removed: **{region_name}**",
+            colour=Colour.green(),
+        )
+        return
+
+    session.close()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Could not find region: **{region_name}**",
+        colour=Colour.red(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
 async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
     session = Session()
@@ -2708,6 +2768,29 @@ async def setcommandprefix(ctx: Context, prefix: str):
 @bot.command()
 @commands.check(is_admin)
 async def setqueuerated(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.is_rated = True
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} is now rated",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
+    session.commit()
+
+
+# TODO
+@bot.command()
+@commands.check(is_admin)
+async def setqueueregion(ctx: Context, queue_name: str, region_name: str):
     message = ctx.message
     session = Session()
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore

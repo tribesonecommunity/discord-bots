@@ -379,7 +379,9 @@ class SkipMapVote:
 
 default_rating = trueskill.Rating()
 DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
-DEFAULT_TRUESKILL_SIGMA = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.sigma)
+DEFAULT_TRUESKILL_SIGMA = float(
+    os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.sigma
+)
 
 
 @mapper_registry.mapped
@@ -495,6 +497,18 @@ class Queue:
             )
         },
     )
+    queue_region_id: str = field(
+        default=None,
+        metadata={
+            "sa": Column(
+                String,
+                ForeignKey("queue_region.id"),
+                nullable=True,
+                index=True,
+                unique=True,
+            )
+        },
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
@@ -564,6 +578,20 @@ class QueuePlayer:
         },
     )
     channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class QueueRegion:
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "queue_region"
+
+    name: str = field(metadata={"sa": Column(String, nullable=False)})
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
