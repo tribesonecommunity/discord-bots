@@ -3270,7 +3270,7 @@ async def status(ctx: Context, *args):
                 short_game_id = short_uuid(game.id)
                 if i > 0:
                     output += "\n"
-                output += f"**{game.map_full_name}** ({short_game_id}):\n"
+                output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
                 output += pretty_format_team(
                     game.team0_name, game.win_probability, team0_players
                 )
@@ -3292,7 +3292,8 @@ async def status(ctx: Context, *args):
 
 
 def win_rate(wins, losses, ties):
-    return round(100 * (wins + 0.5 * ties) / (wins + losses + ties), 1)
+    denominator = max(wins + losses + ties, 1)
+    return round(100 * (wins + 0.5 * ties) / denominator, 1)
 
 
 @bot.command()
