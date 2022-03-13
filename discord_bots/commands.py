@@ -3307,7 +3307,7 @@ async def stats(ctx: Context):
         fgp.finished_game_id: fgp for fgp in fgps
     }
 
-    player: Player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player: Player = session.query(Player).filter(Player.id == player_id).first()
     players: list[Player] = session.query(Player).all()
 
 
@@ -3407,7 +3407,15 @@ async def stats(ctx: Context):
 
     output = ""
     if SHOW_TRUESKILL:
-        output += f"**Trueskill:** {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
+        output += f"**Trueskill:**"
+        player_region_trueskills: list[PlayerRegionTrueskill] = session.query(PlayerRegionTrueskill).filter(PlayerRegionTrueskill.player_id == player_id).all()
+        for prt in player_region_trueskills:
+            queue_region: QueueRegion = session.query(QueueRegion).filter(QueueRegion.id == prt.queue_region_id).first()
+            output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)}"
+
+        # This assumes that if a community uses regions then they'll use regions exclusively
+        if not player_region_trueskills:
+            output += f"\nNo region: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)}"
     else:
         output += f"**Trueskill:** {trueskill_pct}"
     output += f"\n\n**Wins / Losses / Ties / Total:**"
