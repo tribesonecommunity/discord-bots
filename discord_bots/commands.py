@@ -2433,7 +2433,7 @@ async def mockrandomqueue(ctx: Context, *args):
 
     This will send PMs to players, create voice channels, etc. so be careful
     """
-    if message.author.id != 115204465589616646:
+    if message.author.id not in [115204465589616646, 347125254050676738]:
         await send_message(
             message.channel,
             embed_description="Only special people can use this command",
