@@ -1,5 +1,7 @@
 import heapq
 import os
+import sys
+
 from bisect import bisect
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -1578,6 +1580,11 @@ async def createdbbackup(ctx: Context):
         colour=Colour.green(),
     )
 
+@bot.command(name= 'restart')
+@commands.check(is_admin)
+async def restart(ctx):
+  await ctx.send("Restarting bot... ")
+  os.execv(sys.executable, ['python', '-m', "discord_bots.main"])
 
 @bot.command()
 @commands.check(is_admin)

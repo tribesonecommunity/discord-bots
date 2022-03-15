@@ -5,3 +5,4 @@ __pycache__
 *.db
 *.egg-info/
 build/
+tmp/
