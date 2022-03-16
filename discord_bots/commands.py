@@ -1580,7 +1580,7 @@ async def createdbbackup(ctx: Context):
         colour=Colour.green(),
     )
 
-@bot.command(name= 'restart')
+@bot.command()
 @commands.check(is_admin)
 async def restart(ctx):
   await ctx.send("Restarting bot... ")
