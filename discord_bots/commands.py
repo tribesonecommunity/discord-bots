@@ -1,5 +1,7 @@
 import heapq
 import os
+import sys
+
 from bisect import bisect
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -1578,6 +1580,11 @@ async def createdbbackup(ctx: Context):
         colour=Colour.green(),
     )
 
+@bot.command()
+@commands.check(is_admin)
+async def restart(ctx):
+  await ctx.send("Restarting bot... ")
+  os.execv(sys.executable, ['python', '-m', "discord_bots.main"])
 
 @bot.command()
 @commands.check(is_admin)
@@ -2426,7 +2433,7 @@ async def mockrandomqueue(ctx: Context, *args):
 
     This will send PMs to players, create voice channels, etc. so be careful
     """
-    if message.author.id != 115204465589616646:
+    if message.author.id not in [115204465589616646, 347125254050676738]:
         await send_message(
             message.channel,
             embed_description="Only special people can use this command",
