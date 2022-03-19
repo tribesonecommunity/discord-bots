@@ -2231,6 +2231,7 @@ async def leaderboard(ctx: Context):
         for i, player in enumerate(top_10_players, 1):
             output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     session.close()
+    output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
     await send_message(
         ctx.message.channel, embed_description=output, colour=Colour.blue()
     )
@@ -2416,6 +2417,23 @@ async def lt(ctx: Context):
     cropped.save(ntf.name)
     await ctx.message.channel.send(file=discord.File(ntf.name))
     ntf.close()
+
+
+@bot.command()
+async def trueskill(ctx: Context):
+    description = ""
+    description += "**mu (μ)**: The average skill of the gamer"
+    description += "\n**sigma (σ)**: The degree of uncertainty in the gamer's skill"
+    description += "\n**Reference**: https://www.microsoft.com/en-us/research/project/trueskill-ranking-system"
+    description += "\n**Implementation**: https://trueskill.org/"
+    embed_thumbnail = "https://www.microsoft.com/en-us/research/uploads/prod/2016/02/trueskill-skilldia.jpg"
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description=description,
+        embed_thumbnail=embed_thumbnail,
+        embed_title="Trueskill",
+        colour=Colour.blue()
+    )
 
 
 @bot.command(name="map")
@@ -3473,11 +3491,11 @@ async def stats(ctx: Context):
                 .filter(QueueRegion.id == prt.queue_region_id)
                 .first()
             )
-            output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {prt.rated_trueskill_mu}, sigma: {prt.rated_trueskill_sigma})_"
+            output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
 
         # This assumes that if a community uses regions then they'll use regions exclusively
         if not player_region_trueskills:
-            output += f"\nNo region: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)} _(mu: {prt.rated_trueskill_mu}, sigma: {prt.rated_trueskill_sigma})_"
+            output += f"\nNo region: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
     else:
         output += f"**Trueskill:** {trueskill_pct}"
     output += f"\n\n**Wins / Losses / Ties / Total:**"
