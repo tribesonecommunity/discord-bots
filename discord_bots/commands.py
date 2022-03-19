@@ -1,5 +1,7 @@
 import heapq
 import os
+import sys
+
 from bisect import bisect
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -1578,6 +1580,11 @@ async def createdbbackup(ctx: Context):
         colour=Colour.green(),
     )
 
+@bot.command()
+@commands.check(is_admin)
+async def restart(ctx):
+  await ctx.send("Restarting bot... ")
+  os.execv(sys.executable, ['python', '-m', "discord_bots.main"])
 
 @bot.command()
 @commands.check(is_admin)
@@ -2035,12 +2042,12 @@ async def finishgame(ctx: Context, outcome: str):
             player_id=player.id,
             player_name=player.name,
             team=team0_gip.team,
-            rated_trueskill_mu_before=player.rated_trueskill_mu,
-            rated_trueskill_sigma_before=player.rated_trueskill_sigma,
+            rated_trueskill_mu_before=team0_rated_ratings_before[i].mu,
+            rated_trueskill_sigma_before=team0_rated_ratings_before[i].sigma,
             rated_trueskill_mu_after=team0_rated_ratings_after[i].mu,
             rated_trueskill_sigma_after=team0_rated_ratings_after[i].sigma,
-            unrated_trueskill_mu_before=player.unrated_trueskill_mu,
-            unrated_trueskill_sigma_before=player.unrated_trueskill_sigma,
+            unrated_trueskill_mu_before=team0_unrated_ratings_before[i].mu,
+            unrated_trueskill_sigma_before=team0_unrated_ratings_before[i].sigma,
             unrated_trueskill_mu_after=team0_unrated_ratings_after[i].mu,
             unrated_trueskill_sigma_after=team0_unrated_ratings_after[i].sigma,
         )
@@ -2075,12 +2082,12 @@ async def finishgame(ctx: Context, outcome: str):
             player_id=player.id,
             player_name=player.name,
             team=team1_gip.team,
-            rated_trueskill_mu_before=player.rated_trueskill_mu,
-            rated_trueskill_sigma_before=player.rated_trueskill_sigma,
+            rated_trueskill_mu_before=team1_rated_ratings_before[i].mu,
+            rated_trueskill_sigma_before=team1_rated_ratings_before[i].sigma,
             rated_trueskill_mu_after=team1_rated_ratings_after[i].mu,
             rated_trueskill_sigma_after=team1_rated_ratings_after[i].sigma,
-            unrated_trueskill_mu_before=player.rated_trueskill_mu,
-            unrated_trueskill_sigma_before=player.rated_trueskill_sigma,
+            unrated_trueskill_mu_before=team1_unrated_ratings_before[i].mu,
+            unrated_trueskill_sigma_before=team1_unrated_ratings_before[i].sigma,
             unrated_trueskill_mu_after=team1_unrated_ratings_after[i].mu,
             unrated_trueskill_sigma_after=team1_unrated_ratings_after[i].sigma,
         )
@@ -2431,7 +2438,7 @@ async def mockrandomqueue(ctx: Context, *args):
 
     This will send PMs to players, create voice channels, etc. so be careful
     """
-    if message.author.id != 115204465589616646:
+    if message.author.id not in [115204465589616646, 347125254050676738]:
         await send_message(
             message.channel,
             embed_description="Only special people can use this command",
