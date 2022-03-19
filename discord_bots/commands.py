@@ -2189,6 +2189,11 @@ async def isolatequeue(ctx: Context, queue_name: str):
     session.commit()
 
 
+# @bot.command()
+# async def leaderboard(ctx: Context):
+#     pass
+
+
 @bot.command()
 async def listadmins(ctx: Context):
     message = ctx.message
@@ -3411,11 +3416,11 @@ async def stats(ctx: Context):
         player_region_trueskills: list[PlayerRegionTrueskill] = session.query(PlayerRegionTrueskill).filter(PlayerRegionTrueskill.player_id == player_id).all()
         for prt in player_region_trueskills:
             queue_region: QueueRegion = session.query(QueueRegion).filter(QueueRegion.id == prt.queue_region_id).first()
-            output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)}"
+            output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: ${prt.rated_trueskill_mu}, sigma: ${prt.rated_trueskill_sigma})_"
 
         # This assumes that if a community uses regions then they'll use regions exclusively
         if not player_region_trueskills:
-            output += f"\nNo region: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)}"
+            output += f"\nNo region: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)} _(mu: ${prt.rated_trueskill_mu}, sigma: ${prt.rated_trueskill_sigma})_"
     else:
         output += f"**Trueskill:** {trueskill_pct}"
     output += f"\n\n**Wins / Losses / Ties / Total:**"
