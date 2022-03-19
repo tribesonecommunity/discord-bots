@@ -19,6 +19,7 @@ from sqlalchemy import (
     create_engine,
 )
 
+from sqlalchemy.ext.hybrid import hybrid_property
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
@@ -427,6 +428,10 @@ class Player:
         default=DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
     )
 
+    @hybrid_property
+    def leaderboard_trueskill(self):
+        return self.rated_trueskill_mu - 3 * self.rated_trueskill_sigma
+
     def __lt__(self, other: Player):
         return self.id < other.id
 
@@ -512,6 +517,10 @@ class PlayerRegionTrueskill:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+
+    @hybrid_property
+    def leaderboard_trueskill(self):
+        return self.rated_trueskill_mu - 3 * self.rated_trueskill_sigma
 
 
 @mapper_registry.mapped

@@ -1580,11 +1580,13 @@ async def createdbbackup(ctx: Context):
         colour=Colour.green(),
     )
 
+
 @bot.command()
 @commands.check(is_admin)
 async def restart(ctx):
-  await ctx.send("Restarting bot... ")
-  os.execv(sys.executable, ['python', '-m', "discord_bots.main"])
+    await ctx.send("Restarting bot... ")
+    os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
+
 
 @bot.command()
 @commands.check(is_admin)
@@ -2196,9 +2198,42 @@ async def isolatequeue(ctx: Context, queue_name: str):
     session.commit()
 
 
-# @bot.command()
-# async def leaderboard(ctx: Context):
-#     pass
+@bot.command()
+async def leaderboard(ctx: Context):
+    if not SHOW_TRUESKILL:
+        await send_message(
+            ctx.message.channel, embed_description="Command disabled", colour=Colour.red()
+        )
+        return
+
+    output = "**Leaderboard**"
+    session = Session()
+    queue_regions: list[QueueRegion] = session.query(QueueRegion).all()
+    if len(queue_regions) > 0:
+        for queue_region in queue_regions:
+            output += f"\n_{queue_region.name}_"
+            top_10_prts: list[PlayerRegionTrueskill] = (
+                session.query(PlayerRegionTrueskill)
+                .filter(PlayerRegionTrueskill.queue_region_id == queue_region.id)
+                .order_by(PlayerRegionTrueskill.leaderboard_trueskill.desc())
+                .limit(10)
+            )
+            for i, prt in enumerate(top_10_prts, 1):
+                player: Player = session.query(Player).filter(Player.id == prt.player_id).first()
+                output += f"\n{i}. {round(prt.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+            output += "\n"
+        pass
+    else:
+        output = "**Leaderboard**"
+        top_10_players: list[Player] = (
+            session.query(Player).order_by(Player.leaderboard_trueskill.desc()).limit(10)
+        )
+        for i, player in enumerate(top_10_players, 1):
+            output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
+    session.close()
+    await send_message(
+        ctx.message.channel, embed_description=output, colour=Colour.blue()
+    )
 
 
 @bot.command()
@@ -3239,7 +3274,9 @@ async def status(ctx: Context, *args):
                 .first()
             )
         if queue.is_locked:
-            output += f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+            output += (
+                f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+            )
         else:
             output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
@@ -3322,12 +3359,17 @@ async def stats(ctx: Context):
     player: Player = session.query(Player).filter(Player.id == player_id).first()
     players: list[Player] = session.query(Player).all()
 
-
     default_rating = Rating()
     DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
 
     # Filter players that haven't played a game
-    players = list(filter(lambda x: x.rated_trueskill_mu != default_rating.mu and x.rated_trueskill_mu != DEFAULT_TRUESKILL_MU, players))
+    players = list(
+        filter(
+            lambda x: x.rated_trueskill_mu != default_rating.mu
+            and x.rated_trueskill_mu != DEFAULT_TRUESKILL_MU,
+            players,
+        )
+    )
     trueskills = list(
         sorted(
             [
@@ -3420,9 +3462,17 @@ async def stats(ctx: Context):
     output = ""
     if SHOW_TRUESKILL:
         output += f"**Trueskill:**"
-        player_region_trueskills: list[PlayerRegionTrueskill] = session.query(PlayerRegionTrueskill).filter(PlayerRegionTrueskill.player_id == player_id).all()
+        player_region_trueskills: list[PlayerRegionTrueskill] = (
+            session.query(PlayerRegionTrueskill)
+            .filter(PlayerRegionTrueskill.player_id == player_id)
+            .all()
+        )
         for prt in player_region_trueskills:
-            queue_region: QueueRegion = session.query(QueueRegion).filter(QueueRegion.id == prt.queue_region_id).first()
+            queue_region: QueueRegion = (
+                session.query(QueueRegion)
+                .filter(QueueRegion.id == prt.queue_region_id)
+                .first()
+            )
             output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: ${prt.rated_trueskill_mu}, sigma: ${prt.rated_trueskill_sigma})_"
 
         # This assumes that if a community uses regions then they'll use regions exclusively
@@ -3446,6 +3496,7 @@ async def stats(ctx: Context):
 
 TWITCH_GAME_NAME: str | None = os.getenv("TWITCH_GAME_NAME")
 
+
 @bot.command()
 async def streams(ctx: Context):
     if not TWITCH_GAME_NAME:
@@ -3467,11 +3518,15 @@ async def streams(ctx: Context):
     games_data = twitch.get_games(names=[TWITCH_GAME_NAME])
     game_id = games_data["data"][0]["id"]
     game_name = games_data["data"][0]["name"]
-    game_box_art_url = games_data["data"][0]["box_art_url"].replace("{width}", "40").replace("{height}", "40")
+    game_box_art_url = (
+        games_data["data"][0]["box_art_url"]
+        .replace("{width}", "40")
+        .replace("{height}", "40")
+    )
 
     streams_data = twitch.get_streams(game_id=game_id)
     output = ""
-    for stream_data in streams_data['data']:
+    for stream_data in streams_data["data"]:
         output += f"\n**{stream_data['user_name']}** ([link](https://www.twitch.tv/{stream_data['user_name']})): {stream_data['title']}"
 
     await send_message(
