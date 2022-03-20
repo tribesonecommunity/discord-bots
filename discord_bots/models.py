@@ -191,9 +191,7 @@ class FinishedGamePlayer:
         metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
     )
     player_name: str = field(
-        metadata={
-            "sa": Column(String, ForeignKey("player.id"), nullable=False, index=True)
-        },
+        metadata={ "sa": Column(String, nullable=False, index=True) },
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
     rated_trueskill_mu_after: float = field(

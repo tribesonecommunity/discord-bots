@@ -96,10 +96,6 @@ def upgrade():
             ["player_id"],
             ["player.id"],
         ),
-        sa.ForeignKeyConstraint(
-            ["player_name"],
-            ["player.id"],
-        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
