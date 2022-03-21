@@ -106,10 +106,10 @@ def get_even_teams(
     :returns: list of players and win probability for the first team
     """
     session = Session()
-    shuffle(player_ids)
     players: list[Player] = (
         session.query(Player).filter(Player.id.in_(player_ids)).all()
     )
+    shuffle(players)
     if queue_region_id:
         player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
             PlayerRegionTrueskill.player_id.in_(player_ids),
