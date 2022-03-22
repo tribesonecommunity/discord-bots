@@ -1337,6 +1337,7 @@ async def addrotationmap(ctx: Context, map_short_name: str, map_full_name: str):
 
 
 @bot.command()
+@commands.check(is_admin)
 async def addmap(ctx: Context, map_short_name: str, map_full_name: str):
     message = ctx.message
     session = Session()
@@ -2893,6 +2894,7 @@ async def removerotationmap(ctx: Context, map_short_name: str):
 
 
 @bot.command()
+@commands.check(is_admin)
 async def removemap(ctx: Context, map_short_name: str):
     message = ctx.message
     session = Session()
