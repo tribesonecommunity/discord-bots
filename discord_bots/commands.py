@@ -1897,6 +1897,7 @@ async def finishgame(ctx: Context, outcome: str):
             embed_description="Usage: !finishgame <win|loss|tie>",
             colour=Colour.red(),
         )
+        return
 
     players = (
         session.query(Player)
