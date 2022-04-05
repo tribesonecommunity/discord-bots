@@ -16,6 +16,7 @@ from typing import Union
 
 import discord
 import imgkit
+from matplotlib.pyplot import draw_if_interactive
 import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.ext import commands
@@ -40,6 +41,8 @@ from .models import (
     AdminRole,
     CurrentMap,
     CustomCommand,
+    Draft,
+    DraftPlayer,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -580,6 +583,28 @@ async def is_admin(ctx: Context):
             colour=Colour.red(),
         )
         session.close()
+        return False
+
+
+async def active_draft(ctx: Context):
+    """
+    Wrap functions that only work if a draft exists
+
+    https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
+    """
+    session = Session()
+    exists: Draft | None = (
+        session.query(Draft).filter(Draft.is_active == True).first()
+    )
+    session.close()
+    if exists:
+        return True
+    else:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Could not find any active drafts!",
+            colour=Colour.red(),
+        )
         return False
 
 
@@ -1399,6 +1424,104 @@ async def ban(ctx: Context, member: Member):
 
 
 @bot.command()
+@commands.check(active_draft)
+async def checkin(ctx: Context):
+    session = Session()
+    active_draft: Draft = session.query(Draft).filter(Draft.is_active == True).first()
+    if not active_draft.checkins_open:
+        await send_message(
+            ctx.message.channel,
+            embed_description="Check-ins are currently closed!",
+            colour=Colour.red(),
+        )
+        return
+
+    draft_player: DraftPlayer | None = session.query(DraftPlayer).filter(DraftPlayer.player_id == ctx.message.author.id).first()
+    if not draft_player:
+        session.close()
+        await send_message(
+            ctx.message.channel,
+            embed_description="You're not in the draft! Join with **!joindraft**",
+            colour=Colour.red(),
+        )
+        return
+    
+    if draft_player.is_checked_in:
+        session.close()
+        await send_message(
+            ctx.message.channel,
+            embed_description="You're already checked in!",
+            colour=Colour.blue(),
+        )
+        return
+
+    draft_player.is_checked_in = True
+    session.commit()
+    session.close()
+    await send_message(
+        ctx.message.channel,
+        embed_description="You've checked-in successfully!",
+        colour=Colour.green(),
+    )
+    return
+
+
+@bot.command()
+@commands.check(is_admin)
+@commands.check(active_draft)
+async def closedraftcheckin(ctx: Context):
+    session = Session()
+    active_draft: Draft = (
+        session.query(Draft).filter(Draft.is_active == True).first()
+    )
+    if not active_draft.checkins_open:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Check-ins for draft **{active_draft.name}** are already closed!",
+            colour=Colour.red(),
+        )
+        session.close()
+        return
+
+    else:
+        active_draft.checkins_open = True
+        session.commit()
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Check-ins for draft **{active_draft.name}** now closed!",
+            colour=Colour.blue(),
+        )
+        session.close()
+
+
+@bot.command()
+@commands.check(is_admin)
+@commands.check(active_draft)
+async def closedraftsignup(ctx: Context):
+    session = Session()
+    active_draft: Draft = (
+        session.query(Draft).filter(Draft.is_active == True).first()
+    )
+    if not active_draft.signups_open:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Signups for **{active_draft.name}** are already closed!",
+            colour=Colour.red(),
+        )
+        session.close()
+    else:
+        active_draft.signups_open = False
+        session.commit()
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Signups for **{active_draft.name}** now closed!",
+            colour=Colour.blue(),
+        )
+        session.close()
+
+
+
+@bot.command()
 async def coinflip(ctx: Context):
     message = ctx.message
     result = "HEADS" if floor(random() * 2) == 0 else "TAILS"
@@ -1583,9 +1706,28 @@ async def createdbbackup(ctx: Context):
 
 @bot.command()
 @commands.check(is_admin)
-async def restart(ctx):
-    await ctx.send("Restarting bot... ")
-    os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
+async def createdraft(ctx: Context, name: str):
+    message = ctx.message
+    session = Session()
+    exists: Draft | None = (
+        session.query(Draft).filter(Draft.is_active == True).first()
+    )
+    if exists is not None:
+        await send_message(
+            message.channel,
+            embed_description=f"A draft is already underway: **{exists.name}**",
+            colour=Colour.red(),
+        )
+        return
+
+    session.add(Draft(name))
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"New draft started! **{name}**",
+        colour=Colour.green(),
+    )
 
 
 @bot.command()
@@ -1748,6 +1890,28 @@ async def del_(ctx: Context, *args):
         colour=Colour.green(),
     )
     session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
+@commands.check(active_draft)
+async def deletedraft(ctx: Context):
+    """
+    Doesn't actually delete the draft, just marks it as not active. I chose the naming so it was clear that the action would be irreversible (although even that isn't really true)
+    """
+    message = ctx.message
+    session = Session()
+    active_draft: Draft = (
+        session.query(Draft).filter(Draft.is_active == True).first()
+    )
+    active_draft.is_active = False
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Draft **{active_draft.name}** is now over. Thanks for playing!",
+        colour=Colour.blue(),
+    )
+    session.close()
 
 
 @bot.command(usage="<player>")
@@ -2199,10 +2363,46 @@ async def isolatequeue(ctx: Context, queue_name: str):
 
 
 @bot.command()
+@commands.check(active_draft)
+async def joindraft(ctx: Context):
+    session = Session()
+    active_draft: Draft = session.query(Draft).filter(Draft.is_active == True).first()
+    if not active_draft.signups_open:
+        await send_message(
+            ctx.message.channel,
+            embed_description="Signups are currently closed!",
+            colour=Colour.red(),
+        )
+        return
+
+    exists: DraftPlayer | None = session.query(DraftPlayer).filter(DraftPlayer.player_id == ctx.message.author.id).first()
+    if exists:
+        session.close()
+        await send_message(
+            ctx.message.channel,
+            embed_description="You've already joined the draft! Leave with **!leavedraft**",
+            colour=Colour.red(),
+        )
+        return
+
+    session.add(DraftPlayer(player_id=ctx.message.author.id))
+    session.commit()
+    session.close()
+    await send_message(
+        ctx.message.channel,
+        embed_description="You've joined the draft! Leave with **!leavedraft**",
+        colour=Colour.green(),
+    )
+    return
+
+
+@bot.command()
 async def leaderboard(ctx: Context):
     if not SHOW_TRUESKILL:
         await send_message(
-            ctx.message.channel, embed_description="Command disabled", colour=Colour.red()
+            ctx.message.channel,
+            embed_description="Command disabled",
+            colour=Colour.red(),
         )
         return
 
@@ -2219,14 +2419,18 @@ async def leaderboard(ctx: Context):
                 .limit(10)
             )
             for i, prt in enumerate(top_10_prts, 1):
-                player: Player = session.query(Player).filter(Player.id == prt.player_id).first()
+                player: Player = (
+                    session.query(Player).filter(Player.id == prt.player_id).first()
+                )
                 output += f"\n{i}. {round(prt.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
             output += "\n"
         pass
     else:
         output = "**Leaderboard**"
         top_10_players: list[Player] = (
-            session.query(Player).order_by(Player.leaderboard_trueskill.desc()).limit(10)
+            session.query(Player)
+            .order_by(Player.leaderboard_trueskill.desc())
+            .limit(10)
         )
         for i, player in enumerate(top_10_players, 1):
             output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
@@ -2235,6 +2439,31 @@ async def leaderboard(ctx: Context):
     await send_message(
         ctx.message.channel, embed_description=output, colour=Colour.blue()
     )
+
+
+@bot.command()
+@commands.check(active_draft)
+async def leavedraft(ctx: Context):
+    session = Session()
+    exists: DraftPlayer | None = session.query(DraftPlayer).filter(DraftPlayer.player_id == ctx.message.author.id).first()
+    if not exists:
+        session.close()
+        await send_message(
+            ctx.message.channel,
+            embed_description="You're not the draft! Join with **!joindraft**",
+            colour=Colour.red(),
+        )
+        return
+
+    session.delete(exists)
+    session.commit()
+    session.close()
+    await send_message(
+        ctx.message.channel,
+        embed_description="You've left the draft! Re-join with **!joindraft**",
+        colour=Colour.green(),
+    )
+    return
 
 
 @bot.command()
@@ -2432,7 +2661,7 @@ async def trueskill(ctx: Context):
         embed_description=description,
         embed_thumbnail=embed_thumbnail,
         embed_title="Trueskill",
-        colour=Colour.blue()
+        colour=Colour.blue(),
     )
 
 
@@ -2622,6 +2851,63 @@ async def gamehistory(ctx: Context, count: int):
         embed_description=output,
         colour=Colour.blue(),
     )
+
+
+@bot.command()
+@commands.check(is_admin)
+@commands.check(active_draft)
+async def opendraftcheckin(ctx: Context):
+    session = Session()
+    active_draft: Draft = (
+        session.query(Draft).filter(Draft.is_active == True).first()
+    )
+    if active_draft.checkins_open:
+        active_draft.checkins_open = True
+        session.commit()
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Check-ins for draft **{active_draft.name}** are already open!",
+            colour=Colour.red(),
+        )
+        session.close()
+        return
+    else:
+        active_draft.checkins_open = True
+        session.commit()
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Check-ins for draft **{active_draft.name}** now open! Check-in **!checkin**",
+            colour=Colour.blue(),
+        )
+        session.close()
+        return
+
+
+@bot.command()
+@commands.check(is_admin)
+@commands.check(active_draft)
+async def opendraftsignup(ctx: Context):
+    session = Session()
+    active_draft: Draft = (
+        session.query(Draft).filter(Draft.is_active == True).first()
+    )
+    if active_draft.signups_open:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Signups for draft **{active_draft.name}** are already open!",
+            colour=Colour.red(),
+        )
+        session.close()
+        return
+    else:
+        active_draft.signups_open = True
+        session.commit()
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Signups for draft **{active_draft.name}** now open! Join using **!joindraft**",
+            colour=Colour.blue(),
+        )
+        session.close()
 
 
 @bot.command()
@@ -2916,6 +3202,13 @@ async def removemap(ctx: Context, map_short_name: str):
         )
 
     session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
+async def restart(ctx):
+    await ctx.send("Restarting bot... ")
+    os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
 
 
 @bot.command()

@@ -4,6 +4,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from uuid import uuid4
 from dotenv import load_dotenv
 
@@ -20,6 +21,7 @@ from sqlalchemy import (
 )
 
 from sqlalchemy.ext.hybrid import hybrid_property
+
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
@@ -130,6 +132,125 @@ class CustomCommand:
 
 @mapper_registry.mapped
 @dataclass
+class Draft:
+    """
+    A single open draft can exist at any given time
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "draft"
+
+    name: str = field(
+        metadata={"sa": Column(String, nullable=False)},
+    )
+    signups_open: bool = field(
+        default=False, metadata={"sa": Column(Boolean, nullable=False)}
+    )
+    checkins_open: bool = field(
+        default=False, metadata={"sa": Column(Boolean, nullable=False)}
+    )
+    draft_open: bool = field(
+        default=False, metadata={"sa": Column(Boolean, nullable=False)}
+    )
+    is_active: bool = field(
+        default=True, metadata={"sa": Column(Boolean, nullable=False, index=True)}
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class DraftCaptain:
+    """
+    A player signed up in a draft to be a captain
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "draft_captain"
+
+    player_id: int = field(
+        metadata={
+            "sa": Column(
+                Integer,
+                ForeignKey("player.id"),
+                index=True,
+                nullable=False,
+            )
+        },
+    )
+    team_name: str = field(
+        metadata={"sa": Column(String, nullable=False, unique=True)},
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class DraftPlayer:
+    """
+    A player signed up for a draft
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "draft_player"
+
+    player_id: int = field(
+        metadata={
+            "sa": Column(
+                Integer,
+                ForeignKey("player.id"),
+                index=True,
+                nullable=False,
+                unique=True,
+            )
+        },
+    )
+    draft_captain_id: int = field(
+        default=None,
+        metadata={
+            "sa": Column(
+                Integer,
+                ForeignKey("draft_captain.id"),
+                index=True,
+                unique=True,
+            )
+        },
+    )
+    is_checked_in: bool = field(
+        default=False, metadata={"sa": Column(Boolean, nullable=False, index=True)}
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class FinishedGame:
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -191,7 +312,7 @@ class FinishedGamePlayer:
         metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
     )
     player_name: str = field(
-        metadata={ "sa": Column(String, nullable=False, index=True) },
+        metadata={"sa": Column(String, nullable=False, index=True)},
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
     rated_trueskill_mu_after: float = field(
