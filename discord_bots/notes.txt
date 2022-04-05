@@ -1,0 +1,35 @@
+!createdraft
+
+!mydraftstatus
+
+!draftstatus
+- players signed up
+- signup status
+- players checked in
+- checkin status
+- captains
+- players picked
+
+!opendraftsignup / !closedraftsignup
+!opendraftcheckin / !closedraftcheckin
+
+!joindraft / !leavedraft
+!checkin
+
+!addcaptain
+!removecaptain
+!setteamname
+
+!addplayer
+!removeplayer
+
+!startdraft
+
+!draftpool - pm only
+!draftteams
+!pick
+!swap
+
+!enddraft
+
+!deletedraft

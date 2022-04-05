@@ -42,6 +42,7 @@ from .models import (
     CurrentMap,
     CustomCommand,
     Draft,
+    DraftCaptain,
     DraftPlayer,
     FinishedGame,
     FinishedGamePlayer,
@@ -1276,6 +1277,38 @@ async def addadminrole(ctx: Context, role_name: str):
             colour=Colour.green(),
         )
         session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
+async def addcaptain(ctx: Context, member: Member):
+    message = ctx.message
+    session = Session()
+    draft_captain: DraftCaptain | None = session.query(DraftCaptain).filter(DraftCaptain.player_id == member.id).first()
+    if draft_captain:
+        pass
+
+    if message.guild:
+        session = Session()
+        role_name_to_role_id: dict[str, int] = {
+            role.name.lower(): role.id for role in message.guild.roles
+        }
+        if role_name.lower() not in role_name_to_role_id:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find role: {role_name}",
+                colour=Colour.red(),
+            )
+            return
+        session.add(AdminRole(role_name_to_role_id[role_name.lower()]))
+        await send_message(
+            message.channel,
+            embed_description=f"Added admin role: {role_name}",
+            colour=Colour.green(),
+        )
+        session.commit()
+
+
 
 
 @bot.command()

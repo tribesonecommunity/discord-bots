@@ -42,28 +42,28 @@ async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
 
-@bot.event
-async def on_command_error(ctx: Context, error: CommandError):
-    if isinstance(error, UserInputError):
-        if ctx.command.usage:
-            await ctx.channel.send(
-                embed=Embed(
-                    description=f"Usage: {COMMAND_PREFIX}{ctx.command.name} {ctx.command.usage}",
-                    colour=Colour.red(),
-                )
-            )
-        else:
-            await ctx.channel.send(
-                embed=Embed(
-                    description=f"Usage: {COMMAND_PREFIX}{ctx.command.name} {ctx.command.signature}",
-                    colour=Colour.red(),
-                )
-            )
-    else:
-        if ctx.command:
-            print("[on_command_error]:", error, ", command:", ctx.command.name)
-        else:
-            print("[on_command_error]:", error)
+# @bot.event
+# async def on_command_error(ctx: Context, error: CommandError):
+#     if isinstance(error, UserInputError):
+#         if ctx.command.usage:
+#             await ctx.channel.send(
+#                 embed=Embed(
+#                     description=f"Usage: {COMMAND_PREFIX}{ctx.command.name} {ctx.command.usage}",
+#                     colour=Colour.red(),
+#                 )
+#             )
+#         else:
+#             await ctx.channel.send(
+#                 embed=Embed(
+#                     description=f"Usage: {COMMAND_PREFIX}{ctx.command.name} {ctx.command.signature}",
+#                     colour=Colour.red(),
+#                 )
+#             )
+#     else:
+#         if ctx.command:
+#             print("[on_command_error]:", error, ", command:", ctx.command.name)
+#         else:
+#             print("[on_command_error]:", error)
 
 
 @bot.event
