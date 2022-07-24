@@ -5,13 +5,18 @@ This an open source discord bot which assists with game matchmaking.
 This uses Microsoft's [Trueskill](https://www.microsoft.com/en-us/research/project/trueskill-ranking-system/)
 matchmaking algorithm to create fair and
 balanced teams. Players are assigned a level of skill (mu) and uncertainty (sigma) which is adjusted after each game.
-Supports region delineation and unranked queues and miscellaneous features like bans, map pools / rotations, voting,
-database backups, post-game stats posting, dice rolls, coin flips, Twitch stream integration, etc.
+
+Games are organized using a queueing system and the bot supports numerous features like delineation by region, unranked
+queues, admins / bans, map pools / rotations / voting, database backups, post-game images, dice rolls, coin
+flips, Twitch stream integration, voice channel creation, leaderboards, etc.
 
 See [commands.py](https://github.com/dwayneyuen/discord-bots/blob/master/discord_bots/commands.py) for a full list of
 commands.
 
 ## Installation
+
+The bot is written in Python 3 and uses sqlite for persistence. You will need a `DISCORD_API_KEY` at a minimum to run
+the bot.
 
 ### MacOS
 
@@ -70,6 +75,9 @@ The following are optional
 1. `python -m discord_bots.main`
 
 # Development
+
+The bot is written in Python 3 with types as much as possible (enforced by Pylance). We use SQLAlchemy as the ORM
+and `alembic` to handle migrations.
 
 ## Installation
 
