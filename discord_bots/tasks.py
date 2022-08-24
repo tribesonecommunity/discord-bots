@@ -19,6 +19,7 @@ from .commands import (
     AFK_TIME_MINUTES,
     MAP_ROTATION_MINUTES,
     add_player_to_queue,
+    create_game,
     is_in_game,
 )
 from .models import (
@@ -27,6 +28,7 @@ from .models import (
     InProgressGameChannel,
     MapVote,
     Player,
+    PlayerRegionTrueskill,
     Queue,
     QueuePlayer,
     QueueWaitlist,
@@ -37,7 +39,11 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
-from .utils import RANDOM_MAP_ROTATION, send_message, update_current_map_to_next_map_in_rotation
+from .utils import (
+    RANDOM_MAP_ROTATION,
+    send_message,
+    update_current_map_to_next_map_in_rotation,
+)
 
 
 @tasks.loop(minutes=1)
@@ -307,6 +313,7 @@ async def add_player_task():
     """
     queues: list[Queue] = Session().query(Queue).all()
     queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
+    message: AddPlayerQueueMessage | None = None
     while not add_player_queue.empty():
         queues_added_to: list[str] = []
         message: AddPlayerQueueMessage = add_player_queue.get()
@@ -356,4 +363,51 @@ async def add_player_task():
                 content=f"{message.player_name} added to: {', '.join(queues_added_to)}",
                 embed_description=" ".join(queue_statuses),
                 colour=Colour.green(),
+            )
+            session.close()
+
+    # No messages processed, so no way that sweaty queues popped
+    if not message:
+        return
+
+    # Handle sweaty queues
+    session = Session()
+    for queue in queues:
+        if not queue.is_sweaty:
+            continue
+        queue_players: list[QueuePlayer] = (
+            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
+        )
+        if len(queue_players) >= queue.size:
+            player_ids: list[int] = list(map(lambda x: x.player_id, queue_players))
+            if queue.queue_region_id:
+                player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
+                    PlayerRegionTrueskill.player_id.in_(player_ids),
+                    PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
+                )
+                top_player_ids = [
+                    prt.player_id
+                    for prt in sorted(
+                        player_region_trueskills,
+                        key=lambda prt: prt.rated_trueskill_mu,
+                        reverse=True
+                    )[: queue.size]
+                ]
+            else:
+                players: list[Player] = (
+                    session.query(Player).filter(Player.id.in_(player_ids)).all()
+                )
+                top_player_ids = [
+                    player.id
+                    for player in sorted(
+                        players,
+                        key=lambda player: player.rated_trueskill_mu,
+                        reverse=True
+                    )[: queue.size]
+                ]
+            await create_game(
+                queue_id=queue.id,
+                player_ids=top_player_ids,
+                channel=message.channel,
+                guild=message.guild,
             )
