@@ -20,6 +20,7 @@ from sqlalchemy import (
 )
 
 from sqlalchemy.ext.hybrid import hybrid_property
+
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, sessionmaker  # type: ignore
@@ -191,7 +192,7 @@ class FinishedGamePlayer:
         metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
     )
     player_name: str = field(
-        metadata={ "sa": Column(String, nullable=False, index=True) },
+        metadata={"sa": Column(String, nullable=False, index=True)},
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
     rated_trueskill_mu_after: float = field(
@@ -528,6 +529,10 @@ class Queue:
     :is_isolated: A queue that doesn't interact with the other queues. No
     auto-adds, no waitlists, doesn't affect map rotation, and doesn't affect
     trueskill. Useful for things like 1v1s, duels, etc.
+    :is_sweaty: A sweaty queue picks the top 10 trueskill ranked players in the
+    queue.  For example if 9 players are waiting to play and another game
+    finishes and 10 players add to a sweaty queue, the top 10 players in
+    trueskill will get into the next game regardless of who was waiting longest.
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -549,6 +554,12 @@ class Queue:
             "sa": Column(
                 Boolean, index=True, nullable=False, server_default=expression.false()
             )
+        },
+    )
+    is_sweaty: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
         },
     )
     queue_region_id: str = field(

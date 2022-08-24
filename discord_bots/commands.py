@@ -3075,6 +3075,28 @@ async def setqueueunrated(ctx: Context, queue_name: str):
 
 @bot.command()
 @commands.check(is_admin)
+async def setqueuesweaty(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.is_sweaty = True
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} is now sweaty",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
+    session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
 async def setmapvotethreshold(ctx: Context, threshold: int):
     message = ctx.message
     global MAP_VOTE_THRESHOLD
@@ -3815,6 +3837,28 @@ async def unsetqueueregion(ctx: Context, queue_name: str):
         embed_description=f"Region removed from queue {queue.name}",
         colour=Colour.blue(),
     )
+    session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
+async def unsetqueuesweaty(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.is_sweaty = False
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} is no longer sweaty",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
     session.commit()
 
 
