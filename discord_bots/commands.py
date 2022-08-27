@@ -2642,7 +2642,7 @@ async def gamehistory(ctx: Context, count: int):
 
 @bot.command()
 async def pug(ctx: Context):
-    query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132&port=28001"
+    query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=216.128.150.208port=28001"
     await ctx.message.channel.send(query_url)
     ntf = NamedTemporaryFile(delete=True, suffix=".png")
     imgkit.from_url(query_url, ntf.name)
