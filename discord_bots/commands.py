@@ -3483,7 +3483,7 @@ async def stats(ctx: Context):
         return finished_game.finished_at > datetime.now() - timedelta(days=30)
 
     def last_three_months(finished_game: FinishedGame) -> bool:
-        return finished_game.finished_at > datetime.now() - timedelta(days=60)
+        return finished_game.finished_at > datetime.now() - timedelta(days=90)
 
     def last_six_months(finished_game: FinishedGame) -> bool:
         return finished_game.finished_at > datetime.now() - timedelta(days=180)
