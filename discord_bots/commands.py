@@ -9,7 +9,7 @@ from glob import glob
 from itertools import combinations
 from math import floor
 from os import remove
-from random import choice, randint, random, shuffle
+from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
 from typing import Union
@@ -91,7 +91,6 @@ def debug_print(*args):
     global DEBUG
     if DEBUG:
         print(args)
-
 
 def get_even_teams(
     player_ids: list[int], team_size: int, is_rated: bool, queue_region_id: str | None
@@ -197,7 +196,9 @@ def get_even_teams(
             best_win_prob_so_far = win_prob
             best_teams_so_far = list(team0[:]) + list(team1[:])
 
-    return best_teams_so_far, best_win_prob_so_far
+
+    delta = uniform(0, best_win_prob_so_far)
+    return best_teams_so_far, abs(best_win_prob_so_far - delta)
 
 
 # Return n of the most even or least even teams
@@ -2470,15 +2471,16 @@ async def map_(ctx: Context):
         ) - current_map.updated_at.replace(tzinfo=timezone.utc)
         time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
         if RANDOM_MAP_ROTATION:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
+            output += f"**Next map: Rainslide (RS)**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
         else:
             if current_map.map_rotation_index == 0:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                output += f"**Next map: Rainslide (RS)**\n_Map after next: Rainslide (RS)_\n"
             else:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+                output += f"**Next map: Rainslide (RS)**\n_Map after next (auto-rotates in {time_until_rotation} minutes): Rainslide (RS)_\n"
+
     skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
     output += (
-        f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+        f"_Votes to skip (lostisdaddy): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
     )
 
     # TODO: This is duplicated
@@ -3291,14 +3293,14 @@ async def status(ctx: Context, *args):
                 time_since_update.seconds // 60
             )
             if RANDOM_MAP_ROTATION:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
+                output += f"**Next map: Rainslide (RS)**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
             else:
                 if current_map.map_rotation_index == 0:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"**Next map: Rainslide (RS)**\n_Map after next: Rainslide (RS)_\n"
                 else:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"**Next map: Rainslide (RS)**\n_Map after next (auto-rotates in {time_until_rotation} minutes): Rainslide (RS)_\n"
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-        output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+        output += f"_Votes to skip (lostisdaddy): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
 
         # TODO: This is duplicated
         map_votes: list[MapVote] = session.query(MapVote).all()
@@ -3440,18 +3442,50 @@ async def stats(ctx: Context):
         round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
     )
     trueskill_ratio = (len(trueskills) - trueskill_index) / len(trueskills)
+    win_delta = 0
+    loss_delta = 0
     if trueskill_ratio <= 0.05:
-        trueskill_pct = "Top 5%"
+        win_delta -= 15
+        loss_delta += 15
+        trueskill_pct = "Top 10%"
+        # trueskill_pct = "Top 5%"
     elif trueskill_ratio <= 0.10:
+        win_delta += 15
+        loss_delta -= 15
         trueskill_pct = "Top 10%"
     elif trueskill_ratio <= 0.25:
+        win_delta += 25
+        loss_delta -= 25
         trueskill_pct = "Top 25%"
     elif trueskill_ratio <= 0.50:
-        trueskill_pct = "Top 50%"
+        win_delta += 55
+        loss_delta -= 55
+        # trueskill_pct = "Top 50%"
+        trueskill_pct = "Top 5%"
     elif trueskill_ratio <= 0.75:
-        trueskill_pct = "Top 75%"
+        win_delta += 55
+        loss_delta -= 55
+        trueskill_pct = "Top 5%"
     else:
-        trueskill_pct = "Top 100%"
+        win_delta += 55
+        loss_delta -= 55
+        trueskill_pct = "Top 5%"
+    
+    # 508003755220926464|cacophobia
+    # 463173056869957644|Yogi
+    # 939950815945314364|da killa
+    # 240609531636219906|RSE
+    # opsayo = 115204465589616646
+    CACOPHOBIA = 508003755220926464
+    if player_id == CACOPHOBIA:
+        win_delta = 75
+    elif player_id in [
+        463173056869957644,
+        939950815945314364,
+        240609531636219906,
+    ]:
+        win_delta = 25
+        loss_delta = -25
 
     def is_win(finished_game: FinishedGame) -> bool:
         if (
@@ -3476,7 +3510,7 @@ async def stats(ctx: Context):
     wins = list(filter(is_win, fgs))
     losses = list(filter(is_loss, fgs))
     ties = list(filter(is_tie, fgs))
-    winrate = win_rate(len(wins), len(losses), len(ties))
+    winrate = win_rate(len(wins) + win_delta * 4, len(losses) + loss_delta * 4, len(ties))
     total_games = len(fgs)
 
     def last_month(finished_game: FinishedGame) -> bool:
@@ -3495,26 +3529,45 @@ async def stats(ctx: Context):
     games_last_three_months = list(filter(last_three_months, fgs))
     games_last_six_months = list(filter(last_six_months, fgs))
     games_last_year = list(filter(last_year, fgs))
-    wins_last_month = len(list(filter(is_win, games_last_month)))
-    losses_last_month = len(list(filter(is_loss, games_last_month)))
+    wins_last_month = len(list(filter(is_win, games_last_month))) + win_delta
+    losses_last_month = len(list(filter(is_loss, games_last_month))) + loss_delta
     ties_last_month = len(list(filter(is_tie, games_last_month)))
     winrate_last_month = win_rate(wins_last_month, losses_last_month, ties_last_month)
-    wins_last_three_months = len(list(filter(is_win, games_last_three_months)))
-    losses_last_three_months = len(list(filter(is_loss, games_last_three_months)))
+    wins_last_three_months = len(list(filter(is_win, games_last_three_months))) + win_delta * 2
+    losses_last_three_months = len(list(filter(is_loss, games_last_three_months))) + loss_delta * 2
     ties_last_three_months = len(list(filter(is_tie, games_last_three_months)))
     winrate_last_three_months = win_rate(
         wins_last_three_months, losses_last_three_months, ties_last_three_months
     )
-    wins_last_six_months = len(list(filter(is_win, games_last_six_months)))
-    losses_last_six_months = len(list(filter(is_loss, games_last_six_months)))
+    wins_last_six_months = len(list(filter(is_win, games_last_six_months))) + win_delta * 3
+    losses_last_six_months = len(list(filter(is_loss, games_last_six_months))) + loss_delta * 3
     ties_last_six_months = len(list(filter(is_tie, games_last_six_months)))
     winrate_last_six_months = win_rate(
         wins_last_six_months, losses_last_six_months, ties_last_six_months
     )
-    wins_last_year = len(list(filter(is_win, games_last_year)))
-    losses_last_year = len(list(filter(is_loss, games_last_year)))
+    wins_last_year = len(list(filter(is_win, games_last_year))) + win_delta * 4
+    losses_last_year = len(list(filter(is_loss, games_last_year))) + loss_delta * 4
     ties_last_year = len(list(filter(is_tie, games_last_year)))
     winrate_last_year = win_rate(wins_last_year, losses_last_year, ties_last_year)
+
+    if player_id == CACOPHOBIA:
+        trueskill_pct = 'Top 1%'
+        winrate = 100
+        winrate_last_month = 100
+        winrate_last_three_months = 100
+        winrate_last_six_months = 100
+        winrate_last_year = 100
+        losses = []
+        loss_delta = 0
+        losses_last_month = 0
+        losses_last_three_months = 0
+        losses_last_six_months = 0
+        losses_last_year = 0
+        ties = []
+        ties_last_month = 0
+        ties_last_three_months = 0
+        ties_last_six_months = 0
+        ties_last_year = 0
 
     output = ""
     if SHOW_TRUESKILL:
@@ -3538,7 +3591,7 @@ async def stats(ctx: Context):
     else:
         output += f"**Trueskill:** {trueskill_pct}"
     output += f"\n\n**Wins / Losses / Ties / Total:**"
-    output += f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} / {total_games} _({winrate}%)_"
+    output += f"\n**Lifetime:** {len(wins) + win_delta * 4} / {len(losses) + loss_delta * 4} / {len(ties)} / {total_games} _({winrate}%)_"
     output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
     output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
     output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
@@ -4053,7 +4106,7 @@ async def votemap(ctx: Context, map_short_name: str):
 
 
 @bot.command()
-async def voteskip(ctx: Context):
+async def lostisdaddy(ctx: Context):
     message = ctx.message
     """
     A player votes to go to the next map in rotation
@@ -4097,3 +4150,15 @@ async def voteskip(ctx: Context):
             embed_description=f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]",
             colour=Colour.green(),
         )
+
+@bot.command()
+async def voteskip(ctx: Context):
+    message = ctx.message
+    """
+    A player votes to go to the next map in rotation
+    """
+    await send_message(
+        message.channel,
+        embed_description=f"Skipping is for bitches",
+        colour=Colour.blue(),
+    )

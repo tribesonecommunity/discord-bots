@@ -509,8 +509,33 @@ S = [
 
 
 def generate_be_name() -> str:
-    return f"{choice(B)} {choice(E)}"
+    names = [
+        "Lone Wolvez",
+        "Pacc Huntaz",
+        "Howl If You're Horny",
+        "Arf?",
+        "Furrrrocious Five",
+        "Heavy Petters",
+        "Red's Rockets",
+        "We like it RUFF",
+        "Yung Cubz",
+        "Puppy Snaccz",
+        "Too sKILLd",
+    ]
+    return choice(names)
 
 
 def generate_ds_name() -> str:
-    return f"{choice(D)} {choice(S)}"
+    names = [
+        "Mash Me Daddy",
+        "Tater's Tots",
+        "PO TA TOES",
+        "Idaho's Finest",
+        "White Steamy Thick 'n Creamy",
+        "Stick Us In A Stew",
+        "Spud's Angels",
+        "Gram's Yams",
+        "Put A Fork In Us",
+        "Steamy Brown Flavor Town",
+    ]
+    return choice(names)
