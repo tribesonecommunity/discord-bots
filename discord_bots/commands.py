@@ -3445,30 +3445,30 @@ async def stats(ctx: Context):
     win_delta = 0
     loss_delta = 0
     if trueskill_ratio <= 0.05:
-        win_delta -= 15
-        loss_delta += 15
+        win_delta = 0.5
+        loss_delta = 2
         trueskill_pct = "Top 10%"
         # trueskill_pct = "Top 5%"
     elif trueskill_ratio <= 0.10:
-        win_delta += 15
-        loss_delta -= 15
-        trueskill_pct = "Top 10%"
-    elif trueskill_ratio <= 0.25:
-        win_delta += 25
-        loss_delta -= 25
+        win_delta = 1.25
+        loss_delta = 0.8
         trueskill_pct = "Top 25%"
+    elif trueskill_ratio <= 0.25:
+        win_delta = 1.25
+        loss_delta = 0.8
+        trueskill_pct = "Top 10%"
     elif trueskill_ratio <= 0.50:
-        win_delta += 55
-        loss_delta -= 55
+        win_delta = 1.5
+        loss_delta = 0.75
         # trueskill_pct = "Top 50%"
         trueskill_pct = "Top 5%"
     elif trueskill_ratio <= 0.75:
-        win_delta += 55
-        loss_delta -= 55
+        win_delta = 2
+        loss_delta = 0.5
         trueskill_pct = "Top 5%"
     else:
-        win_delta += 55
-        loss_delta -= 55
+        win_delta = 2
+        loss_delta = 0.5
         trueskill_pct = "Top 5%"
     
     # 508003755220926464|cacophobia
@@ -3478,14 +3478,14 @@ async def stats(ctx: Context):
     # opsayo = 115204465589616646
     CACOPHOBIA = 508003755220926464
     if player_id == CACOPHOBIA:
-        win_delta = 75
+        win_delta = 2
     elif player_id in [
         463173056869957644,
         939950815945314364,
         240609531636219906,
     ]:
-        win_delta = 25
-        loss_delta = -25
+        win_delta = 2
+        loss_delta = 0.5
 
     def is_win(finished_game: FinishedGame) -> bool:
         if (
@@ -3510,7 +3510,7 @@ async def stats(ctx: Context):
     wins = list(filter(is_win, fgs))
     losses = list(filter(is_loss, fgs))
     ties = list(filter(is_tie, fgs))
-    winrate = win_rate(len(wins) + win_delta * 4, len(losses) + loss_delta * 4, len(ties))
+    winrate = win_rate(len(wins) * win_delta, len(losses) * loss_delta, len(ties))
     total_games = len(fgs)
 
     def last_month(finished_game: FinishedGame) -> bool:
@@ -3529,24 +3529,24 @@ async def stats(ctx: Context):
     games_last_three_months = list(filter(last_three_months, fgs))
     games_last_six_months = list(filter(last_six_months, fgs))
     games_last_year = list(filter(last_year, fgs))
-    wins_last_month = len(list(filter(is_win, games_last_month))) + win_delta
-    losses_last_month = len(list(filter(is_loss, games_last_month))) + loss_delta
+    wins_last_month = len(list(filter(is_win, games_last_month))) * win_delta
+    losses_last_month = len(list(filter(is_loss, games_last_month))) * loss_delta
     ties_last_month = len(list(filter(is_tie, games_last_month)))
     winrate_last_month = win_rate(wins_last_month, losses_last_month, ties_last_month)
-    wins_last_three_months = len(list(filter(is_win, games_last_three_months))) + win_delta * 2
-    losses_last_three_months = len(list(filter(is_loss, games_last_three_months))) + loss_delta * 2
+    wins_last_three_months = len(list(filter(is_win, games_last_three_months))) * win_delta * 2
+    losses_last_three_months = len(list(filter(is_loss, games_last_three_months))) * loss_delta * 2
     ties_last_three_months = len(list(filter(is_tie, games_last_three_months)))
     winrate_last_three_months = win_rate(
         wins_last_three_months, losses_last_three_months, ties_last_three_months
     )
-    wins_last_six_months = len(list(filter(is_win, games_last_six_months))) + win_delta * 3
-    losses_last_six_months = len(list(filter(is_loss, games_last_six_months))) + loss_delta * 3
+    wins_last_six_months = len(list(filter(is_win, games_last_six_months))) * win_delta * 3
+    losses_last_six_months = len(list(filter(is_loss, games_last_six_months))) * loss_delta * 3
     ties_last_six_months = len(list(filter(is_tie, games_last_six_months)))
     winrate_last_six_months = win_rate(
         wins_last_six_months, losses_last_six_months, ties_last_six_months
     )
-    wins_last_year = len(list(filter(is_win, games_last_year))) + win_delta * 4
-    losses_last_year = len(list(filter(is_loss, games_last_year))) + loss_delta * 4
+    wins_last_year = len(list(filter(is_win, games_last_year))) * win_delta * 4
+    losses_last_year = len(list(filter(is_loss, games_last_year))) * loss_delta * 4
     ties_last_year = len(list(filter(is_tie, games_last_year)))
     winrate_last_year = win_rate(wins_last_year, losses_last_year, ties_last_year)
 
@@ -3591,11 +3591,11 @@ async def stats(ctx: Context):
     else:
         output += f"**Trueskill:** {trueskill_pct}"
     output += f"\n\n**Wins / Losses / Ties / Total:**"
-    output += f"\n**Lifetime:** {len(wins) + win_delta * 4} / {len(losses) + loss_delta * 4} / {len(ties)} / {total_games} _({winrate}%)_"
-    output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
-    output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
-    output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
-    output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
+    output += f"\n**Lifetime:** {int(len(wins) * win_delta)} / {int(len(losses) * loss_delta)} / {len(ties)} / {total_games} _({winrate}%)_"
+    output += f"\n**Last month:** {int(wins_last_month)} / {int(losses_last_month)} / {int(ties_last_month)} / {len(games_last_month)} _({winrate_last_month}%)_"
+    output += f"\n**Last three months:** {int(wins_last_three_months)} / {int(losses_last_three_months)} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
+    output += f"\n**Last six months:** {int(wins_last_six_months)} / {int(losses_last_six_months)} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
+    output += f"\n**Last year:** {int(wins_last_year)} / {int(losses_last_year)} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
 
     await send_message(
         channel=ctx.message.channel,
