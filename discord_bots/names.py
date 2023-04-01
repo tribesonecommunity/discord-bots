@@ -533,7 +533,7 @@ def generate_ds_name() -> str:
         "Idaho's Finest",
         "White Steamy Thick 'n Creamy",
         "Stick Us In A Stew",
-        "Spud's Angels",
+        "Spud's Chuds",
         "Gram's Yams",
         "Put A Fork In Us",
         "Steamy Brown Flavor Town",
