@@ -3484,8 +3484,8 @@ async def stats(ctx: Context):
         939950815945314364,
         240609531636219906,
     ]:
-        win_delta = 2.5
-        loss_delta = 0.4
+        win_delta = 4
+        loss_delta = 0.25
 
     def is_win(finished_game: FinishedGame) -> bool:
         if (
