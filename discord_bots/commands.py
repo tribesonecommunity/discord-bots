@@ -3450,25 +3450,25 @@ async def stats(ctx: Context):
         trueskill_pct = "Top 10%"
         # trueskill_pct = "Top 5%"
     elif trueskill_ratio <= 0.10:
-        win_delta = 1.25
-        loss_delta = 0.8
+        win_delta = 2
+        loss_delta = 0.5
         trueskill_pct = "Top 25%"
     elif trueskill_ratio <= 0.25:
-        win_delta = 1.25
-        loss_delta = 0.8
+        win_delta = 2
+        loss_delta = 0.5
         trueskill_pct = "Top 10%"
     elif trueskill_ratio <= 0.50:
-        win_delta = 1.5
-        loss_delta = 0.75
+        win_delta = 2.5
+        loss_delta = 0.4
         # trueskill_pct = "Top 50%"
         trueskill_pct = "Top 5%"
     elif trueskill_ratio <= 0.75:
-        win_delta = 2
-        loss_delta = 0.5
+        win_delta = 2.5
+        loss_delta = 0.4
         trueskill_pct = "Top 5%"
     else:
-        win_delta = 2
-        loss_delta = 0.5
+        win_delta = 2.5
+        loss_delta = 0.4
         trueskill_pct = "Top 5%"
     
     # 508003755220926464|cacophobia
@@ -3484,8 +3484,8 @@ async def stats(ctx: Context):
         939950815945314364,
         240609531636219906,
     ]:
-        win_delta = 2
-        loss_delta = 0.5
+        win_delta = 2.5
+        loss_delta = 0.4
 
     def is_win(finished_game: FinishedGame) -> bool:
         if (
