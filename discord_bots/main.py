@@ -1,10 +1,14 @@
 import os
 from datetime import datetime, timezone
+from tempfile import NamedTemporaryFile
 
+import discord
+import imgkit
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
+from PIL import Image
 
 from .bot import COMMAND_PREFIX, bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
@@ -105,6 +109,19 @@ async def on_message(message: Message):
             if custom_command:
                 await message.channel.send(content=custom_command.output)
         session.close()
+    else:
+        # Hardcode allow this command to work in other channels
+        if message.content == '!lt':
+            query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132:28006&port=28006"
+            await message.channel.send(query_url)
+
+            ntf = NamedTemporaryFile(delete=True, suffix=".png")
+            imgkit.from_url(query_url, ntf.name)
+            image = Image.open(ntf.name)
+            cropped = image.crop((0, 0, 450, 650))
+            cropped.save(ntf.name)
+            await message.channel.send(file=discord.File(ntf.name))
+            ntf.close()
 
 
 @bot.event
