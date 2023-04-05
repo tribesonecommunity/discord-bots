@@ -72,6 +72,8 @@ async def on_command_error(ctx: Context, error: CommandError):
 
 @bot.event
 async def on_message(message: Message):
+    print('message content:', message.content, 'channel id:', message.channel.id)
+    print('equals:', message.content == '!lt')
     if CHANNEL_ID and message.channel.id == CHANNEL_ID:
         session = Session()
         player: Player | None = (
