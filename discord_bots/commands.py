@@ -123,10 +123,8 @@ def get_even_teams(
     best_win_prob_so_far: float = 0.0
     best_teams_so_far: list[Player] = []
 
-    # We only take half the combinations because they end up repeating. i.e.
-    # [1,2] vs [3,4] is the same as [3,4] vs [1,2]
     all_combinations = list(combinations(players, team_size))
-    for team0 in all_combinations[: len(all_combinations) // 2]:
+    for team0 in all_combinations:
         team1 = [p for p in players if p not in team0]
         if is_rated:
             team0_ratings = []
@@ -211,10 +209,8 @@ def get_n_teams(
 ) -> list[tuple[list[Player], float]]:
     teams: list[tuple[float, list[Player]]] = []
 
-    # We only take half the combinations because they end up repeating. i.e.
-    # [1,2] vs [3,4] is the same as [3,4] vs [1,2]
     all_combinations = list(combinations(players, team_size))
-    for team0 in all_combinations[: len(all_combinations) // 2]:
+    for team0 in all_combinations:
         team1 = [p for p in players if p not in team0]
         if is_rated:
             team0_ratings = list(
@@ -279,10 +275,8 @@ def get_n_finished_game_teams(
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     teams: list[tuple[float, list[FinishedGamePlayer]]] = []
 
-    # We only take half the combinations because they end up repeating. i.e.
-    # [1,2] vs [3,4] is the same as [3,4] vs [1,2]
     all_combinations = list(combinations(fgps, team_size))
-    for team0 in all_combinations[: len(all_combinations) // 2]:
+    for team0 in all_combinations:
         team1 = [p for p in fgps if p not in team0]
         if is_rated:
             team0_ratings = list(
