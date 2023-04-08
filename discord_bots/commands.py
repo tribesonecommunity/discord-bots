@@ -2992,6 +2992,23 @@ async def setbias(ctx: Context, member: Member, amount: float):
 
 @bot.command()
 @commands.check(is_admin)
+async def setcaptainbias(ctx: Context, member: Member, amount: float):
+    if amount < -100 or amount > 100:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Amount must be between -100 and 100",
+            colour=Colour.red(),
+        )
+        return
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Captain bias for {member.name} set to `{amount}%`",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
 async def setcommandprefix(ctx: Context, prefix: str):
     message = ctx.message
     global COMMAND_PREFIX
