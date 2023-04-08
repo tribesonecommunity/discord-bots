@@ -97,6 +97,7 @@ def get_even_teams(
     player_ids: list[int], team_size: int, is_rated: bool, queue_region_id: str | None
 ) -> tuple[list[Player], float]:
     """
+    This is the one used when a new game is created. The other methods are for the showgamedebug command
     TODO: Tests
     TODO: Re-use get_n_teams function
 
@@ -109,7 +110,7 @@ def get_even_teams(
     players: list[Player] = (
         session.query(Player).filter(Player.id.in_(player_ids)).all()
     )
-    shuffle(players)
+    shuffle(players)  # This is important! This ensures captains are randomly distributed!
     if queue_region_id:
         player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
             PlayerRegionTrueskill.player_id.in_(player_ids),
