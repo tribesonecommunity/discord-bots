@@ -1,5 +1,11 @@
 # How to run the bot
 
+## Forks
+
+Sauon and sh4z have both maintained separate forks with some improvements - check them out!
+- https://github.com/Sauon/discord-bots
+- https://github.com/sh4zbot/discord-bots
+
 ## Installation
 
 ### MacOS
