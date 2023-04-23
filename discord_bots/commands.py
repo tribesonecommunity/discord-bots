@@ -2243,9 +2243,20 @@ async def leaderboard(ctx: Context):
             output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     session.close()
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
-    await send_message(
-        ctx.message.channel, embed_description=output, colour=Colour.blue()
-    )
+
+    if ctx.message.guild:
+        player_id = ctx.message.author.id
+        member_: Member | None = ctx.message.guild.get_member(player_id)
+        if member_:
+            try:
+                await member_.send(
+                    embed=Embed(
+                        description=f"{output}",
+                        colour=Colour.blue(),
+                    ),
+                )
+            except Exception:
+                pass
 
 
 @bot.command()
@@ -3556,11 +3567,18 @@ async def stats(ctx: Context):
     output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
     output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
 
-    await send_message(
-        channel=ctx.message.channel,
-        embed_description=output,
-        colour=Colour.blue(),
-    )
+    if ctx.message.guild:
+        member_: Member | None = ctx.message.guild.get_member(player.id)
+        if member_:
+            try:
+                await member_.send(
+                    embed=Embed(
+                        description=f"{output}",
+                        colour=Colour.blue(),
+                    ),
+                )
+            except Exception:
+                pass
 
 
 TWITCH_GAME_NAME: str | None = os.getenv("TWITCH_GAME_NAME")
