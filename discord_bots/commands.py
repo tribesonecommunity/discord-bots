@@ -2169,16 +2169,16 @@ async def finishgame(ctx: Context, outcome: str):
     await upload_stats_screenshot_imgkit(ctx)
 
 
-@bot.command()
-@commands.check(is_admin)
-async def imagetest(ctx: Context):
-    await upload_stats_screenshot_selenium(ctx, False)
+# @bot.command()
+# @commands.check(is_admin)
+# async def imagetest(ctx: Context):
+#     await upload_stats_screenshot_selenium(ctx, False)
 
 
-@bot.command()
-@commands.check(is_admin)
-async def imagetest2(ctx: Context):
-    await upload_stats_screenshot_imgkit(ctx, False)
+# @bot.command()
+# @commands.check(is_admin)
+# async def imagetest2(ctx: Context):
+#     await upload_stats_screenshot_imgkit(ctx, False)
 
 
 @bot.command()
