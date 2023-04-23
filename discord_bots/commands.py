@@ -3542,22 +3542,24 @@ async def stats(ctx: Context):
 
     output = ""
     if SHOW_TRUESKILL:
-        output += f"**Trueskill:**"
         player_region_trueskills: list[PlayerRegionTrueskill] = (
             session.query(PlayerRegionTrueskill)
             .filter(PlayerRegionTrueskill.player_id == player_id)
             .all()
         )
-        for prt in player_region_trueskills:
-            queue_region: QueueRegion = (
-                session.query(QueueRegion)
-                .filter(QueueRegion.id == prt.queue_region_id)
-                .first()
-            )
-            output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+        if player_region_trueskills:
+            output += f"**Trueskill:**"
+            for prt in player_region_trueskills:
+                queue_region: QueueRegion = (
+                    session.query(QueueRegion)
+                    .filter(QueueRegion.id == prt.queue_region_id)
+                    .first()
+                )
+                output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
 
         # This assumes that if a community uses regions then they'll use regions exclusively
-        if not player_region_trueskills:
+        else:
+            output += f"**Trueskill:** {trueskill_pct}"
             output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     else:
         output += f"**Trueskill:** {trueskill_pct}"
@@ -3570,6 +3572,10 @@ async def stats(ctx: Context):
 
     if ctx.message.guild:
         member_: Member | None = ctx.message.guild.get_member(player.id)
+        output += f"**Trueskill:** {trueskill_pct}"
+        await send_message(
+            ctx.message.channel, embed_description="Stats sent to DM", colour=Colour.blue()
+        )
         if member_:
             try:
                 await member_.send(
