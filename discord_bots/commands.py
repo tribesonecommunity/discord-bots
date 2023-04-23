@@ -3572,7 +3572,6 @@ async def stats(ctx: Context):
 
     if ctx.message.guild:
         member_: Member | None = ctx.message.guild.get_member(player.id)
-        output += f"**Trueskill:** {trueskill_pct}"
         await send_message(
             ctx.message.channel, embed_description="Stats sent to DM", colour=Colour.blue()
         )
