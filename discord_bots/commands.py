@@ -3166,7 +3166,7 @@ async def setsigma(ctx: Context, member: Member, sigma: float):
 
     await send_message(
         ctx.message.channel,
-        embed_description=f"Sigma for **{member.name}** changed from **{round(sigma_before, 2)}** to **{sigma}**",
+        embed_description=f"Sigma for **{member.name}** changed from **{round(sigma_before, 4)}** to **{sigma}**",
         colour=Colour.blue(),
     )
 
@@ -3303,7 +3303,7 @@ async def showsigma(ctx: Context, member: Member):
     """
     session = Session()
     player: Player = session.query(Player).filter(Player.id == member.id).first()
-    output = embed_title=f"**{member.name}'s** sigma: **{player.rated_trueskill_sigma}**"
+    output = embed_title=f"**{member.name}'s** sigma: **{round(player.rated_trueskill_sigma, 4)}**"
     await send_message(
         channel=ctx.message.channel,
         embed_description=output,
