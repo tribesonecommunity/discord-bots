@@ -3146,6 +3146,30 @@ async def setmapvotethreshold(ctx: Context, threshold: int):
         colour=Colour.green(),
     )
 
+@bot.command()
+@commands.check(is_admin)
+async def setsigma(ctx: Context, member: Member, sigma: float):
+    if sigma < 1 or sigma > 8.33:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Amount must be between 1 and 8.33",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    player: Player = session.query(Player).filter(Player.id == member.id).first()
+    sigma_before = player.rated_trueskill_sigma
+    player.rated_trueskill_sigma = sigma
+    session.commit()
+    session.close()
+
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Sigma for **{member.name}** changed from **{round(sigma_before, 2)}** to **{sigma}**",
+        colour=Colour.blue(),
+    )
+
 
 @bot.command()
 async def showgame(ctx: Context, game_id: str):
@@ -3270,6 +3294,23 @@ async def showgamedebug(ctx: Context, game_id: str):
                 embed_description=game_str,
                 colour=Colour.blue(),
             )
+
+
+@bot.command()
+async def showsigma(ctx: Context, member: Member):
+    """
+    Returns the player's base sigma. Doesn't consider regions
+    """
+    session = Session()
+    player: Player = session.query(Player).filter(Player.id == member.id).first()
+    output = embed_title=f"**{member.name}'s** sigma: **{player.rated_trueskill_sigma}**"
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description=output,
+        # embed_title=f"{member.name} sigma:",
+        colour=Colour.blue(),
+    )
+
 
 
 @bot.command()
