@@ -3297,6 +3297,7 @@ async def showgamedebug(ctx: Context, game_id: str):
 
 
 @bot.command()
+@commands.check(is_admin)
 async def showsigma(ctx: Context, member: Member):
     """
     Returns the player's base sigma. Doesn't consider regions
