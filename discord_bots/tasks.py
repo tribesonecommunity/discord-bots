@@ -22,6 +22,7 @@ from .commands import (
     create_game,
     is_in_game,
 )
+from .config import DISABLE_MAP_ROTATION
 from .models import (
     CurrentMap,
     InProgressGame,
@@ -290,6 +291,9 @@ async def map_rotation_task():
     session = Session()
     current_map: CurrentMap | None = session.query(CurrentMap).first()
     if not current_map:
+        return
+
+    if DISABLE_MAP_ROTATION:
         return
 
     if current_map.map_rotation_index == 0 and not RANDOM_MAP_ROTATION:

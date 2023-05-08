@@ -35,6 +35,7 @@ from discord_bots.utils import (
 )
 
 from .bot import COMMAND_PREFIX, bot
+from .config import DISABLE_MAP_ROTATION
 from .models import (
     DB_NAME,
     AdminRole,
@@ -3356,13 +3357,19 @@ async def status(ctx: Context, *args):
             time_until_rotation = MAP_ROTATION_MINUTES - (
                 time_since_update.seconds // 60
             )
-            if RANDOM_MAP_ROTATION:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
-            else:
-                if current_map.map_rotation_index == 0:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+            if DISABLE_MAP_ROTATION:
+                if RANDOM_MAP_ROTATION:
+                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n"
                 else:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+            else:
+                if RANDOM_MAP_ROTATION:
+                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
+                else:
+                    if current_map.map_rotation_index == 0:
+                        output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                    else:
+                        output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
         output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
 
