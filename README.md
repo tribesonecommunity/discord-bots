@@ -96,15 +96,6 @@ Use python black: https://github.com/psf/black
 
 This project uses `darker` for formatting in a pre-commit hook. Install using `pre-commit install`
 
-## Tests
-
-Tests don't currently work, so skip this step
-
-- `pytest`
-
-I haven't setup alembic to cooperate with the test database. If you add a new
-migration, delete the test db (`rm tribes.test.db`) and the code will migrate your new database.
-
 ## Migrations
 
 Migrations are handled by Alembic: https://alembic.sqlalchemy.org/. See here for a tutorial: https://alembic.sqlalchemy.org/en/latest/tutorial.html.
