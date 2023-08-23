@@ -3201,12 +3201,15 @@ async def showgame(ctx: Context, game_id: str):
 
 @bot.command()
 async def showgamedebug(ctx: Context, game_id: str):
-    await send_message(
-        ctx.message.channel,
-        embed_description="Ice cream machine under maintenance",
-        colour=Colour.red(),
-    )
-    return
+    player_id = ctx.message.author.id
+    if player_id != 115204465589616646:
+        await send_message(
+            ctx.message.channel,
+            embed_description="Ice cream machine under maintenance",
+            colour=Colour.red(),
+        )
+        return
+
     message = ctx.message
     session = Session()
     finished_game = (
@@ -3238,11 +3241,28 @@ async def showgamedebug(ctx: Context, game_id: str):
             team0_players = worst_team[: len(worst_team) // 2]
             team1_players = worst_team[len(worst_team) // 2 :]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
-        await send_message(
-            message.channel,
-            embed_description=game_str,
-            colour=Colour.blue(),
-        )
+        # await send_message(
+        #     message.channel,
+        #     embed_description=game_str,
+        #     colour=Colour.blue(),
+        # )
+        if ctx.message.guild:
+            player_id = ctx.message.author.id
+            member_: Member | None = ctx.message.guild.get_member(player_id)
+            await send_message(
+                ctx.message.channel, embed_description="Stats sent to DM", colour=Colour.blue()
+            )
+            if member_:
+                try:
+                    await member_.send(
+                        embed=Embed(
+                            description=game_str,
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
+
     else:
         in_progress_game: InProgressGame | None = (
             session.query(InProgressGame)
@@ -3292,11 +3312,30 @@ async def showgamedebug(ctx: Context, game_id: str):
                 game_str += (
                     f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                 )
-            await send_message(
-                message.channel,
-                embed_description=game_str,
-                colour=Colour.blue(),
-            )
+            if ctx.message.guild:
+                player_id = ctx.message.author.id
+                member_: Member | None = ctx.message.guild.get_member(player_id)
+                await send_message(
+                    ctx.message.channel, embed_description="Stats sent to DM", colour=Colour.blue()
+                )
+                if member_:
+                    try:
+                        await member_.send(
+                            embed=Embed(
+                                description=game_str,
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
+
+            # await send_message(
+            #     message.channel,
+            #     embed_description=game_str,
+            #     colour=Colour.blue(),
+            # )
+
+
 
 
 @bot.command()
