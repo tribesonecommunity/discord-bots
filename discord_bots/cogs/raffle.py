@@ -3,6 +3,7 @@ from random import choice
 from discord import Colour
 from discord.ext.commands import Bot, Cog, Context, check, command
 from discord.member import Member
+from emoji import emojize
 
 from discord_bots.checks import is_admin
 from discord_bots.models import Player, RotationMap, Session
@@ -104,7 +105,7 @@ class RaffleCog(Cog):
             return
         await send_message(
             ctx.message.channel,
-            embed_description=f"You have *{player.raffle_tickets}* raffle tickets!\n\n_{choice(strings)}_",
+            embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')} \n\n_{choice(strings)}_",
             colour=Colour.blue(),
         )
 
