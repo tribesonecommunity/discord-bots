@@ -27,11 +27,17 @@ from dotenv import load_dotenv
 from PIL import Image
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
+from discord_bots.checks import is_admin
 from discord_bots.config import SHOW_TRUESKILL
-
 from discord_bots.utils import (
+    RANDOM_MAP_ROTATION,
+    update_current_map_to_next_map_in_rotation,
+    send_message,
     upload_stats_screenshot_imgkit,
-    upload_stats_screenshot_selenium,
+    mean,
+    pretty_format_team,
+    short_uuid,
+    win_probability,
 )
 
 from .bot import COMMAND_PREFIX, bot
@@ -67,15 +73,6 @@ from .models import (
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
-from .utils import (
-    RANDOM_MAP_ROTATION,
-    mean,
-    pretty_format_team,
-    send_message,
-    short_uuid,
-    update_current_map_to_next_map_in_rotation,
-    win_probability,
-)
 
 load_dotenv()
 
@@ -111,7 +108,9 @@ def get_even_teams(
     players: list[Player] = (
         session.query(Player).filter(Player.id.in_(player_ids)).all()
     )
-    shuffle(players)  # This is important! This ensures captains are randomly distributed!
+    shuffle(
+        players
+    )  # This is important! This ensures captains are randomly distributed!
     if queue_region_id:
         player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
             PlayerRegionTrueskill.player_id.in_(player_ids),
@@ -542,49 +541,6 @@ async def add_player_to_queue(
     session.close()
 
     return True, False
-
-
-async def is_admin(ctx: Context):
-    """
-    Check to wrap functions that require admin
-
-    https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
-    """
-    session = Session()
-    message: Message = ctx.message
-    caller = (
-        session.query(Player)
-        .filter(Player.id == message.author.id, Player.is_admin == True)
-        .first()
-    )
-    if caller:
-        session.close()
-        return True
-
-    if not message.guild:
-        session.close()
-        return False
-
-    member = message.guild.get_member(message.author.id)
-    if not member:
-        session.close()
-        return False
-
-    admin_roles = session.query(AdminRole).all()
-    admin_role_ids = map(lambda x: x.role_id, admin_roles)
-    member_role_ids = map(lambda x: x.id, member.roles)
-    is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
-    if is_admin:
-        session.close()
-        return True
-    else:
-        await send_message(
-            message.channel,
-            embed_description="You must be an admin to use that command",
-            colour=Colour.red(),
-        )
-        session.close()
-        return False
 
 
 def mock_teams_str(
@@ -2158,6 +2114,31 @@ async def finishgame(ctx: Context, outcome: str):
                 + timedelta(seconds=RE_ADD_DELAY),
             )
         )
+
+    # Reward raffle tickets
+    rotation_map: RotationMap | None = (
+        session.query(RotationMap)
+        .filter(RotationMap.short_name.ilike(in_progress_game.map_short_name))
+        .first()
+    )
+    print("rotation map?:", rotation_map, "igp name:", in_progress_game.map_short_name)
+    if rotation_map:
+        for player in players:
+            print(
+                "adding raffle tickets:",
+                rotation_map.raffle_ticket_reward,
+                "to player:",
+                player.name,
+                "for map:",
+                rotation_map.short_name,
+            )
+            player.raffle_tickets += rotation_map.raffle_ticket_reward
+            session.add(player)
+    else:
+        print(
+            f"WARNING: Could not find map: {in_progress_game.map_short_name}, could not reward raffle tickets for game {finished_game.id}"
+        )
+
     session.commit()
     queue_name = queue.name
     session.close()
@@ -2259,7 +2240,6 @@ async def leaderboard(ctx: Context):
                 )
             except Exception:
                 pass
-
 
 
 @bot.command()
@@ -2544,6 +2524,7 @@ async def mockrandomqueue(ctx: Context, *args):
         .all()
     )
     queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    # This throws an error if people haven't played in 30 days
     for player in numpy.random.choice(
         players_from_last_30_days, size=int(args[1]), replace=False
     ):
@@ -3149,6 +3130,7 @@ async def setmapvotethreshold(ctx: Context, threshold: int):
         colour=Colour.green(),
     )
 
+
 @bot.command()
 @commands.check(is_admin)
 async def setsigma(ctx: Context, member: Member, sigma: float):
@@ -3250,7 +3232,9 @@ async def showgamedebug(ctx: Context, game_id: str):
             player_id = ctx.message.author.id
             member_: Member | None = ctx.message.guild.get_member(player_id)
             await send_message(
-                ctx.message.channel, embed_description="Stats sent to DM", colour=Colour.blue()
+                ctx.message.channel,
+                embed_description="Stats sent to DM",
+                colour=Colour.blue(),
             )
             if member_:
                 try:
@@ -3316,7 +3300,9 @@ async def showgamedebug(ctx: Context, game_id: str):
                 player_id = ctx.message.author.id
                 member_: Member | None = ctx.message.guild.get_member(player_id)
                 await send_message(
-                    ctx.message.channel, embed_description="Stats sent to DM", colour=Colour.blue()
+                    ctx.message.channel,
+                    embed_description="Stats sent to DM",
+                    colour=Colour.blue(),
                 )
                 if member_:
                     try:
@@ -3336,8 +3322,6 @@ async def showgamedebug(ctx: Context, game_id: str):
             # )
 
 
-
-
 @bot.command()
 @commands.check(is_admin)
 async def showsigma(ctx: Context, member: Member):
@@ -3346,7 +3330,9 @@ async def showsigma(ctx: Context, member: Member):
     """
     session = Session()
     player: Player = session.query(Player).filter(Player.id == member.id).first()
-    output = embed_title=f"**{member.name}'s** sigma: **{round(player.rated_trueskill_sigma, 4)}**"
+    output = (
+        embed_title
+    ) = f"**{member.name}'s** sigma: **{round(player.rated_trueskill_sigma, 4)}**"
     await send_message(
         channel=ctx.message.channel,
         embed_description=output,
@@ -3355,9 +3341,10 @@ async def showsigma(ctx: Context, member: Member):
     )
 
 
-
 @bot.command()
 async def status(ctx: Context, *args):
+    channels = [c for c in ctx.bot.get_all_channels()]
+    print(channels)
     session = Session()
     queues: list[Queue] = []
     all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
@@ -3387,6 +3374,7 @@ async def status(ctx: Context, *args):
         current_map: CurrentMap | None = session.query(CurrentMap).first()
         if current_map:
             rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+            upcoming_map = rotation_maps[current_map.map_rotation_index]
             next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
                 rotation_maps
             )
@@ -3398,19 +3386,25 @@ async def status(ctx: Context, *args):
             time_until_rotation = MAP_ROTATION_MINUTES - (
                 time_since_update.seconds // 60
             )
+            has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
+            upcoming_map_str = (
+                f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})**\n"
+            )
+            if has_raffle_reward:
+                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
             if DISABLE_MAP_ROTATION:
                 if RANDOM_MAP_ROTATION:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n"
+                    output += upcoming_map_str
                 else:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
             else:
                 if RANDOM_MAP_ROTATION:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
+                    output += f"{upcoming_map_str}\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
                 else:
                     if current_map.map_rotation_index == 0:
-                        output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                        output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
                     else:
-                        output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+                        output += f"{upcoming_map_str}\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
         output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
 
@@ -3663,7 +3657,9 @@ async def stats(ctx: Context):
     if ctx.message.guild:
         member_: Member | None = ctx.message.guild.get_member(player.id)
         await send_message(
-            ctx.message.channel, embed_description="Stats sent to DM", colour=Colour.blue()
+            ctx.message.channel,
+            embed_description="Stats sent to DM",
+            colour=Colour.blue(),
         )
         if member_:
             try:

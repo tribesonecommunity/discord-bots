@@ -2,13 +2,13 @@ import os
 from datetime import datetime, timezone
 from tempfile import NamedTemporaryFile
 
-import discord
-import imgkit
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
-from PIL import Image
+from discord_bots.cogs.raffle import RaffleCog
+
+from discord_bots.utils import CHANNEL_ID
 
 from .bot import COMMAND_PREFIX, bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
@@ -19,7 +19,6 @@ from .tasks import (
     queue_waitlist_task,
     vote_passed_waitlist_task,
 )
-from .utils import CHANNEL_ID
 
 add_player_task.start()
 afk_timer_task.start()
@@ -156,6 +155,7 @@ def main():
     load_dotenv()
     API_KEY = os.getenv("DISCORD_API_KEY")
     if API_KEY:
+        bot.add_cog(RaffleCog(bot))
         bot.run(API_KEY)
     else:
         print("You must define DISCORD_API_KEY!")

@@ -13,6 +13,12 @@ from discord.ext import tasks
 from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
+from discord_bots.utils import (
+    RANDOM_MAP_ROTATION,
+    update_current_map_to_next_map_in_rotation,
+    send_message,
+)
+
 
 from .bot import bot
 from .commands import (
@@ -40,11 +46,6 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
-from .utils import (
-    RANDOM_MAP_ROTATION,
-    send_message,
-    update_current_map_to_next_map_in_rotation,
-)
 
 
 @tasks.loop(minutes=1)
@@ -394,7 +395,7 @@ async def add_player_task():
                     for prt in sorted(
                         player_region_trueskills,
                         key=lambda prt: prt.rated_trueskill_mu,
-                        reverse=True
+                        reverse=True,
                     )[: queue.size]
                 ]
             else:
@@ -406,7 +407,7 @@ async def add_player_task():
                     for player in sorted(
                         players,
                         key=lambda player: player.rated_trueskill_mu,
-                        reverse=True
+                        reverse=True,
                     )[: queue.size]
                 ]
             await create_game(

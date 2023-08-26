@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     create_engine,
+    text,
 )
 
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -397,6 +398,7 @@ class Player:
     games.
     :unrated_trueskill_mu: A player's trueskill rating account for rated and
     unrated games.
+    :raffle_tickets: The number of raffle tickets a player has
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -425,6 +427,12 @@ class Player:
     )
     unrated_trueskill_sigma: float = field(
         default=DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
+    )
+    raffle_tickets: int = field(
+        default=0,
+        metadata={
+            "sa": Column(Integer, index=True, nullable=False, server_default=text("0"))
+        },
     )
 
     @hybrid_property
@@ -766,9 +774,46 @@ class QueueWaitlistPlayer:
 
 @mapper_registry.mapped
 @dataclass
+class Raffle:
+    """
+    An instance of a raffle
+
+    :code: Auto-generated code to run / reset the raffle. Used to prevent accidentally running it or resetting it
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "raffle"
+
+    code: str = field(default=None, metadata={"sa": Column(String)})
+    winning_player_id: int = field(
+        default=None,
+        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+    )
+    total_tickets: int = field(
+        default=0, metadata={"sa": Column(Integer, index=True, nullable=False)}
+    )
+    winning_player_total_tickets: int = field(
+        default=0, metadata={"sa": Column(Integer, index=True, nullable=False)}
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class RotationMap:
     """
     A map that's part of the fixed rotation
+
+    :raffle_ticket_reward: The number of raffle tickets this map rewards for playing it
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -776,6 +821,12 @@ class RotationMap:
 
     full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
     short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    raffle_ticket_reward: int = field(
+        default=0,
+        metadata={
+            "sa": Column(Integer, index=True, nullable=False, server_default=text("0"))
+        },
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
