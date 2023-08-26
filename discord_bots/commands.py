@@ -3382,7 +3382,7 @@ async def status(ctx: Context, *args):
             )
             has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
             upcoming_map_str = (
-                f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})**\n"
+                f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
             )
             if has_raffle_reward:
                 upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
