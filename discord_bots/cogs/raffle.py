@@ -4,6 +4,7 @@ from discord import Colour
 from discord.ext.commands import Bot, Cog, Context, check, command
 from discord.member import Member
 from emoji import emojize
+from sqlalchemy.sql import functions
 
 from discord_bots.checks import is_admin
 from discord_bots.models import Player, RotationMap, Session
@@ -111,7 +112,31 @@ class RaffleCog(Cog):
 
     @command()
     async def rafflestatus(self, ctx, *, member: Member = None):
-        pass
+        session = Session()
+        total_tickets = session.query(functions.sum(Player.raffle_tickets)).scalar()
+        total_players = (
+            session.query(functions.count("*"))
+            .filter(Player.raffle_tickets > 0)
+            .scalar()
+        )
+        top_15_players = (
+            session.query(Player)
+            .filter(Player.raffle_tickets > 0)
+            .order_by(Player.raffle_tickets.desc())
+            .limit(15)
+            .all()
+        )
+        message = []
+        message.append(f"**{emojize(':admission_tickets:')} Total tickets:** {total_tickets}\n")
+        message.append(f"**Leaderboard:**")
+        for player in top_15_players:
+            message.append(f"_{player.name}:_ {player.raffle_tickets}")
+        await send_message(
+            ctx.message.channel,
+            embed_description='\n'.join(message),
+            colour=Colour.blue(),
+        )
+
 
     @command()
     @check(is_admin)
@@ -123,11 +148,6 @@ class RaffleCog(Cog):
         # else:
         #     await ctx.send(f'Hello {member.name}... This feels familiar.')
         # self._last_member = member
-
-    @command()
-    @check(is_admin)
-    async def resetraffle(self, ctx, *, member: Member = None):
-        pass
 
     @command()
     @check(is_admin)

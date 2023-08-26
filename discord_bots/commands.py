@@ -2121,17 +2121,8 @@ async def finishgame(ctx: Context, outcome: str):
         .filter(RotationMap.short_name.ilike(in_progress_game.map_short_name))
         .first()
     )
-    print("rotation map?:", rotation_map, "igp name:", in_progress_game.map_short_name)
     if rotation_map:
         for player in players:
-            print(
-                "adding raffle tickets:",
-                rotation_map.raffle_ticket_reward,
-                "to player:",
-                player.name,
-                "for map:",
-                rotation_map.short_name,
-            )
             player.raffle_tickets += rotation_map.raffle_ticket_reward
             session.add(player)
     else:
@@ -3343,8 +3334,6 @@ async def showsigma(ctx: Context, member: Member):
 
 @bot.command()
 async def status(ctx: Context, *args):
-    channels = [c for c in ctx.bot.get_all_channels()]
-    print(channels)
     session = Session()
     queues: list[Queue] = []
     all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
