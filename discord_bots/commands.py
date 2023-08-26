@@ -77,6 +77,11 @@ from .twitch import twitch
 load_dotenv()
 
 AFK_TIME_MINUTES: int = 45
+DEFAULT_RAFFLE_VALUE = 5
+try:
+    DEFAULT_RAFFLE_VALUE = int(os.getenv("DEFAULT_RAFFLE_VALUE"))
+except:
+    pass
 DEBUG: bool = bool(os.getenv("DEBUG")) or False
 DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 MAP_ROTATION_MINUTES: int = 60
@@ -2121,14 +2126,14 @@ async def finishgame(ctx: Context, outcome: str):
         .filter(RotationMap.short_name.ilike(in_progress_game.map_short_name))
         .first()
     )
+    reward = DEFAULT_RAFFLE_VALUE
     if rotation_map:
-        for player in players:
-            player.raffle_tickets += rotation_map.raffle_ticket_reward
-            session.add(player)
-    else:
-        print(
-            f"WARNING: Could not find map: {in_progress_game.map_short_name}, could not reward raffle tickets for game {finished_game.id}"
-        )
+        reward = DEFAULT_RAFFLE_VALUE
+        if rotation_map.raffle_ticket_reward > 0:
+            reward = rotation_map.raffle_ticket_reward
+    for player in players:
+        player.raffle_tickets += reward
+        session.add(player)
 
     session.commit()
     queue_name = queue.name
