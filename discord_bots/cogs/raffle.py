@@ -140,16 +140,12 @@ class RaffleCog(Cog):
 
     @command()
     @check(is_admin)
-    async def startraffle(self, ctx, *, member: Member = None):
+    async def createraffle(self, ctx, *, member: Member = None):
+        # TODO: We have a month to code this
         pass
-        # member = member or ctx.author
-        # if self._last_member is None or self._last_member.id != member.id:
-        #     await ctx.send(f'Hello {member.name}~')
-        # else:
-        #     await ctx.send(f'Hello {member.name}... This feels familiar.')
-        # self._last_member = member
 
     @command()
     @check(is_admin)
     async def runraffle(self, ctx, *, member: Member = None):
+        # TODO: We have a month to code this
         pass
