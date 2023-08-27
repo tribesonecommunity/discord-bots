@@ -92,7 +92,6 @@ class RaffleCog(Cog):
         )
 
     @command()
-    @check(is_admin)
     async def myraffle(self, ctx, *, member: Member = None):
         member = member or ctx.author
         session = Session()
