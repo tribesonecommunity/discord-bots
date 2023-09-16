@@ -458,18 +458,18 @@ async def create_game(
     categories = {category.id: category for category in guild.categories}
     tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
 
-    # be_channel = await guild.create_voice_channel(
-    #     f"{game.team0_name}", category=tribes_voice_category, bitrate=128000
-    # )
-    # ds_channel = await guild.create_voice_channel(
-    #     f"{game.team1_name}", category=tribes_voice_category, bitrate=128000
-    # )
-    # session.add(
-    #     InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
-    # )
-    # session.add(
-    #     InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
-    # )
+    be_channel = await guild.create_voice_channel(
+        f"{game.team0_name}", category=tribes_voice_category, bitrate=128000
+    )
+    ds_channel = await guild.create_voice_channel(
+        f"{game.team1_name}", category=tribes_voice_category, bitrate=128000
+    )
+    session.add(
+        InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
+    )
+    session.add(
+        InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
+    )
 
     session.query(QueuePlayer).filter(
         QueuePlayer.player_id.in_(player_ids)  # type: ignore
