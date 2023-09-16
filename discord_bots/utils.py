@@ -30,6 +30,7 @@ CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 STATS_DIR: str | None = os.getenv("STATS_DIR")
 
+
 # Convenience mean function that can handle lists of 0 or 1 length
 def mean(values: list[any]) -> float:
     if len(values) == 0:
@@ -132,7 +133,7 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     """
     BETA = 4.1666
     delta_mu = sum(r.mu for r in team0) - sum(r.mu for r in team1)
-    sum_sigma = sum(r.sigma ** 2 for r in itertools.chain(team0, team1))
+    sum_sigma = sum(r.sigma**2 for r in itertools.chain(team0, team1))
     size = len(team0) + len(team1)
     denom = math.sqrt(size * (BETA * BETA) + sum_sigma)
     trueskill = global_env()
@@ -161,8 +162,9 @@ async def update_current_map_to_next_map_in_rotation():
                 current_map.map_rotation_index = next_rotation_map_index
             current_map.full_name = next_map.full_name
             current_map.short_name = next_map.short_name
+            current_map.is_random = next_map.is_random
+            current_map.random_probability = next_map.random_probability
             current_map.updated_at = datetime.now(timezone.utc)
-            print("bot?:", bot)
             channel = bot.get_channel(CHANNEL_ID)
             if isinstance(channel, discord.TextChannel):
                 await send_message(
@@ -179,7 +181,15 @@ async def update_current_map_to_next_map_in_rotation():
                     next_map = choice(rotation_maps)
             else:
                 next_map = rotation_maps[0]
-            session.add(CurrentMap(0, next_map.full_name, next_map.short_name))
+            session.add(
+                CurrentMap(
+                    0,
+                    next_map.full_name,
+                    next_map.short_name,
+                    is_random=next_map.is_random,
+                    random_probability = next_map.random_probability
+                )
+            )
             channel = bot.get_channel(CHANNEL_ID)
             if isinstance(channel, discord.TextChannel):
                 await send_message(

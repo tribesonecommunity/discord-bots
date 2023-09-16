@@ -9,10 +9,10 @@ from glob import glob
 from itertools import combinations
 from math import floor
 from os import remove
-from random import choice, randint, random, shuffle
+from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from typing import Union
+from typing import List, Union
 
 import discord
 import imgkit
@@ -368,10 +368,26 @@ async def create_game(
     else:
         average_trueskill = mean(list(map(lambda x: x.unrated_trueskill_mu, players)))
     current_map: CurrentMap | None = session.query(CurrentMap).first()
+
+    if not current_map:
+        raise Exception("No current map!")
+
+    current_map_full_name = current_map.full_name
+    current_map_short_name = current_map.short_name
+
+    if current_map.is_random:
+        # Roll for random map
+        voteable_maps: List[VoteableMap] = session.query(VoteableMap).all()
+        roll = uniform(0, 1)
+        if roll < current_map.random_probability:
+            random_map = choice(voteable_maps)
+            current_map_full_name = random_map.full_name
+            current_map_short_name = random_map.short_name
+
     game = InProgressGame(
         average_trueskill=average_trueskill,
-        map_full_name=current_map.full_name if current_map else "",
-        map_short_name=current_map.short_name if current_map else "",
+        map_full_name=current_map_full_name,
+        map_short_name=current_map_short_name,
         queue_id=queue.id,
         team0_name=generate_be_name(),
         team1_name=generate_ds_name(),
@@ -442,18 +458,18 @@ async def create_game(
     categories = {category.id: category for category in guild.categories}
     tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
 
-    be_channel = await guild.create_voice_channel(
-        f"{game.team0_name}", category=tribes_voice_category, bitrate=128000
-    )
-    ds_channel = await guild.create_voice_channel(
-        f"{game.team1_name}", category=tribes_voice_category, bitrate=128000
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
-    )
+    # be_channel = await guild.create_voice_channel(
+    #     f"{game.team0_name}", category=tribes_voice_category, bitrate=128000
+    # )
+    # ds_channel = await guild.create_voice_channel(
+    #     f"{game.team1_name}", category=tribes_voice_category, bitrate=128000
+    # )
+    # session.add(
+    #     InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
+    # )
+    # session.add(
+    #     InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
+    # )
 
     session.query(QueuePlayer).filter(
         QueuePlayer.player_id.in_(player_ids)  # type: ignore
@@ -1300,10 +1316,7 @@ async def addrandomrotationmap(
             f"{map_full_name} (R)",
             f"{map_short_name}R",
             is_random=True,
-            default_full_name=map_full_name,
-            default_short_name=map_short_name,
-            rolled_full_name="",
-            rolled_short_name=""
+            random_probability=random_probability,
         )
     )
     try:
@@ -2530,9 +2543,9 @@ async def map_(ctx: Context):
     await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
 
 
-@bot.command()
+@bot.command(usage="<queue_name> <count>")
 @commands.check(is_admin)
-async def mockrandomqueue(ctx: Context, *args):
+async def mockqueue(ctx: Context, queue_name: str, count: int):
     message = ctx.message
     """
     Helper test method for adding random players to queues
@@ -2543,14 +2556,6 @@ async def mockrandomqueue(ctx: Context, *args):
         await send_message(
             message.channel,
             embed_description="Only special people can use this command",
-            colour=Colour.red(),
-        )
-        return
-
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !mockrandomqueue <queue_name> <count>",
             colour=Colour.red(),
         )
         return
@@ -2566,10 +2571,10 @@ async def mockrandomqueue(ctx: Context, *args):
         .order_by(FinishedGame.finished_at.desc())  # type: ignore
         .all()
     )
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     # This throws an error if people haven't played in 30 days
     for player in numpy.random.choice(
-        players_from_last_30_days, size=int(args[1]), replace=False
+        players_from_last_30_days, size=int(count), replace=False
     ):
         if isinstance(message.channel, TextChannel) and message.guild:
             add_player_queue.put(

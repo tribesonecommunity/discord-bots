@@ -90,6 +90,16 @@ class CurrentMap:
     map_rotation_index: int = field(metadata={"sa": Column(Integer)})
     full_name: str = field(metadata={"sa": Column(String)})
     short_name: str = field(metadata={"sa": Column(String)})
+    is_random: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
+    )
+    random_probability: float = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
@@ -841,10 +851,6 @@ class RotationMap:
         default=0,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
     )
-    default_full_name: str = field(default=None, metadata={"sa": Column(String)})
-    default_short_name: str = field(default=None, metadata={"sa": Column(String)})
-    rolled_full_name: str = field(default=None, metadata={"sa": Column(String)})
-    rolled_short_name: str = field(default=None, metadata={"sa": Column(String)})
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
