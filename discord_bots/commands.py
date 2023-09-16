@@ -1277,9 +1277,56 @@ async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
         session.commit()
 
 
+@bot.command(usage="<map_full_name> <map_short_name> <random_probability>")
+@commands.check(is_admin)
+async def addrandomrotationmap(
+    ctx: Context, map_full_name: str, map_short_name: str, random_probability: float
+):
+    """
+    Adds a special map to the rotation that is random each time it comes up
+    """
+    message = ctx.message
+    if random_probability < 0 or random_probability > 1:
+        await send_message(
+            message.channel,
+            embed_description=f"Random map probability must be between 0 and 1!",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    session.add(
+        RotationMap(
+            f"{map_full_name} (R)",
+            f"{map_short_name}R",
+            is_random=True,
+            default_full_name=map_full_name,
+            default_short_name=map_short_name,
+            rolled_full_name="",
+            rolled_short_name=""
+        )
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        await send_message(
+            message.channel,
+            embed_description=f"Error adding random map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
+            colour=Colour.red(),
+        )
+        return
+
+    await send_message(
+        message.channel,
+        embed_description=f"{map_full_name} (R) ({map_short_name}R) added to map rotation",
+        colour=Colour.green(),
+    )
+
+
 @bot.command()
 @commands.check(is_admin)
-async def addrotationmap(ctx: Context, map_short_name: str, map_full_name: str):
+async def addrotationmap(ctx: Context, map_full_name: str, map_short_name: str):
     message = ctx.message
     session = Session()
     session.add(RotationMap(map_full_name, map_short_name))
@@ -3381,9 +3428,7 @@ async def status(ctx: Context, *args):
                 time_since_update.seconds // 60
             )
             has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
-            upcoming_map_str = (
-                f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
-            )
+            upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
             if has_raffle_reward:
                 upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
             if DISABLE_MAP_ROTATION:
