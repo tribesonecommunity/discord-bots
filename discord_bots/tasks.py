@@ -14,7 +14,6 @@ from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 from discord_bots.utils import (
-    RANDOM_MAP_ROTATION,
     update_current_map_to_next_map_in_rotation,
     send_message,
 )
@@ -297,7 +296,7 @@ async def map_rotation_task():
     if DISABLE_MAP_ROTATION:
         return
 
-    if current_map.map_rotation_index == 0 and not RANDOM_MAP_ROTATION:
+    if current_map.map_rotation_index == 0:
         # Stop at the first map
         return
 

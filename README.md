@@ -46,7 +46,6 @@ The following are optional
 - `STATS_DIR`, `STATS_WIDTH`, `STATS_HEIGHT` - The bot assumes the last file dumped here is html file of the stats of the last game finished. It will take a screenshot and upload an image to the channel and delete it
 - `TWITCH_GAME_NAME`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` - These enable the `streams` command to list current streams of the specified game
 - `COMMAND_PREFIX` - Use a different prefix instead of `!`
-- `RANDOM_MAP_ROTATION` - Declare this for the map rotation to be random
 - `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Declare this to set the default trueskill value for new players
 - `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
 
