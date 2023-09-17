@@ -374,11 +374,13 @@ async def create_game(
     current_map_full_name = current_map.full_name
     current_map_short_name = current_map.short_name
 
+    rolled_random_map = False
     if current_map.is_random:
         # Roll for random map
         voteable_maps: List[VoteableMap] = session.query(VoteableMap).all()
         roll = uniform(0, 1)
         if roll < current_map.random_probability:
+            rolled_random_map = True
             random_map = choice(voteable_maps)
             current_map_full_name = random_map.full_name
             current_map_short_name = random_map.short_name
@@ -477,7 +479,7 @@ async def create_game(
     session.query(SkipMapVote).delete()
     session.commit()
     if not queue.is_isolated:
-        await update_current_map_to_next_map_in_rotation()
+        await update_current_map_to_next_map_in_rotation(rolled_random_map)
 
 
 async def add_player_to_queue(
@@ -4223,7 +4225,7 @@ async def voteskip(ctx: Context):
 
     skip_map_votes: list[SkipMapVote] = Session().query(SkipMapVote).all()
     if len(skip_map_votes) >= MAP_VOTE_THRESHOLD:
-        await update_current_map_to_next_map_in_rotation()
+        await update_current_map_to_next_map_in_rotation(False)
         current_map: CurrentMap = Session().query(CurrentMap).first()
         await send_message(
             message.channel,

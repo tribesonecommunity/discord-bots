@@ -304,7 +304,7 @@ async def map_rotation_task():
         timezone.utc
     ) - current_map.updated_at.replace(tzinfo=timezone.utc)
     if (time_since_update.seconds // 60) > MAP_ROTATION_MINUTES:
-        await update_current_map_to_next_map_in_rotation()
+        await update_current_map_to_next_map_in_rotation(False)
 
 
 @tasks.loop(seconds=1)
