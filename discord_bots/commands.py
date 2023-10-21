@@ -2348,6 +2348,19 @@ async def listbans(ctx: Context):
 
 @bot.command()
 @commands.check(is_admin)
+async def listchannels(ctx: Context):
+    for channel in bot.get_all_channels():
+        print(channel.id, channel)
+
+    await send_message(
+        ctx.message.channel,
+        embed_description="Check stdout",
+        colour=Colour.blue(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
 async def listdbbackups(ctx: Context):
     message = ctx.message
     output = "Backups:"
