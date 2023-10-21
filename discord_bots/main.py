@@ -71,7 +71,7 @@ async def on_command_error(ctx: Context, error: CommandError):
 
 @bot.event
 async def on_message(message: Message):
-    if CHANNEL_ID and message.channel.id == CHANNEL_ID:
+    if (CHANNEL_ID and message.channel.id == CHANNEL_ID) || (LEADERBOARD_CHANNEL and message.channel.id == LEADERBOARD_CHANNEL):
         session = Session()
         player: Player | None = (
             session.query(Player).filter(Player.id == message.author.id).first()
