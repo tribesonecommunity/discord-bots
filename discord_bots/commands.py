@@ -28,7 +28,7 @@ from PIL import Image
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 from discord_bots.checks import is_admin
-from discord_bots.config import SHOW_TRUESKILL
+from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
     update_current_map_to_next_map_in_rotation,
     send_message,
@@ -2253,6 +2253,9 @@ async def leaderboard(ctx: Context):
         )
         return
 
+    if LEADERBOARD_CHANNEL and ctx.channel.id != LEADERBOARD_CHANNEL:
+        return
+
     output = "**Leaderboard**"
     session = Session()
     queue_regions: list[QueueRegion] = session.query(QueueRegion).all()
@@ -2275,21 +2278,27 @@ async def leaderboard(ctx: Context):
     else:
         output = "**Leaderboard**"
         top_20_players: list[Player] = (
-            session.query(Player)
-            .filter(Player.rated_trueskill_sigma != 5.0)
+            session.query(Player).filter(Player.rated_trueskill_sigma != 5.0)
             # .order_by(Player.leaderboard_trueskill.desc())
             # .limit(20)
         )
-        players_adjusted = sorted([
-            (player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, player)
-            for player in top_20_players
-        ], reverse=True)
+        players_adjusted = sorted(
+            [
+                (player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, player)
+                for player in top_20_players
+            ],
+            reverse=True,
+        )
         for i, (_, player) in enumerate(players_adjusted, 1):
             output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     session.close()
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
 
-    if ctx.message.guild:
+    if LEADERBOARD_CHANNEL:
+        await send_message(
+            ctx.message.channel, embed_description=output, colour=Colour.blue()
+        )
+    elif ctx.message.guild:
         player_id = ctx.message.author.id
         member_: Member | None = ctx.message.guild.get_member(player_id)
         if member_:
