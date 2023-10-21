@@ -2274,12 +2274,17 @@ async def leaderboard(ctx: Context):
         pass
     else:
         output = "**Leaderboard**"
-        top_10_players: list[Player] = (
+        top_20_players: list[Player] = (
             session.query(Player)
-            .order_by(Player.leaderboard_trueskill.desc())
-            .limit(10)
+            .filter(Player.rated_trueskill_sigma != 5.0)
+            # .order_by(Player.leaderboard_trueskill.desc())
+            # .limit(20)
         )
-        for i, player in enumerate(top_10_players, 1):
+        players_adjusted = sorted([
+            (player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, player)
+            for player in top_20_players
+        ], reverse=True)
+        for i, (_, player) in enumerate(players_adjusted, 1):
             output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     session.close()
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
