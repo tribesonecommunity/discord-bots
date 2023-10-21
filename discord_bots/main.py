@@ -7,6 +7,7 @@ from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
 from discord_bots.cogs.raffle import RaffleCog
+from discord_bots.config import LEADERBOARD_CHANNEL
 
 from discord_bots.utils import CHANNEL_ID
 
@@ -71,9 +72,7 @@ async def on_command_error(ctx: Context, error: CommandError):
 
 @bot.event
 async def on_message(message: Message):
-    if (CHANNEL_ID and message.channel.id == CHANNEL_ID) or (
-        LEADERBOARD_CHANNEL and message.channel.id == LEADERBOARD_CHANNEL
-    ):
+    if ((CHANNEL_ID and message.channel.id == CHANNEL_ID) or (LEADERBOARD_CHANNEL and message.channel.id == LEADERBOARD_CHANNEL)):
         session = Session()
         player: Player | None = (
             session.query(Player).filter(Player.id == message.author.id).first()
