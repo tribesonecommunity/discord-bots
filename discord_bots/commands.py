@@ -2253,7 +2253,6 @@ async def leaderboard(ctx: Context):
         )
         return
 
-    print(LEADERBOARD_CHANNEL, ctx.channel.id, LEADERBOARD_CHANNEL == ctx.channel.id)
     if LEADERBOARD_CHANNEL and ctx.channel.id != LEADERBOARD_CHANNEL:
         return
 
