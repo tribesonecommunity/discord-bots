@@ -770,9 +770,9 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         )
 
     if debug:
-        output += f"**{finished_game.queue_name}** ({short_game_id}) (mu: {round(average_mu, 2)}, sigma: {round(average_sigma, 2)})"
+        output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id}) (mu: {round(average_mu, 2)}, sigma: {round(average_sigma, 2)})"
     else:
-        output += f"**{finished_game.queue_name}** ({short_game_id})"
+        output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id})"
 
     team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
     team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
