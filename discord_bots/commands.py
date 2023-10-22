@@ -2297,7 +2297,7 @@ async def leaderboard(ctx: Context):
             channel, embed_description=output, colour=Colour.blue()
         )
         await send_message(
-            ctx.message.channel, embed_description=f"Check #{channel.name}!", colour=Colour.blue()
+            ctx.message.channel, embed_description=f"Check {channel.mention}!", colour=Colour.blue()
         )
     elif ctx.message.guild:
         player_id = ctx.message.author.id
