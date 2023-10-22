@@ -2253,9 +2253,6 @@ async def leaderboard(ctx: Context):
         )
         return
 
-    if LEADERBOARD_CHANNEL and ctx.channel.id != LEADERBOARD_CHANNEL:
-        return
-
     output = "**Leaderboard**"
     session = Session()
     queue_regions: list[QueueRegion] = session.query(QueueRegion).all()
@@ -2295,8 +2292,12 @@ async def leaderboard(ctx: Context):
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
 
     if LEADERBOARD_CHANNEL:
+        channel = bot.get_channel(LEADERBOARD_CHANNEL)
         await send_message(
-            ctx.message.channel, embed_description=output, colour=Colour.blue()
+            channel, embed_description=output, colour=Colour.blue()
+        )
+        await send_message(
+            ctx.message.channel, embed_description="Check the leaderboard channel!", colour=Colour.blue()
         )
     elif ctx.message.guild:
         player_id = ctx.message.author.id
