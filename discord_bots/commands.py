@@ -1830,7 +1830,7 @@ async def disableleaderboard(ctx: Context):
         .filter(Player.id == ctx.message.author.id)
         .first()
     )
-    player.enable_leaderboard = False
+    player.leaderboard_enabled = False
     session.commit()
     await send_message(
         ctx.message.channel,
@@ -1912,7 +1912,7 @@ async def enableleaderboard(ctx: Context):
         .filter(Player.id == ctx.message.author.id)
         .first()
     )
-    player.enable_leaderboard = True
+    player.leaderboard_enabled = True
     session.commit()
     await send_message(
         ctx.message.channel,
