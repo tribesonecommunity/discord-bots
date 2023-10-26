@@ -1827,7 +1827,7 @@ async def disableleaderboard(ctx: Context):
     session = Session()
     player = (
         session.query(Player)
-        .filter(Player.player_id == ctx.message.author.id)
+        .filter(Player.id == ctx.message.author.id)
         .first()
     )
     player.enable_leaderboard = False
@@ -1909,7 +1909,7 @@ async def enableleaderboard(ctx: Context):
     session = Session()
     player = (
         session.query(Player)
-        .filter(Player.player_id == ctx.message.author.id)
+        .filter(Player.id == ctx.message.author.id)
         .first()
     )
     player.enable_leaderboard = True
