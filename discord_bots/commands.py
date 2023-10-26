@@ -1834,7 +1834,7 @@ async def disableleaderboard(ctx: Context):
     session.commit()
     await send_message(
         ctx.message.channel,
-        embed_description="You are no longer visible on the leaderboard"
+        embed_description="You are no longer visible on the leaderboard",
         colour=Colour.blue(),
     )
 
@@ -1916,7 +1916,7 @@ async def enableleaderboard(ctx: Context):
     session.commit()
     await send_message(
         ctx.message.channel,
-        embed_description="You are visible on the leaderboard"
+        embed_description="You are visible on the leaderboard",
         colour=Colour.blue(),
     )
 
