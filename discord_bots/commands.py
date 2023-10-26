@@ -2312,7 +2312,7 @@ async def leaderboard(ctx: Context):
         top_20_players: list[Player] = (
             session.query(Player)
                 .filter(Player.rated_trueskill_sigma != 5.0)
-                .filter(Player.leaderboard_enabled = True)
+                .filter(Player.leaderboard_enabled == True)
             # .order_by(Player.leaderboard_trueskill.desc())
             # .limit(20)
         )
