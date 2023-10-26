@@ -444,9 +444,9 @@ class Player:
         },
     )
     leaderboard_enabled: bool = field(
-        default=False,
+        default=True,
         metadata={
-            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+            "sa": Column(Boolean, nullable=False, server_default=expression.true())
         },
     )
 
