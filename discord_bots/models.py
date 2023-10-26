@@ -143,7 +143,6 @@ class CustomCommand:
 @mapper_registry.mapped
 @dataclass
 class FinishedGame:
-
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "finished_game"
 
@@ -442,6 +441,12 @@ class Player:
         default=0,
         metadata={
             "sa": Column(Integer, index=True, nullable=False, server_default=text("0"))
+        },
+    )
+    leaderboard_enabled: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
         },
     )
 

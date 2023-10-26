@@ -1822,6 +1822,23 @@ async def delplayer(ctx: Context, member: Member, *args):
     session.commit()
 
 
+@bot.command()
+async def disableleaderboard(ctx: Context):
+    session = Session()
+    player = (
+        session.query(Player)
+        .filter(Player.player_id == ctx.message.author.id)
+        .first()
+    )
+    player.enable_leaderboard = False
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description="You are no longer visible on the leaderboard"
+        colour=Colour.blue(),
+    )
+
+
 @bot.command(usage="<command_name> <output>")
 async def editcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
@@ -1885,6 +1902,24 @@ async def editgamewinner(ctx: Context, game_id: str, outcome: str):
         + finished_game_str(game),
         colour=Colour.green(),
     )
+
+
+@bot.command()
+async def enableleaderboard(ctx: Context):
+    session = Session()
+    player = (
+        session.query(Player)
+        .filter(Player.player_id == ctx.message.author.id)
+        .first()
+    )
+    player.enable_leaderboard = True
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description="You are visible on the leaderboard"
+        colour=Colour.blue(),
+    )
+
 
 
 @bot.command(usage="<win|loss|tie>")
@@ -2275,7 +2310,9 @@ async def leaderboard(ctx: Context):
     else:
         output = "**Leaderboard**"
         top_20_players: list[Player] = (
-            session.query(Player).filter(Player.rated_trueskill_sigma != 5.0)
+            session.query(Player)
+                .filter(Player.rated_trueskill_sigma != 5.0)
+                .filter(Player.leaderboard_enabled = True)
             # .order_by(Player.leaderboard_trueskill.desc())
             # .limit(20)
         )
