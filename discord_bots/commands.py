@@ -1069,7 +1069,7 @@ async def add(ctx: Context, *args):
         # Don't auto-add to isolated queues
         queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.created_at.asc()).all()  # type: ignore
     else:
-        all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+        all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
         for arg in args:
             # Try adding by integer index first, then try string name
             try:
