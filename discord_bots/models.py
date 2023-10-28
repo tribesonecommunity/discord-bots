@@ -597,6 +597,12 @@ class Queue:
             "sa": Column(Float, nullable=True)
         },
     )
+    ordinal: int = field(
+        default=0,
+        metadata={
+            "sa": Column(Integer, nullable=False, server_default=text("0"))
+        },
+    )
     queue_region_id: str = field(
         default=None,
         metadata={

@@ -1796,7 +1796,7 @@ async def del_(ctx: Context, *args):
 
     queue_statuses = []
     queue: Queue
-    for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
+    for queue in session.query(Queue).order_by(Queue.ordinal.asc()).all():  # type: ignore
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
@@ -3160,6 +3160,28 @@ async def setcommandprefix(ctx: Context, prefix: str):
     )
 
 
+@bot.command(usage="<queue_name> <ordinal>")
+@commands.check(is_admin)
+async def setqueueordinal(ctx: Context, queue_name: str, ordinal: int):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.ordinal = ordinal
+        session.commit()
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} ordinal set to {ordinal}",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
+
+
 @bot.command(usage="<queue_name> <min> <max>")
 @commands.check(is_admin)
 async def setqueuerange(ctx: Context, queue_name: str, min: float, max: float):
@@ -3531,7 +3553,7 @@ async def showsigma(ctx: Context, member: Member):
 async def status(ctx: Context, *args):
     session = Session()
     queues: list[Queue] = []
-    all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+    all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
     if len(args) == 0:
         queues: list[Queue] = all_queues
     else:
