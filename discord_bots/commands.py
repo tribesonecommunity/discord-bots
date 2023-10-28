@@ -514,7 +514,7 @@ async def add_player_to_queue(
     if is_in_game(player_id):
         return False, False
 
-    player: Player = session.query(Player).filter(Player.id == member.id).first()
+    player: Player = session.query(Player).filter(Player.id == player_id).first()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
     if queue.mu_max is not None:
         if player.rated_trueskill_mu > queue.mu_max:
@@ -3487,6 +3487,25 @@ async def showgamedebug(ctx: Context, game_id: str):
             #     embed_description=game_str,
             #     colour=Colour.blue(),
             # )
+
+
+@bot.command(usage="<queue_name>")
+async def showqueuerange(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if not queue:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {queue_name}",
+            colour=Colour.red(),
+        )
+        return
+    await send_message(
+        message.channel,
+        embed_description=f"Queue range: [{queue.mu_min}, {queue.mu_max}]",
+        colour=Colour.green(),
+    )
 
 
 @bot.command()
