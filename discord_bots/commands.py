@@ -514,6 +514,15 @@ async def add_player_to_queue(
     if is_in_game(player_id):
         return False, False
 
+    player: Player = session.query(Player).filter(Player.id == member.id).first()
+    queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
+    if queue.mu_max is not None:
+        if player.rated_trueskill_mu > queue.mu_max:
+            return False, False
+    if queue.mu_min is not None:
+        if player.rated_trueskill_mu < queue.mu_min:
+            return False, False
+
     session.add(
         QueuePlayer(
             queue_id=queue_id,
@@ -1161,6 +1170,7 @@ async def add(ctx: Context, *args):
         return
 
     if isinstance(message.channel, TextChannel) and message.guild:
+        shuffle(queues_to_add)
         add_player_queue.put(
             AddPlayerQueueMessage(
                 message.author.id,
@@ -1637,6 +1647,29 @@ async def clearqueue(ctx: Context, queue_name: str):
         embed_description=f"Queue cleared: {queue_name}",
         colour=Colour.green(),
     )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def clearqueuerange(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.mu_min = None
+        queue.mu_max = None
+        session.commit()
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} range cleared",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
 
 
 @bot.command()
@@ -3125,6 +3158,29 @@ async def setcommandprefix(ctx: Context, prefix: str):
         embed_description=f"Command prefix set to {COMMAND_PREFIX}",
         colour=Colour.green(),
     )
+
+
+@bot.command(usage="<queue_name> <min> <max>")
+@commands.check(is_admin)
+async def setqueuerange(ctx: Context, queue_name: str, min: float, max: float):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.mu_min = min
+        queue.mu_max = max
+        session.commit()
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} range set to [{min}, {max}]",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
 
 
 @bot.command()

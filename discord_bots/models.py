@@ -585,6 +585,18 @@ class Queue:
             "sa": Column(Boolean, nullable=False, server_default=expression.false())
         },
     )
+    mu_max: float | None = field(
+        default=None,
+        metadata={
+            "sa": Column(Float, nullable=True)
+        },
+    )
+    mu_min: float | None = field(
+        default=None,
+        metadata={
+            "sa": Column(Float, nullable=True)
+        },
+    )
     queue_region_id: str = field(
         default=None,
         metadata={
