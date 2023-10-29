@@ -1067,7 +1067,7 @@ async def add(ctx: Context, *args):
     queues_to_add: list[Queue] = []
     if len(args) == 0:
         # Don't auto-add to isolated queues
-        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False, Queue.ordinal.asc()).order_by(Queue.created_at.asc()).all()  # type: ignore
+        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.ordinal.asc()).all()  # type: ignore
     else:
         all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
         for arg in args:
