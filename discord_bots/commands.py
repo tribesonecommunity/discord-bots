@@ -2986,7 +2986,7 @@ async def removequeueregion(ctx: Context, region_name: str):
 async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
     session = Session()
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         await send_message(
             message.channel,
