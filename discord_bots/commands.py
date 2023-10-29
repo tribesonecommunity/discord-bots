@@ -1170,7 +1170,6 @@ async def add(ctx: Context, *args):
         return
 
     if isinstance(message.channel, TextChannel) and message.guild:
-        shuffle(queues_to_add)
         add_player_queue.put(
             AddPlayerQueueMessage(
                 message.author.id,

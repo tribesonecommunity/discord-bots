@@ -144,7 +144,7 @@ async def queue_waitlist_task():
     TODO: Tests for this method
     """
     session = Session()
-    queues: list[Queue] = session.query(Queue).order_by(Queue.created_at.asc())  # type: ignore
+    queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc())  # type: ignore
     queue_waitlist: QueueWaitlist
     channel = None
     guild: Guild | None = None
