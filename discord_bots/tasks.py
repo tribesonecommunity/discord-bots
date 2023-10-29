@@ -144,7 +144,7 @@ async def queue_waitlist_task():
     TODO: Tests for this method
     """
     session = Session()
-    queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc())  # type: ignore
+    queues: list[Queue] = session.query(Queue).order_by(Queue.ord.asc())  # type: ignore
     queue_waitlist: QueueWaitlist
     channel = None
     guild: Guild | None = None
@@ -315,7 +315,7 @@ async def add_player_task():
     This helps with concurrency issues since players can be added from multiple
     sources (waitlist vs normal add command)
     """
-    queues: list[Queue] = Session().query(Queue).all()
+    queues: list[Queue] = Session().query(Queue).order_by(Queue.ordinal.asc()).all()
     queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
     message: AddPlayerQueueMessage | None = None
     while not add_player_queue.empty():
