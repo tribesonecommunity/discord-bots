@@ -2354,7 +2354,7 @@ async def leaderboard(ctx: Context):
                 for player in top_20_players
             ],
             reverse=True,
-        )[0:15]
+        )[0:20]
         for i, (_, player) in enumerate(players_adjusted, 1):
             output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     session.close()
