@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 from PIL import Image
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.sql import select
 from trueskill import Rating, rate
 from discord_bots.checks import is_admin
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
@@ -1592,6 +1593,15 @@ async def commend(ctx: Context, member: Member):
     commendee: Player | None = (
         session.query(Player).filter(Player.id == member.id).first()
     )
+    emoji = choice(['🔨','💥','🤕','🤌'])
+    if ctx.message.author.id == member.id:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"{emoji}  **BONK**  {emoji}",
+            colour=Colour.red(),
+        )
+        return
+
     if not commendee:
         await send_message(
             ctx.message.channel,
@@ -1665,33 +1675,39 @@ async def commend(ctx: Context, member: Member):
 @bot.command()
 async def commendstats(ctx: Context):
     session = Session()
-    output = "**Most commends given**"
-    # result = session.query(Parent).outerjoin(Child).group_by(Parent.id).order_by(func.count(Child.id).desc()).all()
-    # inner join?
-    most_commends_given: List[Player] = (
-        session.query(Player)
-        .outerjoin(Commend, Commend.commender_id == Player.id)
+    most_commends_given_statement = (
+        select(Player, func.count(Commend.commender_id).label("commend_count"))
+        .join(Commend, Commend.commender_id == Player.id)
         .group_by(Player.id)
+        .having(func.count(Commend.commender_id) > 0)
         .order_by(func.count(Commend.commender_id).desc())
-        # .limit(15)
     )
-    most_commends_received: List[Player] = (
-        session.query(Player)
-        .outerjoin(Commend, Commend.commendee_id == Player.id)
+    most_commends_received_statement = (
+        select(Player, func.count(Commend.commendee_id).label("commend_count"))
+        .join(Commend, Commend.commendee_id == Player.id)
         .group_by(Player.id)
+        .having(func.count(Commend.commendee_id) > 0)
         .order_by(func.count(Commend.commendee_id).desc())
-        # .limit(15)
     )
-    print(most_commends_given)
-    print(most_commends_received)
 
-    # output += "\n**Most commends received**"
-    # for i, player in enumerate(most_commends_given, 1):
-    #     output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
-    # for i, player in enumerate(most_commends_received, 1):
-    #     pass
-
+    most_commends_given: List[Player] = session.execute(
+        most_commends_given_statement
+    ).fetchall()
+    most_commends_received: List[Player] = session.execute(
+        most_commends_received_statement
+    ).fetchall()
     session.close()
+
+    output = "**Most commends given**"
+    for i, row in enumerate(most_commends_given, 1):
+        player = row[Player]
+        count = row['commend_count']
+        output += f"\n{i}. {count} - {player.name}"
+    output += "\n**Most commends received**"
+    for i, row in enumerate(most_commends_received, 1):
+        player = row[Player]
+        count = row['commend_count']
+        output += f"\n{i}. {count} - {player.name}"
 
     if LEADERBOARD_CHANNEL:
         channel = bot.get_channel(LEADERBOARD_CHANNEL)
