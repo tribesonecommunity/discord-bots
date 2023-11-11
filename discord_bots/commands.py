@@ -1603,15 +1603,6 @@ async def commend(ctx: Context, member: Member):
             .order_by(FinishedGame.finished_at.desc())
             .first()
     )
-    print(last_finished_game)
-
-    # last_finished_game_player = (
-    #     session.query(FinishedGamePlayer)
-    #     .filter(FinishedGamePlayer.player_id == commender.id)
-    #     .first()
-    # )
-
-    # if not last_finished_game_player:
     if not last_finished_game:
         await send_message(
             ctx.message.channel,
@@ -1638,10 +1629,7 @@ async def commend(ctx: Context, member: Member):
         .filter(FinishedGamePlayer.finished_game_id == last_finished_game.id)
         .all()
     )
-    print(last_finished_game)
-    print(players_in_last_game)
     player_ids = set(map(lambda x: x.player_id, players_in_last_game))
-    print(player_ids)
     if commendee.id not in player_ids:
         await send_message(
             ctx.message.channel,
@@ -1650,7 +1638,7 @@ async def commend(ctx: Context, member: Member):
         )
         return
 
-    session.add(Commend(last_finished_game.id, commender.id, commendee.id))
+    session.add(Commend(last_finished_game.id, commender.id, commender.name, commendee.id, commendee.name))
     commender.raffle_tickets += 1
     session.add(commender)
     session.commit()
