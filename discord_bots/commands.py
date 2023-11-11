@@ -1612,9 +1612,9 @@ async def commend(ctx: Context, member: Member):
     has_commend = (
         session.query(Commend)
             .filter(Commend.finished_game_id == last_game_played.finished_game_id)
-            .exists()
+            .first()
     )
-    if has_commend:
+    if has_commend is None:
         await send_message(
             ctx.message.channel,
             embed_description=f"You already commended someone for this game",
