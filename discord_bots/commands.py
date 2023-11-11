@@ -1624,7 +1624,7 @@ async def commend(ctx: Context, member: Member):
    
     players_in_last_game = (
         session.query(FinishedGamePlayer)
-        .filter(FinishedGamePlayer.finished_game_id == commendee.id)
+        .filter(FinishedGamePlayer.finished_game_id == last_game_played.id)
         .all()
     )
     player_ids = set(map(lambda x: x.player_id, players_in_last_game))
