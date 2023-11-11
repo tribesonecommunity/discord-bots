@@ -1656,8 +1656,8 @@ async def commendstats(ctx: Context):
     output = "**Most commends given**"
     # result = session.query(Parent).outerjoin(Child).group_by(Parent.id).order_by(func.count(Child.id).desc()).all()
     # inner join?
-    most_commends_given: List[Player] = session.query(Player).outerjoin(Commend, Commend.commender_id == Player.id).group_by(Player.id).order_by(func.count(Commend.commender_id).desc()).all().limit(15)
-    most_commends_received: List[Player] = session.query(Player).outerjoin(Commend, Commend.commendee_id == Player.id).group_by(Player.id).order_by(func.count(Commend.commendee_id).desc()).all().limit(15)
+    most_commends_given: List[Player] = session.query(Player).outerjoin(Commend, Commend.commender_id == Player.id).group_by(Player.id).order_by(func.count(Commend.commender_id).desc()).limit(15)
+    most_commends_received: List[Player] = session.query(Player).outerjoin(Commend, Commend.commendee_id == Player.id).group_by(Player.id).order_by(func.count(Commend.commendee_id).desc()).limit(15)
     print(most_commends_given)
     print(most_commends_received)
 
