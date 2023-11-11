@@ -1596,12 +1596,23 @@ async def commend(ctx: Context, member: Member):
         )
         return
 
-    last_finished_game_player = (
-        session.query(FinishedGamePlayer)
-        .filter(FinishedGamePlayer.player_id == commender.id)
-        .first()
+    last_finished_game: FinishedGame | None = (
+        session.query(FinishedGame)
+            .join(FinishedGamePlayer)
+            .filter(FinishedGamePlayer.player_id == commender.id)
+            .order_by(FinishedGame.finished_at.desc())
+            .first()
     )
-    if not last_finished_game_player:
+    print(last_finished_game)
+
+    # last_finished_game_player = (
+    #     session.query(FinishedGamePlayer)
+    #     .filter(FinishedGamePlayer.player_id == commender.id)
+    #     .first()
+    # )
+
+    # if not last_finished_game_player:
+    if not last_finished_game:
         await send_message(
             ctx.message.channel,
             embed_description=f"Could not find last game played for {escape_markdown(member.name)}",
@@ -1611,7 +1622,7 @@ async def commend(ctx: Context, member: Member):
 
     has_commend = (
         session.query(Commend)
-            .filter(Commend.finished_game_id == last_finished_game_player.finished_game_id)
+            .filter(Commend.finished_game_id == last_finished_game.id)
             .first()
     )
     if has_commend is not None:
@@ -1624,10 +1635,10 @@ async def commend(ctx: Context, member: Member):
    
     players_in_last_game = (
         session.query(FinishedGamePlayer)
-        .filter(FinishedGamePlayer.finished_game_id == last_finished_game_player.finished_game_id)
+        .filter(FinishedGamePlayer.finished_game_id == last_finished_game.id)
         .all()
     )
-    print(last_finished_game_player)
+    print(last_finished_game)
     print(players_in_last_game)
     player_ids = set(map(lambda x: x.player_id, players_in_last_game))
     print(player_ids)
@@ -1639,7 +1650,7 @@ async def commend(ctx: Context, member: Member):
         )
         return
 
-    session.add(Commend(last_finished_game_player.finished_game_id, commender.id, commendee.id))
+    session.add(Commend(last_finished_game.id, commender.id, commendee.id))
     commender.raffle_tickets += 1
     session.add(commender)
     session.commit()
