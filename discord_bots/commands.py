@@ -1614,7 +1614,7 @@ async def commend(ctx: Context, member: Member):
             .filter(Commend.finished_game_id == last_game_played.finished_game_id)
             .first()
     )
-    if has_commend is None:
+    if has_commend is not None:
         await send_message(
             ctx.message.channel,
             embed_description=f"You already commended someone for this game",
