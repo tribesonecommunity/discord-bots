@@ -76,6 +76,44 @@ class AdminRole:
 
 @mapper_registry.mapped
 @dataclass
+class Commend:
+    """
+    Ideas:
+    - https://leagueoflegends.fandom.com/wiki/Honor
+    - https://heroesofthestorm-archive.fandom.com/wiki/Awards_system
+    - https://overwatch.fandom.com/wiki/Endorsements
+    """
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "commend"
+
+    finished_game_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("finished_game.id"), nullable=False, index=True
+            )
+        },
+    )
+    commender_id: int = field(
+        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+    )
+    commender_name: str = field(
+        metadata={"sa": Column(String, nullable=False, index=True)},
+    )
+    commendee_id: int = field(
+        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+    )
+    commendee_name: str = field(
+        metadata={"sa": Column(String, nullable=False, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class CurrentMap:
     """
     The current map up to play - not necessarily a rotation map. The rotation

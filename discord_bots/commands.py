@@ -25,6 +25,7 @@ from discord.member import Member
 from discord.utils import escape_markdown
 from dotenv import load_dotenv
 from PIL import Image
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from trueskill import Rating, rate
 from discord_bots.checks import is_admin
@@ -44,6 +45,7 @@ from .config import DISABLE_MAP_ROTATION
 from .models import (
     DB_NAME,
     AdminRole,
+    Commend,
     CurrentMap,
     CustomCommand,
     FinishedGame,
@@ -1582,6 +1584,113 @@ async def changequeuemap(ctx: Context, map_short_name: str):
 
 
 @bot.command()
+async def commend(ctx: Context, member: Member):
+    session = Session()
+    commender: Player | None = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    commendee: Player | None = session.query(Player).filter(Player.id == member.id).first()
+    if not commendee:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Could not find {escape_markdown(member.name)}",
+            colour=Colour.red(),
+        )
+        return
+
+    last_game_played = (
+        session.query(FinishedGamePlayer)
+        .filter(FinishedGamePlayer.player_id == commender.id)
+        .first()
+    )
+    if not last_game_played:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Could not find last game played for {escape_markdown(member.name)}",
+            colour=Colour.red(),
+        )
+        return
+
+    has_commend = (
+        session.query(Commend)
+            .filter(Commend.finished_game_id == last_game_played.finished_game_id)
+            .exists()
+    )
+    if has_commend:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"You already commended someone for this game",
+            colour=Colour.red(),
+        )
+        return
+   
+    players_in_last_game = (
+        session.query(FinishedGamePlayer)
+        .filter(FinishedGamePlayer.finished_game_id == commendee.id)
+        .all()
+    )
+    player_ids = set(map(lambda x: x.player_id, players_in_last_game))
+    if commendee.id not in player_ids:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"{escape_markdown(commendee.name)} was not in your last game",
+            colour=Colour.red(),
+        )
+        return
+
+    session.add(Commend(last_game_played.finished_game_id, commender.id, commendee.id))
+    commender.raffle_tickets += 1
+    session.add(commender)
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"⭐ {escape_markdown(commendee.name)} received a commend! ⭐",
+        colour=Colour.green(),
+    )
+    session.close()
+
+
+@bot.command()
+async def commendstats(ctx: Context):
+    session = Session()
+    output = "**Most commends given**"
+    # result = session.query(Parent).outerjoin(Child).group_by(Parent.id).order_by(func.count(Child.id).desc()).all()
+    # inner join?
+    most_commends_given: List[Player] = session.query(Player).outerjoin(Commend).group_by(Player.id).order_by(func.count(Commend.commender_id).desc()).all().limit(15)
+    most_commends_received: List[Player] = session.query(Player).outerjoin(Commend).group_by(Player.id).order_by(func.count(Commend.commendee_id).desc()).all().limit(15)
+    print(most_commends_given)
+    print(most_commends_received)
+
+    # output += "\n**Most commends received**"
+    # for i, player in enumerate(most_commends_given, 1):
+    #     output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
+    # for i, player in enumerate(most_commends_received, 1):
+    #     pass
+
+    session.close()
+
+    if LEADERBOARD_CHANNEL:
+        channel = bot.get_channel(LEADERBOARD_CHANNEL)
+        await send_message(channel, embed_description=output, colour=Colour.blue())
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Check {channel.mention}!",
+            colour=Colour.blue(),
+        )
+    elif ctx.message.guild:
+        player_id = ctx.message.author.id
+        member_: Member | None = ctx.message.guild.get_member(player_id)
+        if member_:
+            try:
+                await member_.send(
+                    embed=Embed(
+                        description=f"{output}",
+                        colour=Colour.blue(),
+                    ),
+                )
+            except Exception:
+                pass
+
+
+@bot.command()
 @commands.check(is_admin)
 async def createcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
@@ -1857,11 +1966,7 @@ async def delplayer(ctx: Context, member: Member, *args):
 @bot.command()
 async def disableleaderboard(ctx: Context):
     session = Session()
-    player = (
-        session.query(Player)
-        .filter(Player.id == ctx.message.author.id)
-        .first()
-    )
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     player.leaderboard_enabled = False
     session.commit()
     await send_message(
@@ -1939,11 +2044,7 @@ async def editgamewinner(ctx: Context, game_id: str, outcome: str):
 @bot.command()
 async def enableleaderboard(ctx: Context):
     session = Session()
-    player = (
-        session.query(Player)
-        .filter(Player.id == ctx.message.author.id)
-        .first()
-    )
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     player.leaderboard_enabled = True
     session.commit()
     await send_message(
@@ -1951,7 +2052,6 @@ async def enableleaderboard(ctx: Context):
         embed_description="You are visible on the leaderboard",
         colour=Colour.blue(),
     )
-
 
 
 @bot.command(usage="<win|loss|tie>")
@@ -2343,8 +2443,8 @@ async def leaderboard(ctx: Context):
         output = "**Leaderboard**"
         top_20_players: list[Player] = (
             session.query(Player)
-                .filter(Player.rated_trueskill_sigma != 5.0)
-                .filter(Player.leaderboard_enabled == True)
+            .filter(Player.rated_trueskill_sigma != 5.0)
+            .filter(Player.leaderboard_enabled == True)
             # .order_by(Player.leaderboard_trueskill.desc())
             # .limit(20)
         )
@@ -2362,11 +2462,11 @@ async def leaderboard(ctx: Context):
 
     if LEADERBOARD_CHANNEL:
         channel = bot.get_channel(LEADERBOARD_CHANNEL)
+        await send_message(channel, embed_description=output, colour=Colour.blue())
         await send_message(
-            channel, embed_description=output, colour=Colour.blue()
-        )
-        await send_message(
-            ctx.message.channel, embed_description=f"Check {channel.mention}!", colour=Colour.blue()
+            ctx.message.channel,
+            embed_description=f"Check {channel.mention}!",
+            colour=Colour.blue(),
         )
     elif ctx.message.guild:
         player_id = ctx.message.author.id
