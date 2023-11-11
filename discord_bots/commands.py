@@ -1586,8 +1586,12 @@ async def changequeuemap(ctx: Context, map_short_name: str):
 @bot.command()
 async def commend(ctx: Context, member: Member):
     session = Session()
-    commender: Player | None = session.query(Player).filter(Player.id == ctx.message.author.id).first()
-    commendee: Player | None = session.query(Player).filter(Player.id == member.id).first()
+    commender: Player | None = (
+        session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    )
+    commendee: Player | None = (
+        session.query(Player).filter(Player.id == member.id).first()
+    )
     if not commendee:
         await send_message(
             ctx.message.channel,
@@ -1598,10 +1602,10 @@ async def commend(ctx: Context, member: Member):
 
     last_finished_game: FinishedGame | None = (
         session.query(FinishedGame)
-            .join(FinishedGamePlayer)
-            .filter(FinishedGamePlayer.player_id == commender.id)
-            .order_by(FinishedGame.finished_at.desc())
-            .first()
+        .join(FinishedGamePlayer)
+        .filter(FinishedGamePlayer.player_id == commender.id)
+        .order_by(FinishedGame.finished_at.desc())
+        .first()
     )
     if not last_finished_game:
         await send_message(
@@ -1613,8 +1617,8 @@ async def commend(ctx: Context, member: Member):
 
     has_commend = (
         session.query(Commend)
-            .filter(Commend.finished_game_id == last_finished_game.id)
-            .first()
+        .filter(Commend.finished_game_id == last_finished_game.id)
+        .first()
     )
     if has_commend is not None:
         await send_message(
@@ -1623,7 +1627,7 @@ async def commend(ctx: Context, member: Member):
             colour=Colour.red(),
         )
         return
-   
+
     players_in_last_game = (
         session.query(FinishedGamePlayer)
         .filter(FinishedGamePlayer.finished_game_id == last_finished_game.id)
@@ -1638,7 +1642,15 @@ async def commend(ctx: Context, member: Member):
         )
         return
 
-    session.add(Commend(last_finished_game.id, commender.id, commender.name, commendee.id, commendee.name))
+    session.add(
+        Commend(
+            last_finished_game.id,
+            commender.id,
+            commender.name,
+            commendee.id,
+            commendee.name,
+        )
+    )
     commender.raffle_tickets += 1
     session.add(commender)
     session.commit()
@@ -1656,8 +1668,20 @@ async def commendstats(ctx: Context):
     output = "**Most commends given**"
     # result = session.query(Parent).outerjoin(Child).group_by(Parent.id).order_by(func.count(Child.id).desc()).all()
     # inner join?
-    most_commends_given: List[Player] = session.query(Player).outerjoin(Commend, Commend.commender_id == Player.id).group_by(Player.id).order_by(func.count(Commend.commender_id).desc()).limit(15)
-    most_commends_received: List[Player] = session.query(Player).outerjoin(Commend, Commend.commendee_id == Player.id).group_by(Player.id).order_by(func.count(Commend.commendee_id).desc()).limit(15)
+    most_commends_given: List[Player] = (
+        session.query(Player)
+        .outerjoin(Commend, Commend.commender_id == Player.id)
+        .group_by(Player.id)
+        .order_by(func.count(Commend.commender_id).desc())
+        # .limit(15)
+    )
+    most_commends_received: List[Player] = (
+        session.query(Player)
+        .outerjoin(Commend, Commend.commendee_id == Player.id)
+        .group_by(Player.id)
+        .order_by(func.count(Commend.commendee_id).desc())
+        # .limit(15)
+    )
     print(most_commends_given)
     print(most_commends_received)
 
