@@ -1627,7 +1627,10 @@ async def commend(ctx: Context, member: Member):
         .filter(FinishedGamePlayer.finished_game_id == last_game_played.id)
         .all()
     )
+    print(last_game_played)
+    print(players_in_last_game)
     player_ids = set(map(lambda x: x.player_id, players_in_last_game))
+    print(player_ids)
     if commendee.id not in player_ids:
         await send_message(
             ctx.message.channel,
