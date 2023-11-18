@@ -1593,7 +1593,7 @@ async def commend(ctx: Context, member: Member):
     commendee: Player | None = (
         session.query(Player).filter(Player.id == member.id).first()
     )
-    emoji = choice(['🔨','💥','🤕','🤌'])
+    emoji = choice(["🔨", "💥", "🤕", "🤌"])
     if ctx.message.author.id == member.id:
         await send_message(
             ctx.message.channel,
@@ -1627,7 +1627,10 @@ async def commend(ctx: Context, member: Member):
 
     has_commend = (
         session.query(Commend)
-        .filter(Commend.finished_game_id == last_finished_game.id)
+        .filter(
+            Commend.finished_game_id == last_finished_game.id,
+            Commend.commender_id == commender.id,
+        )
         .first()
     )
     if has_commend is not None:
@@ -1701,12 +1704,12 @@ async def commendstats(ctx: Context):
     output = "**Most commends given**"
     for i, row in enumerate(most_commends_given, 1):
         player = row[Player]
-        count = row['commend_count']
+        count = row["commend_count"]
         output += f"\n{i}. {count} - {player.name}"
     output += "\n**Most commends received**"
     for i, row in enumerate(most_commends_received, 1):
         player = row[Player]
-        count = row['commend_count']
+        count = row["commend_count"]
         output += f"\n{i}. {count} - {player.name}"
 
     if LEADERBOARD_CHANNEL:
