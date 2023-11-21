@@ -675,6 +675,8 @@ def mock_finished_game_teams_str(
             for fgp in team1_fg_players
         ]
 
+    team0_player_ids_map = {x.player_id: x for x in team0_fg_players}
+    team1_player_ids_map = {x.player_id: x for x in team1_fg_players}
     team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
     team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
     team0_players: list[Player] = session.query(Player).filter(
@@ -686,7 +688,7 @@ def mock_finished_game_teams_str(
     team0_names = ", ".join(
         sorted(
             [
-                f"{escape_markdown(player.name)} ({round(player.rated_trueskill_mu, 1)})"
+                f"{escape_markdown(player.name)} ({round(team0_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
                 for player in team0_players
             ]
         )
@@ -694,7 +696,7 @@ def mock_finished_game_teams_str(
     team1_names = ", ".join(
         sorted(
             [
-                f"{escape_markdown(player.name)} ({round(player.rated_trueskill_mu, 1)})"
+                f"{escape_markdown(player.name)} ({round(team1_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
                 for player in team1_players
             ]
         )
