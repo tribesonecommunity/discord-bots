@@ -684,10 +684,20 @@ def mock_finished_game_teams_str(
         Player.id.in_(team1_player_ids)
     )
     team0_names = ", ".join(
-        sorted([escape_markdown(player.name) for player in team0_players])
+        sorted(
+            [
+                f"{escape_markdown(player.name)} ({round(player.rated_trueskill_mu, 1)})"
+                for player in team0_players
+            ]
+        )
     )
     team1_names = ", ".join(
-        sorted([escape_markdown(player.name) for player in team1_players])
+        sorted(
+            [
+                f"{escape_markdown(player.name)} ({round(player.rated_trueskill_mu, 1)})"
+                for player in team1_players
+            ]
+        )
     )
     team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
@@ -3547,7 +3557,10 @@ async def showgamedebug(ctx: Context, game_id: str):
             fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 1
         )
         game_str += "\n**Most even team combinations:**"
-        for _, best_team in best_teams:
+        for i, best_team in best_teams:
+            # Every two pairings is the same
+            if i % 2 == 1:
+                continue
             team0_players = best_team[: len(best_team) // 2]
             team1_players = best_team[len(best_team) // 2 :]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
