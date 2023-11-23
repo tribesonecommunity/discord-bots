@@ -50,7 +50,8 @@ def pretty_format_team(
             ]
         )
     )
-    return f"**{team_name}** ({round(100 * win_probability, 1)}%): {player_names}\n"
+    team_mu = sum(player.rated_trueskill_mu for player in players)
+    return f"**{team_name}** ({round(100 * win_probability, 1)}%, mu: {team_mu}): {player_names}\n"
 
 
 def short_uuid(uuid: str) -> str:
