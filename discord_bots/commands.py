@@ -2517,6 +2517,7 @@ async def leaderboard(ctx: Context):
             output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     session.close()
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
+    output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
 
     if LEADERBOARD_CHANNEL:
         channel = bot.get_channel(LEADERBOARD_CHANNEL)
