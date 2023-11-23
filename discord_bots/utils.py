@@ -50,7 +50,7 @@ def pretty_format_team(
             ]
         )
     )
-    team_mu = sum(player.rated_trueskill_mu for player in players)
+    team_mu = round(sum(player.rated_trueskill_mu for player in players), 2)
     return f"**{team_name}** ({round(100 * win_probability, 1)}%, mu: {team_mu}): {player_names}\n"
 
 

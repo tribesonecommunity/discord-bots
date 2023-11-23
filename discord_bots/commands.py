@@ -461,19 +461,19 @@ async def create_game(
 
     categories = {category.id: category for category in guild.categories}
     tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
-
-    be_channel = await guild.create_voice_channel(
-        f"{game.team0_name}", category=tribes_voice_category, bitrate=128000
-    )
-    ds_channel = await guild.create_voice_channel(
-        f"{game.team1_name}", category=tribes_voice_category, bitrate=128000
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
-    )
+    if tribes_voice_category:
+        be_channel = await guild.create_voice_channel(
+            f"{game.team0_name}", category=tribes_voice_category, bitrate=128000
+        )
+        ds_channel = await guild.create_voice_channel(
+            f"{game.team1_name}", category=tribes_voice_category, bitrate=128000
+        )
+        session.add(
+            InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
+        )
+        session.add(
+            InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
+        )
 
     session.query(QueuePlayer).filter(
         QueuePlayer.player_id.in_(player_ids)  # type: ignore
@@ -864,8 +864,12 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
             ),
             2,
         )
-    team0_str = f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}): {team0_names}"
-    team1_str = f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}): {team1_names}"
+    team0_str = (
+        f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}): {team0_names}"
+    )
+    team1_str = (
+        f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}): {team1_names}"
+    )
     # if debug:
     #     team0_str = f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
     #     team1_str = f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
@@ -1410,6 +1414,76 @@ async def addmap(ctx: Context, map_short_name: str, map_full_name: str):
         embed_description=f"{map_full_name} ({map_short_name}) added to map pool",
         colour=Colour.green(),
     )
+
+
+@bot.command()
+async def autosub(ctx: Context, member: Member | None = None):
+    """
+    Picks a person to sub at random
+
+    :member: If provided, this is the player in the game being subbed out. If
+    not provided, then the player running the command must be in the game
+    """
+    message = ctx.message
+    session = Session()
+
+    player_in_game_id = member.id if member else message.author.id
+    # If target player isn't a game, exit early
+    ipg_player = (
+        session.query(InProgressGamePlayer)
+        .filter(InProgressGamePlayer.player_id == player_in_game_id)
+        .first()
+    )
+    if not ipg_player:
+        player_name = member.name if member else message.author.name
+        await send_message(
+            message.channel,
+            embed_description=f"**{player_name}** must be in a game!",
+            colour=Colour.red(),
+        )
+        return
+
+    in_progress_game: InProgressGame = (
+        session.query(InProgressGame)
+        .filter(InProgressGame.id == ipg_player.in_progress_game_id)
+        .first()
+    )
+    players_in_queue: List[QueuePlayer] = (
+        session.query(QueuePlayer)
+            .filter(QueuePlayer.queue_id == in_progress_game.queue_id)
+            .all()
+    )
+
+    if len(players_in_queue) == 0:
+        queue: Queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+        await send_message(
+            message.channel,
+            embed_description=f"No players in queue **{queue.name}**",
+            colour=Colour.red(),
+        )
+        return
+
+    # Do the sub - swap the in progress game players and delete the subbed in player from the queue
+    player_to_sub: QueuePlayer = choice(players_in_queue)
+    session.add(
+        InProgressGamePlayer(
+            in_progress_game_id=ipg_player.in_progress_game_id,
+            player_id=player_to_sub.player_id,
+            team=ipg_player.team
+        )
+    )
+    session.delete(ipg_player)
+    session.delete(player_to_sub)
+    session.commit()
+
+    subbed_in_player: Player = session.query(Player).filter(Player.id == player_to_sub.player_id).first()
+    subbed_out_player_name = member.name if member else message.author.name
+    await send_message(
+        message.channel,
+        embed_description=f"Auto-subbed **{subbed_in_player.name}** in for **{subbed_out_player_name}**",
+        colour=Colour.blue(),
+    )
+    session.close()
 
 
 @bot.command()
@@ -2502,8 +2576,8 @@ async def leaderboard(ctx: Context):
         output = "**Leaderboard**"
         top_40_players: list[Player] = (
             session.query(Player)
-            .filter(Player.rated_trueskill_sigma != 5.0) # Season reset
-            .filter(Player.rated_trueskill_sigma != 12.0) # New player
+            .filter(Player.rated_trueskill_sigma != 5.0)  # Season reset
+            .filter(Player.rated_trueskill_sigma != 12.0)  # New player
             .filter(Player.leaderboard_enabled == True)
             # .order_by(Player.leaderboard_trueskill.desc())
             # .limit(20)
