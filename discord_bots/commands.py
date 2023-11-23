@@ -3554,7 +3554,7 @@ async def showgamedebug(ctx: Context, game_id: str):
         )
         player_ids: list[int] = [fgp.player_id for fgp in fgps]
         best_teams = get_n_best_finished_game_teams(
-            fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 5
+            fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 7
         )
         worst_teams = get_n_worst_finished_game_teams(
             fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 1
@@ -3562,7 +3562,7 @@ async def showgamedebug(ctx: Context, game_id: str):
         game_str += "\n**Most even team combinations:**"
         for i, (_, best_team) in enumerate(best_teams):
             # Every two pairings is the same
-            if i % 2 == 1:
+            if i % 2 == 0:
                 continue
             team0_players = best_team[: len(best_team) // 2]
             team1_players = best_team[len(best_team) // 2 :]
