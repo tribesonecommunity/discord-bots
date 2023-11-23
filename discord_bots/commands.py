@@ -804,7 +804,7 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_fg_players}
     team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
     team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
-    if debug and False:
+    if debug:
         team0_names = ", ".join(
             sorted(
                 [
@@ -2498,9 +2498,10 @@ async def leaderboard(ctx: Context):
         pass
     else:
         output = "**Leaderboard**"
-        top_20_players: list[Player] = (
+        top_40_players: list[Player] = (
             session.query(Player)
-            .filter(Player.rated_trueskill_sigma != 5.0)
+            .filter(Player.rated_trueskill_sigma != 5.0) # Season reset
+            .filter(Player.rated_trueskill_sigma != 12.0) # New player
             .filter(Player.leaderboard_enabled == True)
             # .order_by(Player.leaderboard_trueskill.desc())
             # .limit(20)
@@ -2508,10 +2509,10 @@ async def leaderboard(ctx: Context):
         players_adjusted = sorted(
             [
                 (player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, player)
-                for player in top_20_players
+                for player in top_40_players
             ],
             reverse=True,
-        )[0:20]
+        )[0:50]
         for i, (_, player) in enumerate(players_adjusted, 1):
             output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     session.close()
@@ -3559,7 +3560,7 @@ async def showgamedebug(ctx: Context, game_id: str):
             fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 1
         )
         game_str += "\n**Most even team combinations:**"
-        for i, best_team in best_teams:
+        for i, (_, best_team) in enumerate(best_teams):
             # Every two pairings is the same
             if i % 2 == 1:
                 continue
