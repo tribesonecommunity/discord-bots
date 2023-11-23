@@ -864,8 +864,8 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
             ),
             2,
         )
-    team0_str = f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
-    team1_str = f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
+    team0_str = f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}): {team0_names}"
+    team1_str = f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}): {team1_names}"
     # if debug:
     #     team0_str = f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
     #     team1_str = f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
