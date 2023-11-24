@@ -1450,12 +1450,14 @@ async def autosub(ctx: Context, member: Member | None = None):
     )
     players_in_queue: List[QueuePlayer] = (
         session.query(QueuePlayer)
-            .filter(QueuePlayer.queue_id == in_progress_game.queue_id)
-            .all()
+        .filter(QueuePlayer.queue_id == in_progress_game.queue_id)
+        .all()
     )
 
     if len(players_in_queue) == 0:
-        queue: Queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+        queue: Queue = (
+            session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+        )
         await send_message(
             message.channel,
             embed_description=f"No players in queue **{queue.name}**",
@@ -1469,14 +1471,22 @@ async def autosub(ctx: Context, member: Member | None = None):
         InProgressGamePlayer(
             in_progress_game_id=ipg_player.in_progress_game_id,
             player_id=player_to_sub.player_id,
-            team=ipg_player.team
+            team=ipg_player.team,
         )
     )
     session.delete(ipg_player)
-    session.delete(player_to_sub)
+    queue_players_to_delete = (
+        session.query(QueuePlayer)
+        .filter(QueuePlayer.player_id == player_to_sub.player_id)
+        .all()
+    )
+    for qp in queue_players_to_delete:
+        session.delete(qp)
     session.commit()
 
-    subbed_in_player: Player = session.query(Player).filter(Player.id == player_to_sub.player_id).first()
+    subbed_in_player: Player = (
+        session.query(Player).filter(Player.id == player_to_sub.player_id).first()
+    )
     subbed_out_player_name = member.name if member else message.author.name
     await send_message(
         message.channel,
