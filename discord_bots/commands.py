@@ -1483,6 +1483,9 @@ async def autosub(ctx: Context, member: Member | None = None):
         embed_description=f"Auto-subbed **{subbed_in_player.name}** in for **{subbed_out_player_name}**",
         colour=Colour.blue(),
     )
+
+    await _rebalance_game(in_progress_game, session, message)
+    session.commit()
     session.close()
 
 
@@ -4152,6 +4155,95 @@ async def streams(ctx: Context):
     )
 
 
+async def _rebalance_game(game: InProgressGame, session: Session, message: Message):
+    """
+    Recreate the players on each team - use this after subbing a player
+    """
+    queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
+
+    game_players = (
+        session.query(InProgressGamePlayer)
+        .filter(InProgressGamePlayer.in_progress_game_id == game.id)
+        .all()
+    )
+    player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
+    players, win_prob = get_even_teams(
+        player_ids,
+        len(player_ids) // 2,
+        is_rated=queue.is_rated,
+        queue_region_id=queue.queue_region_id,
+    )
+    for game_player in game_players:
+        session.delete(game_player)
+    game.win_probability = win_prob
+    team0_players = players[: len(players) // 2]
+    team1_players = players[len(players) // 2 :]
+
+    short_game_id = short_uuid(game.id)
+    channel_message = f"New teams ({short_game_id}):"
+    channel_embed = ""
+    channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
+    channel_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
+
+    for player in team0_players:
+        # TODO: This block is duplicated
+        if not DISABLE_PRIVATE_MESSAGES:
+            if message.guild:
+                member_: Member | None = message.guild.get_member(player.id)
+                if member_:
+                    try:
+                        await member_.send(
+                            content=channel_message,
+                            embed=Embed(
+                                description=f"{channel_embed}",
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
+
+        game_player = InProgressGamePlayer(
+            in_progress_game_id=game.id,
+            player_id=player.id,
+            team=0,
+        )
+        session.add(game_player)
+
+    for player in team1_players:
+        # TODO: This block is duplicated
+        if not DISABLE_PRIVATE_MESSAGES:
+            if message.guild:
+                member_: Member | None = message.guild.get_member(player.id)
+                if member_:
+                    try:
+                        await member_.send(
+                            content=channel_message,
+                            embed=Embed(
+                                description=f"{channel_embed}",
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
+
+        game_player = InProgressGamePlayer(
+            in_progress_game_id=game.id,
+            player_id=player.id,
+            team=1,
+        )
+        session.add(game_player)
+
+    await send_message(
+        message.channel,
+        content=channel_message,
+        embed_description=channel_embed,
+        colour=Colour.blue(),
+    )
+    session.commit()
+
+    pass
+
+
 @bot.command()
 async def sub(ctx: Context, member: Member):
     message = ctx.message
@@ -4235,86 +4327,8 @@ async def sub(ctx: Context, member: Member):
     game: InProgressGame | None = callee_game or caller_game
     if not game:
         return
-    queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
 
-    game_players = (
-        session.query(InProgressGamePlayer)
-        .filter(InProgressGamePlayer.in_progress_game_id == game.id)
-        .all()
-    )
-    player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
-    players, win_prob = get_even_teams(
-        player_ids,
-        len(player_ids) // 2,
-        is_rated=queue.is_rated,
-        queue_region_id=queue.queue_region_id,
-    )
-    for game_player in game_players:
-        session.delete(game_player)
-    game.win_probability = win_prob
-    team0_players = players[: len(players) // 2]
-    team1_players = players[len(players) // 2 :]
-
-    short_game_id = short_uuid(game.id)
-    channel_message = f"New teams ({short_game_id}):"
-    channel_embed = ""
-    channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
-    channel_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
-
-    for player in team0_players:
-        # TODO: This block is duplicated
-        if not DISABLE_PRIVATE_MESSAGES:
-            if message.guild:
-                member_: Member | None = message.guild.get_member(player.id)
-                if member_:
-                    try:
-                        await member_.send(
-                            content=channel_message,
-                            embed=Embed(
-                                description=f"{channel_embed}",
-                                colour=Colour.blue(),
-                            ),
-                        )
-                    except Exception:
-                        pass
-
-        game_player = InProgressGamePlayer(
-            in_progress_game_id=game.id,
-            player_id=player.id,
-            team=0,
-        )
-        session.add(game_player)
-
-    for player in team1_players:
-        # TODO: This block is duplicated
-        if not DISABLE_PRIVATE_MESSAGES:
-            if message.guild:
-                member_: Member | None = message.guild.get_member(player.id)
-                if member_:
-                    try:
-                        await member_.send(
-                            content=channel_message,
-                            embed=Embed(
-                                description=f"{channel_embed}",
-                                colour=Colour.blue(),
-                            ),
-                        )
-                    except Exception:
-                        pass
-
-        game_player = InProgressGamePlayer(
-            in_progress_game_id=game.id,
-            player_id=player.id,
-            team=1,
-        )
-        session.add(game_player)
-
-    await send_message(
-        message.channel,
-        content=channel_message,
-        embed_description=channel_embed,
-        colour=Colour.blue(),
-    )
+    await _rebalance_game(game, session, message)
     session.commit()
 
 
