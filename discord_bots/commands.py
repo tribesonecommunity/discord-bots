@@ -3254,11 +3254,31 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
             role.name.lower(): role.id for role in message.guild.roles
         }
         if role_name.lower() not in role_name_to_role_id:
+            # In case a queue role was deleted from the server
+            queue_role_by_role_id = session.query(QueueRole).filter(
+                QueueRole.queue_id == queue.id,
+                QueueRole.role_id == role_name,
+            )
+            if queue_role_by_role_id:
+                session.query(QueueRole).filter(
+                    QueueRole.queue_id == queue.id,
+                    QueueRole.role_id == role_name,
+                ).delete()
+                session.commit()
+                session.close()
+                await send_message(
+                    message.channel,
+                    embed_description=f"Removed role {role_name} from queue {queue_name}",
+                    colour=Colour.green(),
+                )
+                return
+
             await send_message(
                 message.channel,
                 embed_description=f"Could not find role: {role_name}",
                 colour=Colour.red(),
             )
+            session.close()
             return
         session.query(QueueRole).filter(
             QueueRole.queue_id == queue.id,
@@ -3270,6 +3290,7 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
             colour=Colour.green(),
         )
         session.commit()
+        session.close()
 
 
 @bot.command()
