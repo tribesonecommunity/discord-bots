@@ -33,6 +33,7 @@ from trueskill import Rating, rate
 from discord_bots.checks import is_admin
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
+    print_leaderboard,
     update_current_map_to_next_map_in_rotation,
     send_message,
     upload_stats_screenshot_imgkit,
@@ -3276,11 +3277,40 @@ async def roll(ctx: Context, low_range: int, high_range: int):
 
 @bot.command()
 @commands.check(is_admin)
+async def resetleaderboardchannel(ctx: Context):
+    if not LEADERBOARD_CHANNEL:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Leaderboard channel ID not configured",
+            colour=Colour.red(),
+        )
+        return
+    channel = bot.get_channel(LEADERBOARD_CHANNEL)
+    if not channel:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Could not find leaderboard channel, check ID",
+            colour=Colour.red(),
+        )
+        return
+
+    await channel.purge()
+    await print_leaderboard()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Leaderboard channel reset",
+        colour=Colour.green(),
+    )
+    return
+
+
+@bot.command()
+@commands.check(is_admin)
 async def resetplayertrueskill(ctx: Context, member: Member):
     message = ctx.message
     session = ctx.session
     player: Player = session.query(Player).filter(Player.id == member.id).first()
-    default_rating = Rating(12.5)
+    default_rating = Rating(DEFAULT_TRUESKILL_MU)
     player.rated_trueskill_mu = default_rating.mu
     player.rated_trueskill_sigma = default_rating.sigma
     player.unrated_trueskill_mu = default_rating.mu
