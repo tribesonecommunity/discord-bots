@@ -2936,7 +2936,6 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
         .order_by(FinishedGame.finished_at.desc())  # type: ignore
         .all()
     )
-    print(players_from_last_30_days)
     queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     # This throws an error if people haven't played in 30 days
     for player in numpy.random.choice(
