@@ -65,13 +65,13 @@ The following are required
 
 The following are optional
 
-- `STATS_DIR`, `STATS_WIDTH`, `STATS_HEIGHT` - The bot assumes the last file dumped here is html file of the stats of
-  the last game finished. It will take a screenshot and upload an image to the channel and delete it
 - `TWITCH_GAME_NAME`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` - These enable the `streams` command to list current
   streams of the specified game
 - `COMMAND_PREFIX` - Use a different prefix instead of `!`
-- `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Declare this to set the default trueskill value for new players
+- `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Customize the default trueskill for new players
 - `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
+- `REQUIRED_ADD_TARGET` - Players have to specify a queue to add to
+- `ALLOW_VULGAR_NAMES` - Allow dirtier team names
 
 ## Running the bot
 
@@ -119,7 +119,12 @@ Use python black: https://github.com/psf/black
 
 ### Pre-commit hook
 
-This project uses `darker` for formatting in a pre-commit hook. Install using `pre-commit install`
+This project uses `darker` for formatting in a pre-commit hook. Darker documentation: https://pypi.org/project/darker/. pre-commit documentation: https://pre-commit.com/#installation
+
+- `pip install darker`
+- `pip install pre-commit`
+- `pre-commit install`
+- `pre-commit autoupdate`
 
 ## Migrations
 
@@ -153,26 +158,22 @@ Common issues:
 
 # Bugs
 
-# To-do list
+# Wishlist
 
-- Map-specific trueskill rating
-- Start map rotation only after game finishes
-- Support skipping current map as well as upcoming map
+- Map-specific trueskill
+- Position-specific trueskill
+- Skip game map or queue map
 - Convert from sqlite to postgres
-- Refactor commands file
-- Automatically show rotation maps in voteable maps and when a rotation map is voted, just rotate to it
+- Refactor commands to use cogs
+- Game betting
+- Flask API
 
 ## Good first tickets
 
 - Store player display name alongside regular name
 - Allow voting for multiple maps at once
-- Store total games played, win/loss/tie record
 - Add created_at timestamps to all tables (esp finished_game_player)
-
-MVP+
-
-- Shazbucks
-- Expose Flask API: https://flask.palletsprojects.com/en/2.0.x/
+- Store total games played, win/loss/tie record
 
 # Full list of commands
 

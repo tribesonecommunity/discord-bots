@@ -14,6 +14,7 @@ from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 from discord_bots.utils import (
+    print_leaderboard,
     update_current_map_to_next_map_in_rotation,
     send_message,
 )
@@ -423,50 +424,4 @@ async def leaderboard_task():
     """
     Periodically print the leaderboard
     """
-    if not LEADERBOARD_CHANNEL:
-        return
-
-    output = "**Leaderboard**"
-    session = Session()
-    queue_regions: list[QueueRegion] = session.query(QueueRegion).all()
-    if len(queue_regions) > 0:
-        for queue_region in queue_regions:
-            output += f"\n_{queue_region.name}_"
-            top_10_prts: list[PlayerRegionTrueskill] = (
-                session.query(PlayerRegionTrueskill)
-                .filter(PlayerRegionTrueskill.queue_region_id == queue_region.id)
-                .order_by(PlayerRegionTrueskill.leaderboard_trueskill.desc())
-                .limit(10)
-            )
-            for i, prt in enumerate(top_10_prts, 1):
-                player: Player = (
-                    session.query(Player).filter(Player.id == prt.player_id).first()
-                )
-                output += f"\n{i}. {round(prt.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
-            output += "\n"
-        pass
-    else:
-        output = "**Leaderboard**"
-        top_40_players: list[Player] = (
-            session.query(Player)
-            .filter(Player.rated_trueskill_sigma != 5.0)  # Season reset
-            .filter(Player.rated_trueskill_sigma != 12.0)  # New player
-            .filter(Player.leaderboard_enabled == True)
-            # .order_by(Player.leaderboard_trueskill.desc())
-            # .limit(20)
-        )
-        players_adjusted = sorted(
-            [
-                (player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, player)
-                for player in top_40_players
-            ],
-            reverse=True,
-        )[0:50]
-        for i, (_, player) in enumerate(players_adjusted, 1):
-            output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
-    session.close()
-    output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
-    output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
-
-    channel = bot.get_channel(LEADERBOARD_CHANNEL)
-    await send_message(channel, embed_description=output, colour=Colour.blue())
+    await print_leaderboard()

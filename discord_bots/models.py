@@ -83,6 +83,7 @@ class Commend:
     - https://heroesofthestorm-archive.fandom.com/wiki/Awards_system
     - https://overwatch.fandom.com/wiki/Endorsements
     """
+
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "commend"
 
@@ -633,21 +634,15 @@ class Queue:
     )
     mu_max: float | None = field(
         default=None,
-        metadata={
-            "sa": Column(Float, nullable=True)
-        },
+        metadata={"sa": Column(Float, nullable=True)},
     )
     mu_min: float | None = field(
         default=None,
-        metadata={
-            "sa": Column(Float, nullable=True)
-        },
+        metadata={"sa": Column(Float, nullable=True)},
     )
     ordinal: int = field(
         default=0,
-        metadata={
-            "sa": Column(Integer, nullable=False, server_default=text("0"))
-        },
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
     )
     queue_region_id: str = field(
         default=None,

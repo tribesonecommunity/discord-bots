@@ -33,6 +33,7 @@ from trueskill import Rating, rate
 from discord_bots.checks import is_admin
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
+    print_leaderboard,
     update_current_map_to_next_map_in_rotation,
     send_message,
     upload_stats_screenshot_imgkit,
@@ -367,21 +368,31 @@ async def create_game(
             is_rated=queue.is_rated,
             queue_region_id=queue.queue_region_id,
         )
-    queue_region = session.query(QueueRegion).filter(QueueRegion.id == queue.queue_region_id).first()
+    queue_region = (
+        session.query(QueueRegion)
+        .filter(QueueRegion.id == queue.queue_region_id)
+        .first()
+    )
     if queue_region:
         player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
             PlayerRegionTrueskill.queue_region_id == queue_region.id
         )
     if queue.is_rated:
         if player_region_trueskills:
-            average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, player_region_trueskills)))
+            average_trueskill = mean(
+                list(map(lambda x: x.rated_trueskill_mu, player_region_trueskills))
+            )
         else:
             average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
     else:
         if player_region_trueskills:
-            average_trueskill = mean(list(map(lambda x: x.unrated_trueskill_mu, player_region_trueskills)))
+            average_trueskill = mean(
+                list(map(lambda x: x.unrated_trueskill_mu, player_region_trueskills))
+            )
         else:
-            average_trueskill = mean(list(map(lambda x: x.unrated_trueskill_mu, players)))
+            average_trueskill = mean(
+                list(map(lambda x: x.unrated_trueskill_mu, players))
+            )
     current_map: CurrentMap | None = session.query(CurrentMap).first()
 
     if not current_map:
@@ -535,7 +546,11 @@ async def add_player_to_queue(
 
     player: Player = session.query(Player).filter(Player.id == player_id).first()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
-    queue_region = session.query(QueueRegion).filter(QueueRegion.id == queue.queue_region_id).first()
+    queue_region = (
+        session.query(QueueRegion)
+        .filter(QueueRegion.id == queue.queue_region_id)
+        .first()
+    )
     player_region_trueskill: PlayerRegionTrueskill | None = None
     if queue_region:
         player_region_trueskill = (
@@ -848,12 +863,8 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     #     team1_mu = round(
     #         mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
     #     )
-    team0_str = (
-        f"{finished_game.team0_name} ({team0_win_prob}%: {team0_names}"
-    )
-    team1_str = (
-        f"{finished_game.team1_name} ({team1_win_prob}%: {team1_names}"
-    )
+    team0_str = f"{finished_game.team0_name} ({team0_win_prob}%: {team0_names}"
+    team1_str = f"{finished_game.team1_name} ({team1_win_prob}%: {team1_names}"
 
     if finished_game.winning_team == 0:
         output += f"\n**{team0_str}**"
@@ -1081,10 +1092,9 @@ async def add(ctx: Context, *args):
             # Try adding by integer index first, then try string name
             try:
                 queue_ordinal = int(arg)
-                queues_with_ordinal = list(filter(
-                    lambda x: x.ordinal == queue_ordinal,
-                    all_queues
-                ))
+                queues_with_ordinal = list(
+                    filter(lambda x: x.ordinal == queue_ordinal, all_queues)
+                )
                 for queue_to_add in queues_with_ordinal:
                     queues_to_add.append(queue_to_add)
             except ValueError:
@@ -2047,7 +2057,6 @@ async def del_(ctx: Context, *args):
         )
         queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
 
-
     # TODO: Check deleting by name / ordinal
     # session.query(QueueWaitlistPlayer).filter(
     #     QueueWaitlistPlayer.player_id == message.author.id
@@ -2745,7 +2754,9 @@ async def listmaps(ctx: Context):
 async def lockqueue(ctx: Context, queue_name: str):
     message = ctx.message
     session = ctx.session
-    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+    queue: Queue | None = (
+        session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+    )
     if not queue:
         await send_message(
             message.channel,
@@ -3302,11 +3313,40 @@ async def roll(ctx: Context, low_range: int, high_range: int):
 
 @bot.command()
 @commands.check(is_admin)
+async def resetleaderboardchannel(ctx: Context):
+    if not LEADERBOARD_CHANNEL:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Leaderboard channel ID not configured",
+            colour=Colour.red(),
+        )
+        return
+    channel = bot.get_channel(LEADERBOARD_CHANNEL)
+    if not channel:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Could not find leaderboard channel, check ID",
+            colour=Colour.red(),
+        )
+        return
+
+    await channel.purge()
+    await print_leaderboard()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Leaderboard channel reset",
+        colour=Colour.green(),
+    )
+    return
+
+
+@bot.command()
+@commands.check(is_admin)
 async def resetplayertrueskill(ctx: Context, member: Member):
     message = ctx.message
     session = ctx.session
     player: Player = session.query(Player).filter(Player.id == member.id).first()
-    default_rating = Rating(12.5)
+    default_rating = Rating(DEFAULT_TRUESKILL_MU)
     player.rated_trueskill_mu = default_rating.mu
     player.rated_trueskill_sigma = default_rating.sigma
     player.unrated_trueskill_mu = default_rating.mu
@@ -3797,48 +3837,48 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 
     trueskill_mus = []
     if queue.queue_region_id:
-        player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
-            PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
-        ).all()
-        if queue.is_rated:
-            trueskill_mus = [
-                prt.rated_trueskill_mu for prt in player_region_trueskills
-            ]
-        else:
-            player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
+        player_region_trueskills = (
+            session.query(PlayerRegionTrueskill)
+            .filter(
                 PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
-            ).all()
+            )
+            .all()
+        )
+        if queue.is_rated:
+            trueskill_mus = [prt.rated_trueskill_mu for prt in player_region_trueskills]
+        else:
+            player_region_trueskills = (
+                session.query(PlayerRegionTrueskill)
+                .filter(
+                    PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
+                )
+                .all()
+            )
             trueskill_mus = [
                 prt.unrated_trueskill_mu for prt in player_region_trueskills
             ]
     else:
-        players = session.query(Player).filter(
-            Player.finished_game_players.any()
-        ).all()
+        players = session.query(Player).filter(Player.finished_game_players.any()).all()
         if queue.is_rated:
-            trueskill_mus = [
-                p.rated_trueskill_mu for p in players
-            ]
+            trueskill_mus = [p.rated_trueskill_mu for p in players]
         else:
-            trueskill_mus = [
-                p.unrated_trueskill_mu for p in players
-            ]
+            trueskill_mus = [p.unrated_trueskill_mu for p in players]
 
     std_dev = std(trueskill_mus)
     average = mean(trueskill_mus)
     output = []
-    output.append(f'**Data points**: {len(trueskill_mus)}')
-    output.append(f'**Mean**: {round(average, 2)}')
-    output.append(f'**Stddev**: {round(std_dev, 2)}\n')
-    output.append(f'**2%** (+2σ): {round(average + 2 * std_dev, 2)}')
-    output.append(f'**7%** (+1.5σ): {round(average + 1.5 * std_dev, 2)}')
-    output.append(f'**16%** (+1σ): {round(average + 1 * std_dev, 2)}')
-    output.append(f'**31%** (+0.5σ): {round(average + 0.5 * std_dev, 2)}')
-    output.append(f'**50%** (0σ): {round(average, 2)}')
-    output.append(f'**69%** (-0.5σ): {round(average - 0.5 * std_dev, 2)}')
-    output.append(f'**84%** (-1σ): {round(average - 1 * std_dev, 2)}')
-    output.append(f'**93%** (-1.5σ): {round(average - 1.5 * std_dev, 2)}')
-    output.append(f'**98%** (+2σ): {round(average - 2 * std_dev, 2)}')
+    output.append(f"**Data points**: {len(trueskill_mus)}")
+    output.append(f"**Mean**: {round(average, 2)}")
+    output.append(f"**Stddev**: {round(std_dev, 2)}\n")
+    output.append(f"**2%** (+2σ): {round(average + 2 * std_dev, 2)}")
+    output.append(f"**7%** (+1.5σ): {round(average + 1.5 * std_dev, 2)}")
+    output.append(f"**16%** (+1σ): {round(average + 1 * std_dev, 2)}")
+    output.append(f"**31%** (+0.5σ): {round(average + 0.5 * std_dev, 2)}")
+    output.append(f"**50%** (0σ): {round(average, 2)}")
+    output.append(f"**69%** (-0.5σ): {round(average - 0.5 * std_dev, 2)}")
+    output.append(f"**84%** (-1σ): {round(average - 1 * std_dev, 2)}")
+    output.append(f"**93%** (-1.5σ): {round(average - 1.5 * std_dev, 2)}")
+    output.append(f"**98%** (+2σ): {round(average - 2 * std_dev, 2)}")
 
     await send_message(
         channel=ctx.message.channel,
@@ -3928,9 +3968,7 @@ async def status(ctx: Context, *args):
             .all()
         )
         if queue.is_locked:
-            output += (
-                f"f({queue.ordinal}) {queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
-            )
+            output += f"f({queue.ordinal}) {queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
         else:
             output += f"**({queue.ordinal}) {queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
@@ -4446,7 +4484,9 @@ async def unisolatequeue(ctx: Context, queue_name: str):
 async def unlockqueue(ctx: Context, queue_name: str):
     message = ctx.message
     session = ctx.session
-    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+    queue: Queue | None = (
+        session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+    )
     if not queue:
         await send_message(
             message.channel,

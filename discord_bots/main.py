@@ -76,7 +76,10 @@ async def on_command_error(ctx: Context, error: CommandError):
 async def on_message(message: Message):
     # Use this to get the channel id
     if ENABLE_DEBUG:
-        if (message.content.startswith(COMMAND_PREFIX) and 'configurebot' in message.content):
+        if (
+            message.content.startswith(COMMAND_PREFIX)
+            and "configurebot" in message.content
+        ):
             guild = message.guild
             print(f"Your id: {message.author.id}")
             print(f"Channel id: {message.channel.id}")
@@ -85,7 +88,9 @@ async def on_message(message: Message):
             # await message.channel.send(content=f"Your id: {message.author.id}\nChannel id: {message.channel.id}")
             return
 
-    if ((CHANNEL_ID and message.channel.id == CHANNEL_ID) or (LEADERBOARD_CHANNEL and message.channel.id == LEADERBOARD_CHANNEL)):
+    if (CHANNEL_ID and message.channel.id == CHANNEL_ID) or (
+        LEADERBOARD_CHANNEL and message.channel.id == LEADERBOARD_CHANNEL
+    ):
         session = Session()
         player: Player | None = (
             session.query(Player).filter(Player.id == message.author.id).first()

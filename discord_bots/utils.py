@@ -17,11 +17,13 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
 
 from discord_bots.bot import bot
-from discord_bots.config import SHOW_TRUESKILL
+from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.models import (
     CurrentMap,
     MapVote,
     Player,
+    PlayerRegionTrueskill,
+    QueueRegion,
     RotationMap,
     Session,
     SkipMapVote,
@@ -189,7 +191,7 @@ async def update_current_map_to_next_map_in_rotation(random_map_popped: bool):
                     next_map.full_name,
                     next_map.short_name,
                     is_random=next_map.is_random,
-                    random_probability = next_map.random_probability
+                    random_probability=next_map.random_probability,
                 )
             )
             channel = bot.get_channel(CHANNEL_ID)
@@ -235,3 +237,63 @@ async def send_message(
         await channel.send(content=content, embed=embed)
     except Exception as e:
         print("[send_message] exception:", e)
+
+
+async def print_leaderboard():
+    if not LEADERBOARD_CHANNEL:
+        return
+
+    output = "**Leaderboard**"
+    session = Session()
+    queue_regions: list[QueueRegion] = session.query(QueueRegion).all()
+    if len(queue_regions) > 0:
+        for queue_region in queue_regions:
+            output += f"\n_{queue_region.name}_"
+            top_10_prts: list[PlayerRegionTrueskill] = (
+                session.query(PlayerRegionTrueskill)
+                .filter(PlayerRegionTrueskill.queue_region_id == queue_region.id)
+                .order_by(PlayerRegionTrueskill.leaderboard_trueskill.desc())
+                .limit(10)
+            )
+            for i, prt in enumerate(top_10_prts, 1):
+                player: Player = (
+                    session.query(Player).filter(Player.id == prt.player_id).first()
+                )
+                output += f"\n{i}. {round(prt.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+            output += "\n"
+        pass
+    else:
+        output = "**Leaderboard**"
+        top_40_players: list[Player] = (
+            session.query(Player)
+            .filter(Player.rated_trueskill_sigma != 5.0)  # Season reset
+            .filter(Player.rated_trueskill_sigma != 12.0)  # New player
+            .filter(Player.leaderboard_enabled == True)
+            # .order_by(Player.leaderboard_trueskill.desc())
+            # .limit(20)
+        )
+        players_adjusted = sorted(
+            [
+                (player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, player)
+                for player in top_40_players
+            ],
+            reverse=True,
+        )[0:50]
+        for i, (_, player) in enumerate(players_adjusted, 1):
+            output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
+    session.close()
+    output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
+    output += "\n(Leaderboard updates periodically)"
+    output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
+
+    channel = bot.get_channel(LEADERBOARD_CHANNEL)
+    if channel:
+        try:
+            last_message = await channel.fetch_message(channel.last_message_id)
+            if last_message:
+                await last_message.edit(embed=Embed(description=output))
+        except Exception as e:
+            print("caught exception fetching channel last message:", e)
+            await send_message(channel, embed_description=output, colour=Colour.blue())
+    else:
+        await send_message(channel, embed_description=output, colour=Colour.blue())

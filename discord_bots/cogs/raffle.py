@@ -126,16 +126,17 @@ class RaffleCog(Cog):
             .all()
         )
         message = []
-        message.append(f"**{emojize(':admission_tickets:')} Total tickets:** {total_tickets}\n")
+        message.append(
+            f"**{emojize(':admission_tickets:')} Total tickets:** {total_tickets}\n"
+        )
         message.append(f"**Leaderboard:**")
         for player in top_15_players:
             message.append(f"_{player.name}:_ {player.raffle_tickets}")
         await send_message(
             ctx.message.channel,
-            embed_description='\n'.join(message),
+            embed_description="\n".join(message),
             colour=Colour.blue(),
         )
-
 
     @command()
     @check(is_admin)
