@@ -2045,6 +2045,10 @@ async def del_(ctx: Context, *args):
         )
         queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
 
+    session.query(QueueWaitlistPlayer).filter(
+        QueueWaitlistPlayer.player_id == message.author.id
+    ).delete()
+
     session.commit()
 
     await send_message(
