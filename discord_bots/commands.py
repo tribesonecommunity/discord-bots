@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from glob import glob
 from itertools import combinations
 from math import floor
+from numpy import std
 from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
@@ -45,6 +46,7 @@ from .bot import COMMAND_PREFIX, bot
 from .config import DISABLE_MAP_ROTATION, REQUIRE_ADD_TARGET
 from .models import (
     DB_NAME,
+    DEFAULT_TRUESKILL_MU,
     AdminRole,
     Commend,
     CurrentMap,
@@ -3743,6 +3745,76 @@ async def showsigma(ctx: Context, member: Member):
         channel=ctx.message.channel,
         embed_description=output,
         # embed_title=f"{member.name} sigma:",
+        colour=Colour.blue(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def showtrueskillnormdist(ctx: Context, queue_name: str):
+    """
+    Print the normal distribution of the trueskill in a given queue.
+
+    Useful for setting queue mu ranges
+    """
+    session = ctx.session
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if not queue:
+        await send_message(
+            channel=ctx.message.channel,
+            embed_description=f"Could not find queue: **{queue_name}**",
+            colour=Colour.red(),
+        )
+        return
+
+    trueskill_mus = []
+    if queue.queue_region_id:
+        player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
+            PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
+        ).all()
+        if queue.is_rated:
+            trueskill_mus = [
+                prt.rated_trueskill_mu for prt in player_region_trueskills
+            ]
+        else:
+            player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
+                PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
+            ).all()
+            trueskill_mus = [
+                prt.unrated_trueskill_mu for prt in player_region_trueskills
+            ]
+    else:
+        players = session.query(Player).filter(
+            Player.finished_game_players.any()
+        ).all()
+        if queue.is_rated:
+            trueskill_mus = [
+                p.rated_trueskill_mu for p in players
+            ]
+        else:
+            trueskill_mus = [
+                p.unrated_trueskill_mu for p in players
+            ]
+
+    std_dev = std(trueskill_mus)
+    average = mean(trueskill_mus)
+    output = []
+    output.append(f'**Data points**: {len(trueskill_mus)}')
+    output.append(f'**Mean**: {round(average, 2)}')
+    output.append(f'**Stddev**: {round(std_dev, 2)}\n')
+    output.append(f'**2%**: {round(average + 2 * std_dev, 2)}')
+    output.append(f'**7%**: {round(average + 1.5 * std_dev, 2)}')
+    output.append(f'**16%**: {round(average + 1 * std_dev, 2)}')
+    output.append(f'**30%**: {round(average + 0.5 * std_dev, 2)}')
+    output.append(f'**50%**: {round(average, 2)}')
+    output.append(f'**69%**: {round(average + 0.5 * std_dev, 2)}')
+    output.append(f'**84%**: {round(average - 1 * std_dev, 2)}')
+    output.append(f'**93%**: {round(average - 1.5 * std_dev, 2)}')
+    output.append(f'**98%**: {round(average - 2 * std_dev, 2)}')
+
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description="\n".join(output),
         colour=Colour.blue(),
     )
 
