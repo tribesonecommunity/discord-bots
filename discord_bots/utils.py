@@ -191,7 +191,7 @@ async def update_current_map_to_next_map_in_rotation(random_map_popped: bool):
                     next_map.full_name,
                     next_map.short_name,
                     is_random=next_map.is_random,
-                    random_probability = next_map.random_probability
+                    random_probability=next_map.random_probability,
                 )
             )
             channel = bot.get_channel(CHANNEL_ID)
