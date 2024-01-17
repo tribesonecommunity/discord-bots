@@ -2122,6 +2122,19 @@ async def disableleaderboard(ctx: Context):
     )
 
 
+@bot.command()
+async def disablestats(ctx: Context):
+    session = Session()
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player.stats_enabled = False
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description="!stats disabled",
+        colour=Colour.blue()
+    )
+
+
 @bot.command(usage="<command_name> <output>")
 async def editcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
@@ -2197,6 +2210,19 @@ async def enableleaderboard(ctx: Context):
         ctx.message.channel,
         embed_description="You are visible on the leaderboard",
         colour=Colour.blue(),
+    )
+
+
+@bot.command()
+async def enablestats(ctx: Context):
+    session = Session()
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player.stats_enabled = True
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description="!stats enabled",
+        colour=Colour.blue()
     )
 
 
@@ -3956,160 +3982,167 @@ def win_rate(wins, losses, ties):
 async def stats(ctx: Context):
     player_id = ctx.message.author.id
     session = Session()
-    fgps = (
-        session.query(FinishedGamePlayer)
-        .filter(FinishedGamePlayer.player_id == player_id)
-        .all()
-    )
-    finished_game_ids = [fgp.finished_game_id for fgp in fgps]
-    fgs = (
-        session.query(FinishedGame).filter(FinishedGame.id.in_(finished_game_ids)).all()
-    )
-    fgps_by_finished_game_id: dict[str, FinishedGamePlayer] = {
-        fgp.finished_game_id: fgp for fgp in fgps
-    }
-
     player: Player = session.query(Player).filter(Player.id == player_id).first()
-    players: list[Player] = session.query(Player).all()
+    channel_output = ""
 
-    default_rating = Rating()
-    DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
-
-    # Filter players that haven't played a game
-    players = list(
-        filter(
-            lambda x: x.rated_trueskill_mu != default_rating.mu
-            and x.rated_trueskill_mu != DEFAULT_TRUESKILL_MU,
-            players,
-        )
-    )
-    trueskills = list(
-        sorted(
-            [
-                round(p.rated_trueskill_mu - 3 * p.rated_trueskill_sigma, 2)
-                for p in players
-            ]
-        )
-    )
-    trueskill_index = bisect(
-        trueskills,
-        round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
-    )
-    trueskill_ratio = (len(trueskills) - trueskill_index) / len(trueskills)
-    if trueskill_ratio <= 0.05:
-        trueskill_pct = "Top 5%"
-    elif trueskill_ratio <= 0.10:
-        trueskill_pct = "Top 10%"
-    elif trueskill_ratio <= 0.25:
-        trueskill_pct = "Top 25%"
-    elif trueskill_ratio <= 0.50:
-        trueskill_pct = "Top 50%"
-    elif trueskill_ratio <= 0.75:
-        trueskill_pct = "Top 75%"
+    if not player.stats_enabled:
+        channel_output = "You have disabled !stats"
     else:
-        trueskill_pct = "Top 100%"
-
-    def is_win(finished_game: FinishedGame) -> bool:
-        if (
-            fgps_by_finished_game_id[finished_game.id].team
-            == finished_game.winning_team
-        ):
-            return True
-        return False
-
-    def is_loss(finished_game: FinishedGame) -> bool:
-        if (
-            fgps_by_finished_game_id[finished_game.id].team
-            != finished_game.winning_team
-            and finished_game.winning_team != -1
-        ):
-            return True
-        return False
-
-    def is_tie(finished_game: FinishedGame) -> bool:
-        return finished_game.winning_team == -1
-
-    wins = list(filter(is_win, fgs))
-    losses = list(filter(is_loss, fgs))
-    ties = list(filter(is_tie, fgs))
-    winrate = win_rate(len(wins), len(losses), len(ties))
-    total_games = len(fgs)
-
-    def last_month(finished_game: FinishedGame) -> bool:
-        return finished_game.finished_at > datetime.now() - timedelta(days=30)
-
-    def last_three_months(finished_game: FinishedGame) -> bool:
-        return finished_game.finished_at > datetime.now() - timedelta(days=90)
-
-    def last_six_months(finished_game: FinishedGame) -> bool:
-        return finished_game.finished_at > datetime.now() - timedelta(days=180)
-
-    def last_year(finished_game: FinishedGame) -> bool:
-        return finished_game.finished_at > datetime.now() - timedelta(days=365)
-
-    games_last_month = list(filter(last_month, fgs))
-    games_last_three_months = list(filter(last_three_months, fgs))
-    games_last_six_months = list(filter(last_six_months, fgs))
-    games_last_year = list(filter(last_year, fgs))
-    wins_last_month = len(list(filter(is_win, games_last_month)))
-    losses_last_month = len(list(filter(is_loss, games_last_month)))
-    ties_last_month = len(list(filter(is_tie, games_last_month)))
-    winrate_last_month = win_rate(wins_last_month, losses_last_month, ties_last_month)
-    wins_last_three_months = len(list(filter(is_win, games_last_three_months)))
-    losses_last_three_months = len(list(filter(is_loss, games_last_three_months)))
-    ties_last_three_months = len(list(filter(is_tie, games_last_three_months)))
-    winrate_last_three_months = win_rate(
-        wins_last_three_months, losses_last_three_months, ties_last_three_months
-    )
-    wins_last_six_months = len(list(filter(is_win, games_last_six_months)))
-    losses_last_six_months = len(list(filter(is_loss, games_last_six_months)))
-    ties_last_six_months = len(list(filter(is_tie, games_last_six_months)))
-    winrate_last_six_months = win_rate(
-        wins_last_six_months, losses_last_six_months, ties_last_six_months
-    )
-    wins_last_year = len(list(filter(is_win, games_last_year)))
-    losses_last_year = len(list(filter(is_loss, games_last_year)))
-    ties_last_year = len(list(filter(is_tie, games_last_year)))
-    winrate_last_year = win_rate(wins_last_year, losses_last_year, ties_last_year)
-
-    output = ""
-    if SHOW_TRUESKILL:
-        player_region_trueskills: list[PlayerRegionTrueskill] = (
-            session.query(PlayerRegionTrueskill)
-            .filter(PlayerRegionTrueskill.player_id == player_id)
+        fgps = (
+            session.query(FinishedGamePlayer)
+            .filter(FinishedGamePlayer.player_id == player_id)
             .all()
         )
-        if player_region_trueskills:
-            output += f"**Trueskill:**"
-            for prt in player_region_trueskills:
-                queue_region: QueueRegion = (
-                    session.query(QueueRegion)
-                    .filter(QueueRegion.id == prt.queue_region_id)
-                    .first()
-                )
-                output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+        finished_game_ids = [fgp.finished_game_id for fgp in fgps]
+        fgs = (
+            session.query(FinishedGame).filter(FinishedGame.id.in_(finished_game_ids)).all()
+        )
+        fgps_by_finished_game_id: dict[str, FinishedGamePlayer] = {
+            fgp.finished_game_id: fgp for fgp in fgps
+        }
 
-        # This assumes that if a community uses regions then they'll use regions exclusively
+        players: list[Player] = session.query(Player).all()
+
+        default_rating = Rating()
+        DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
+
+        # Filter players that haven't played a game
+        players = list(
+            filter(
+                lambda x: x.rated_trueskill_mu != default_rating.mu
+                and x.rated_trueskill_mu != DEFAULT_TRUESKILL_MU,
+                players,
+            )
+        )
+        trueskills = list(
+            sorted(
+                [
+                    round(p.rated_trueskill_mu - 3 * p.rated_trueskill_sigma, 2)
+                    for p in players
+                ]
+            )
+        )
+        trueskill_index = bisect(
+            trueskills,
+            round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
+        )
+        trueskill_ratio = (len(trueskills) - trueskill_index) / len(trueskills)
+        if trueskill_ratio <= 0.05:
+            trueskill_pct = "Top 5%"
+        elif trueskill_ratio <= 0.10:
+            trueskill_pct = "Top 10%"
+        elif trueskill_ratio <= 0.25:
+            trueskill_pct = "Top 25%"
+        elif trueskill_ratio <= 0.50:
+            trueskill_pct = "Top 50%"
+        elif trueskill_ratio <= 0.75:
+            trueskill_pct = "Top 75%"
+        else:
+            trueskill_pct = "Top 100%"
+
+        def is_win(finished_game: FinishedGame) -> bool:
+            if (
+                fgps_by_finished_game_id[finished_game.id].team
+                == finished_game.winning_team
+            ):
+                return True
+            return False
+
+        def is_loss(finished_game: FinishedGame) -> bool:
+            if (
+                fgps_by_finished_game_id[finished_game.id].team
+                != finished_game.winning_team
+                and finished_game.winning_team != -1
+            ):
+                return True
+            return False
+
+        def is_tie(finished_game: FinishedGame) -> bool:
+            return finished_game.winning_team == -1
+
+        wins = list(filter(is_win, fgs))
+        losses = list(filter(is_loss, fgs))
+        ties = list(filter(is_tie, fgs))
+        winrate = win_rate(len(wins), len(losses), len(ties))
+        total_games = len(fgs)
+
+        def last_month(finished_game: FinishedGame) -> bool:
+            return finished_game.finished_at > datetime.now() - timedelta(days=30)
+
+        def last_three_months(finished_game: FinishedGame) -> bool:
+            return finished_game.finished_at > datetime.now() - timedelta(days=90)
+
+        def last_six_months(finished_game: FinishedGame) -> bool:
+            return finished_game.finished_at > datetime.now() - timedelta(days=180)
+
+        def last_year(finished_game: FinishedGame) -> bool:
+            return finished_game.finished_at > datetime.now() - timedelta(days=365)
+
+        games_last_month = list(filter(last_month, fgs))
+        games_last_three_months = list(filter(last_three_months, fgs))
+        games_last_six_months = list(filter(last_six_months, fgs))
+        games_last_year = list(filter(last_year, fgs))
+        wins_last_month = len(list(filter(is_win, games_last_month)))
+        losses_last_month = len(list(filter(is_loss, games_last_month)))
+        ties_last_month = len(list(filter(is_tie, games_last_month)))
+        winrate_last_month = win_rate(wins_last_month, losses_last_month, ties_last_month)
+        wins_last_three_months = len(list(filter(is_win, games_last_three_months)))
+        losses_last_three_months = len(list(filter(is_loss, games_last_three_months)))
+        ties_last_three_months = len(list(filter(is_tie, games_last_three_months)))
+        winrate_last_three_months = win_rate(
+            wins_last_three_months, losses_last_three_months, ties_last_three_months
+        )
+        wins_last_six_months = len(list(filter(is_win, games_last_six_months)))
+        losses_last_six_months = len(list(filter(is_loss, games_last_six_months)))
+        ties_last_six_months = len(list(filter(is_tie, games_last_six_months)))
+        winrate_last_six_months = win_rate(
+            wins_last_six_months, losses_last_six_months, ties_last_six_months
+        )
+        wins_last_year = len(list(filter(is_win, games_last_year)))
+        losses_last_year = len(list(filter(is_loss, games_last_year)))
+        ties_last_year = len(list(filter(is_tie, games_last_year)))
+        winrate_last_year = win_rate(wins_last_year, losses_last_year, ties_last_year)
+
+        output = ""
+        if SHOW_TRUESKILL:
+            player_region_trueskills: list[PlayerRegionTrueskill] = (
+                session.query(PlayerRegionTrueskill)
+                .filter(PlayerRegionTrueskill.player_id == player_id)
+                .all()
+            )
+            if player_region_trueskills:
+                output += f"**Trueskill:**"
+                for prt in player_region_trueskills:
+                    queue_region: QueueRegion = (
+                        session.query(QueueRegion)
+                        .filter(QueueRegion.id == prt.queue_region_id)
+                        .first()
+                    )
+                    output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+
+            # This assumes that if a community uses regions then they'll use regions exclusively
+            else:
+                output += f"**Trueskill:** {trueskill_pct}"
+                output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)} _(mu: {round(player.rated_trueskill_mu, 2)}, sigma: {round(player.rated_trueskill_sigma, 2)})_"
         else:
             output += f"**Trueskill:** {trueskill_pct}"
-            output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)} _(mu: {round(player.rated_trueskill_mu, 2)}, sigma: {round(player.rated_trueskill_sigma, 2)})_"
-    else:
-        output += f"**Trueskill:** {trueskill_pct}"
-    output += f"\n\n**Wins / Losses / Ties / Total:**"
-    output += f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} / {total_games} _({winrate}%)_"
-    output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
-    output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
-    output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
-    output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
+        output += f"\n\n**Wins / Losses / Ties / Total:**"
+        output += f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} / {total_games} _({winrate}%)_"
+        output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
+        output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
+        output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
+        output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
+
+        channel_output = "Stats sent to DM"
 
     if ctx.message.guild:
         member_: Member | None = ctx.message.guild.get_member(player.id)
         await send_message(
             ctx.message.channel,
-            embed_description="Stats sent to DM",
+            embed_description=channel_output,
             colour=Colour.blue(),
         )
-        if member_:
+        if member_ and player.stats_enabled:
             try:
                 await member_.send(
                     embed=Embed(

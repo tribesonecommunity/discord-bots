@@ -487,6 +487,12 @@ class Player:
             "sa": Column(Boolean, nullable=False, server_default=expression.true())
         },
     )
+    stats_enabled: bool = field(
+        default=True,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.true())
+        },
+    )
 
     @hybrid_property
     def leaderboard_trueskill(self):
