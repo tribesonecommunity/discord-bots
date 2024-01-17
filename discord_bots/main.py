@@ -16,6 +16,7 @@ from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Ses
 from .tasks import (
     add_player_task,
     afk_timer_task,
+    leaderboard_task,
     map_rotation_task,
     queue_waitlist_task,
     vote_passed_waitlist_task,
@@ -23,6 +24,7 @@ from .tasks import (
 
 add_player_task.start()
 afk_timer_task.start()
+leaderboard_task.start()
 map_rotation_task.start()
 queue_waitlist_task.start()
 vote_passed_waitlist_task.start()
