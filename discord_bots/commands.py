@@ -1,14 +1,12 @@
 import heapq
 import os
 import sys
-
 from bisect import bisect
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from glob import glob
 from itertools import combinations
 from math import floor
-from numpy import std
 from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
@@ -25,21 +23,23 @@ from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 from dotenv import load_dotenv
+from numpy import std
 from PIL import Image
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import select
 from trueskill import Rating, rate
+
 from discord_bots.checks import is_admin
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
-    print_leaderboard,
-    update_current_map_to_next_map_in_rotation,
-    send_message,
-    upload_stats_screenshot_imgkit,
     mean,
     pretty_format_team,
+    print_leaderboard,
+    send_message,
     short_uuid,
+    update_current_map_to_next_map_in_rotation,
+    upload_stats_screenshot_imgkit,
     win_probability,
 )
 
@@ -2014,22 +2014,17 @@ async def del_(ctx: Context, *args):
     """
     message = ctx.message
     session = ctx.session
-    queues_to_del: list[Queue] = []
-    all_queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == message.author.id).order_by(Queue.created_at.asc()).all()  # type: ignore
-    if len(args) == 0:
-        queues_to_del = all_queues
-    else:
-        for arg in args:
-            # Try remove by integer index first, then try string name
-            try:
-                queue_index = int(arg) - 1
-                queues_to_del.append(all_queues[queue_index])
-            except ValueError:
-                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                if queue:
-                    queues_to_del.append(queue)
-            except IndexError:
-                continue
+    queues_to_del_query = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == message.author.id).order_by(Queue.ordinal.asc())  # type: ignore
+
+    if len(args) > 0:
+        queues_to_del_query = queues_to_del_query.filter(
+            or_(
+                Queue.ordinal.in_(args),
+                func.lower(Queue.name).in_([x.lower() for x in args]),
+            )
+        )
+
+    queues_to_del = queues_to_del_query.all()
 
     for queue in queues_to_del:
         session.query(QueuePlayer).filter(
