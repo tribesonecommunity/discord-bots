@@ -42,7 +42,7 @@ from discord_bots.utils import (
 )
 
 from .bot import COMMAND_PREFIX, bot
-from .config import DISABLE_MAP_ROTATION
+from .config import DISABLE_MAP_ROTATION, REQUIRE_ADD_TARGET
 from .models import (
     DB_NAME,
     AdminRole,
@@ -534,8 +534,9 @@ async def add_player_to_queue(
     player: Player = session.query(Player).filter(Player.id == player_id).first()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
     queue_region = session.query(QueueRegion).filter(QueueRegion.id == queue.queue_region_id).first()
+    player_region_trueskill: PlayerRegionTrueskill | None = None
     if queue_region:
-        player_region_trueskill: PlayerRegionTrueskill | None = (
+        player_region_trueskill = (
             session.query(PlayerRegionTrueskill)
             .filter(
                 PlayerRegionTrueskill.player_id == player_id,
@@ -1062,6 +1063,14 @@ async def add(ctx: Context, *args):
 
     queues_to_add: list[Queue] = []
     if len(args) == 0:
+        if REQUIRE_ADD_TARGET:
+            await send_message(
+                message.channel,
+                embed_description=f"Usage: !add [queue]",
+                colour=Colour.red(),
+            )
+            session.close()
+            return
         # Don't auto-add to isolated queues
         queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.ordinal.asc()).all()  # type: ignore
     else:

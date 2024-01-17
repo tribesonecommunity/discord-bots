@@ -423,7 +423,6 @@ async def leaderboard_task():
     """
     Periodically print the leaderboard
     """
-    print('leaderboard task')
     if not LEADERBOARD_CHANNEL:
         return
 
