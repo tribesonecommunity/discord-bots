@@ -2138,6 +2138,7 @@ async def disablestats(ctx: Context):
         embed_description="!stats disabled",
         colour=Colour.blue()
     )
+    session.close()
 
 
 @bot.command(usage="<command_name> <output>")
