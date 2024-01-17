@@ -13,6 +13,12 @@ flips, Twitch stream integration, voice channel creation, leaderboards, etc.
 See [commands.py](https://github.com/dwayneyuen/discord-bots/blob/master/discord_bots/commands.py) for a full list of
 commands.
 
+## Forks
+
+Sauon and sh4z have both maintained separate forks with some improvements - check them out!
+- https://github.com/Sauon/discord-bots
+- https://github.com/sh4zbot/discord-bots
+
 ## Installation
 
 The bot is written in Python 3 and uses sqlite for persistence. You will need a `DISCORD_API_KEY` at a minimum to run
@@ -64,7 +70,6 @@ The following are optional
 - `TWITCH_GAME_NAME`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` - These enable the `streams` command to list current
   streams of the specified game
 - `COMMAND_PREFIX` - Use a different prefix instead of `!`
-- `RANDOM_MAP_ROTATION` - Declare this for the map rotation to be random
 - `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Declare this to set the default trueskill value for new players
 - `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
 
@@ -115,15 +120,6 @@ Use python black: https://github.com/psf/black
 ### Pre-commit hook
 
 This project uses `darker` for formatting in a pre-commit hook. Install using `pre-commit install`
-
-## Tests
-
-Tests don't currently work, so skip this step
-
-- `pytest`
-
-I haven't setup alembic to cooperate with the test database. If you add a new
-migration, delete the test db (`rm tribes.test.db`) and the code will migrate your new database.
 
 ## Migrations
 

@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     create_engine,
+    text,
 )
 
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -75,6 +76,44 @@ class AdminRole:
 
 @mapper_registry.mapped
 @dataclass
+class Commend:
+    """
+    Ideas:
+    - https://leagueoflegends.fandom.com/wiki/Honor
+    - https://heroesofthestorm-archive.fandom.com/wiki/Awards_system
+    - https://overwatch.fandom.com/wiki/Endorsements
+    """
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "commend"
+
+    finished_game_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("finished_game.id"), nullable=False, index=True
+            )
+        },
+    )
+    commender_id: int = field(
+        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+    )
+    commender_name: str = field(
+        metadata={"sa": Column(String, nullable=False, index=True)},
+    )
+    commendee_id: int = field(
+        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+    )
+    commendee_name: str = field(
+        metadata={"sa": Column(String, nullable=False, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class CurrentMap:
     """
     The current map up to play - not necessarily a rotation map. The rotation
@@ -89,6 +128,16 @@ class CurrentMap:
     map_rotation_index: int = field(metadata={"sa": Column(Integer)})
     full_name: str = field(metadata={"sa": Column(String)})
     short_name: str = field(metadata={"sa": Column(String)})
+    is_random: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
+    )
+    random_probability: float = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
@@ -132,7 +181,6 @@ class CustomCommand:
 @mapper_registry.mapped
 @dataclass
 class FinishedGame:
-
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "finished_game"
 
@@ -397,6 +445,7 @@ class Player:
     games.
     :unrated_trueskill_mu: A player's trueskill rating account for rated and
     unrated games.
+    :raffle_tickets: The number of raffle tickets a player has
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -425,6 +474,18 @@ class Player:
     )
     unrated_trueskill_sigma: float = field(
         default=DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
+    )
+    raffle_tickets: int = field(
+        default=0,
+        metadata={
+            "sa": Column(Integer, index=True, nullable=False, server_default=text("0"))
+        },
+    )
+    leaderboard_enabled: bool = field(
+        default=True,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.true())
+        },
     )
 
     @hybrid_property
@@ -560,6 +621,24 @@ class Queue:
         default=False,
         metadata={
             "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
+    )
+    mu_max: float | None = field(
+        default=None,
+        metadata={
+            "sa": Column(Float, nullable=True)
+        },
+    )
+    mu_min: float | None = field(
+        default=None,
+        metadata={
+            "sa": Column(Float, nullable=True)
+        },
+    )
+    ordinal: int = field(
+        default=0,
+        metadata={
+            "sa": Column(Integer, nullable=False, server_default=text("0"))
         },
     )
     queue_region_id: str = field(
@@ -766,9 +845,50 @@ class QueueWaitlistPlayer:
 
 @mapper_registry.mapped
 @dataclass
+class Raffle:
+    """
+    An instance of a raffle
+
+    :code: Auto-generated code to run / reset the raffle. Used to prevent accidentally running it or resetting it
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "raffle"
+
+    code: str = field(default=None, metadata={"sa": Column(String)})
+    winning_player_id: int = field(
+        default=None,
+        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+    )
+    total_tickets: int = field(
+        default=0, metadata={"sa": Column(Integer, index=True, nullable=False)}
+    )
+    winning_player_total_tickets: int = field(
+        default=0, metadata={"sa": Column(Integer, index=True, nullable=False)}
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class RotationMap:
     """
     A map that's part of the fixed rotation
+
+    :raffle_ticket_reward: The number of raffle tickets this map rewards for playing it
+    :default_full_name: For random maps, the default when random map is not rolled
+    :default_short_name: For random maps, the default when random map is not rolled
+    :rolled_full_name: The random map rolled during rotation
+    :rolled_short_name: The random map rolled during rotation
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -776,6 +896,22 @@ class RotationMap:
 
     full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
     short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    raffle_ticket_reward: int = field(
+        default=0,
+        metadata={
+            "sa": Column(Integer, index=True, nullable=False, server_default=text("0"))
+        },
+    )
+    is_random: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
+    )
+    random_probability: float = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,

@@ -2,13 +2,14 @@ import os
 from datetime import datetime, timezone
 from tempfile import NamedTemporaryFile
 
-import discord
-import imgkit
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
-from PIL import Image
+from discord_bots.cogs.raffle import RaffleCog
+from discord_bots.config import ENABLE_DEBUG, LEADERBOARD_CHANNEL
+
+from discord_bots.utils import CHANNEL_ID
 
 from .bot import COMMAND_PREFIX, bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
@@ -19,7 +20,6 @@ from .tasks import (
     queue_waitlist_task,
     vote_passed_waitlist_task,
 )
-from .utils import CHANNEL_ID
 
 add_player_task.start()
 afk_timer_task.start()
@@ -72,7 +72,18 @@ async def on_command_error(ctx: Context, error: CommandError):
 
 @bot.event
 async def on_message(message: Message):
-    if CHANNEL_ID and message.channel.id == CHANNEL_ID:
+    # Use this to get the channel id
+    if ENABLE_DEBUG:
+        if (message.content.startswith(COMMAND_PREFIX) and 'configurebot' in message.content):
+            guild = message.guild
+            print(f"Your id: {message.author.id}")
+            print(f"Channel id: {message.channel.id}")
+            print(f"{[(c.id, c.name) for c in guild.categories]}")
+
+            # await message.channel.send(content=f"Your id: {message.author.id}\nChannel id: {message.channel.id}")
+            return
+
+    if ((CHANNEL_ID and message.channel.id == CHANNEL_ID) or (LEADERBOARD_CHANNEL and message.channel.id == LEADERBOARD_CHANNEL)):
         session = Session()
         player: Player | None = (
             session.query(Player).filter(Player.id == message.author.id).first()
@@ -109,19 +120,6 @@ async def on_message(message: Message):
             if custom_command:
                 await message.channel.send(content=custom_command.output)
         session.close()
-    else:
-        # Hardcode allow this command to work in other channels
-        if message.content == '!lt':
-            query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132:28006&port=28006"
-            await message.channel.send(query_url)
-
-            ntf = NamedTemporaryFile(delete=True, suffix=".png")
-            imgkit.from_url(query_url, ntf.name)
-            image = Image.open(ntf.name)
-            cropped = image.crop((0, 0, 450, 650))
-            cropped.save(ntf.name)
-            await message.channel.send(file=discord.File(ntf.name))
-            ntf.close()
 
 
 @bot.event
@@ -169,6 +167,7 @@ def main():
     load_dotenv()
     API_KEY = os.getenv("DISCORD_API_KEY")
     if API_KEY:
+        bot.add_cog(RaffleCog(bot))
         bot.run(API_KEY)
     else:
         print("You must define DISCORD_API_KEY!")

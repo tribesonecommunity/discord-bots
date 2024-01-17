@@ -9,10 +9,10 @@ from glob import glob
 from itertools import combinations
 from math import floor
 from os import remove
-from random import choice, randint, random, shuffle
+from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from typing import Union
+from typing import List, Union
 
 import discord
 import imgkit
@@ -25,19 +25,28 @@ from discord.member import Member
 from discord.utils import escape_markdown
 from dotenv import load_dotenv
 from PIL import Image
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.sql import select
 from trueskill import Rating, rate
-from discord_bots.config import SHOW_TRUESKILL
-
+from discord_bots.checks import is_admin
+from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
+    update_current_map_to_next_map_in_rotation,
+    send_message,
     upload_stats_screenshot_imgkit,
-    upload_stats_screenshot_selenium,
+    mean,
+    pretty_format_team,
+    short_uuid,
+    win_probability,
 )
 
 from .bot import COMMAND_PREFIX, bot
+from .config import DISABLE_MAP_ROTATION
 from .models import (
     DB_NAME,
     AdminRole,
+    Commend,
     CurrentMap,
     CustomCommand,
     FinishedGame,
@@ -66,19 +75,15 @@ from .models import (
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
-from .utils import (
-    RANDOM_MAP_ROTATION,
-    mean,
-    pretty_format_team,
-    send_message,
-    short_uuid,
-    update_current_map_to_next_map_in_rotation,
-    win_probability,
-)
 
 load_dotenv()
 
 AFK_TIME_MINUTES: int = 45
+DEFAULT_RAFFLE_VALUE = 5
+try:
+    DEFAULT_RAFFLE_VALUE = int(os.getenv("DEFAULT_RAFFLE_VALUE"))
+except:
+    pass
 DEBUG: bool = bool(os.getenv("DEBUG")) or False
 DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 MAP_ROTATION_MINUTES: int = 60
@@ -97,6 +102,7 @@ def get_even_teams(
     player_ids: list[int], team_size: int, is_rated: bool, queue_region_id: str | None
 ) -> tuple[list[Player], float]:
     """
+    This is the one used when a new game is created. The other methods are for the showgamedebug command
     TODO: Tests
     TODO: Re-use get_n_teams function
 
@@ -109,7 +115,9 @@ def get_even_teams(
     players: list[Player] = (
         session.query(Player).filter(Player.id.in_(player_ids)).all()
     )
-    shuffle(players)
+    shuffle(
+        players
+    )  # This is important! This ensures captains are randomly distributed!
     if queue_region_id:
         player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
             PlayerRegionTrueskill.player_id.in_(player_ids),
@@ -123,10 +131,8 @@ def get_even_teams(
     best_win_prob_so_far: float = 0.0
     best_teams_so_far: list[Player] = []
 
-    # We only take half the combinations because they end up repeating. i.e.
-    # [1,2] vs [3,4] is the same as [3,4] vs [1,2]
     all_combinations = list(combinations(players, team_size))
-    for team0 in all_combinations[: len(all_combinations) // 2]:
+    for team0 in all_combinations:
         team1 = [p for p in players if p not in team0]
         if is_rated:
             team0_ratings = []
@@ -211,10 +217,8 @@ def get_n_teams(
 ) -> list[tuple[list[Player], float]]:
     teams: list[tuple[float, list[Player]]] = []
 
-    # We only take half the combinations because they end up repeating. i.e.
-    # [1,2] vs [3,4] is the same as [3,4] vs [1,2]
     all_combinations = list(combinations(players, team_size))
-    for team0 in all_combinations[: len(all_combinations) // 2]:
+    for team0 in all_combinations:
         team1 = [p for p in players if p not in team0]
         if is_rated:
             team0_ratings = list(
@@ -279,10 +283,8 @@ def get_n_finished_game_teams(
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     teams: list[tuple[float, list[FinishedGamePlayer]]] = []
 
-    # We only take half the combinations because they end up repeating. i.e.
-    # [1,2] vs [3,4] is the same as [3,4] vs [1,2]
     all_combinations = list(combinations(fgps, team_size))
-    for team0 in all_combinations[: len(all_combinations) // 2]:
+    for team0 in all_combinations:
         team1 = [p for p in fgps if p not in team0]
         if is_rated:
             team0_ratings = list(
@@ -363,15 +365,44 @@ async def create_game(
             is_rated=queue.is_rated,
             queue_region_id=queue.queue_region_id,
         )
+    queue_region = session.query(QueueRegion).filter(QueueRegion.id == queue.queue_region_id).first()
+    if queue_region:
+        player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
+            PlayerRegionTrueskill.queue_region_id == queue_region.id
+        )
     if queue.is_rated:
-        average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
+        if player_region_trueskills:
+            average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, player_region_trueskills)))
+        else:
+            average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
     else:
-        average_trueskill = mean(list(map(lambda x: x.unrated_trueskill_mu, players)))
+        if player_region_trueskills:
+            average_trueskill = mean(list(map(lambda x: x.unrated_trueskill_mu, player_region_trueskills)))
+        else:
+            average_trueskill = mean(list(map(lambda x: x.unrated_trueskill_mu, players)))
     current_map: CurrentMap | None = session.query(CurrentMap).first()
+
+    if not current_map:
+        raise Exception("No current map!")
+
+    current_map_full_name = current_map.full_name
+    current_map_short_name = current_map.short_name
+
+    rolled_random_map = False
+    if current_map.is_random:
+        # Roll for random map
+        voteable_maps: List[VoteableMap] = session.query(VoteableMap).all()
+        roll = uniform(0, 1)
+        if roll < current_map.random_probability:
+            rolled_random_map = True
+            random_map = choice(voteable_maps)
+            current_map_full_name = random_map.full_name
+            current_map_short_name = random_map.short_name
+
     game = InProgressGame(
         average_trueskill=average_trueskill,
-        map_full_name=current_map.full_name if current_map else "",
-        map_short_name=current_map.short_name if current_map else "",
+        map_full_name=current_map_full_name,
+        map_short_name=current_map_short_name,
         queue_id=queue.id,
         team0_name=generate_be_name(),
         team1_name=generate_ds_name(),
@@ -384,7 +415,10 @@ async def create_game(
 
     short_game_id = short_uuid(game.id)
     message_content = f"Game '{queue.name}' ({short_game_id}) has begun!"
-    message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})**\n"
+    if SHOW_TRUESKILL:
+        message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})** (mu: {round(average_trueskill, 2)})\n"
+    else:
+        message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})**\n"
     message_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
     message_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
 
@@ -441,19 +475,19 @@ async def create_game(
 
     categories = {category.id: category for category in guild.categories}
     tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
-
-    be_channel = await guild.create_voice_channel(
-        f"{game.team0_name}", category=tribes_voice_category, bitrate=128000
-    )
-    ds_channel = await guild.create_voice_channel(
-        f"{game.team1_name}", category=tribes_voice_category, bitrate=128000
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
-    )
+    if tribes_voice_category:
+        be_channel = await guild.create_voice_channel(
+            f"{game.team0_name}", category=tribes_voice_category
+        )
+        ds_channel = await guild.create_voice_channel(
+            f"{game.team1_name}", category=tribes_voice_category
+        )
+        session.add(
+            InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
+        )
+        session.add(
+            InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
+        )
 
     session.query(QueuePlayer).filter(
         QueuePlayer.player_id.in_(player_ids)  # type: ignore
@@ -462,7 +496,7 @@ async def create_game(
     session.query(SkipMapVote).delete()
     session.commit()
     if not queue.is_isolated:
-        await update_current_map_to_next_map_in_rotation()
+        await update_current_map_to_next_map_in_rotation(rolled_random_map)
 
 
 async def add_player_to_queue(
@@ -496,6 +530,28 @@ async def add_player_to_queue(
 
     if is_in_game(player_id):
         return False, False
+
+    player: Player = session.query(Player).filter(Player.id == player_id).first()
+    queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
+    queue_region = session.query(QueueRegion).filter(QueueRegion.id == queue.queue_region_id).first()
+    if queue_region:
+        player_region_trueskill: PlayerRegionTrueskill | None = (
+            session.query(PlayerRegionTrueskill)
+            .filter(
+                PlayerRegionTrueskill.player_id == player_id,
+                PlayerRegionTrueskill.queue_region_id == queue_region.id,
+            )
+            .first()
+        )
+    player_mu = player.rated_trueskill_mu
+    if player_region_trueskill:
+        player_mu = player_region_trueskill.rated_trueskill_mu
+    if queue.mu_max is not None:
+        if player_mu > queue.mu_max:
+            return False, False
+    if queue.mu_min is not None:
+        if player_mu < queue.mu_min:
+            return False, False
 
     session.add(
         QueuePlayer(
@@ -546,49 +602,6 @@ async def add_player_to_queue(
     session.close()
 
     return True, False
-
-
-async def is_admin(ctx: Context):
-    """
-    Check to wrap functions that require admin
-
-    https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
-    """
-    session = Session()
-    message: Message = ctx.message
-    caller = (
-        session.query(Player)
-        .filter(Player.id == message.author.id, Player.is_admin == True)
-        .first()
-    )
-    if caller:
-        session.close()
-        return True
-
-    if not message.guild:
-        session.close()
-        return False
-
-    member = message.guild.get_member(message.author.id)
-    if not member:
-        session.close()
-        return False
-
-    admin_roles = session.query(AdminRole).all()
-    admin_role_ids = map(lambda x: x.role_id, admin_roles)
-    member_role_ids = map(lambda x: x.id, member.roles)
-    is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
-    if is_admin:
-        session.close()
-        return True
-    else:
-        await send_message(
-            message.channel,
-            embed_description="You must be an admin to use that command",
-            colour=Colour.red(),
-        )
-        session.close()
-        return False
 
 
 def mock_teams_str(
@@ -689,6 +702,8 @@ def mock_finished_game_teams_str(
             for fgp in team1_fg_players
         ]
 
+    team0_player_ids_map = {x.player_id: x for x in team0_fg_players}
+    team1_player_ids_map = {x.player_id: x for x in team1_fg_players}
     team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
     team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
     team0_players: list[Player] = session.query(Player).filter(
@@ -698,10 +713,20 @@ def mock_finished_game_teams_str(
         Player.id.in_(team1_player_ids)
     )
     team0_names = ", ".join(
-        sorted([escape_markdown(player.name) for player in team0_players])
+        sorted(
+            [
+                f"{escape_markdown(player.name)} ({round(team0_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
+                for player in team0_players
+            ]
+        )
     )
     team1_names = ", ".join(
-        sorted([escape_markdown(player.name) for player in team1_players])
+        sorted(
+            [
+                f"{escape_markdown(player.name)} ({round(team1_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
+                for player in team1_players
+            ]
+        )
     )
     team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
@@ -768,37 +793,10 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         .all()
     )
 
-    if finished_game.is_rated:
-        average_mu = mean(
-            [
-                fgp.rated_trueskill_mu_before
-                for fgp in team0_fg_players + team1_fg_players
-            ]
-        )
-        average_sigma = mean(
-            [
-                fgp.rated_trueskill_sigma_before
-                for fgp in team0_fg_players + team1_fg_players
-            ]
-        )
+    if SHOW_TRUESKILL:
+        output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id}) (mu: {round(finished_game.average_trueskill, 2)})"
     else:
-        average_mu = mean(
-            [
-                fgp.unrated_trueskill_mu_before
-                for fgp in team0_fg_players + team1_fg_players
-            ]
-        )
-        average_sigma = mean(
-            [
-                fgp.unrated_trueskill_sigma_before
-                for fgp in team0_fg_players + team1_fg_players
-            ]
-        )
-
-    if debug:
-        output += f"**{finished_game.queue_name}** ({short_game_id}) (mu: {round(average_mu, 2)}, sigma: {round(average_sigma, 2)})"
-    else:
-        output += f"**{finished_game.queue_name}** ({short_game_id})"
+        output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id})"
 
     team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
     team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
@@ -806,7 +804,7 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_fg_players}
     team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
     team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
-    if debug and False:
+    if debug:
         team0_names = ", ".join(
             sorted(
                 [
@@ -832,46 +830,27 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         )
     team0_win_prob = round(100 * finished_game.win_probability, 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
-    if finished_game.is_rated:
-        team0_mu = round(
-            mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
-        )
-        team1_mu = round(
-            mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
-        )
-        team0_sigma = round(
-            mean([player.rated_trueskill_sigma_before for player in team0_fg_players]),
-            2,
-        )
-        team1_sigma = round(
-            mean([player.rated_trueskill_sigma_before for player in team1_fg_players]),
-            2,
-        )
-    else:
-        team0_mu = round(
-            mean([player.unrated_trueskill_mu_before for player in team0_fg_players]), 2
-        )
-        team1_mu = round(
-            mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
-        )
-        team0_sigma = round(
-            mean(
-                [player.unrated_trueskill_sigma_before for player in team0_fg_players]
-            ),
-            2,
-        )
-        team1_sigma = round(
-            mean(
-                [player.unrated_trueskill_sigma_before for player in team1_fg_players]
-            ),
-            2,
-        )
-    if debug:
-        team0_str = f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
-        team1_str = f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
-    else:
-        team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
-        team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
+    # TODO: This is wrong when the game has a region
+    # if finished_game.is_rated:
+    #     team0_mu = round(
+    #         mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
+    #     )
+    #     team1_mu = round(
+    #         mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
+    #     )
+    # else:
+    #     team0_mu = round(
+    #         mean([player.unrated_trueskill_mu_before for player in team0_fg_players]), 2
+    #     )
+    #     team1_mu = round(
+    #         mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
+    #     )
+    team0_str = (
+        f"{finished_game.team0_name} ({team0_win_prob}%: {team0_names}"
+    )
+    team1_str = (
+        f"{finished_game.team1_name} ({team1_win_prob}%: {team1_names}"
+    )
 
     if finished_game.winning_team == 0:
         output += f"\n**{team0_str}**"
@@ -1084,14 +1063,19 @@ async def add(ctx: Context, *args):
     queues_to_add: list[Queue] = []
     if len(args) == 0:
         # Don't auto-add to isolated queues
-        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.created_at.asc()).all()  # type: ignore
+        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.ordinal.asc()).all()  # type: ignore
     else:
-        all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+        all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
         for arg in args:
             # Try adding by integer index first, then try string name
             try:
-                queue_index = int(arg) - 1
-                queues_to_add.append(all_queues[queue_index])
+                queue_ordinal = int(arg)
+                queues_with_ordinal = list(filter(
+                    lambda x: x.ordinal == queue_ordinal,
+                    all_queues
+                ))
+                for queue_to_add in queues_with_ordinal:
+                    queues_to_add.append(queue_to_add)
             except ValueError:
                 queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
                 if queue:
@@ -1320,9 +1304,53 @@ async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
         session.commit()
 
 
+@bot.command(usage="<map_full_name> <map_short_name> <random_probability>")
+@commands.check(is_admin)
+async def addrandomrotationmap(
+    ctx: Context, map_full_name: str, map_short_name: str, random_probability: float
+):
+    """
+    Adds a special map to the rotation that is random each time it comes up
+    """
+    message = ctx.message
+    if random_probability < 0 or random_probability > 1:
+        await send_message(
+            message.channel,
+            embed_description=f"Random map probability must be between 0 and 1!",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    session.add(
+        RotationMap(
+            f"{map_full_name} (R)",
+            f"{map_short_name}R",
+            is_random=True,
+            random_probability=random_probability,
+        )
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        await send_message(
+            message.channel,
+            embed_description=f"Error adding random map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
+            colour=Colour.red(),
+        )
+        return
+
+    await send_message(
+        message.channel,
+        embed_description=f"{map_full_name} (R) ({map_short_name}R) added to map rotation",
+        colour=Colour.green(),
+    )
+
+
 @bot.command()
 @commands.check(is_admin)
-async def addrotationmap(ctx: Context, map_short_name: str, map_full_name: str):
+async def addrotationmap(ctx: Context, map_full_name: str, map_short_name: str):
     message = ctx.message
     session = Session()
     session.add(RotationMap(map_full_name, map_short_name))
@@ -1366,6 +1394,89 @@ async def addmap(ctx: Context, map_short_name: str, map_full_name: str):
         embed_description=f"{map_full_name} ({map_short_name}) added to map pool",
         colour=Colour.green(),
     )
+
+
+@bot.command()
+async def autosub(ctx: Context, member: Member | None = None):
+    """
+    Picks a person to sub at random
+
+    :member: If provided, this is the player in the game being subbed out. If
+    not provided, then the player running the command must be in the game
+    """
+    message = ctx.message
+    session = Session()
+
+    player_in_game_id = member.id if member else message.author.id
+    # If target player isn't a game, exit early
+    ipg_player = (
+        session.query(InProgressGamePlayer)
+        .filter(InProgressGamePlayer.player_id == player_in_game_id)
+        .first()
+    )
+    if not ipg_player:
+        player_name = member.name if member else message.author.name
+        await send_message(
+            message.channel,
+            embed_description=f"**{player_name}** must be in a game!",
+            colour=Colour.red(),
+        )
+        return
+
+    in_progress_game: InProgressGame = (
+        session.query(InProgressGame)
+        .filter(InProgressGame.id == ipg_player.in_progress_game_id)
+        .first()
+    )
+    players_in_queue: List[QueuePlayer] = (
+        session.query(QueuePlayer)
+        .filter(QueuePlayer.queue_id == in_progress_game.queue_id)
+        .all()
+    )
+
+    if len(players_in_queue) == 0:
+        queue: Queue = (
+            session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+        )
+        await send_message(
+            message.channel,
+            embed_description=f"No players in queue **{queue.name}**",
+            colour=Colour.red(),
+        )
+        return
+
+    # Do the sub - swap the in progress game players and delete the subbed in player from the queue
+    player_to_sub: QueuePlayer = choice(players_in_queue)
+    session.add(
+        InProgressGamePlayer(
+            in_progress_game_id=ipg_player.in_progress_game_id,
+            player_id=player_to_sub.player_id,
+            team=ipg_player.team,
+        )
+    )
+    session.delete(ipg_player)
+    queue_players_to_delete = (
+        session.query(QueuePlayer)
+        .filter(QueuePlayer.player_id == player_to_sub.player_id)
+        .all()
+    )
+    for qp in queue_players_to_delete:
+        session.delete(qp)
+    session.commit()
+
+    subbed_in_player: Player = (
+        session.query(Player).filter(Player.id == player_to_sub.player_id).first()
+    )
+    subbed_out_player_name = member.name if member else message.author.name
+    await send_message(
+        message.channel,
+        embed_description=f"Auto-subbed **{subbed_in_player.name}** in for **{subbed_out_player_name}**",
+        colour=Colour.blue(),
+    )
+
+    await _rebalance_game(in_progress_game, session, message)
+    session.commit()
+    session.close()
 
 
 @bot.command()
@@ -1555,6 +1666,158 @@ async def changequeuemap(ctx: Context, map_short_name: str):
 
 
 @bot.command()
+async def commend(ctx: Context, member: Member):
+    session = Session()
+    commender: Player | None = (
+        session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    )
+    commendee: Player | None = (
+        session.query(Player).filter(Player.id == member.id).first()
+    )
+    emoji = choice(["🔨", "💥", "🤕", "🤌"])
+    if ctx.message.author.id == member.id:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"{emoji}  **BONK**  {emoji}",
+            colour=Colour.red(),
+        )
+        return
+
+    if not commendee:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Could not find {escape_markdown(member.name)}",
+            colour=Colour.red(),
+        )
+        return
+
+    last_finished_game: FinishedGame | None = (
+        session.query(FinishedGame)
+        .join(FinishedGamePlayer)
+        .filter(FinishedGamePlayer.player_id == commender.id)
+        .order_by(FinishedGame.finished_at.desc())
+        .first()
+    )
+    if not last_finished_game:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Could not find last game played for {escape_markdown(member.name)}",
+            colour=Colour.red(),
+        )
+        return
+
+    has_commend = (
+        session.query(Commend)
+        .filter(
+            Commend.finished_game_id == last_finished_game.id,
+            Commend.commender_id == commender.id,
+        )
+        .first()
+    )
+    if has_commend is not None:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"You already commended someone for this game",
+            colour=Colour.red(),
+        )
+        return
+
+    players_in_last_game = (
+        session.query(FinishedGamePlayer)
+        .filter(FinishedGamePlayer.finished_game_id == last_finished_game.id)
+        .all()
+    )
+    player_ids = set(map(lambda x: x.player_id, players_in_last_game))
+    if commendee.id not in player_ids:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"{escape_markdown(commendee.name)} was not in your last game",
+            colour=Colour.red(),
+        )
+        return
+
+    session.add(
+        Commend(
+            last_finished_game.id,
+            commender.id,
+            commender.name,
+            commendee.id,
+            commendee.name,
+        )
+    )
+    commender.raffle_tickets += 1
+    session.add(commender)
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"⭐ {escape_markdown(commendee.name)} received a commend! ⭐",
+        colour=Colour.green(),
+    )
+    session.close()
+
+
+@bot.command()
+async def commendstats(ctx: Context):
+    session = Session()
+    most_commends_given_statement = (
+        select(Player, func.count(Commend.commender_id).label("commend_count"))
+        .join(Commend, Commend.commender_id == Player.id)
+        .group_by(Player.id)
+        .having(func.count(Commend.commender_id) > 0)
+        .order_by(func.count(Commend.commender_id).desc())
+    )
+    most_commends_received_statement = (
+        select(Player, func.count(Commend.commendee_id).label("commend_count"))
+        .join(Commend, Commend.commendee_id == Player.id)
+        .group_by(Player.id)
+        .having(func.count(Commend.commendee_id) > 0)
+        .order_by(func.count(Commend.commendee_id).desc())
+    )
+
+    most_commends_given: List[Player] = session.execute(
+        most_commends_given_statement
+    ).fetchall()
+    most_commends_received: List[Player] = session.execute(
+        most_commends_received_statement
+    ).fetchall()
+    session.close()
+
+    output = "**Most commends given**"
+    for i, row in enumerate(most_commends_given, 1):
+        player = row[Player]
+        count = row["commend_count"]
+        output += f"\n{i}. {count} - {player.name}"
+    output += "\n**Most commends received**"
+    for i, row in enumerate(most_commends_received, 1):
+        player = row[Player]
+        count = row["commend_count"]
+        output += f"\n{i}. {count} - {player.name}"
+
+    if LEADERBOARD_CHANNEL:
+        channel = bot.get_channel(LEADERBOARD_CHANNEL)
+        await send_message(channel, embed_description=output, colour=Colour.blue())
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Check {channel.mention}!",
+            colour=Colour.blue(),
+        )
+    elif ctx.message.guild:
+        player_id = ctx.message.author.id
+        member_: Member | None = ctx.message.guild.get_member(player_id)
+        if member_:
+            try:
+                await member_.send(
+                    embed=Embed(
+                        description=f"{output}",
+                        colour=Colour.blue(),
+                    ),
+                )
+            except Exception:
+                pass
+
+
+@bot.command()
+@commands.check(is_admin)
 async def createcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
     session = Session()
@@ -1618,6 +1881,29 @@ async def clearqueue(ctx: Context, queue_name: str):
         embed_description=f"Queue cleared: {queue_name}",
         colour=Colour.green(),
     )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def clearqueuerange(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.mu_min = None
+        queue.mu_max = None
+        session.commit()
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} range cleared",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
 
 
 @bot.command()
@@ -1744,11 +2030,13 @@ async def del_(ctx: Context, *args):
 
     queue_statuses = []
     queue: Queue
-    for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
+    for queue in session.query(Queue).order_by(Queue.ordinal.asc()).all():  # type: ignore
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
         queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
+
+    session.commit()
 
     await send_message(
         message.channel,
@@ -1756,7 +2044,7 @@ async def del_(ctx: Context, *args):
         embed_description=" ".join(queue_statuses),
         colour=Colour.green(),
     )
-    session.commit()
+    session.close()
 
 
 @bot.command(usage="<player>")
@@ -1801,6 +2089,19 @@ async def delplayer(ctx: Context, member: Member, *args):
         colour=Colour.green(),
     )
     session.commit()
+
+
+@bot.command()
+async def disableleaderboard(ctx: Context):
+    session = Session()
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player.leaderboard_enabled = False
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description="You are no longer visible on the leaderboard",
+        colour=Colour.blue(),
+    )
 
 
 @bot.command(usage="<command_name> <output>")
@@ -1865,6 +2166,19 @@ async def editgamewinner(ctx: Context, game_id: str, outcome: str):
         embed_description=f"Game {game_id} outcome changed:\n\n"
         + finished_game_str(game),
         colour=Colour.green(),
+    )
+
+
+@bot.command()
+async def enableleaderboard(ctx: Context):
+    session = Session()
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player.leaderboard_enabled = True
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description="You are visible on the leaderboard",
+        colour=Colour.blue(),
     )
 
 
@@ -2161,6 +2475,22 @@ async def finishgame(ctx: Context, outcome: str):
                 + timedelta(seconds=RE_ADD_DELAY),
             )
         )
+
+    # Reward raffle tickets
+    rotation_map: RotationMap | None = (
+        session.query(RotationMap)
+        .filter(RotationMap.short_name.ilike(in_progress_game.map_short_name))
+        .first()
+    )
+    reward = DEFAULT_RAFFLE_VALUE
+    if rotation_map:
+        reward = DEFAULT_RAFFLE_VALUE
+        if rotation_map.raffle_ticket_reward > 0:
+            reward = rotation_map.raffle_ticket_reward
+    for player in players:
+        player.raffle_tickets += reward
+        session.add(player)
+
     session.commit()
     queue_name = queue.name
     session.close()
@@ -2174,16 +2504,16 @@ async def finishgame(ctx: Context, outcome: str):
     await upload_stats_screenshot_imgkit(ctx)
 
 
-@bot.command()
-@commands.check(is_admin)
-async def imagetest(ctx: Context):
-    await upload_stats_screenshot_selenium(ctx, False)
+# @bot.command()
+# @commands.check(is_admin)
+# async def imagetest(ctx: Context):
+#     await upload_stats_screenshot_selenium(ctx, False)
 
 
-@bot.command()
-@commands.check(is_admin)
-async def imagetest2(ctx: Context):
-    await upload_stats_screenshot_imgkit(ctx, False)
+# @bot.command()
+# @commands.check(is_admin)
+# async def imagetest2(ctx: Context):
+#     await upload_stats_screenshot_imgkit(ctx, False)
 
 
 @bot.command()
@@ -2239,18 +2569,48 @@ async def leaderboard(ctx: Context):
         pass
     else:
         output = "**Leaderboard**"
-        top_10_players: list[Player] = (
+        top_40_players: list[Player] = (
             session.query(Player)
-            .order_by(Player.leaderboard_trueskill.desc())
-            .limit(10)
+            .filter(Player.rated_trueskill_sigma != 5.0)  # Season reset
+            .filter(Player.rated_trueskill_sigma != 12.0)  # New player
+            .filter(Player.leaderboard_enabled == True)
+            # .order_by(Player.leaderboard_trueskill.desc())
+            # .limit(20)
         )
-        for i, player in enumerate(top_10_players, 1):
+        players_adjusted = sorted(
+            [
+                (player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, player)
+                for player in top_40_players
+            ],
+            reverse=True,
+        )[0:50]
+        for i, (_, player) in enumerate(players_adjusted, 1):
             output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
     session.close()
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
-    await send_message(
-        ctx.message.channel, embed_description=output, colour=Colour.blue()
-    )
+    output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
+
+    if LEADERBOARD_CHANNEL:
+        channel = bot.get_channel(LEADERBOARD_CHANNEL)
+        await send_message(channel, embed_description=output, colour=Colour.blue())
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Check {channel.mention}!",
+            colour=Colour.blue(),
+        )
+    elif ctx.message.guild:
+        player_id = ctx.message.author.id
+        member_: Member | None = ctx.message.guild.get_member(player_id)
+        if member_:
+            try:
+                await member_.send(
+                    embed=Embed(
+                        description=f"{output}",
+                        colour=Colour.blue(),
+                    ),
+                )
+            except Exception:
+                pass
 
 
 @bot.command()
@@ -2293,6 +2653,19 @@ async def listbans(ctx: Context):
     for player in Session().query(Player).filter(Player.is_banned == True):
         output += f"\n- {escape_markdown(player.name)}"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
+@bot.command()
+@commands.check(is_admin)
+async def listchannels(ctx: Context):
+    for channel in bot.get_all_channels():
+        print(channel.id, channel)
+
+    await send_message(
+        ctx.message.channel,
+        embed_description="Check stdout",
+        colour=Colour.blue(),
+    )
 
 
 @bot.command()
@@ -2383,6 +2756,8 @@ async def listqueueroles(ctx: Context):
             role = message.guild.get_role(queue_role.role_id)
             if role:
                 queue_role_names.append(role.name)
+            else:
+                queue_role_names.append(str(queue_role.role_id))
         output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
@@ -2402,7 +2777,7 @@ async def listmaps(ctx: Context):
 async def lockqueue(ctx: Context, queue_name: str):
     message = ctx.message
     session = Session()
-    queue: Queue | None = session.query(Queue).filter(Queue.name == queue_name).first()
+    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
     if not queue:
         await send_message(
             message.channel,
@@ -2416,7 +2791,7 @@ async def lockqueue(ctx: Context, queue_name: str):
 
     await send_message(
         message.channel,
-        embed_description=f"Queue {queue_name} locked",
+        embed_description=f"Queue **{queue.name}** locked",
         colour=Colour.green(),
     )
 
@@ -2469,13 +2844,10 @@ async def map_(ctx: Context):
             timezone.utc
         ) - current_map.updated_at.replace(tzinfo=timezone.utc)
         time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
-        if RANDOM_MAP_ROTATION:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
+        if current_map.map_rotation_index == 0:
+            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
         else:
-            if current_map.map_rotation_index == 0:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
-            else:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
     skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
     output += (
         f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
@@ -2498,9 +2870,9 @@ async def map_(ctx: Context):
     await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
 
 
-@bot.command()
+@bot.command(usage="<queue_name> <count>")
 @commands.check(is_admin)
-async def mockrandomqueue(ctx: Context, *args):
+async def mockqueue(ctx: Context, queue_name: str, count: int):
     message = ctx.message
     """
     Helper test method for adding random players to queues
@@ -2511,14 +2883,6 @@ async def mockrandomqueue(ctx: Context, *args):
         await send_message(
             message.channel,
             embed_description="Only special people can use this command",
-            colour=Colour.red(),
-        )
-        return
-
-    if len(args) != 2:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !mockrandomqueue <queue_name> <count>",
             colour=Colour.red(),
         )
         return
@@ -2534,9 +2898,10 @@ async def mockrandomqueue(ctx: Context, *args):
         .order_by(FinishedGame.finished_at.desc())  # type: ignore
         .all()
     )
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    # This throws an error if people haven't played in 30 days
     for player in numpy.random.choice(
-        players_from_last_30_days, size=int(args[1]), replace=False
+        players_from_last_30_days, size=int(count), replace=False
     ):
         if isinstance(message.channel, TextChannel) and message.guild:
             add_player_queue.put(
@@ -2727,6 +3092,7 @@ async def removeadminrole(ctx: Context, role_name: str):
 
 
 @bot.command()
+@commands.check(is_admin)
 async def removecommand(ctx: Context, name: str):
     message = ctx.message
     session = Session()
@@ -2852,7 +3218,7 @@ async def removequeueregion(ctx: Context, region_name: str):
 async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
     session = Session()
-    queue = session.query(Queue).filter(Queue.name.ilike(args[0])).first()  # type: ignore
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         await send_message(
             message.channel,
@@ -2865,11 +3231,31 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
             role.name.lower(): role.id for role in message.guild.roles
         }
         if role_name.lower() not in role_name_to_role_id:
+            # In case a queue role was deleted from the server
+            queue_role_by_role_id = session.query(QueueRole).filter(
+                QueueRole.queue_id == queue.id,
+                QueueRole.role_id == role_name,
+            )
+            if queue_role_by_role_id:
+                session.query(QueueRole).filter(
+                    QueueRole.queue_id == queue.id,
+                    QueueRole.role_id == role_name,
+                ).delete()
+                session.commit()
+                session.close()
+                await send_message(
+                    message.channel,
+                    embed_description=f"Removed role {role_name} from queue {queue_name}",
+                    colour=Colour.green(),
+                )
+                return
+
             await send_message(
                 message.channel,
                 embed_description=f"Could not find role: {role_name}",
                 colour=Colour.red(),
             )
+            session.close()
             return
         session.query(QueueRole).filter(
             QueueRole.queue_id == queue.id,
@@ -2881,6 +3267,7 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
             colour=Colour.green(),
         )
         session.commit()
+        session.close()
 
 
 @bot.command()
@@ -2997,6 +3384,23 @@ async def setbias(ctx: Context, member: Member, amount: float):
 
 @bot.command()
 @commands.check(is_admin)
+async def setcaptainbias(ctx: Context, member: Member, amount: float):
+    if amount < -100 or amount > 100:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Amount must be between -100 and 100",
+            colour=Colour.red(),
+        )
+        return
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Captain bias for {member.name} set to `{amount}%`",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
 async def setcommandprefix(ctx: Context, prefix: str):
     message = ctx.message
     global COMMAND_PREFIX
@@ -3006,6 +3410,53 @@ async def setcommandprefix(ctx: Context, prefix: str):
         embed_description=f"Command prefix set to {COMMAND_PREFIX}",
         colour=Colour.green(),
     )
+
+
+@bot.command(usage="<queue_name> <ordinal>")
+@commands.check(is_admin)
+async def setqueueordinal(ctx: Context, queue_name: str, ordinal: int):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.ordinal = ordinal
+        session.commit()
+        session.close()
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} ordinal set to {ordinal}",
+            colour=Colour.blue(),
+        )
+    else:
+        session.close()
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
+
+
+@bot.command(usage="<queue_name> <min> <max>")
+@commands.check(is_admin)
+async def setqueuerange(ctx: Context, queue_name: str, min: float, max: float):
+    message = ctx.message
+    session = Session()
+    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if queue:
+        queue.mu_min = min
+        queue.mu_max = max
+        session.commit()
+        await send_message(
+            message.channel,
+            embed_description=f"Queue {queue_name} range set to [{min}, {max}]",
+            colour=Colour.blue(),
+        )
+    else:
+        await send_message(
+            message.channel,
+            embed_description=f"Queue not found: {queue_name}",
+            colour=Colour.red(),
+        )
 
 
 @bot.command()
@@ -3063,6 +3514,7 @@ async def setqueueregion(ctx: Context, queue_name: str, region_name: str):
         colour=Colour.blue(),
     )
     session.commit()
+    session.close()
 
 
 @bot.command()
@@ -3085,6 +3537,7 @@ async def setqueueunrated(ctx: Context, queue_name: str):
             colour=Colour.red(),
         )
     session.commit()
+    session.close()
 
 
 @bot.command()
@@ -3107,6 +3560,7 @@ async def setqueuesweaty(ctx: Context, queue_name: str):
             colour=Colour.red(),
         )
     session.commit()
+    session.close()
 
 
 @bot.command()
@@ -3120,6 +3574,31 @@ async def setmapvotethreshold(ctx: Context, threshold: int):
         message.channel,
         embed_description=f"Map vote threshold set to {MAP_VOTE_THRESHOLD}",
         colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def setsigma(ctx: Context, member: Member, sigma: float):
+    if sigma < 1 or sigma > 8.33:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Amount must be between 1 and 8.33",
+            colour=Colour.red(),
+        )
+        return
+
+    session = Session()
+    player: Player = session.query(Player).filter(Player.id == member.id).first()
+    sigma_before = player.rated_trueskill_sigma
+    player.rated_trueskill_sigma = sigma
+    session.commit()
+    session.close()
+
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Sigma for **{member.name}** changed from **{round(sigma_before, 4)}** to **{sigma}**",
+        colour=Colour.blue(),
     )
 
 
@@ -3150,12 +3629,15 @@ async def showgame(ctx: Context, game_id: str):
 
 @bot.command()
 async def showgamedebug(ctx: Context, game_id: str):
-    await send_message(
-        ctx.message.channel,
-        embed_description="Ice cream machine under maintenance",
-        colour=Colour.red(),
-    )
-    return
+    player_id = ctx.message.author.id
+    if player_id != 115204465589616646:
+        await send_message(
+            ctx.message.channel,
+            embed_description="Ice cream machine under maintenance",
+            colour=Colour.red(),
+        )
+        return
+
     message = ctx.message
     session = Session()
     finished_game = (
@@ -3172,13 +3654,16 @@ async def showgamedebug(ctx: Context, game_id: str):
         )
         player_ids: list[int] = [fgp.player_id for fgp in fgps]
         best_teams = get_n_best_finished_game_teams(
-            fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 5
+            fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 7
         )
         worst_teams = get_n_worst_finished_game_teams(
             fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 1
         )
         game_str += "\n**Most even team combinations:**"
-        for _, best_team in best_teams:
+        for i, (_, best_team) in enumerate(best_teams):
+            # Every two pairings is the same
+            if i % 2 == 0:
+                continue
             team0_players = best_team[: len(best_team) // 2]
             team1_players = best_team[len(best_team) // 2 :]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
@@ -3187,11 +3672,30 @@ async def showgamedebug(ctx: Context, game_id: str):
             team0_players = worst_team[: len(worst_team) // 2]
             team1_players = worst_team[len(worst_team) // 2 :]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
-        await send_message(
-            message.channel,
-            embed_description=game_str,
-            colour=Colour.blue(),
-        )
+        # await send_message(
+        #     message.channel,
+        #     embed_description=game_str,
+        #     colour=Colour.blue(),
+        # )
+        if ctx.message.guild:
+            player_id = ctx.message.author.id
+            member_: Member | None = ctx.message.guild.get_member(player_id)
+            await send_message(
+                ctx.message.channel,
+                embed_description="Stats sent to DM",
+                colour=Colour.blue(),
+            )
+            if member_:
+                try:
+                    await member_.send(
+                        embed=Embed(
+                            description=game_str,
+                            colour=Colour.blue(),
+                        ),
+                    )
+                except Exception:
+                    pass
+
     else:
         in_progress_game: InProgressGame | None = (
             session.query(InProgressGame)
@@ -3241,18 +3745,75 @@ async def showgamedebug(ctx: Context, game_id: str):
                 game_str += (
                     f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                 )
-            await send_message(
-                message.channel,
-                embed_description=game_str,
-                colour=Colour.blue(),
-            )
+            if ctx.message.guild:
+                player_id = ctx.message.author.id
+                member_: Member | None = ctx.message.guild.get_member(player_id)
+                await send_message(
+                    ctx.message.channel,
+                    embed_description="Stats sent to DM",
+                    colour=Colour.blue(),
+                )
+                if member_:
+                    try:
+                        await member_.send(
+                            embed=Embed(
+                                description=game_str,
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
+
+            # await send_message(
+            #     message.channel,
+            #     embed_description=game_str,
+            #     colour=Colour.blue(),
+            # )
+
+
+@bot.command(usage="<queue_name>")
+async def showqueuerange(ctx: Context, queue_name: str):
+    message = ctx.message
+    session = Session()
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if not queue:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find queue: {queue_name}",
+            colour=Colour.red(),
+        )
+        return
+    await send_message(
+        message.channel,
+        embed_description=f"Queue range: [{queue.mu_min}, {queue.mu_max}]",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def showsigma(ctx: Context, member: Member):
+    """
+    Returns the player's base sigma. Doesn't consider regions
+    """
+    session = Session()
+    player: Player = session.query(Player).filter(Player.id == member.id).first()
+    output = (
+        embed_title
+    ) = f"**{member.name}'s** sigma: **{round(player.rated_trueskill_sigma, 4)}**"
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description=output,
+        # embed_title=f"{member.name} sigma:",
+        colour=Colour.blue(),
+    )
 
 
 @bot.command()
 async def status(ctx: Context, *args):
     session = Session()
     queues: list[Queue] = []
-    all_queues = session.query(Queue).order_by(Queue.created_at.asc()).all()  # type: ignore
+    all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
     if len(args) == 0:
         queues: list[Queue] = all_queues
     else:
@@ -3279,6 +3840,7 @@ async def status(ctx: Context, *args):
         current_map: CurrentMap | None = session.query(CurrentMap).first()
         if current_map:
             rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+            upcoming_map = rotation_maps[current_map.map_rotation_index]
             next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
                 rotation_maps
             )
@@ -3290,13 +3852,17 @@ async def status(ctx: Context, *args):
             time_until_rotation = MAP_ROTATION_MINUTES - (
                 time_since_update.seconds // 60
             )
-            if RANDOM_MAP_ROTATION:
-                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_(Auto-rotates to a random map in {time_until_rotation} minutes)_\n"
+            has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
+            upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
+            if has_raffle_reward:
+                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
+            if DISABLE_MAP_ROTATION:
+                output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
             else:
                 if current_map.map_rotation_index == 0:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
                 else:
-                    output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"{upcoming_map_str}\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
         output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
 
@@ -3323,19 +3889,12 @@ async def status(ctx: Context, *args):
             .filter(QueuePlayer.queue_id == queue.id)
             .all()
         )
-        queue_region: QueueRegion | None = None
-        if queue.queue_region_id:
-            queue_region = (
-                session.query(QueueRegion)
-                .filter(QueueRegion.id == queue.queue_region_id)
-                .first()
-            )
         if queue.is_locked:
             output += (
-                f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+                f"f({queue.ordinal}) {queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
             )
         else:
-            output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+            output += f"**({queue.ordinal}) {queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
         if len(players_in_queue) > 0:
             output += f"**IN QUEUE:** "
@@ -3370,7 +3929,10 @@ async def status(ctx: Context, *args):
                 short_game_id = short_uuid(game.id)
                 if i > 0:
                     output += "\n"
-                output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
+                if SHOW_TRUESKILL:
+                    output += f"**Map: {game.map_full_name}** ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                else:
+                    output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
                 output += pretty_format_team(
                     game.team0_name, game.win_probability, team0_players
                 )
@@ -3439,7 +4001,7 @@ async def stats(ctx: Context):
         trueskills,
         round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
     )
-    trueskill_ratio = (len(trueskills) - trueskill_index) / len(trueskills)
+    trueskill_ratio = (len(trueskills) - trueskill_index) / (len(trueskills) or 1)
     if trueskill_ratio <= 0.05:
         trueskill_pct = "Top 5%"
     elif trueskill_ratio <= 0.10:
@@ -3518,23 +4080,25 @@ async def stats(ctx: Context):
 
     output = ""
     if SHOW_TRUESKILL:
-        output += f"**Trueskill:**"
         player_region_trueskills: list[PlayerRegionTrueskill] = (
             session.query(PlayerRegionTrueskill)
             .filter(PlayerRegionTrueskill.player_id == player_id)
             .all()
         )
-        for prt in player_region_trueskills:
-            queue_region: QueueRegion = (
-                session.query(QueueRegion)
-                .filter(QueueRegion.id == prt.queue_region_id)
-                .first()
-            )
-            output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+        if player_region_trueskills:
+            output += f"**Trueskill:**"
+            for prt in player_region_trueskills:
+                queue_region: QueueRegion = (
+                    session.query(QueueRegion)
+                    .filter(QueueRegion.id == prt.queue_region_id)
+                    .first()
+                )
+                output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
 
         # This assumes that if a community uses regions then they'll use regions exclusively
-        if not player_region_trueskills:
-            output += f"\nNo region: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+        else:
+            output += f"**Trueskill:** {trueskill_pct}"
+            output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)} _(mu: {round(player.rated_trueskill_mu, 2)}, sigma: {round(player.rated_trueskill_sigma, 2)})_"
     else:
         output += f"**Trueskill:** {trueskill_pct}"
     output += f"\n\n**Wins / Losses / Ties / Total:**"
@@ -3544,11 +4108,23 @@ async def stats(ctx: Context):
     output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
     output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
 
-    await send_message(
-        channel=ctx.message.channel,
-        embed_description=output,
-        colour=Colour.blue(),
-    )
+    if ctx.message.guild:
+        member_: Member | None = ctx.message.guild.get_member(player.id)
+        await send_message(
+            ctx.message.channel,
+            embed_description="Stats sent to DM",
+            colour=Colour.blue(),
+        )
+        if member_:
+            try:
+                await member_.send(
+                    embed=Embed(
+                        description=f"{output}",
+                        colour=Colour.blue(),
+                    ),
+                )
+            except Exception:
+                pass
 
 
 TWITCH_GAME_NAME: str | None = os.getenv("TWITCH_GAME_NAME")
@@ -3593,6 +4169,95 @@ async def streams(ctx: Context):
         embed_title=f"Players streaming {game_name}",
         colour=Colour.blue(),
     )
+
+
+async def _rebalance_game(game: InProgressGame, session: Session, message: Message):
+    """
+    Recreate the players on each team - use this after subbing a player
+    """
+    queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
+
+    game_players = (
+        session.query(InProgressGamePlayer)
+        .filter(InProgressGamePlayer.in_progress_game_id == game.id)
+        .all()
+    )
+    player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
+    players, win_prob = get_even_teams(
+        player_ids,
+        len(player_ids) // 2,
+        is_rated=queue.is_rated,
+        queue_region_id=queue.queue_region_id,
+    )
+    for game_player in game_players:
+        session.delete(game_player)
+    game.win_probability = win_prob
+    team0_players = players[: len(players) // 2]
+    team1_players = players[len(players) // 2 :]
+
+    short_game_id = short_uuid(game.id)
+    channel_message = f"New teams ({short_game_id}):"
+    channel_embed = ""
+    channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
+    channel_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
+
+    for player in team0_players:
+        # TODO: This block is duplicated
+        if not DISABLE_PRIVATE_MESSAGES:
+            if message.guild:
+                member_: Member | None = message.guild.get_member(player.id)
+                if member_:
+                    try:
+                        await member_.send(
+                            content=channel_message,
+                            embed=Embed(
+                                description=f"{channel_embed}",
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
+
+        game_player = InProgressGamePlayer(
+            in_progress_game_id=game.id,
+            player_id=player.id,
+            team=0,
+        )
+        session.add(game_player)
+
+    for player in team1_players:
+        # TODO: This block is duplicated
+        if not DISABLE_PRIVATE_MESSAGES:
+            if message.guild:
+                member_: Member | None = message.guild.get_member(player.id)
+                if member_:
+                    try:
+                        await member_.send(
+                            content=channel_message,
+                            embed=Embed(
+                                description=f"{channel_embed}",
+                                colour=Colour.blue(),
+                            ),
+                        )
+                    except Exception:
+                        pass
+
+        game_player = InProgressGamePlayer(
+            in_progress_game_id=game.id,
+            player_id=player.id,
+            team=1,
+        )
+        session.add(game_player)
+
+    await send_message(
+        message.channel,
+        content=channel_message,
+        embed_description=channel_embed,
+        colour=Colour.blue(),
+    )
+    session.commit()
+
+    pass
 
 
 @bot.command()
@@ -3678,86 +4343,8 @@ async def sub(ctx: Context, member: Member):
     game: InProgressGame | None = callee_game or caller_game
     if not game:
         return
-    queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
 
-    game_players = (
-        session.query(InProgressGamePlayer)
-        .filter(InProgressGamePlayer.in_progress_game_id == game.id)
-        .all()
-    )
-    player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
-    players, win_prob = get_even_teams(
-        player_ids,
-        len(player_ids) // 2,
-        is_rated=queue.is_rated,
-        queue_region_id=queue.queue_region_id,
-    )
-    for game_player in game_players:
-        session.delete(game_player)
-    game.win_probability = win_prob
-    team0_players = players[: len(players) // 2]
-    team1_players = players[len(players) // 2 :]
-
-    short_game_id = short_uuid(game.id)
-    channel_message = f"New teams ({short_game_id}):"
-    channel_embed = ""
-    channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
-    channel_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
-
-    for player in team0_players:
-        # TODO: This block is duplicated
-        if not DISABLE_PRIVATE_MESSAGES:
-            if message.guild:
-                member_: Member | None = message.guild.get_member(player.id)
-                if member_:
-                    try:
-                        await member_.send(
-                            content=channel_message,
-                            embed=Embed(
-                                description=f"{channel_embed}",
-                                colour=Colour.blue(),
-                            ),
-                        )
-                    except Exception:
-                        pass
-
-        game_player = InProgressGamePlayer(
-            in_progress_game_id=game.id,
-            player_id=player.id,
-            team=0,
-        )
-        session.add(game_player)
-
-    for player in team1_players:
-        # TODO: This block is duplicated
-        if not DISABLE_PRIVATE_MESSAGES:
-            if message.guild:
-                member_: Member | None = message.guild.get_member(player.id)
-                if member_:
-                    try:
-                        await member_.send(
-                            content=channel_message,
-                            embed=Embed(
-                                description=f"{channel_embed}",
-                                colour=Colour.blue(),
-                            ),
-                        )
-                    except Exception:
-                        pass
-
-        game_player = InProgressGamePlayer(
-            in_progress_game_id=game.id,
-            player_id=player.id,
-            team=1,
-        )
-        session.add(game_player)
-
-    await send_message(
-        message.channel,
-        content=channel_message,
-        embed_description=channel_embed,
-        colour=Colour.blue(),
-    )
+    await _rebalance_game(game, session, message)
     session.commit()
 
 
@@ -3811,7 +4398,7 @@ async def unisolatequeue(ctx: Context, queue_name: str):
 async def unlockqueue(ctx: Context, queue_name: str):
     message = ctx.message
     session = Session()
-    queue: Queue | None = session.query(Queue).filter(Queue.name == queue_name).first()
+    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
     if not queue:
         await send_message(
             message.channel,
@@ -3825,7 +4412,7 @@ async def unlockqueue(ctx: Context, queue_name: str):
 
     await send_message(
         message.channel,
-        embed_description=f"Queue {queue_name} unlocked",
+        embed_description=f"Queue **{queue.name}** unlocked",
         colour=Colour.green(),
     )
 
@@ -4067,7 +4654,7 @@ async def voteskip(ctx: Context):
 
     skip_map_votes: list[SkipMapVote] = Session().query(SkipMapVote).all()
     if len(skip_map_votes) >= MAP_VOTE_THRESHOLD:
-        await update_current_map_to_next_map_in_rotation()
+        await update_current_map_to_next_map_in_rotation(False)
         current_map: CurrentMap = Session().query(CurrentMap).first()
         await send_message(
             message.channel,

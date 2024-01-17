@@ -13,6 +13,11 @@ from discord.ext import tasks
 from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
+from discord_bots.utils import (
+    update_current_map_to_next_map_in_rotation,
+    send_message,
+)
+
 
 from .bot import bot
 from .commands import (
@@ -22,6 +27,7 @@ from .commands import (
     create_game,
     is_in_game,
 )
+from .config import DISABLE_MAP_ROTATION
 from .models import (
     CurrentMap,
     InProgressGame,
@@ -39,11 +45,6 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
-from .utils import (
-    RANDOM_MAP_ROTATION,
-    send_message,
-    update_current_map_to_next_map_in_rotation,
-)
 
 
 @tasks.loop(minutes=1)
@@ -143,7 +144,7 @@ async def queue_waitlist_task():
     TODO: Tests for this method
     """
     session = Session()
-    queues: list[Queue] = session.query(Queue).order_by(Queue.created_at.asc())  # type: ignore
+    queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc())  # type: ignore
     queue_waitlist: QueueWaitlist
     channel = None
     guild: Guild | None = None
@@ -292,7 +293,10 @@ async def map_rotation_task():
     if not current_map:
         return
 
-    if current_map.map_rotation_index == 0 and not RANDOM_MAP_ROTATION:
+    if DISABLE_MAP_ROTATION:
+        return
+
+    if current_map.map_rotation_index == 0:
         # Stop at the first map
         return
 
@@ -300,7 +304,7 @@ async def map_rotation_task():
         timezone.utc
     ) - current_map.updated_at.replace(tzinfo=timezone.utc)
     if (time_since_update.seconds // 60) > MAP_ROTATION_MINUTES:
-        await update_current_map_to_next_map_in_rotation()
+        await update_current_map_to_next_map_in_rotation(False)
 
 
 @tasks.loop(seconds=1)
@@ -311,7 +315,7 @@ async def add_player_task():
     This helps with concurrency issues since players can be added from multiple
     sources (waitlist vs normal add command)
     """
-    queues: list[Queue] = Session().query(Queue).all()
+    queues: list[Queue] = Session().query(Queue).order_by(Queue.ordinal.asc()).all()
     queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
     message: AddPlayerQueueMessage | None = None
     while not add_player_queue.empty():
@@ -390,7 +394,7 @@ async def add_player_task():
                     for prt in sorted(
                         player_region_trueskills,
                         key=lambda prt: prt.rated_trueskill_mu,
-                        reverse=True
+                        reverse=True,
                     )[: queue.size]
                 ]
             else:
@@ -402,7 +406,7 @@ async def add_player_task():
                     for player in sorted(
                         players,
                         key=lambda player: player.rated_trueskill_mu,
-                        reverse=True
+                        reverse=True,
                     )[: queue.size]
                 ]
             await create_game(
