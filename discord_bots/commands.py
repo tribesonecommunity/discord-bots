@@ -463,10 +463,10 @@ async def create_game(
     tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
     if tribes_voice_category:
         be_channel = await guild.create_voice_channel(
-            f"{game.team0_name}", category=tribes_voice_category, bitrate=128000
+            f"{game.team0_name}", category=tribes_voice_category
         )
         ds_channel = await guild.create_voice_channel(
-            f"{game.team1_name}", category=tribes_voice_category, bitrate=128000
+            f"{game.team1_name}", category=tribes_voice_category
         )
         session.add(
             InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
@@ -519,11 +519,24 @@ async def add_player_to_queue(
 
     player: Player = session.query(Player).filter(Player.id == player_id).first()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
+    queue_region = session.query(QueueRegion).filter(QueueRegion.id == queue.queue_region_id).first()
+    if queue_region:
+        player_region_trueskill: PlayerRegionTrueskill | None = (
+            session.query(PlayerRegionTrueskill)
+            .filter(
+                PlayerRegionTrueskill.player_id == player_id,
+                PlayerRegionTrueskill.queue_region_id == queue_region.id,
+            )
+            .first()
+        )
+    player_mu = player.rated_trueskill_mu
+    if player_region_trueskill:
+        player_mu = player_region_trueskill.rated_trueskill_mu
     if queue.mu_max is not None:
-        if player.rated_trueskill_mu > queue.mu_max:
+        if player_mu > queue.mu_max:
             return False, False
     if queue.mu_min is not None:
-        if player.rated_trueskill_mu < queue.mu_min:
+        if player_mu < queue.mu_min:
             return False, False
 
     session.add(
@@ -2061,13 +2074,15 @@ async def del_(ctx: Context, *args):
         )
         queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
 
+    session.commit()
+    session.close()
+
     await send_message(
         message.channel,
         content=f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}",
         embed_description=" ".join(queue_statuses),
         colour=Colour.green(),
     )
-    session.commit()
 
 
 @bot.command(usage="<player>")
@@ -2921,6 +2936,7 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
         .order_by(FinishedGame.finished_at.desc())  # type: ignore
         .all()
     )
+    print(players_from_last_30_days)
     queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     # This throws an error if people haven't played in 30 days
     for player in numpy.random.choice(
@@ -3537,6 +3553,7 @@ async def setqueueregion(ctx: Context, queue_name: str, region_name: str):
         colour=Colour.blue(),
     )
     session.commit()
+    session.close()
 
 
 @bot.command()
@@ -3559,6 +3576,7 @@ async def setqueueunrated(ctx: Context, queue_name: str):
             colour=Colour.red(),
         )
     session.commit()
+    session.close()
 
 
 @bot.command()
@@ -3581,6 +3599,7 @@ async def setqueuesweaty(ctx: Context, queue_name: str):
             colour=Colour.red(),
         )
     session.commit()
+    session.close()
 
 
 @bot.command()
