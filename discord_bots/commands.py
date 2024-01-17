@@ -2793,7 +2793,7 @@ async def listmaps(ctx: Context):
 async def lockqueue(ctx: Context, queue_name: str):
     message = ctx.message
     session = Session()
-    queue: Queue | None = session.query(Queue).filter(Queue.name == queue_name).first()
+    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
     if not queue:
         await send_message(
             message.channel,
@@ -2807,7 +2807,7 @@ async def lockqueue(ctx: Context, queue_name: str):
 
     await send_message(
         message.channel,
-        embed_description=f"Queue {queue_name} locked",
+        embed_description=f"Queue **{queue.name}** locked",
         colour=Colour.green(),
     )
 
@@ -4392,7 +4392,7 @@ async def unisolatequeue(ctx: Context, queue_name: str):
 async def unlockqueue(ctx: Context, queue_name: str):
     message = ctx.message
     session = Session()
-    queue: Queue | None = session.query(Queue).filter(Queue.name == queue_name).first()
+    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
     if not queue:
         await send_message(
             message.channel,
@@ -4406,7 +4406,7 @@ async def unlockqueue(ctx: Context, queue_name: str):
 
     await send_message(
         message.channel,
-        embed_description=f"Queue {queue_name} unlocked",
+        embed_description=f"Queue **{queue.name}** unlocked",
         colour=Colour.green(),
     )
 
