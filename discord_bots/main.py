@@ -165,6 +165,17 @@ async def on_leave(member: Member):
     session.commit()
 
 
+@bot.before_invoke
+async def before_invoke(context: Context):
+    session = Session()
+    context.session = session
+
+
+@bot.after_invoke
+async def after_invoke(context: Context):
+    context.session.close()
+
+
 def main():
     load_dotenv()
     API_KEY = os.getenv("DISCORD_API_KEY")

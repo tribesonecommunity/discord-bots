@@ -1050,7 +1050,7 @@ async def add(ctx: Context, *args):
         )
         return
 
-    session = Session()
+    session = ctx.session
     most_recent_game: FinishedGame | None = (
         session.query(FinishedGame)
         .join(FinishedGamePlayer)
@@ -1196,7 +1196,7 @@ async def add(ctx: Context, *args):
 @commands.check(is_admin)
 async def addadmin(ctx: Context, member: Member):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     player: Player | None = session.query(Player).filter(Player.id == member.id).first()
     if not player:
         session.add(
@@ -1234,7 +1234,7 @@ async def addadmin(ctx: Context, member: Member):
 async def addadminrole(ctx: Context, role_name: str):
     message = ctx.message
     if message.guild:
-        session = Session()
+        session = ctx.session
         role_name_to_role_id: dict[str, int] = {
             role.name.lower(): role.id for role in message.guild.roles
         }
@@ -1257,7 +1257,7 @@ async def addadminrole(ctx: Context, role_name: str):
 @bot.command()
 @commands.check(is_admin)
 async def addqueueregion(ctx: Context, region_name: str):
-    session = Session()
+    session = ctx.session
     exists = (
         session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
     )
@@ -1284,7 +1284,7 @@ async def addqueueregion(ctx: Context, region_name: str):
 @commands.check(is_admin)
 async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         await send_message(
@@ -1330,7 +1330,7 @@ async def addrandomrotationmap(
         )
         return
 
-    session = Session()
+    session = ctx.session
     session.add(
         RotationMap(
             f"{map_full_name} (R)",
@@ -1361,7 +1361,7 @@ async def addrandomrotationmap(
 @commands.check(is_admin)
 async def addrotationmap(ctx: Context, map_full_name: str, map_short_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     session.add(RotationMap(map_full_name, map_short_name))
     try:
         session.commit()
@@ -1385,7 +1385,7 @@ async def addrotationmap(ctx: Context, map_full_name: str, map_short_name: str):
 @commands.check(is_admin)
 async def addmap(ctx: Context, map_short_name: str, map_full_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     session.add(VoteableMap(map_full_name, map_short_name))
     try:
         session.commit()
@@ -1414,7 +1414,7 @@ async def autosub(ctx: Context, member: Member = None):
     not provided, then the player running the command must be in the game
     """
     message = ctx.message
-    session = Session()
+    session = ctx.session
 
     player_in_game_id = member.id if member else message.author.id
     # If target player isn't a game, exit early
@@ -1493,7 +1493,7 @@ async def autosub(ctx: Context, member: Member = None):
 async def ban(ctx: Context, member: Member):
     """TODO: remove player from queues"""
     message = ctx.message
-    session = Session()
+    session = ctx.session
     players = session.query(Player).filter(Player.id == member.id).all()
     if len(players) == 0:
         session.add(
@@ -1538,7 +1538,7 @@ async def coinflip(ctx: Context):
 @commands.check(is_admin)
 async def cancelgame(ctx: Context, game_id: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     game = (
         session.query(InProgressGame)
         .filter(InProgressGame.id.startswith(game_id))
@@ -1579,7 +1579,7 @@ async def changegamemap(ctx: Context, game_id: str, map_short_name: str):
     """
     TODO: tests
     """
-    session = Session()
+    session = ctx.session
     ipg: InProgressGame | None = (
         session.query(InProgressGame)
         .filter(InProgressGame.id.startswith(game_id))
@@ -1633,7 +1633,7 @@ async def changequeuemap(ctx: Context, map_short_name: str):
     """
     TODO: tests
     """
-    session = Session()
+    session = ctx.session
     current_map: CurrentMap = session.query(CurrentMap).first()
     rotation_map: RotationMap | None = (
         session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
@@ -1676,7 +1676,7 @@ async def changequeuemap(ctx: Context, map_short_name: str):
 
 @bot.command()
 async def commend(ctx: Context, member: Member):
-    session = Session()
+    session = ctx.session
     commender: Player | None = (
         session.query(Player).filter(Player.id == ctx.message.author.id).first()
     )
@@ -1767,7 +1767,7 @@ async def commend(ctx: Context, member: Member):
 
 @bot.command()
 async def commendstats(ctx: Context):
-    session = Session()
+    session = ctx.session
     most_commends_given_statement = (
         select(Player, func.count(Commend.commender_id).label("commend_count"))
         .join(Commend, Commend.commender_id == Player.id)
@@ -1829,7 +1829,7 @@ async def commendstats(ctx: Context):
 @commands.check(is_admin)
 async def createcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
     if exists is not None:
         await send_message(
@@ -1873,7 +1873,7 @@ async def restart(ctx):
 @commands.check(is_admin)
 async def clearqueue(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         await send_message(
@@ -1896,7 +1896,7 @@ async def clearqueue(ctx: Context, queue_name: str):
 @commands.check(is_admin)
 async def clearqueuerange(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.mu_min = None
@@ -1920,7 +1920,7 @@ async def clearqueuerange(ctx: Context, queue_name: str):
 async def createqueue(ctx: Context, queue_name: str, queue_size: int):
     message = ctx.message
     queue = Queue(name=queue_name, size=queue_size)
-    session = Session()
+    session = ctx.session
 
     try:
         session.add(queue)
@@ -1963,7 +1963,7 @@ async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
         )
         return
 
-    session = Session()
+    session = ctx.session
     player: Player = (
         session.query(Player).filter(Player.id == message.mentions[0].id).first()
     )
@@ -2001,7 +2001,7 @@ async def del_(ctx: Context, *args):
     If no args deletes from existing queues
     """
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queues_to_del: list[Queue] = []
     all_queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == message.author.id).order_by(Queue.created_at.asc()).all()  # type: ignore
     if len(args) == 0:
@@ -2067,7 +2067,7 @@ async def delplayer(ctx: Context, member: Member, *args):
     Admin command to delete player from all queues
     """
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(Queue.created_at.asc()).all()  # type: ignore
     for queue in queues:
         session.query(QueuePlayer).filter(
@@ -2106,7 +2106,7 @@ async def delplayer(ctx: Context, member: Member, *args):
 
 @bot.command()
 async def disableleaderboard(ctx: Context):
-    session = Session()
+    session = ctx.session
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     player.leaderboard_enabled = False
     session.commit()
@@ -2120,7 +2120,7 @@ async def disableleaderboard(ctx: Context):
 @bot.command(usage="<command_name> <output>")
 async def editcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
     if exists is None:
         await send_message(
@@ -2144,7 +2144,7 @@ async def editcommand(ctx: Context, name: str, *, output: str):
 @commands.check(is_admin)
 async def editgamewinner(ctx: Context, game_id: str, outcome: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     game: FinishedGame | None = (
         session.query(FinishedGame)
         .filter(FinishedGame.game_id.startswith(game_id))
@@ -2184,7 +2184,7 @@ async def editgamewinner(ctx: Context, game_id: str, outcome: str):
 
 @bot.command()
 async def enableleaderboard(ctx: Context):
-    session = Session()
+    session = ctx.session
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     player.leaderboard_enabled = True
     session.commit()
@@ -2198,7 +2198,7 @@ async def enableleaderboard(ctx: Context):
 @bot.command(usage="<win|loss|tie>")
 async def finishgame(ctx: Context, outcome: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     game_player = (
         session.query(InProgressGamePlayer)
         .filter(InProgressGamePlayer.player_id == message.author.id)
@@ -2533,7 +2533,7 @@ async def finishgame(ctx: Context, outcome: str):
 @commands.check(is_admin)
 async def isolatequeue(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.is_isolated = True
@@ -2634,7 +2634,7 @@ async def listmaprotation(ctx: Context):
 @bot.command()
 async def listnotifications(ctx: Context):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue_notifications: list[QueueNotification] = session.query(
         QueueNotification
     ).filter(QueueNotification.player_id == ctx.author.id)
@@ -2651,7 +2651,7 @@ async def listnotifications(ctx: Context):
 @commands.check(is_admin)
 async def listplayerdecays(ctx: Context, member: Member):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     player = session.query(Player).filter(Player.id == member.id).first()
     player_decays: list[PlayerDecay] = session.query(PlayerDecay).filter(
         PlayerDecay.player_id == player.id
@@ -2666,7 +2666,7 @@ async def listplayerdecays(ctx: Context, member: Member):
 @bot.command()
 async def listqueueregions(ctx: Context):
     output = "Regions:"
-    session = Session()
+    session = ctx.session
     queue_region: QueueRegion
     for queue_region in session.query(QueueRegion).all():
         output += f"\n- {queue_region.name}"
@@ -2683,7 +2683,7 @@ async def listqueueroles(ctx: Context):
         return
 
     output = "Queues:\n"
-    session = Session()
+    session = ctx.session
     queue: Queue
     for i, queue in enumerate(session.query(Queue).all()):
         queue_role_names: list[str] = []
@@ -2714,7 +2714,7 @@ async def listmaps(ctx: Context):
 @commands.check(is_admin)
 async def lockqueue(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
     if not queue:
         await send_message(
@@ -2768,7 +2768,7 @@ async def trueskill(ctx: Context):
 @bot.command(name="map")
 async def map_(ctx: Context):
     # TODO: This is duplicated
-    session = Session()
+    session = ctx.session
     output = ""
     current_map: CurrentMap | None = session.query(CurrentMap).first()
     if current_map:
@@ -2825,7 +2825,7 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
         )
         return
 
-    session = Session()
+    session = ctx.session
     players_from_last_30_days = (
         session.query(Player)
         .join(FinishedGamePlayer, FinishedGamePlayer.player_id == Player.id)
@@ -2868,7 +2868,7 @@ async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
         )
         return
 
-    session = Session()
+    session = ctx.session
     if isinstance(queue_name_or_index, str):
         queue: Queue | None = (
             session.query(Queue).filter(Queue.name.ilike(queue_name_or_index)).first()
@@ -2925,7 +2925,7 @@ async def gamehistory(ctx: Context, count: int):
         )
         return
 
-    session = Session()
+    session = ctx.session
     finished_games: list[FinishedGame] = (
         session.query(FinishedGame).order_by(FinishedGame.finished_at.desc()).limit(count)  # type: ignore
     )
@@ -2958,7 +2958,7 @@ async def pug(ctx: Context):
 
 @bot.command()
 async def randommap(ctx: Context):
-    session = Session()
+    session = ctx.session
     voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
     voteable_map = choice(voteable_maps)
     await send_message(
@@ -2972,7 +2972,7 @@ async def randommap(ctx: Context):
 @commands.check(is_admin)
 async def removeadmin(ctx: Context, member: Member):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     players = session.query(Player).filter(Player.id == member.id).all()
     if len(players) == 0 or not players[0].is_admin:
         await send_message(
@@ -2996,7 +2996,7 @@ async def removeadmin(ctx: Context, member: Member):
 async def removeadminrole(ctx: Context, role_name: str):
     message = ctx.message
     if message.guild:
-        session = Session()
+        session = ctx.session
         role_name_to_role_id: dict[str, int] = {
             role.name.lower(): role.id for role in message.guild.roles
         }
@@ -3033,7 +3033,7 @@ async def removeadminrole(ctx: Context, role_name: str):
 @commands.check(is_admin)
 async def removecommand(ctx: Context, name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
     if not exists:
         await send_message(
@@ -3057,7 +3057,7 @@ async def removecommand(ctx: Context, name: str):
 @commands.check(is_admin)
 async def removenotifications(ctx: Context):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     session.query(QueueNotification).filter(
         QueueNotification.player_id == ctx.author.id
     ).delete()
@@ -3073,7 +3073,7 @@ async def removenotifications(ctx: Context):
 @commands.check(is_admin)
 async def removequeue(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
 
     queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
@@ -3128,7 +3128,7 @@ async def removedbbackup(ctx: Context, db_filename: str):
 @bot.command()
 @commands.check(is_admin)
 async def removequeueregion(ctx: Context, region_name: str):
-    session = Session()
+    session = ctx.session
     region = (
         session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
     )
@@ -3155,7 +3155,7 @@ async def removequeueregion(ctx: Context, region_name: str):
 @commands.check(is_admin)
 async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         await send_message(
@@ -3212,7 +3212,7 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
 @commands.check(is_admin)
 async def removerotationmap(ctx: Context, map_short_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     rotation_map = (
         session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
     )
@@ -3236,7 +3236,7 @@ async def removerotationmap(ctx: Context, map_short_name: str):
 @commands.check(is_admin)
 async def removemap(ctx: Context, map_short_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     voteable_map = (
         session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
     )
@@ -3274,7 +3274,7 @@ async def roll(ctx: Context, low_range: int, high_range: int):
 @commands.check(is_admin)
 async def resetplayertrueskill(ctx: Context, member: Member):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     player: Player = session.query(Player).filter(Player.id == member.id).first()
     default_rating = Rating(12.5)
     player.rated_trueskill_mu = default_rating.mu
@@ -3354,7 +3354,7 @@ async def setcommandprefix(ctx: Context, prefix: str):
 @commands.check(is_admin)
 async def setqueueordinal(ctx: Context, queue_name: str, ordinal: int):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.ordinal = ordinal
@@ -3378,7 +3378,7 @@ async def setqueueordinal(ctx: Context, queue_name: str, ordinal: int):
 @commands.check(is_admin)
 async def setqueuerange(ctx: Context, queue_name: str, min: float, max: float):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.mu_min = min
@@ -3401,7 +3401,7 @@ async def setqueuerange(ctx: Context, queue_name: str, min: float, max: float):
 @commands.check(is_admin)
 async def setqueuerated(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.is_rated = True
@@ -3423,7 +3423,7 @@ async def setqueuerated(ctx: Context, queue_name: str):
 @commands.check(is_admin)
 async def setqueueregion(ctx: Context, queue_name: str, region_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         session.close()
@@ -3459,7 +3459,7 @@ async def setqueueregion(ctx: Context, queue_name: str, region_name: str):
 @commands.check(is_admin)
 async def setqueueunrated(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.is_rated = False
@@ -3482,7 +3482,7 @@ async def setqueueunrated(ctx: Context, queue_name: str):
 @commands.check(is_admin)
 async def setqueuesweaty(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.is_sweaty = True
@@ -3526,7 +3526,7 @@ async def setsigma(ctx: Context, member: Member, sigma: float):
         )
         return
 
-    session = Session()
+    session = ctx.session
     player: Player = session.query(Player).filter(Player.id == member.id).first()
     sigma_before = player.rated_trueskill_sigma
     player.rated_trueskill_sigma = sigma
@@ -3543,7 +3543,7 @@ async def setsigma(ctx: Context, member: Member, sigma: float):
 @bot.command()
 async def showgame(ctx: Context, game_id: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     finished_game = (
         session.query(FinishedGame)
         .filter(FinishedGame.game_id.startswith(game_id))
@@ -3577,7 +3577,7 @@ async def showgamedebug(ctx: Context, game_id: str):
         return
 
     message = ctx.message
-    session = Session()
+    session = ctx.session
     finished_game = (
         session.query(FinishedGame)
         .filter(FinishedGame.game_id.startswith(game_id))
@@ -3712,7 +3712,7 @@ async def showgamedebug(ctx: Context, game_id: str):
 @bot.command(usage="<queue_name>")
 async def showqueuerange(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         await send_message(
@@ -3734,7 +3734,7 @@ async def showsigma(ctx: Context, member: Member):
     """
     Returns the player's base sigma. Doesn't consider regions
     """
-    session = Session()
+    session = ctx.session
     player: Player = session.query(Player).filter(Player.id == member.id).first()
     output = (
         embed_title
@@ -3749,7 +3749,7 @@ async def showsigma(ctx: Context, member: Member):
 
 @bot.command()
 async def status(ctx: Context, *args):
-    session = Session()
+    session = ctx.session
     queues: list[Queue] = []
     all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
     if len(args) == 0:
@@ -3899,7 +3899,7 @@ def win_rate(wins, losses, ties):
 @bot.command()
 async def stats(ctx: Context):
     player_id = ctx.message.author.id
-    session = Session()
+    session = ctx.session
     fgps = (
         session.query(FinishedGamePlayer)
         .filter(FinishedGamePlayer.player_id == player_id)
@@ -4204,7 +4204,7 @@ async def sub(ctx: Context, member: Member):
     """
     Substitute one player in a game for another
     """
-    session = Session()
+    session = ctx.session
     caller = message.author
     caller_game = get_player_game(caller.id, session)
     callee = member
@@ -4290,7 +4290,7 @@ async def sub(ctx: Context, member: Member):
 @commands.check(is_admin)
 async def unban(ctx: Context, member: Member):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     players = session.query(Player).filter(Player.id == member.id).all()
     if len(players) == 0 or not players[0].is_banned:
         await send_message(
@@ -4313,7 +4313,7 @@ async def unban(ctx: Context, member: Member):
 @commands.check(is_admin)
 async def unisolatequeue(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.is_isolated = False
@@ -4335,7 +4335,7 @@ async def unisolatequeue(ctx: Context, queue_name: str):
 @commands.check(is_admin)
 async def unlockqueue(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
     if not queue:
         await send_message(
@@ -4359,7 +4359,7 @@ async def unlockqueue(ctx: Context, queue_name: str):
 @commands.check(is_admin)
 async def unsetqueueregion(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if not queue:
         session.close()
@@ -4383,7 +4383,7 @@ async def unsetqueueregion(ctx: Context, queue_name: str):
 @commands.check(is_admin)
 async def unsetqueuesweaty(ctx: Context, queue_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
     if queue:
         queue.is_sweaty = False
@@ -4407,7 +4407,7 @@ async def unvote(ctx: Context):
     """
     Remove all of a player's votes
     """
-    session = Session()
+    session = ctx.session
     session.query(MapVote).filter(MapVote.player_id == message.author.id).delete()
     session.query(SkipMapVote).filter(
         SkipMapVote.player_id == message.author.id
@@ -4424,7 +4424,7 @@ async def unvote(ctx: Context):
 @bot.command()
 async def unvotemap(ctx: Context, map_short_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
     if not voteable_map:
         await send_message(
@@ -4464,7 +4464,7 @@ async def unvoteskip(ctx: Context):
     """
     A player votes to go to the next map in rotation
     """
-    session = Session()
+    session = ctx.session
     skip_map_vote: SkipMapVote | None = (
         session.query(SkipMapVote)
         .filter(SkipMapVote.player_id == message.author.id)
@@ -4495,7 +4495,7 @@ def get_voteable_maps_str():
 @bot.command(usage=f"<map_short_name>\nMaps:{get_voteable_maps_str()}")
 async def votemap(ctx: Context, map_short_name: str):
     message = ctx.message
-    session = Session()
+    session = ctx.session
     voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
     if not voteable_map:
         await send_message(
@@ -4583,7 +4583,7 @@ async def voteskip(ctx: Context):
     """
     A player votes to go to the next map in rotation
     """
-    session = Session()
+    session = ctx.session
     session.add(SkipMapVote(message.channel.id, message.author.id))
     try:
         session.commit()
