@@ -2779,6 +2779,8 @@ async def listqueueroles(ctx: Context):
             role = message.guild.get_role(queue_role.role_id)
             if role:
                 queue_role_names.append(role.name)
+            else:
+                queue_role_names.append(str(queue_role.role_id))
         output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
