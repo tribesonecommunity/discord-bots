@@ -7,7 +7,7 @@ from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
 from discord_bots.cogs.raffle import RaffleCog
-from discord_bots.config import LEADERBOARD_CHANNEL
+from discord_bots.config import ENABLE_DEBUG, LEADERBOARD_CHANNEL
 
 from discord_bots.utils import CHANNEL_ID
 
@@ -72,6 +72,17 @@ async def on_command_error(ctx: Context, error: CommandError):
 
 @bot.event
 async def on_message(message: Message):
+    # Use this to get the channel id
+    if ENABLE_DEBUG:
+        if (message.content.startswith(COMMAND_PREFIX) and 'configurebot' in message.content):
+            guild = message.guild
+            print(f"Your id: {message.author.id}")
+            print(f"Channel id: {message.channel.id}")
+            print(f"{[(c.id, c.name) for c in guild.categories]}")
+
+            # await message.channel.send(content=f"Your id: {message.author.id}\nChannel id: {message.channel.id}")
+            return
+
     if ((CHANNEL_ID and message.channel.id == CHANNEL_ID) or (LEADERBOARD_CHANNEL and message.channel.id == LEADERBOARD_CHANNEL)):
         session = Session()
         player: Player | None = (
