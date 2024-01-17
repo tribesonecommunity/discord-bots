@@ -1397,7 +1397,7 @@ async def addmap(ctx: Context, map_short_name: str, map_full_name: str):
 
 
 @bot.command()
-async def autosub(ctx: Context, member: Member | None = None):
+async def autosub(ctx: Context, member: Member = None):
     """
     Picks a person to sub at random
 
