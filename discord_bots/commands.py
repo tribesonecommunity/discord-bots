@@ -2118,6 +2118,11 @@ async def delplayer(ctx: Context, member: Member, *args):
 
 
 @bot.command()
+async def testleaderboard(ctx: Context, test_message: str):
+    await print_leaderboard(test_message)
+
+
+@bot.command()
 async def disableleaderboard(ctx: Context):
     session = ctx.session
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
