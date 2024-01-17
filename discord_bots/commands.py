@@ -4043,7 +4043,7 @@ async def stats(ctx: Context):
         trueskills,
         round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
     )
-    trueskill_ratio = (len(trueskills) - trueskill_index) / len(trueskills)
+    trueskill_ratio = (len(trueskills) - trueskill_index) / (len(trueskills) or 1)
     if trueskill_ratio <= 0.05:
         trueskill_pct = "Top 5%"
     elif trueskill_ratio <= 0.10:
