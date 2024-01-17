@@ -1094,8 +1094,13 @@ async def add(ctx: Context, *args):
         for arg in args:
             # Try adding by integer index first, then try string name
             try:
-                queue_index = int(arg) - 1
-                queues_to_add.append(all_queues[queue_index])
+                queue_ordinal = int(arg)
+                queues_with_ordinal = list(filter(
+                    lambda x: x.ordinal == queue_ordinal,
+                    all_queues
+                ))
+                for queue_to_add in queues_with_ordinal:
+                    queues_to_add.append(queue_to_add)
             except ValueError:
                 queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
                 if queue:
@@ -2133,6 +2138,7 @@ async def disablestats(ctx: Context):
         embed_description="!stats disabled",
         colour=Colour.blue()
     )
+    session.close()
 
 
 @bot.command(usage="<command_name> <output>")
@@ -2224,6 +2230,7 @@ async def enablestats(ctx: Context):
         embed_description="!stats enabled",
         colour=Colour.blue()
     )
+    session.close()
 
 
 @bot.command(usage="<win|loss|tie>")
@@ -2800,6 +2807,8 @@ async def listqueueroles(ctx: Context):
             role = message.guild.get_role(queue_role.role_id)
             if role:
                 queue_role_names.append(role.name)
+            else:
+                queue_role_names.append(str(queue_role.role_id))
         output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
@@ -2819,7 +2828,7 @@ async def listmaps(ctx: Context):
 async def lockqueue(ctx: Context, queue_name: str):
     message = ctx.message
     session = Session()
-    queue: Queue | None = session.query(Queue).filter(Queue.name == queue_name).first()
+    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
     if not queue:
         await send_message(
             message.channel,
@@ -2833,7 +2842,7 @@ async def lockqueue(ctx: Context, queue_name: str):
 
     await send_message(
         message.channel,
-        embed_description=f"Queue {queue_name} locked",
+        embed_description=f"Queue **{queue.name}** locked",
         colour=Colour.green(),
     )
 
@@ -3273,11 +3282,31 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
             role.name.lower(): role.id for role in message.guild.roles
         }
         if role_name.lower() not in role_name_to_role_id:
+            # In case a queue role was deleted from the server
+            queue_role_by_role_id = session.query(QueueRole).filter(
+                QueueRole.queue_id == queue.id,
+                QueueRole.role_id == role_name,
+            )
+            if queue_role_by_role_id:
+                session.query(QueueRole).filter(
+                    QueueRole.queue_id == queue.id,
+                    QueueRole.role_id == role_name,
+                ).delete()
+                session.commit()
+                session.close()
+                await send_message(
+                    message.channel,
+                    embed_description=f"Removed role {role_name} from queue {queue_name}",
+                    colour=Colour.green(),
+                )
+                return
+
             await send_message(
                 message.channel,
                 embed_description=f"Could not find role: {role_name}",
                 colour=Colour.red(),
             )
+            session.close()
             return
         session.query(QueueRole).filter(
             QueueRole.queue_id == queue.id,
@@ -3289,6 +3318,7 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
             colour=Colour.green(),
         )
         session.commit()
+        session.close()
 
 
 @bot.command()
@@ -3442,12 +3472,14 @@ async def setqueueordinal(ctx: Context, queue_name: str, ordinal: int):
     if queue:
         queue.ordinal = ordinal
         session.commit()
+        session.close()
         await send_message(
             message.channel,
             embed_description=f"Queue {queue_name} ordinal set to {ordinal}",
             colour=Colour.blue(),
         )
     else:
+        session.close()
         await send_message(
             message.channel,
             embed_description=f"Queue not found: {queue_name}",
@@ -3914,10 +3946,10 @@ async def status(ctx: Context, *args):
             )
         if queue.is_locked:
             output += (
-                f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+                f"f({queue.ordinal}) {queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
             )
         else:
-            output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+            output += f"**({queue.ordinal}) {queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
         if len(players_in_queue) > 0:
             output += f"**IN QUEUE:** "
@@ -4428,7 +4460,7 @@ async def unisolatequeue(ctx: Context, queue_name: str):
 async def unlockqueue(ctx: Context, queue_name: str):
     message = ctx.message
     session = Session()
-    queue: Queue | None = session.query(Queue).filter(Queue.name == queue_name).first()
+    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
     if not queue:
         await send_message(
             message.channel,
@@ -4442,7 +4474,7 @@ async def unlockqueue(ctx: Context, queue_name: str):
 
     await send_message(
         message.channel,
-        embed_description=f"Queue {queue_name} unlocked",
+        embed_description=f"Queue **{queue.name}** unlocked",
         colour=Colour.green(),
     )
 
