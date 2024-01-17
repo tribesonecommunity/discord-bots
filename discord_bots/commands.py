@@ -2135,6 +2135,19 @@ async def disableleaderboard(ctx: Context):
     )
 
 
+@bot.command()
+async def disablestats(ctx: Context):
+    session = ctx.session
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player.stats_enabled = False
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description="!stats disabled",
+        colour=Colour.blue()
+    )
+
+
 @bot.command(usage="<command_name> <output>")
 async def editcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
@@ -2210,6 +2223,19 @@ async def enableleaderboard(ctx: Context):
         ctx.message.channel,
         embed_description="You are visible on the leaderboard",
         colour=Colour.blue(),
+    )
+
+
+@bot.command()
+async def enablestats(ctx: Context):
+    session = ctx.session
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player.stats_enabled = True
+    session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description="!stats enabled",
+        colour=Colour.blue()
     )
 
 
@@ -4017,6 +4043,17 @@ def win_rate(wins, losses, ties):
 async def stats(ctx: Context):
     player_id = ctx.message.author.id
     session = ctx.session
+    player: Player = session.query(Player).filter(Player.id == player_id).first()
+
+    if not player.stats_enabled and ctx.message.guild:
+        member_: Member | None = ctx.message.guild.get_member(player.id)
+        await send_message(
+            ctx.message.channel,
+            embed_description="You have disabled !stats",
+            colour=Colour.blue(),
+        )
+        return
+
     fgps = (
         session.query(FinishedGamePlayer)
         .filter(FinishedGamePlayer.player_id == player_id)
@@ -4030,7 +4067,6 @@ async def stats(ctx: Context):
         fgp.finished_game_id: fgp for fgp in fgps
     }
 
-    player: Player = session.query(Player).filter(Player.id == player_id).first()
     players: list[Player] = session.query(Player).all()
 
     default_rating = Rating()

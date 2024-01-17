@@ -489,6 +489,12 @@ class Player:
             "sa": Column(Boolean, nullable=False, server_default=expression.true())
         },
     )
+    stats_enabled: bool = field(
+        default=True,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.true())
+        },
+    )
     finished_game_players = relationship("FinishedGamePlayer", back_populates="player")
 
     @hybrid_property
