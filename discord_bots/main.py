@@ -16,6 +16,7 @@ from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Ses
 from .tasks import (
     add_player_task,
     afk_timer_task,
+    leaderboard_task,
     map_rotation_task,
     queue_waitlist_task,
     vote_passed_waitlist_task,
@@ -23,6 +24,7 @@ from .tasks import (
 
 add_player_task.start()
 afk_timer_task.start()
+leaderboard_task.start()
 map_rotation_task.start()
 queue_waitlist_task.start()
 vote_passed_waitlist_task.start()
@@ -161,6 +163,17 @@ async def on_leave(member: Member):
         QueueWaitlistPlayer.player_id == member.id
     ).delete()
     session.commit()
+
+
+@bot.before_invoke
+async def before_invoke(context: Context):
+    session = Session()
+    context.session = session
+
+
+@bot.after_invoke
+async def after_invoke(context: Context):
+    context.session.close()
 
 
 def main():

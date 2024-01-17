@@ -24,7 +24,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
-from sqlalchemy.orm import registry, sessionmaker  # type: ignore
+from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
 from sqlalchemy.sql import expression, func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
@@ -239,6 +239,7 @@ class FinishedGamePlayer:
     player_id: int = field(
         metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
     )
+    player = relationship("Player", back_populates="finished_game_players")
     player_name: str = field(
         metadata={"sa": Column(String, nullable=False, index=True)},
     )
@@ -493,6 +494,7 @@ class Player:
             "sa": Column(Boolean, nullable=False, server_default=expression.true())
         },
     )
+    finished_game_players = relationship("FinishedGamePlayer", back_populates="player")
 
     @hybrid_property
     def leaderboard_trueskill(self):
