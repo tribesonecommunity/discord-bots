@@ -2123,7 +2123,7 @@ async def disableleaderboard(ctx: Context):
 
 @bot.command()
 async def disablestats(ctx: Context):
-    session = Session()
+    session = ctx.session
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     player.stats_enabled = False
     session.commit()
@@ -2132,7 +2132,6 @@ async def disablestats(ctx: Context):
         embed_description="!stats disabled",
         colour=Colour.blue()
     )
-    session.close()
 
 
 @bot.command(usage="<command_name> <output>")
@@ -2215,7 +2214,7 @@ async def enableleaderboard(ctx: Context):
 
 @bot.command()
 async def enablestats(ctx: Context):
-    session = Session()
+    session = ctx.session
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     player.stats_enabled = True
     session.commit()
@@ -2224,7 +2223,6 @@ async def enablestats(ctx: Context):
         embed_description="!stats enabled",
         colour=Colour.blue()
     )
-    session.close()
 
 
 @bot.command(usage="<win|loss|tie>")
