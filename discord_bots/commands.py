@@ -365,10 +365,21 @@ async def create_game(
             is_rated=queue.is_rated,
             queue_region_id=queue.queue_region_id,
         )
+    queue_region = session.query(QueueRegion).filter(QueueRegion.id == queue.queue_region_id).first()
+    if queue_region:
+        player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
+            PlayerRegionTrueskill.queue_region_id == queue_region.id
+        )
     if queue.is_rated:
-        average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
+        if player_region_trueskills:
+            average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, player_region_trueskills)))
+        else:
+            average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
     else:
-        average_trueskill = mean(list(map(lambda x: x.unrated_trueskill_mu, players)))
+        if player_region_trueskills:
+            average_trueskill = mean(list(map(lambda x: x.unrated_trueskill_mu, player_region_trueskills)))
+        else:
+            average_trueskill = mean(list(map(lambda x: x.unrated_trueskill_mu, players)))
     current_map: CurrentMap | None = session.query(CurrentMap).first()
 
     if not current_map:
@@ -404,7 +415,10 @@ async def create_game(
 
     short_game_id = short_uuid(game.id)
     message_content = f"Game '{queue.name}' ({short_game_id}) has begun!"
-    message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})**\n"
+    if SHOW_TRUESKILL:
+        message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})** (mu: {round(average_trueskill, 2)})\n"
+    else:
+        message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})**\n"
     message_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
     message_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
 
@@ -779,35 +793,8 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         .all()
     )
 
-    if finished_game.is_rated:
-        average_mu = mean(
-            [
-                fgp.rated_trueskill_mu_before
-                for fgp in team0_fg_players + team1_fg_players
-            ]
-        )
-        average_sigma = mean(
-            [
-                fgp.rated_trueskill_sigma_before
-                for fgp in team0_fg_players + team1_fg_players
-            ]
-        )
-    else:
-        average_mu = mean(
-            [
-                fgp.unrated_trueskill_mu_before
-                for fgp in team0_fg_players + team1_fg_players
-            ]
-        )
-        average_sigma = mean(
-            [
-                fgp.unrated_trueskill_sigma_before
-                for fgp in team0_fg_players + team1_fg_players
-            ]
-        )
-
-    if debug:
-        output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id}) (mu: {round(average_mu, 2)}, sigma: {round(average_sigma, 2)})"
+    if SHOW_TRUESKILL:
+        output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id}) (mu: {round(finished_game.average_trueskill, 2)})"
     else:
         output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id})"
 
@@ -843,52 +830,27 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         )
     team0_win_prob = round(100 * finished_game.win_probability, 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
-    if finished_game.is_rated:
-        team0_mu = round(
-            mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
-        )
-        team1_mu = round(
-            mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
-        )
-        team0_sigma = round(
-            mean([player.rated_trueskill_sigma_before for player in team0_fg_players]),
-            2,
-        )
-        team1_sigma = round(
-            mean([player.rated_trueskill_sigma_before for player in team1_fg_players]),
-            2,
-        )
-    else:
-        team0_mu = round(
-            mean([player.unrated_trueskill_mu_before for player in team0_fg_players]), 2
-        )
-        team1_mu = round(
-            mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
-        )
-        team0_sigma = round(
-            mean(
-                [player.unrated_trueskill_sigma_before for player in team0_fg_players]
-            ),
-            2,
-        )
-        team1_sigma = round(
-            mean(
-                [player.unrated_trueskill_sigma_before for player in team1_fg_players]
-            ),
-            2,
-        )
+    # TODO: This is wrong when the game has a region
+    # if finished_game.is_rated:
+    #     team0_mu = round(
+    #         mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
+    #     )
+    #     team1_mu = round(
+    #         mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
+    #     )
+    # else:
+    #     team0_mu = round(
+    #         mean([player.unrated_trueskill_mu_before for player in team0_fg_players]), 2
+    #     )
+    #     team1_mu = round(
+    #         mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
+    #     )
     team0_str = (
-        f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}): {team0_names}"
+        f"{finished_game.team0_name} ({team0_win_prob}%: {team0_names}"
     )
     team1_str = (
-        f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}): {team1_names}"
+        f"{finished_game.team1_name} ({team1_win_prob}%: {team1_names}"
     )
-    # if debug:
-    #     team0_str = f"{finished_game.team0_name} ({team0_win_prob}%, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
-    #     team1_str = f"{finished_game.team1_name} ({team1_win_prob}%, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
-    # else:
-    #     team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
-    #     team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
 
     if finished_game.winning_team == 0:
         output += f"\n**{team0_str}**"
@@ -2075,7 +2037,6 @@ async def del_(ctx: Context, *args):
         queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
 
     session.commit()
-    session.close()
 
     await send_message(
         message.channel,
@@ -2083,6 +2044,7 @@ async def del_(ctx: Context, *args):
         embed_description=" ".join(queue_statuses),
         colour=Colour.green(),
     )
+    session.close()
 
 
 @bot.command(usage="<player>")
@@ -3927,13 +3889,6 @@ async def status(ctx: Context, *args):
             .filter(QueuePlayer.queue_id == queue.id)
             .all()
         )
-        queue_region: QueueRegion | None = None
-        if queue.queue_region_id:
-            queue_region = (
-                session.query(QueueRegion)
-                .filter(QueueRegion.id == queue.queue_region_id)
-                .first()
-            )
         if queue.is_locked:
             output += (
                 f"f({queue.ordinal}) {queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
@@ -3974,7 +3929,10 @@ async def status(ctx: Context, *args):
                 short_game_id = short_uuid(game.id)
                 if i > 0:
                     output += "\n"
-                output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
+                if SHOW_TRUESKILL:
+                    output += f"**Map: {game.map_full_name}** ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                else:
+                    output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
                 output += pretty_format_team(
                     game.team0_name, game.win_probability, team0_players
                 )

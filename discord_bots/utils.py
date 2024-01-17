@@ -51,11 +51,11 @@ def pretty_format_team(
             ]
         )
     )
-    team_mu = round(mean(list(player.rated_trueskill_mu for player in players)), 2)
-    if SHOW_TRUESKILL:
-        return f"**{team_name}** ({round(100 * win_probability, 1)}%, mu: {team_mu}): {player_names}\n"
-    else:
-        return f"**{team_name}** ({round(100 * win_probability, 1)}%): {player_names}\n"
+    # TODO: This isn't right for games with regions
+    # team_mu = round(mean(list(player.rated_trueskill_mu for player in players)), 2)
+    # if SHOW_TRUESKILL:
+    #     return f"**{team_name}** ({round(100 * win_probability, 1)}%, mu: {team_mu}): {player_names}\n"
+    return f"**{team_name}** ({round(100 * win_probability, 1)}%): {player_names}\n"
 
 
 def short_uuid(uuid: str) -> str:
