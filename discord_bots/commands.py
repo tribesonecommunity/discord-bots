@@ -3888,10 +3888,10 @@ async def status(ctx: Context, *args):
             )
         if queue.is_locked:
             output += (
-                f"*{queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+                f"f({queue.ordinal}) {queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
             )
         else:
-            output += f"**{queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+            output += f"**({queue.ordinal}) {queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
 
         if len(players_in_queue) > 0:
             output += f"**IN QUEUE:** "
