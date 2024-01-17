@@ -287,4 +287,9 @@ async def print_leaderboard():
     output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
 
     channel = bot.get_channel(LEADERBOARD_CHANNEL)
-    await send_message(channel, embed_description=output, colour=Colour.blue())
+    if channel:
+        last_message = await channel.fetch_message(channel.last_message_id)
+        if last_message:
+            await last_message.edit(embed=Embed(description=output))
+        else:
+            await send_message(channel, embed_description=output, colour=Colour.blue())
