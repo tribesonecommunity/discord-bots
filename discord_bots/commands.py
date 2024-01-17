@@ -2230,6 +2230,7 @@ async def enablestats(ctx: Context):
         embed_description="!stats enabled",
         colour=Colour.blue()
     )
+    session.close()
 
 
 @bot.command(usage="<win|loss|tie>")
