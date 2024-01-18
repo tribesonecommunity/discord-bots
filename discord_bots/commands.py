@@ -44,7 +44,7 @@ from discord_bots.utils import (
 )
 
 from .bot import COMMAND_PREFIX, bot
-from .config import DISABLE_MAP_ROTATION, REQUIRE_ADD_TARGET
+from .config import DISABLE_MAP_ROTATION, ENABLE_RAFFLE, REQUIRE_ADD_TARGET
 from .models import (
     DB_NAME,
     DEFAULT_TRUESKILL_MU,
@@ -373,6 +373,7 @@ async def create_game(
         .filter(QueueRegion.id == queue.queue_region_id)
         .first()
     )
+    player_region_trueskills = None
     if queue_region:
         player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
             PlayerRegionTrueskill.queue_region_id == queue_region.id
@@ -1655,11 +1656,21 @@ async def changequeuemap(ctx: Context, map_short_name: str):
             session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
         )
         rotation_map_index = rotation_maps.index(rotation_map)
-        current_map.full_name = rotation_map.full_name
-        current_map.short_name = rotation_map.short_name
-        current_map.map_rotation_index = rotation_map_index
-        current_map.updated_at = datetime.now(timezone.utc)
-        session.commit()
+        if current_map:
+            current_map.full_name = rotation_map.full_name
+            current_map.short_name = rotation_map.short_name
+            current_map.map_rotation_index = rotation_map_index
+            current_map.updated_at = datetime.now(timezone.utc)
+            session.commit()
+        else:
+            session.add(
+                CurrentMap(
+                    map_rotation_index=0,
+                    full_name=rotation_map.full_name,
+                    short_name=rotation_map.short_name,
+                )
+            )
+            session.commit()
     else:
         voteable_map: VoteableMap | None = (
             session.query(VoteableMap)
@@ -1667,10 +1678,20 @@ async def changequeuemap(ctx: Context, map_short_name: str):
             .first()
         )
         if voteable_map:
-            current_map.full_name = voteable_map.full_name
-            current_map.short_name = voteable_map.short_name
-            current_map.updated_at = datetime.now(timezone.utc)
-            session.commit()
+            if current_map:
+                current_map.full_name = voteable_map.full_name
+                current_map.short_name = voteable_map.short_name
+                current_map.updated_at = datetime.now(timezone.utc)
+                session.commit()
+            else:
+                session.add(
+                    CurrentMap(
+                        map_rotation_index=0,
+                        full_name=rotation_map.full_name,
+                        short_name=rotation_map.short_name,
+                    )
+                )
+                session.commit()
         else:
             await send_message(
                 message.channel,
@@ -2110,6 +2131,11 @@ async def delplayer(ctx: Context, member: Member, *args):
         colour=Colour.green(),
     )
     session.commit()
+
+
+@bot.command()
+async def testleaderboard(ctx: Context, test_message: str):
+    await print_leaderboard(test_message)
 
 
 @bot.command()
@@ -3926,9 +3952,12 @@ async def status(ctx: Context, *args):
                 time_since_update.seconds // 60
             )
             has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
-            upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
-            if has_raffle_reward:
-                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
+            if ENABLE_RAFFLE:
+                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
+                if has_raffle_reward:
+                    upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
+            else:
+                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})**\n"
             if DISABLE_MAP_ROTATION:
                 output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
             else:
