@@ -1685,6 +1685,7 @@ async def changequeuemap(ctx: Context, map_short_name: str):
             else:
                 session.add(
                     CurrentMap(
+                        map_rotation_index=0,
                         full_name=rotation_map.full_name,
                         short_name=rotation_map.short_name,
                     )
