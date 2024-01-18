@@ -44,7 +44,7 @@ from discord_bots.utils import (
 )
 
 from .bot import COMMAND_PREFIX, bot
-from .config import DISABLE_MAP_ROTATION, REQUIRE_ADD_TARGET
+from .config import DISABLE_MAP_ROTATION, ENABLE_RAFFLE, REQUIRE_ADD_TARGET
 from .models import (
     DB_NAME,
     DEFAULT_TRUESKILL_MU,
@@ -3957,9 +3957,12 @@ async def status(ctx: Context, *args):
                 time_since_update.seconds // 60
             )
             has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
-            upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
-            if has_raffle_reward:
-                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
+            if ENABLE_RAFFLE:
+                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
+                if has_raffle_reward:
+                    upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
+            else:
+                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})**\n"
             if DISABLE_MAP_ROTATION:
                 output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
             else:
