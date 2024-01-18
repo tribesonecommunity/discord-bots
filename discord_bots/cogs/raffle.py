@@ -105,7 +105,8 @@ class RaffleCog(Cog):
             return
         await send_message(
             ctx.message.channel,
-            embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')} \n\n_{choice(strings)}_",
+            embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')}",
+            # embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')} \n\n_{choice(strings)}_",
             colour=Colour.blue(),
         )
 
