@@ -1656,11 +1656,20 @@ async def changequeuemap(ctx: Context, map_short_name: str):
             session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
         )
         rotation_map_index = rotation_maps.index(rotation_map)
-        current_map.full_name = rotation_map.full_name
-        current_map.short_name = rotation_map.short_name
-        current_map.map_rotation_index = rotation_map_index
-        current_map.updated_at = datetime.now(timezone.utc)
-        session.commit()
+        if current_map:
+            current_map.full_name = rotation_map.full_name
+            current_map.short_name = rotation_map.short_name
+            current_map.map_rotation_index = rotation_map_index
+            current_map.updated_at = datetime.now(timezone.utc)
+            session.commit()
+        else:
+            session.add(
+                CurrentMap(
+                    full_name=rotation_map.full_name,
+                    short_name=rotation_map.short_name,
+                )
+            )
+            session.commit()
     else:
         voteable_map: VoteableMap | None = (
             session.query(VoteableMap)
@@ -1668,10 +1677,19 @@ async def changequeuemap(ctx: Context, map_short_name: str):
             .first()
         )
         if voteable_map:
-            current_map.full_name = voteable_map.full_name
-            current_map.short_name = voteable_map.short_name
-            current_map.updated_at = datetime.now(timezone.utc)
-            session.commit()
+            if current_map:
+                current_map.full_name = voteable_map.full_name
+                current_map.short_name = voteable_map.short_name
+                current_map.updated_at = datetime.now(timezone.utc)
+                session.commit()
+            else:
+                session.add(
+                    CurrentMap(
+                        full_name=rotation_map.full_name,
+                        short_name=rotation_map.short_name,
+                    )
+                )
+                session.commit()
         else:
             await send_message(
                 message.channel,
