@@ -239,7 +239,7 @@ async def send_message(
         print("[send_message] exception:", e)
 
 
-async def print_leaderboard():
+async def print_leaderboard(test_message: str | None = None):
     if not LEADERBOARD_CHANNEL:
         return
 
@@ -285,6 +285,9 @@ async def print_leaderboard():
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
     output += "\n(Leaderboard updates periodically)"
     output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
+
+    if test_message:
+        output = test_message
 
     channel = bot.get_channel(LEADERBOARD_CHANNEL)
     if channel:
