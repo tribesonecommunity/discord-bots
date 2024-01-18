@@ -373,6 +373,7 @@ async def create_game(
         .filter(QueueRegion.id == queue.queue_region_id)
         .first()
     )
+    player_region_trueskills = None
     if queue_region:
         player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
             PlayerRegionTrueskill.queue_region_id == queue_region.id
