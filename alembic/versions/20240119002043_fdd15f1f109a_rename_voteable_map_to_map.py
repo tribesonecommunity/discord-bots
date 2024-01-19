@@ -1,8 +1,8 @@
 """Rename voteable_map to map
 
-Revision ID: 7cd9f2edcf8e
+Revision ID: fdd15f1f109a
 Revises: 9c585d94674d
-Create Date: 2024-01-18 20:51:59.986862
+Create Date: 2024-01-19 00:20:43.706962
 
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "7cd9f2edcf8e"
+revision = "fdd15f1f109a"
 down_revision = "9c585d94674d"
 branch_labels = None
 depends_on = None
@@ -43,7 +43,6 @@ def upgrade():
         batch_op.drop_index("ix_voteable_map_full_name")
         batch_op.drop_index("ix_voteable_map_short_name")
 
-    op.drop_table("voteable_map")
     with op.batch_alter_table("map_vote", schema=None) as batch_op:
         batch_op.add_column(sa.Column("map_id", sa.String(), nullable=False))
         batch_op.drop_index("ix_map_vote_voteable_map_id")
@@ -61,6 +60,7 @@ def upgrade():
             batch_op.f("fk_map_vote_map_id_map"), "map", ["map_id"], ["id"]
         )
         batch_op.drop_column("voteable_map_id")
+    op.drop_table("voteable_map")
 
     # ### end Alembic commands ###
 
