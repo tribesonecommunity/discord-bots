@@ -380,7 +380,7 @@ class MapVote:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "map_vote"
-    __table_args__ = (UniqueConstraint("player_id", "voteable_map_id"),)
+    __table_args__ = (UniqueConstraint("player_id", "map_id"),)
 
     channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     player_id: int = field(
@@ -388,11 +388,9 @@ class MapVote:
             "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
         }
     )
-    voteable_map_id: str = field(
+    map_id: str = field(
         metadata={
-            "sa": Column(
-                String, ForeignKey("voteable_map.id"), nullable=False, index=True
-            )
+            "sa": Column(String, ForeignKey("map.id"), nullable=False, index=True)
         },
     )
     id: str = field(
@@ -929,13 +927,13 @@ class RotationMap:
 
 @mapper_registry.mapped
 @dataclass
-class VoteableMap:
+class Map:
     """
     A map that can be voted in to replace the current map in rotation
     """
 
     __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "voteable_map"
+    __tablename__ = "map"
 
     full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
     short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})

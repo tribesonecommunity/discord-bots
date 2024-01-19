@@ -57,6 +57,7 @@ from .models import (
     InProgressGame,
     InProgressGameChannel,
     InProgressGamePlayer,
+    Map,
     MapVote,
     Player,
     PlayerDecay,
@@ -71,7 +72,6 @@ from .models import (
     RotationMap,
     Session,
     SkipMapVote,
-    VoteableMap,
     VotePassedWaitlist,
     VotePassedWaitlistPlayer,
 )
@@ -405,11 +405,11 @@ async def create_game(
     rolled_random_map = False
     if current_map.is_random:
         # Roll for random map
-        voteable_maps: List[VoteableMap] = session.query(VoteableMap).all()
+        maps: List[Map] = session.query(Map).all()
         roll = uniform(0, 1)
         if roll < current_map.random_probability:
             rolled_random_map = True
-            random_map = choice(voteable_maps)
+            random_map = choice(maps)
             current_map_full_name = random_map.full_name
             current_map_short_name = random_map.short_name
 
@@ -1399,7 +1399,7 @@ async def addrotationmap(ctx: Context, map_full_name: str, map_short_name: str):
 async def addmap(ctx: Context, map_short_name: str, map_full_name: str):
     message = ctx.message
     session = ctx.session
-    session.add(VoteableMap(map_full_name, map_short_name))
+    session.add(Map(map_full_name, map_short_name))
     try:
         session.commit()
     except IntegrityError:
@@ -1614,14 +1614,14 @@ async def changegamemap(ctx: Context, game_id: str, map_short_name: str):
         ipg.map_short_name = rotation_map.short_name
         session.commit()
     else:
-        voteable_map: VoteableMap | None = (
-            session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(map_short_name))  # type: ignore
+        map: Map | None = (
+            session.query(Map)
+            .filter(Map.short_name.ilike(map_short_name))  # type: ignore
             .first()
         )
-        if voteable_map:
-            ipg.map_full_name = voteable_map.full_name
-            ipg.map_short_name = voteable_map.short_name
+        if map:
+            ipg.map_full_name = map.full_name
+            ipg.map_short_name = map.short_name
             session.commit()
         else:
             await send_message(
@@ -1672,15 +1672,15 @@ async def changequeuemap(ctx: Context, map_short_name: str):
             )
             session.commit()
     else:
-        voteable_map: VoteableMap | None = (
-            session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(map_short_name))  # type: ignore
+        map: Map | None = (
+            session.query(Map)
+            .filter(Map.short_name.ilike(map_short_name))  # type: ignore
             .first()
         )
-        if voteable_map:
+        if map:
             if current_map:
-                current_map.full_name = voteable_map.full_name
-                current_map.short_name = voteable_map.short_name
+                current_map.full_name = map.full_name
+                current_map.short_name = map.short_name
                 current_map.updated_at = datetime.now(timezone.utc)
                 session.commit()
             else:
@@ -2764,9 +2764,9 @@ async def listqueueroles(ctx: Context):
 async def listmaps(ctx: Context):
     message = ctx.message
     output = "Voteable map pool"
-    voteable_map: VoteableMap
-    for voteable_map in Session().query(VoteableMap).order_by(VoteableMap.full_name):
-        output += f"\n- {voteable_map.full_name} ({voteable_map.short_name})"
+    map: Map
+    for map in Session().query(Map).order_by(Map.full_name):
+        output += f"\n- {map.full_name} ({map.short_name})"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
@@ -2855,9 +2855,9 @@ async def map_(ctx: Context):
 
     # TODO: This is duplicated
     map_votes: list[MapVote] = session.query(MapVote).all()
-    voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-    voted_maps: list[VoteableMap] = (
-        session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
+    voted_map_ids: list[str] = [map_vote.map_id for map_vote in map_votes]
+    voted_maps: list[Map] = (
+        session.query(Map).filter(Map.id.in_(voted_map_ids)).all()  # type: ignore
     )
     voted_maps_str = ", ".join(
         [
@@ -3021,11 +3021,11 @@ async def pug(ctx: Context):
 @bot.command()
 async def randommap(ctx: Context):
     session = ctx.session
-    voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
-    voteable_map = choice(voteable_maps)
+    maps: list[Map] = session.query(Map).all()
+    map = choice(maps)
     await send_message(
         ctx.message.channel,
-        embed_description=f"Random map selected: **{voteable_map.full_name} ({voteable_map.short_name})**",
+        embed_description=f"Random map selected: **{map.full_name} ({map.short_name})**",
         colour=Colour.blue(),
     )
 
@@ -3299,14 +3299,12 @@ async def removerotationmap(ctx: Context, map_short_name: str):
 async def removemap(ctx: Context, map_short_name: str):
     message = ctx.message
     session = ctx.session
-    voteable_map = (
-        session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
+    map = (
+        session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()  # type: ignore
     )
-    if voteable_map:
-        session.query(MapVote).filter(
-            MapVote.voteable_map_id == voteable_map.id
-        ).delete()
-        session.delete(voteable_map)
+    if map:
+        session.query(MapVote).filter(MapVote.map_id == map.id).delete()
+        session.delete(map)
         await send_message(
             message.channel,
             embed_description=f"{map_short_name} removed from map pool",
@@ -3970,9 +3968,9 @@ async def status(ctx: Context, *args):
 
         # TODO: This is duplicated
         map_votes: list[MapVote] = session.query(MapVote).all()
-        voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-        voted_maps: list[VoteableMap] = (
-            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
+        voted_map_ids: list[str] = [map_vote.map_id for map_vote in map_votes]
+        voted_maps: list[Map] = (
+            session.query(Map).filter(Map.id.in_(voted_map_ids)).all()  # type: ignore
         )
         voted_maps_str = ", ".join(
             [
@@ -4599,8 +4597,8 @@ async def unvote(ctx: Context):
 async def unvotemap(ctx: Context, map_short_name: str):
     message = ctx.message
     session = ctx.session
-    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
-    if not voteable_map:
+    map: Map | None = session.query(Map).filter(Map.short_name.ilike(args[0])).first()  # type: ignore
+    if not map:
         await send_message(
             message.channel,
             embed_description=f"Could not find voteable map: {map_short_name}",
@@ -4611,7 +4609,7 @@ async def unvotemap(ctx: Context, map_short_name: str):
         session.query(MapVote)
         .filter(
             MapVote.player_id == message.author.id,
-            MapVote.voteable_map_id == voteable_map.id,
+            MapVote.map_id == map.id,
         )
         .first()
     )
@@ -4660,51 +4658,46 @@ async def unvoteskip(ctx: Context):
         )
 
 
-def get_voteable_maps_str():
-    voteable_maps: list[VoteableMap] = Session().query(VoteableMap).all()
-    return ", ".join([voteable_map.short_name for voteable_map in voteable_maps])
+def get_maps_str():
+    maps: list[Map] = Session().query(Map).all()
+    return ", ".join([map.short_name for map in maps])
 
 
 # TODO: Vote for many maps at once
-@bot.command(usage=f"<map_short_name>\nMaps:{get_voteable_maps_str()}")
+@bot.command(usage=f"<map_short_name>\nMaps:{get_maps_str()}")
 async def votemap(ctx: Context, map_short_name: str):
     message = ctx.message
     session = ctx.session
-    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    if not voteable_map:
+    map: Map | None = session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()  # type: ignore
+    if not map:
         await send_message(
             message.channel,
-            embed_description=f"Could not find voteable map: {map_short_name}\nMaps: {get_voteable_maps_str()}",
+            embed_description=f"Could not find voteable map: {map_short_name}\nMaps: {get_maps_str()}",
             colour=Colour.red(),
         )
         return
 
-    session.add(
-        MapVote(message.channel.id, message.author.id, voteable_map_id=voteable_map.id)
-    )
+    session.add(MapVote(message.channel.id, message.author.id, map_id=map.id))
     try:
         session.commit()
     except IntegrityError:
         session.rollback()
 
     map_votes: list[MapVote] = (
-        Session()
-        .query(MapVote)
-        .filter(MapVote.voteable_map_id == voteable_map.id)
-        .all()
+        Session().query(MapVote).filter(MapVote.map_id == map.id).all()
     )
     if len(map_votes) == MAP_VOTE_THRESHOLD:
         current_map: CurrentMap | None = session.query(CurrentMap).first()
         if current_map:
-            current_map.full_name = voteable_map.full_name
-            current_map.short_name = voteable_map.short_name
+            current_map.full_name = map.full_name
+            current_map.short_name = map.short_name
             current_map.updated_at = datetime.now(timezone.utc)
         else:
             session.add(
                 CurrentMap(
-                    full_name=voteable_map.full_name,
+                    full_name=map.full_name,
                     map_rotation_index=0,
-                    short_name=voteable_map.short_name,
+                    short_name=map.short_name,
                 )
             )
             try:
@@ -4714,7 +4707,7 @@ async def votemap(ctx: Context, map_short_name: str):
 
         await send_message(
             message.channel,
-            embed_description=f"Vote for {voteable_map.full_name} ({voteable_map.short_name}) passed!\n**New map: {voteable_map.full_name} ({voteable_map.short_name})**",
+            embed_description=f"Vote for {map.full_name} ({map.short_name}) passed!\n**New map: {map.full_name} ({map.short_name})**",
             colour=Colour.green(),
         )
         session.query(MapVote).delete()
@@ -4732,9 +4725,9 @@ async def votemap(ctx: Context, map_short_name: str):
         session.commit()
     else:
         map_votes: list[MapVote] = session.query(MapVote).all()
-        voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-        voted_maps: list[VoteableMap] = (
-            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
+        voted_map_ids: list[str] = [map_vote.map_id for map_vote in map_votes]
+        voted_maps: list[Map] = (
+            session.query(Map).filter(Map.id.in_(voted_map_ids)).all()  # type: ignore
         )
         voted_maps_str = ", ".join(
             [
