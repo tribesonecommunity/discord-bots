@@ -658,6 +658,18 @@ class Queue:
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
+    rotation_id: str = field(
+        default="1",
+        metadata={
+            "sa": Column(
+                String,
+                ForeignKey("rotation.id"),
+                nullable=True,
+                index=True,
+                server_default=text("1"),
+            )
+        },
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -881,10 +893,29 @@ class Raffle:
 
 @mapper_registry.mapped
 @dataclass
+class Rotation:
+    """
+    A sequence of maps to be played in a queue
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "rotation"
+
+    name: str = field(default=None, metadata={"sa": Column(String, nullable=False)})
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class RotationMap:
     """
-    A map that's part of the fixed rotation
+    Puts a map in a rotation
 
+    :ordinal: Where this map sits in the rotation
     :raffle_ticket_reward: The number of raffle tickets this map rewards for playing it
     :default_full_name: For random maps, the default when random map is not rolled
     :default_short_name: For random maps, the default when random map is not rolled
@@ -895,8 +926,6 @@ class RotationMap:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "rotation_map"
 
-    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
     raffle_ticket_reward: int = field(
         default=0,
         metadata={
@@ -917,6 +946,18 @@ class RotationMap:
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
+    )
+    ordinal: int = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    rotation_id: str = field(
+        default=None,
+        metadata={"sa": Column(String, ForeignKey("rotation.id"), index=True)},
+    )
+    map_id: str = field(
+        default=None,
+        metadata={"sa": Column(String, ForeignKey("map.id"), index=True)},
     )
     id: str = field(
         init=False,
