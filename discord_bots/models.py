@@ -373,6 +373,30 @@ class InProgressGameChannel:
 
 @mapper_registry.mapped
 @dataclass
+class Map:
+    """
+    A map that can be voted in to replace the current map in rotation
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "map"
+
+    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class MapVote:
     """
     A player's vote to replace the current map
@@ -958,30 +982,6 @@ class RotationMap:
     map_id: str = field(
         default=None,
         metadata={"sa": Column(String, ForeignKey("map.id"), index=True)},
-    )
-    id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-
-
-@mapper_registry.mapped
-@dataclass
-class Map:
-    """
-    A map that can be voted in to replace the current map in rotation
-    """
-
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "map"
-
-    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        init=False,
-        metadata={"sa": Column(DateTime, index=True)},
     )
     id: str = field(
         init=False,
