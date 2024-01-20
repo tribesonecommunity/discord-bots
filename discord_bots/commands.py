@@ -44,7 +44,7 @@ from discord_bots.utils import (
 )
 
 from .bot import COMMAND_PREFIX, bot
-from .config import DISABLE_MAP_ROTATION, ENABLE_RAFFLE, REQUIRE_ADD_TARGET
+from .config import DISABLE_MAP_ROTATION, ENABLE_RAFFLE, RE_ADD_DELAY, REQUIRE_ADD_TARGET
 from .models import (
     DB_NAME,
     DEFAULT_TRUESKILL_MU,
@@ -92,8 +92,6 @@ DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 MAP_ROTATION_MINUTES: int = 60
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 7
-RE_ADD_DELAY: int = 30
-
 
 def debug_print(*args):
     global DEBUG
@@ -3381,17 +3379,18 @@ async def resetplayertrueskill(ctx: Context, member: Member):
     )
 
 
-@bot.command()
-@commands.check(is_admin)
-async def setadddelay(ctx: Context, delay_seconds: int):
-    message = ctx.message
-    global RE_ADD_DELAY
-    RE_ADD_DELAY = delay_seconds
-    await send_message(
-        message.channel,
-        embed_description=f"Delay between games set to {RE_ADD_DELAY}",
-        colour=Colour.green(),
-    )
+# TODO: Re-enable when configs are stored in the db
+# @bot.command()
+# @commands.check(is_admin)
+# async def setadddelay(ctx: Context, delay_seconds: int):
+#     message = ctx.message
+#     global RE_ADD_DELAY
+#     RE_ADD_DELAY = delay_seconds
+#     await send_message(
+#         message.channel,
+#         embed_description=f"Delay between games set to {RE_ADD_DELAY}",
+#         colour=Colour.green(),
+#     )
 
 
 @bot.command()

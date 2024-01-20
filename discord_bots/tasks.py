@@ -28,7 +28,7 @@ from .commands import (
     create_game,
     is_in_game,
 )
-from .config import DISABLE_MAP_ROTATION, LEADERBOARD_CHANNEL
+from .config import DISABLE_MAP_ROTATION
 from .models import (
     CurrentMap,
     InProgressGame,
