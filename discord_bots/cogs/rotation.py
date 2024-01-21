@@ -116,27 +116,3 @@ class RotationCog(BaseCog):
             output += f" - _Maps: {', '.join(value)}_\n\n"
 
         await self.send_info_message(output)
-
-    @command()
-    async def setqueuerotation(self, ctx: Context, queue_name: str, rotation_name: str):
-        session = ctx.session
-
-        try:
-            queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
-        except NoResultFound:
-            await self.send_error_message(f"Could not find queue: {queue_name}")
-            return
-
-        try:
-            rotation = (
-                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
-            )
-        except NoResultFound:
-            await self.send_error_message(f"Could not find rotation: {rotation_name}")
-            return
-
-        queue.rotation_id = rotation.id
-        session.commit()
-        await self.send_success_message(
-            f"Rotation for {queue.name} set to {rotation.name}"
-        )
