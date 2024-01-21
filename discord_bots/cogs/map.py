@@ -33,3 +33,19 @@ class MapCog(Cog):
                 embed_description=f"{map_full_name} ({map_short_name}) added to map pool",
                 colour=Colour.green(),
             )
+
+    @command()
+    async def listmaps(self, ctx: Context):
+        message = ctx.message
+        session = ctx.session
+        maps = session.query(Map).all()
+
+        output = ""
+        for map in maps:
+            output += f"- {map.full_name} ({map.short_name})"
+
+        await send_message(
+            message.channel,
+            embed_description=output,
+            colour=Colour.blue(),
+        )

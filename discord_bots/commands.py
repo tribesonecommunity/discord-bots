@@ -2737,16 +2737,6 @@ async def listqueueroles(ctx: Context):
 
 
 @bot.command()
-async def listmaps(ctx: Context):
-    message = ctx.message
-    output = "Voteable map pool"
-    map: Map
-    for map in Session().query(Map).order_by(Map.full_name):
-        output += f"\n- {map.full_name} ({map.short_name})"
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
 @commands.check(is_admin)
 async def lockqueue(ctx: Context, queue_name: str):
     message = ctx.message
