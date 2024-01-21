@@ -925,7 +925,9 @@ class Rotation:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "rotation"
 
-    name: str = field(default=None, metadata={"sa": Column(String, nullable=False)})
+    name: str = field(
+        default=None, metadata={"sa": Column(String, nullable=False, unique=True)}
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
