@@ -3,7 +3,7 @@ from discord.ext.commands import Bot, Cog, Context, check, command
 from sqlalchemy.exc import IntegrityError
 
 from discord_bots.checks import is_admin
-from discord_bots.models import Map, Rotation, RotationMap
+from discord_bots.models import Map, Queue, Rotation, RotationMap
 from discord_bots.utils import send_message
 
 
@@ -133,3 +133,38 @@ class RotationCog(Cog):
         await send_message(
             message.channel, embed_description=output, colour=Colour.blue()
         )
+
+    @command()
+    async def setqueuerotation(self, ctx: Context, queue_name: str, rotation_name: str):
+        message = ctx.message
+        session = ctx.session
+
+        queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+        rotation = (
+            session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).first()
+        )
+
+        if not queue:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find queue {queue_name}",
+                colour=Colour.red(),
+            )
+            return
+        if not rotation:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find rotation {rotation_name}",
+                colour=Colour.red(),
+            )
+            return
+
+        queue.rotation_id = rotation.id
+
+        await send_message(
+            message.channel,
+            embed_description=f"Rotation for {queue.name} set to {rotation.name}",
+            colour=Colour.green(),
+        )
+
+        session.commit()
