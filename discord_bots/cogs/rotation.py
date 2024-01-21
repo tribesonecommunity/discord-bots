@@ -87,26 +87,33 @@ class RotationCog(BaseCog):
         session = ctx.session
 
         data = (
-            session.query(Rotation.name, RotationMap.ordinal, Map.short_name)
+            session.query(
+                Rotation.name, Rotation.created_at, RotationMap.ordinal, Map.short_name
+            )
             .outerjoin(RotationMap, Rotation.id == RotationMap.rotation_id)
             .outerjoin(Map, Map.id == RotationMap.map_id)
+            .order_by(Rotation.created_at.asc())
             .order_by(RotationMap.ordinal.asc())
             .all()
         )
 
+        if not data:
+            await self.send_info_message("_-- No Rotations-- _")
+            return
+
         grouped_data = {}
         for row in data:
             if row[0] in grouped_data:
-                grouped_data[row[0]].append(row[2])
-            elif not row[2]:
-                grouped_data[row[0]] = ["--No Maps--"]
+                grouped_data[row[0]].append(row[3])
+            elif not row[3]:
+                grouped_data[row[0]] = ["None"]
             else:
-                grouped_data[row[0]] = [row[2]]
+                grouped_data[row[0]] = [row[3]]
 
         output = ""
         for key, value in grouped_data.items():
-            output += f"**- {key}**"
-            output += f"_{', '.join(value)}_\n\n"
+            output += f"- **Rotation: {key}**\n"
+            output += f" - _Maps: {', '.join(value)}_\n\n"
 
         await self.send_info_message(output)
 
