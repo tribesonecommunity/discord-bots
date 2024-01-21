@@ -18,6 +18,13 @@ class BaseCog(Cog):
             colour=Colour.green(),
         )
 
+    async def send_info_message(self, info_message):
+        await send_message(
+            self.message.channel,
+            embed_description=info_message,
+            colour=Colour.blue(),
+        )
+
     async def send_error_message(self, error_message):
         await send_message(
             self.message.channel, embed_description=error_message, colour=Colour.red()
