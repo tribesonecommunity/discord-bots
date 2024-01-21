@@ -104,3 +104,32 @@ class RotationCog(Cog):
                 embed_description=f"{map.short_name} added to {rotation.name} at position {ordinal}",
                 colour=Colour.green(),
             )
+
+    @command()
+    async def listrotations(self, ctx: Context):
+        message = ctx.message
+        session = ctx.session
+        data = (
+            session.query(Rotation.name, RotationMap.ordinal, Map.short_name)
+            .join(RotationMap, Rotation.id == RotationMap.rotation_id)
+            .join(Map, Map.id == RotationMap.map_id)
+            .order_by(RotationMap.ordinal.asc())
+            .all()
+        )
+        grouped_data = {}
+
+        for row in data:
+            if row[0] in grouped_data:
+                grouped_data[row[0]].append(row[2])
+            else:
+                grouped_data[row[0]] = [row[2]]
+
+        output = ""
+
+        for key, value in grouped_data.items():
+            output += f"**- {key}**"
+            output += f"_{', '.join(value)}_\n\n"
+
+        await send_message(
+            message.channel, embed_description=output, colour=Colour.blue()
+        )
