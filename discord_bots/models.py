@@ -974,8 +974,8 @@ class RotationMap:
         metadata={"sa": Column(DateTime, index=True)},
     )
     ordinal: int = field(
-        default=0,
-        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+        default=None,
+        metadata={"sa": Column(Integer, nullable=False, unique=True)},
     )
     rotation_id: str = field(
         default=None,
