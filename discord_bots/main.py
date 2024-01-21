@@ -6,9 +6,11 @@ from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
-from discord_bots.cogs.raffle import RaffleCog
-from discord_bots.config import ENABLE_DEBUG, LEADERBOARD_CHANNEL
 
+from discord_bots.cogs.map import MapCog
+from discord_bots.cogs.raffle import RaffleCog
+from discord_bots.cogs.rotation import RotationCog
+from discord_bots.config import ENABLE_DEBUG, LEADERBOARD_CHANNEL
 from discord_bots.utils import CHANNEL_ID
 
 from .bot import COMMAND_PREFIX, bot
@@ -186,6 +188,8 @@ def main():
     API_KEY = os.getenv("DISCORD_API_KEY")
     if API_KEY:
         bot.add_cog(RaffleCog(bot))
+        bot.add_cog(RotationCog(bot))
+        bot.add_cog(MapCog(bot))
         bot.run(API_KEY)
     else:
         print("You must define DISCORD_API_KEY!")
