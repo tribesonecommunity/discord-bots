@@ -35,6 +35,7 @@ from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
     mean,
     pretty_format_team,
+    pretty_format_team_no_format,
     print_leaderboard,
     send_message,
     short_uuid,
@@ -4097,20 +4098,20 @@ async def status2(ctx: Context, *args):
             )
             has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
             if ENABLE_RAFFLE:
-                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
+                upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name}) ({DEFAULT_RAFFLE_VALUE} tickets)\n"
                 if has_raffle_reward:
-                    upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
+                    upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name}) ({upcoming_map.raffle_ticket_reward} tickets)\n"
             else:
-                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})**\n"
+                upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name})\n"
             if DISABLE_MAP_ROTATION:
-                output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                output += f"{upcoming_map_str}\nMap after next: {next_map.full_name} ({next_map.short_name})\n"
             else:
                 if current_map.map_rotation_index == 0:
-                    output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"{upcoming_map_str}\nMap after next: {next_map.full_name} ({next_map.short_name})\n"
                 else:
-                    output += f"{upcoming_map_str}\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"{upcoming_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})\n"
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-        output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+        output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
 
         # TODO: This is duplicated
         map_votes: list[MapVote] = session.query(MapVote).all()
@@ -4124,7 +4125,7 @@ async def status2(ctx: Context, *args):
                 for voted_map in voted_maps
             ]
         )
-        output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
+        output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
 
     for i, queue in enumerate(queues):
         if i > 0:
@@ -4138,10 +4139,10 @@ async def status2(ctx: Context, *args):
         if queue.is_locked:
             output += f"({queue.ordinal}) {queue.name} (locked) [{len(players_in_queue)} / {queue.size}]\n"
         else:
-            output += f"**({queue.ordinal}) {queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+            output += f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
 
         if len(players_in_queue) > 0:
-            output += f"**IN QUEUE:** "
+            output += f"IN QUEUE: "
             output += ", ".join(
                 sorted([escape_markdown(player.name) for player in players_in_queue])
             )
@@ -4174,13 +4175,13 @@ async def status2(ctx: Context, *args):
                 if i > 0:
                     output += "\n"
                 if SHOW_TRUESKILL:
-                    output += f"**Map: {game.map_full_name}** ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                    output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
                 else:
-                    output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
-                output += pretty_format_team(
+                    output += f"Map: {game.map_full_name} ({short_game_id}):\n"
+                output += pretty_format_team_no_format(
                     game.team0_name, game.win_probability, team0_players
                 )
-                output += pretty_format_team(
+                output += pretty_format_team_no_format(
                     game.team1_name, 1 - game.win_probability, team1_players
                 )
                 minutes_ago = (
