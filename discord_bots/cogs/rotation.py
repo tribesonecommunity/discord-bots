@@ -85,26 +85,6 @@ class RotationCog(BaseCog):
             )
 
     @command()
-    @check(is_admin)
-    async def delrotation(self, ctx: Context, rotation_name: str):
-        session = ctx.session
-
-        try:
-            rotation = (
-                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
-            )
-        except NoResultFound:
-            await self.send_error_message(
-                f"Could not find rotation **{rotation_name}**"
-            )
-            return
-
-        session.delete(rotation)
-        session.commit()
-
-        await self.send_success_message(f"Rotation **{rotation.name}** deleted")
-
-    @command()
     async def listrotations(self, ctx: Context):
         session = ctx.session
 
@@ -138,3 +118,23 @@ class RotationCog(BaseCog):
             output += f" - _Maps: {', '.join(value)}_\n\n"
 
         await self.send_info_message(output)
+
+    @command()
+    @check(is_admin)
+    async def removerotation(self, ctx: Context, rotation_name: str):
+        session = ctx.session
+
+        try:
+            rotation = (
+                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
+            )
+        except NoResultFound:
+            await self.send_error_message(
+                f"Could not find rotation **{rotation_name}**"
+            )
+            return
+
+        session.delete(rotation)
+        session.commit()
+
+        await self.send_success_message(f"Rotation **{rotation.name}** removed")
