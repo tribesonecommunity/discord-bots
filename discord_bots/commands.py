@@ -4195,7 +4195,7 @@ async def status2(ctx: Context, *args):
 
     output += "\n```"
 
-    await send_message(ctx.message.channel, content=output)
+    await ctx.message.channel.send(content=output)
 
 
 def win_rate(wins, losses, ties):
