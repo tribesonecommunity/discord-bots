@@ -4052,6 +4052,153 @@ async def status(ctx: Context, *args):
     )
 
 
+@bot.command()
+async def status2(ctx: Context, *args):
+    session = ctx.session
+    queues: list[Queue] = []
+    all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
+    if len(args) == 0:
+        queues: list[Queue] = all_queues
+    else:
+        for arg in args:
+            # Try adding by integer index first, then try string name
+            try:
+                queue_index = int(arg) - 1
+                queues.append(all_queues[queue_index])
+            except ValueError:
+                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                if queue:
+                    queues.append(queue)
+            except IndexError:
+                continue
+
+    games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
+    for game in session.query(InProgressGame):
+        if game.queue_id:
+            games_by_queue[game.queue_id].append(game)
+
+    output = "```autohotkey\n"
+    # Only show map if they didn't request a specific queue
+    if len(args) == 0:
+        current_map: CurrentMap | None = session.query(CurrentMap).first()
+        if current_map:
+            rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+            upcoming_map = rotation_maps[current_map.map_rotation_index]
+            next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+                rotation_maps
+            )
+            next_map = rotation_maps[next_rotation_map_index]
+
+            time_since_update: timedelta = datetime.now(
+                timezone.utc
+            ) - current_map.updated_at.replace(tzinfo=timezone.utc)
+            time_until_rotation = MAP_ROTATION_MINUTES - (
+                time_since_update.seconds // 60
+            )
+            has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
+            if ENABLE_RAFFLE:
+                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
+                if has_raffle_reward:
+                    upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
+            else:
+                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})**\n"
+            if DISABLE_MAP_ROTATION:
+                output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+            else:
+                if current_map.map_rotation_index == 0:
+                    output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                else:
+                    output += f"{upcoming_map_str}\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+        skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
+        output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+
+        # TODO: This is duplicated
+        map_votes: list[MapVote] = session.query(MapVote).all()
+        voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
+        voted_maps: list[VoteableMap] = (
+            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
+        )
+        voted_maps_str = ", ".join(
+            [
+                f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
+                for voted_map in voted_maps
+            ]
+        )
+        output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
+
+    for i, queue in enumerate(queues):
+        if i > 0:
+            output += "\n"
+        players_in_queue = (
+            session.query(Player)
+            .join(QueuePlayer)
+            .filter(QueuePlayer.queue_id == queue.id)
+            .all()
+        )
+        if queue.is_locked:
+            output += f"({queue.ordinal}) {queue.name} (locked) [{len(players_in_queue)} / {queue.size}]\n"
+        else:
+            output += f"**({queue.ordinal}) {queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+
+        if len(players_in_queue) > 0:
+            output += f"**IN QUEUE:** "
+            output += ", ".join(
+                sorted([escape_markdown(player.name) for player in players_in_queue])
+            )
+            output += "\n"
+
+        if queue.id in games_by_queue:
+            game: InProgressGame
+            for i, game in enumerate(games_by_queue[queue.id]):
+                team0_players = (
+                    session.query(Player)
+                    .join(InProgressGamePlayer)
+                    .filter(
+                        InProgressGamePlayer.in_progress_game_id == game.id,
+                        InProgressGamePlayer.team == 0,
+                    )
+                    .all()
+                )
+
+                team1_players = (
+                    session.query(Player)
+                    .join(InProgressGamePlayer)
+                    .filter(
+                        InProgressGamePlayer.in_progress_game_id == game.id,
+                        InProgressGamePlayer.team == 1,
+                    )
+                    .all()
+                )
+
+                short_game_id = short_uuid(game.id)
+                if i > 0:
+                    output += "\n"
+                if SHOW_TRUESKILL:
+                    output += f"**Map: {game.map_full_name}** ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                else:
+                    output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
+                output += pretty_format_team(
+                    game.team0_name, game.win_probability, team0_players
+                )
+                output += pretty_format_team(
+                    game.team1_name, 1 - game.win_probability, team1_players
+                )
+                minutes_ago = (
+                    datetime.now(timezone.utc)
+                    - game.created_at.replace(tzinfo=timezone.utc)
+                ).seconds // 60
+                output += f"@ {minutes_ago} minutes ago\n"
+
+    if len(output) == 0:
+        output = "No queues or games"
+
+    output += "```"
+
+    await send_message(
+        ctx.message.channel, embed_description=output, colour=Colour.blue()
+    )
+
+
 def win_rate(wins, losses, ties):
     denominator = max(wins + losses + ties, 1)
     return round(100 * (wins + 0.5 * ties) / denominator, 1)
