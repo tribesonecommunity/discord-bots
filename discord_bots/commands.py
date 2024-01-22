@@ -2658,16 +2658,6 @@ async def listdbbackups(ctx: Context):
 
 
 @bot.command()
-async def listmaprotation(ctx: Context):
-    message = ctx.message
-    output = "Map rotation:"
-    rotation_map: RotationMap
-    for rotation_map in Session().query(RotationMap).order_by(RotationMap.created_at.asc()):  # type: ignore
-        output += f"\n- {rotation_map.full_name} ({rotation_map.short_name})"
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
 async def listnotifications(ctx: Context):
     message = ctx.message
     session = ctx.session
