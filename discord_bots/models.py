@@ -394,6 +394,9 @@ class Map:
         metadata={"sa": Column(String, primary_key=True)},
     )
 
+    rotation_maps = relationship("RotationMap", cascade="all, delete-orphan")
+    map_votes = relationship("MapVote", cascade="all, delete-orphan")
+
 
 @mapper_registry.mapped
 @dataclass
@@ -700,6 +703,8 @@ class Queue:
         metadata={"sa": Column(String, primary_key=True)},
     )
 
+    rotation = relationship("Rotation", back_populates="queues")
+
 
 @mapper_registry.mapped
 @dataclass
@@ -938,6 +943,9 @@ class Rotation:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+
+    rotation_maps = relationship("RotationMap", cascade="all, delete-orphan")
+    queues = relationship("Queue", back_populates="rotation")
 
 
 @mapper_registry.mapped
