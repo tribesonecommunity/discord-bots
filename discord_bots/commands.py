@@ -1563,127 +1563,6 @@ async def cancelgame(ctx: Context, game_id: str):
 
 
 @bot.command()
-async def changegamemap(ctx: Context, game_id: str, map_short_name: str):
-    message = ctx.message
-    """
-    TODO: tests
-    """
-    session = ctx.session
-    ipg: InProgressGame | None = (
-        session.query(InProgressGame)
-        .filter(InProgressGame.id.startswith(game_id))
-        .first()
-    )
-    if not ipg:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find game: {game_id}",
-            colour=Colour.red(),
-        )
-        return
-
-    rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if rotation_map:
-        ipg.map_full_name = rotation_map.full_name
-        ipg.map_short_name = rotation_map.short_name
-        session.commit()
-    else:
-        map: Map | None = (
-            session.query(Map)
-            .filter(Map.short_name.ilike(map_short_name))  # type: ignore
-            .first()
-        )
-        if map:
-            ipg.map_full_name = map.full_name
-            ipg.map_short_name = map.short_name
-            session.commit()
-        else:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find map: {map_short_name}. Add to rotation or map pool first.",
-                colour=Colour.red(),
-            )
-            return
-
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Map for game {game_id} changed to {map_short_name}",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def changequeuemap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    """
-    TODO: tests
-    """
-    session = ctx.session
-    current_map: CurrentMap = session.query(CurrentMap).first()
-    rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if rotation_map:
-        rotation_maps: list[RotationMap] = (
-            session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-        )
-        rotation_map_index = rotation_maps.index(rotation_map)
-        if current_map:
-            current_map.full_name = rotation_map.full_name
-            current_map.short_name = rotation_map.short_name
-            current_map.map_rotation_index = rotation_map_index
-            current_map.updated_at = datetime.now(timezone.utc)
-            session.commit()
-        else:
-            session.add(
-                CurrentMap(
-                    map_rotation_index=0,
-                    full_name=rotation_map.full_name,
-                    short_name=rotation_map.short_name,
-                )
-            )
-            session.commit()
-    else:
-        map: Map | None = (
-            session.query(Map)
-            .filter(Map.short_name.ilike(map_short_name))  # type: ignore
-            .first()
-        )
-        if map:
-            if current_map:
-                current_map.full_name = map.full_name
-                current_map.short_name = map.short_name
-                current_map.updated_at = datetime.now(timezone.utc)
-                session.commit()
-            else:
-                session.add(
-                    CurrentMap(
-                        map_rotation_index=0,
-                        full_name=rotation_map.full_name,
-                        short_name=rotation_map.short_name,
-                    )
-                )
-                session.commit()
-        else:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find map: {map_short_name}. Add to rotation or map pool first.",
-                colour=Colour.red(),
-            )
-            return
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Queue map changed to {map_short_name}",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
 async def commend(ctx: Context, member: Member):
     session = ctx.session
     commender: Player | None = (
@@ -2835,7 +2714,11 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
 
     This will send PMs to players, create voice channels, etc. so be careful
     """
-    if message.author.id not in [115204465589616646, 347125254050676738]:
+    if message.author.id not in [
+        115204465589616646,
+        347125254050676738,
+        508003755220926464,
+    ]:
         await send_message(
             message.channel,
             embed_description="Only special people can use this command",
