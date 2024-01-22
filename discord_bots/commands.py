@@ -3261,32 +3261,6 @@ async def removerotationmap(ctx: Context, map_short_name: str):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def removemap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    session = ctx.session
-    map = (
-        session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if map:
-        session.query(MapVote).filter(MapVote.map_id == map.id).delete()
-        session.delete(map)
-        await send_message(
-            message.channel,
-            embed_description=f"{map_short_name} removed from map pool",
-            colour=Colour.green(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find vote for map: {map_short_name}",
-            colour=Colour.red(),
-        )
-
-    session.commit()
-
-
-@bot.command()
 async def roll(ctx: Context, low_range: int, high_range: int):
     message = ctx.message
     await send_message(
