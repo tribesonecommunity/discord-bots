@@ -69,6 +69,7 @@ from .models import (
     QueueRole,
     QueueWaitlist,
     QueueWaitlistPlayer,
+    Rotation,
     RotationMap,
     Session,
     SkipMapVote,
@@ -2405,16 +2406,18 @@ async def finishgame(ctx: Context, outcome: str):
         )
 
     # Reward raffle tickets
-    rotation_map: RotationMap | None = (
-        session.query(RotationMap)
-        .filter(RotationMap.short_name.ilike(in_progress_game.map_short_name))
-        .first()
+    reward = (
+        session.query(RotationMap.raffle_ticket_reward)
+        .join(Map, Map.id == RotationMap.map_id)
+        .join(Rotation, Rotation.id == RotationMap.rotation_id)
+        .join(Queue, Queue.rotation_id == Rotation.id)
+        .filter(Map.short_name == in_progress_game.map_short_name)
+        .filter(Queue.id == in_progress_game.queue_id)
+        .scalar()
     )
-    reward = DEFAULT_RAFFLE_VALUE
-    if rotation_map:
+    if reward == 0:
         reward = DEFAULT_RAFFLE_VALUE
-        if rotation_map.raffle_ticket_reward > 0:
-            reward = rotation_map.raffle_ticket_reward
+
     for player in players:
         player.raffle_tickets += reward
         session.add(player)
