@@ -19,7 +19,7 @@ class QueueCog(BaseCog):
         try:
             queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
         except NoResultFound:
-            await self.send_error_message(f"Could not find queue: {queue_name}")
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
             return
 
         try:
@@ -27,13 +27,15 @@ class QueueCog(BaseCog):
                 session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
             )
         except NoResultFound:
-            await self.send_error_message(f"Could not find rotation: {rotation_name}")
+            await self.send_error_message(
+                f"Could not find rotation **{rotation_name}**"
+            )
             return
 
         queue.rotation_id = rotation.id
         session.commit()
         await self.send_success_message(
-            f"Rotation for {queue.name} set to {rotation.name}"
+            f"Rotation for **{queue.name}** set to **{rotation.name}**"
         )
 
     @command()
@@ -53,18 +55,21 @@ class QueueCog(BaseCog):
         )
 
         if not queue_data:
-            await self.send_error_message(f"Could not find queue: {queue_name}")
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
             return
 
         if not queue_data[0][1]:
             await self.send_error_message(
-                f"Queue {queue_data[0][0]} has not been assigned a rotation"
+                f"Queue **{queue_data[0][0]}** has not been assigned a rotation"
             )
             return
 
         maps = []
-        for row in queue_data:
-            maps.append(row[3])
+        if not queue_data[0][3]:
+            maps = ["None"]
+        else:
+            for row in queue_data:
+                maps.append(row[3])
 
         output = f"Queue **{queue_data[0][0]}** is assigned to Rotation **{queue_data[0][1]}**\n"
         output += f"- _Maps: {', '.join(maps)}_"
