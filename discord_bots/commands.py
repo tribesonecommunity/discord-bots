@@ -4195,9 +4195,7 @@ async def status2(ctx: Context, *args):
 
     output += "```"
 
-    await send_message(
-        ctx.message.channel, content=output, colour=Colour.blue()
-    )
+    await send_message(ctx.message.channel, content=output)
 
 
 def win_rate(wins, losses, ties):
