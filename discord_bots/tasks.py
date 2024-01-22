@@ -357,11 +357,11 @@ async def add_player_task():
 
                 if len(in_progress_games) > 0:
                     queue_statuses.append(
-                        f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*"
+                        f"**{queue.name}** [{len(queue_players)}/{queue.size}] *(In game)*\n"
                     )
                 else:
                     queue_statuses.append(
-                        f"{queue.name} [{len(queue_players)}/{queue.size}]"
+                        f"**{queue.name}** [{len(queue_players)}/{queue.size}]\n"
                     )
 
             await send_message(
