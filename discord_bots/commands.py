@@ -4193,7 +4193,7 @@ async def status2(ctx: Context, *args):
     if len(output) == 0:
         output = "No queues or games"
 
-    output += "```"
+    output += "\n```"
 
     await send_message(ctx.message.channel, content=output)
 
