@@ -2069,7 +2069,7 @@ async def del_(ctx: Context, *args):
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
-        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
+        queue_statuses.append(f"**{queue.name}** [{len(queue_players)}/{queue.size}]\n")
 
     # TODO: Check deleting by name / ordinal
     # session.query(QueueWaitlistPlayer).filter(
