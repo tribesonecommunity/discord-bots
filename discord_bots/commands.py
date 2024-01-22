@@ -4196,7 +4196,7 @@ async def status2(ctx: Context, *args):
     output += "```"
 
     await send_message(
-        ctx.message.channel, embed_description=output, colour=Colour.blue()
+        ctx.message.channel, content=output, colour=Colour.blue()
     )
 
 
