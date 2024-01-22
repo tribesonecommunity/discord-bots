@@ -3227,30 +3227,6 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def removerotationmap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    session = ctx.session
-    rotation_map = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if rotation_map:
-        session.delete(rotation_map)
-        session.commit()
-        await send_message(
-            message.channel,
-            embed_description=f"{map_short_name} removed from map rotation",
-            colour=Colour.green(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find rotation map: {map_short_name}",
-            colour=Colour.red(),
-        )
-
-
-@bot.command()
 async def roll(ctx: Context, low_range: int, high_range: int):
     message = ctx.message
     await send_message(

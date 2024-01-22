@@ -122,6 +122,9 @@ class RotationCog(BaseCog):
     @command()
     @check(is_admin)
     async def removerotation(self, ctx: Context, rotation_name: str):
+        """
+        TODO: Add confirmation for deleting rotation associated with a queue
+        """
         session = ctx.session
 
         try:
@@ -136,5 +139,56 @@ class RotationCog(BaseCog):
 
         session.delete(rotation)
         session.commit()
-
         await self.send_success_message(f"Rotation **{rotation.name}** removed")
+
+    @command()
+    @check(is_admin)
+    async def removerotationmap(
+        self, ctx: Context, rotation_name: str, map_short_name: str
+    ):
+        session = ctx.session
+
+        try:
+            rotation = (
+                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
+            )
+        except NoResultFound:
+            await self.send_error_message(
+                f"Could not find rotation **{rotation_name}**"
+            )
+            return
+
+        try:
+            map = session.query(Map).filter(Map.short_name.ilike(map_short_name)).one()
+        except NoResultFound:
+            await self.send_error_message(f"Could not find map **{map_short_name}**")
+            return
+
+        rotation_map = (
+            session.query(RotationMap)
+            .filter(
+                rotation.id == RotationMap.rotation_id, map.id == RotationMap.map_id
+            )
+            .first()
+        )
+        if not rotation_map:
+            await self.send_error_message(
+                f"Could not find map **{map.short_name}** in rotation **{rotation.name}**"
+            )
+            return
+
+        # adjust the rest of the ordinals in the rotation
+        rotation_maps = (
+            session.query(RotationMap)
+            .filter(RotationMap.rotation_id == rotation.id)
+            .order_by(RotationMap.ordinal.asc())
+            .all()
+        )
+        for entry in rotation_maps[rotation_map.ordinal :]:
+            entry.ordinal -= 1
+
+        session.delete(rotation_map)
+        session.commit()
+        await self.send_success_message(
+            f"**{map.short_name}** removed from rotation **{rotation.name}**"
+        )
