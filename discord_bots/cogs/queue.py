@@ -71,6 +71,6 @@ class QueueCog(BaseCog):
             for row in queue_data:
                 maps.append(row[3])
 
-        output = f"Queue **{queue_data[0][0]}** is assigned to Rotation **{queue_data[0][1]}**\n"
+        output = f"**{queue_data[0][0]}** is assigned to **{queue_data[0][1]}**\n"
         output += f"- _Maps: {', '.join(maps)}_"
         await self.send_info_message(output)
