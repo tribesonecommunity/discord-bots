@@ -115,49 +115,6 @@ class Commend:
 
 @mapper_registry.mapped
 @dataclass
-class CurrentMap:
-    """
-    The current map up to play - not necessarily a rotation map. The rotation
-    index is stored so we can find the next map.
-
-    This table is intended to store one and only one row.
-    """
-
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "current_map"
-
-    map_rotation_index: int = field(metadata={"sa": Column(Integer)})
-    full_name: str = field(metadata={"sa": Column(String)})
-    short_name: str = field(metadata={"sa": Column(String)})
-    is_random: bool = field(
-        default=False,
-        metadata={
-            "sa": Column(Boolean, nullable=False, server_default=expression.false())
-        },
-    )
-    random_probability: float = field(
-        default=0,
-        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
-    )
-    updated_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        init=False,
-        metadata={"sa": Column(DateTime, nullable=False, server_default=func.now())},
-    )
-    created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        init=False,
-        metadata={"sa": Column(DateTime, nullable=False)},
-    )
-    id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-
-
-@mapper_registry.mapped
-@dataclass
 class CustomCommand:
     """
     A way for users to add custom text commands to the bot
@@ -969,6 +926,12 @@ class RotationMap:
         default=0,
         metadata={
             "sa": Column(Integer, index=True, nullable=False, server_default=text("0"))
+        },
+    )
+    is_next: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
         },
     )
     is_random: bool = field(
