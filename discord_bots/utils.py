@@ -125,8 +125,7 @@ async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
         key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True
     )
 
-    if len(html_files) == 0:
-        return
+    if len(html_files) == 0: return
 
     image_path = os.path.join(STATS_DIR, html_files[0] + ".png")
     imgkit.from_file(
@@ -318,3 +317,8 @@ async def print_leaderboard(test_message: str | None = None):
             await send_message(channel, embed_description=output, colour=Colour.blue())
     else:
         await send_message(channel, embed_description=output, colour=Colour.blue())
+
+
+
+def code_block(content: str) -> str:
+    return "\n".join(["```autohotkey", content, "```"])

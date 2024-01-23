@@ -33,6 +33,7 @@ from trueskill import Rating, rate
 from discord_bots.checks import is_admin
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
+    code_block,
     mean,
     pretty_format_team,
     pretty_format_team_no_format,
@@ -2055,7 +2056,7 @@ async def del_(ctx: Context, *args):
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
-        queue_statuses.append(f"**{queue.name}** [{len(queue_players)}/{queue.size}]\n")
+        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]\n")
 
     # TODO: Check deleting by name / ordinal
     # session.query(QueueWaitlistPlayer).filter(
@@ -2064,12 +2065,9 @@ async def del_(ctx: Context, *args):
 
     session.commit()
 
-    await send_message(
-        message.channel,
-        content=f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}",
-        embed_description=" ".join(queue_statuses),
-        colour=Colour.green(),
-    )
+    content = f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}\n\n"
+    content += "".join(queue_statuses)
+    await message.channel.send(code_block(content))
     session.close()
 
 
