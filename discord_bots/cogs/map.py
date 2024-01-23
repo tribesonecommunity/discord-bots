@@ -1,11 +1,18 @@
-from discord import Colour
 from discord.ext.commands import Bot, Context, check, command
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import FinishedGame, InProgressGame, Map, MapVote, RotationMap
+from discord_bots.models import (
+    FinishedGame,
+    InProgressGame,
+    Map,
+    MapVote,
+    Queue,
+    Rotation,
+    RotationMap,
+)
 from discord_bots.utils import send_message
 
 
@@ -75,71 +82,69 @@ class MapCog(BaseCog):
 
     @command()
     @check(is_admin)
-    async def changenextmap(
-        self, ctx: Context, rotation_name: str, map_short_name: str
-    ):
+    async def changequeuemap(self, ctx: Context, queue_name: str, map_short_name: str):
         """
+        User specifies queue for ease of use, but under the hood this affects the rotation.
+        Every queue with that rotation is also affected.
         TODO: tests
         """
 
         session = ctx.session
-        current_map: CurrentMap = session.query(CurrentMap).first()
-        rotation_map: RotationMap | None = (
-            session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
+
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
         )
-        if rotation_map:
-            rotation_maps: list[RotationMap] = (
-                session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+        if not queue:
+            await self.send_error_message(f"Could not find queue: **{queue_name}**")
+            return
+
+        map: Map | None = (
+            session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()
+        )
+        if not map:
+            await self.send_error_message(f"Could not find map: **{map_short_name}**")
+            return
+
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(queue.rotation_id == Rotation.id).first()
+        )
+        if not rotation:
+            await self.send_error_message(
+                f"**{queue.name}** has not been assigned a rotation.\nPlease assign one with `!setqueuerotation`."
             )
-            rotation_map_index = rotation_maps.index(rotation_map)
-            if current_map:
-                current_map.full_name = rotation_map.full_name
-                current_map.short_name = rotation_map.short_name
-                current_map.map_rotation_index = rotation_map_index
-                current_map.updated_at = datetime.now(timezone.utc)
-                session.commit()
-            else:
-                session.add(
-                    CurrentMap(
-                        map_rotation_index=0,
-                        full_name=rotation_map.full_name,
-                        short_name=rotation_map.short_name,
-                    )
-                )
-                session.commit()
-        else:
-            map: Map | None = (
-                session.query(Map)
-                .filter(Map.short_name.ilike(map_short_name))  # type: ignore
-                .first()
+            return
+
+        next_rotation_map: RotationMap | None = (
+            session.query(RotationMap)
+            .join(Map, Map.id == RotationMap.map_id)
+            .filter(RotationMap.rotation_id == rotation.id)
+            .filter(Map.short_name == map.short_name)
+            .first()
+        )
+        if not next_rotation_map:
+            await self.send_error_message(
+                f"The rotation for **{queue.name}** doesn't have that map.\nPlease add it to the **{rotation.name}** rotation with `!addrotationmap`."
             )
-            if map:
-                if current_map:
-                    current_map.full_name = map.full_name
-                    current_map.short_name = map.short_name
-                    current_map.updated_at = datetime.now(timezone.utc)
-                    session.commit()
-                else:
-                    session.add(
-                        CurrentMap(
-                            map_rotation_index=0,
-                            full_name=rotation_map.full_name,
-                            short_name=rotation_map.short_name,
-                        )
-                    )
-                    session.commit()
-            else:
-                await send_message(
-                    message.channel,
-                    embed_description=f"Could not find map: {map_short_name}. Add to rotation or map pool first.",
-                    colour=Colour.red(),
-                )
-                return
+            return
+
+        session.query(RotationMap).filter(
+            RotationMap.rotation_id == rotation.id
+        ).filter(RotationMap.is_next == True).update({"is_next": False})
+        next_rotation_map.is_next = True
         session.commit()
-        await send_message(
-            message.channel,
-            embed_description=f"Queue map changed to {map_short_name}",
-            colour=Colour.green(),
+
+        affected_queues = (
+            session.query(Queue.name)
+            .filter(Queue.rotation_id == rotation.id)
+            .filter(Queue.name != queue.name)
+            .all()
+        )
+        affected_queue_names = ""
+        for name in affected_queues:
+            affected_queue_names += f"- {name[0]}"
+
+        await self.send_success_message(
+            f"**{queue.name}** next map changed to **{map.short_name}**\n\nQueues also affected:\n{affected_queue_names}"
         )
 
     @command()
