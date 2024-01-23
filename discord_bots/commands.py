@@ -427,28 +427,24 @@ async def create_game(
     team1_players = players[len(players) // 2 :]
 
     short_game_id = short_uuid(game.id)
-    message_content = f"Game '{queue.name}' ({short_game_id}) has begun!"
+    message_content = "```autohotkey"
+    message_content += f"\nGame '{queue.name}' ({short_game_id}) has begun!\n"
     if SHOW_TRUESKILL:
-        message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})** (mu: {round(average_trueskill, 2)})\n"
+        message_content += f"\nMap: {game.map_full_name} ({game.map_short_name}) (mu: {round(average_trueskill, 2)})\n"
     else:
-        message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})**\n"
-    message_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
-    message_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
+        message_content += f"\nMap: {game.map_full_name} ({game.map_short_name})\n"
+    message_content += pretty_format_team(game.team0_name, win_prob, team0_players)
+    message_content += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
+    message_content += "\n```"
 
     for player in team0_players:
         if not DISABLE_PRIVATE_MESSAGES:
             member: Member | None = guild.get_member(player.id)
             if member:
                 try:
-                    await member.send(
-                        content=message_content,
-                        embed=Embed(
-                            description=f"{message_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+                    await member.send(content=message_content)
+                except Exception as e:
+                    print(f"Caught exception sending message: {e}")
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -462,15 +458,9 @@ async def create_game(
             member: Member | None = guild.get_member(player.id)
             if member:
                 try:
-                    await member.send(
-                        content=message_content,
-                        embed=Embed(
-                            description=f"{message_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
+                    await member.send(content=message_content)
                 except Exception:
-                    pass
+                    print(f"Caught exception sending message: {e}")
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -479,12 +469,7 @@ async def create_game(
         )
         session.add(game_player)
 
-    await send_message(
-        channel,
-        content=message_content,
-        embed_description=message_embed,
-        colour=Colour.blue(),
-    )
+    await channel.send(message_content)
 
     categories = {category.id: category for category in guild.categories}
     tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
