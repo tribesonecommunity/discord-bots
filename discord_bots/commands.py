@@ -4179,27 +4179,27 @@ async def stats(ctx: Context):
             .all()
         )
         if player_region_trueskills:
-            output += f"**Trueskill:**"
+            output += f"Trueskill:"
             for prt in player_region_trueskills:
                 queue_region: QueueRegion = (
                     session.query(QueueRegion)
                     .filter(QueueRegion.id == prt.queue_region_id)
                     .first()
                 )
-                output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+                output += f"\n{queue_region.name}: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} (mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})"
 
         # This assumes that if a community uses regions then they'll use regions exclusively
         else:
-            output += f"**Trueskill:** {trueskill_pct}"
-            output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)} _(mu: {round(player.rated_trueskill_mu, 2)}, sigma: {round(player.rated_trueskill_sigma, 2)})_"
+            output += f"Trueskill: {trueskill_pct}"
+            output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)} (mu: {round(player.rated_trueskill_mu, 2)}, sigma: {round(player.rated_trueskill_sigma, 2)})"
     else:
-        output += f"**Trueskill:** {trueskill_pct}"
-    output += f"\n\n**Wins / Losses / Ties / Total:**"
-    output += f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} / {total_games} _({winrate}%)_"
-    output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
-    output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
-    output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
-    output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
+        output += f"Trueskill: {trueskill_pct}"
+    output += f"\n\nWins / Losses / Ties / Total:"
+    output += f"\nLifetime: {len(wins)} / {len(losses)} / {len(ties)} / {total_games} ({winrate}%)"
+    output += f"\nLast month: {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} ({winrate_last_month}%)"
+    output += f"\nLast three months: {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} ({winrate_last_three_months}%)"
+    output += f"\nLast six months: {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} ({winrate_last_six_months}%)"
+    output += f"\nLast year: {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} ({winrate_last_year}%)"
 
     if ctx.message.guild:
         member_: Member | None = ctx.message.guild.get_member(player.id)
@@ -4211,10 +4211,11 @@ async def stats(ctx: Context):
         if member_:
             try:
                 await member_.send(
-                    embed=Embed(
-                        description=f"{output}",
-                        colour=Colour.blue(),
-                    ),
+                    code_block(output)
+                    # embed=Embed(
+                    #     description=f"{output}",
+                    #     colour=Colour.blue(),
+                    # ),
                 )
             except Exception:
                 pass
