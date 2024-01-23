@@ -30,7 +30,6 @@ from .commands import (
 )
 from .config import DISABLE_MAP_ROTATION, LEADERBOARD_CHANNEL
 from .models import (
-    CurrentMap,
     InProgressGame,
     InProgressGameChannel,
     MapVote,

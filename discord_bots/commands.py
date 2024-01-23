@@ -50,7 +50,6 @@ from .models import (
     DEFAULT_TRUESKILL_MU,
     AdminRole,
     Commend,
-    CurrentMap,
     CustomCommand,
     FinishedGame,
     FinishedGamePlayer,

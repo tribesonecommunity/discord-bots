@@ -19,7 +19,6 @@ from trueskill import Rating, global_env
 from discord_bots.bot import bot
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.models import (
-    CurrentMap,
     MapVote,
     Player,
     PlayerRegionTrueskill,
