@@ -394,29 +394,61 @@ async def create_game(
             average_trueskill = mean(
                 list(map(lambda x: x.unrated_trueskill_mu, players))
             )
-    current_map: CurrentMap | None = session.query(CurrentMap).first()
 
-    if not current_map:
-        raise Exception("No current map!")
+    next_rotation_map: RotationMap | None = (
+        session.query(RotationMap)
+        .join(Rotation, Rotation.id == RotationMap.rotation_id)
+        .join(Queue, Queue.rotation_id == Rotation.id)
+        .filter(Queue.id == queue.id)
+        .filter(RotationMap.is_next == True)
+        .first()
+    )
+    if not next_rotation_map:
+        raise Exception("No next map!")
 
-    current_map_full_name = current_map.full_name
-    current_map_short_name = current_map.short_name
+    # rotate to the map after next (next next)
+    next_rotation_map.is_next = False
+
+    rotation_map_length = (
+        session.query(RotationMap)
+        .join(Rotation, Rotation.id == RotationMap.rotation_id)
+        .join(Queue, Queue.rotation_id == Rotation.id)
+        .filter(Queue.id == queue.id)
+        .count()
+    )
+    next_next_ordinal = next_rotation_map.ordinal + 1
+    if next_next_ordinal > rotation_map_length:
+        next_next_ordinal = 1
+
+    (
+        session.query(RotationMap)
+        .filter(RotationMap.rotation_id == next_rotation_map.rotation_id)
+        .filter(RotationMap.ordinal == next_next_ordinal)
+        .update({"is_next": True})
+    )
+
+    next_map: Map | None = (
+        session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
+    )
+
+    next_map_full_name = next_map.full_name
+    next_map_short_name = next_map.short_name
 
     rolled_random_map = False
-    if current_map.is_random:
+    if next_rotation_map.is_random:
         # Roll for random map
         maps: List[Map] = session.query(Map).all()
         roll = uniform(0, 1)
-        if roll < current_map.random_probability:
+        if roll < next_rotation_map.random_probability:
             rolled_random_map = True
             random_map = choice(maps)
-            current_map_full_name = random_map.full_name
-            current_map_short_name = random_map.short_name
+            next_map_full_name = random_map.full_name
+            next_map_short_name = random_map.short_name
 
     game = InProgressGame(
         average_trueskill=average_trueskill,
-        map_full_name=current_map_full_name,
-        map_short_name=current_map_short_name,
+        map_full_name=next_map_full_name,
+        map_short_name=next_map_short_name,
         queue_id=queue.id,
         team0_name=generate_be_name(),
         team1_name=generate_ds_name(),
@@ -2716,6 +2748,7 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
 
     This will send PMs to players, create voice channels, etc. so be careful
     """
+    print("mock_queue")
     if message.author.id not in [
         115204465589616646,
         347125254050676738,
