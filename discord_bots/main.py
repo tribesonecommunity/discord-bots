@@ -77,6 +77,9 @@ async def on_command_error(ctx: Context, error: CommandError):
 
 @bot.event
 async def on_message(message: Message):
+    # only respond to users
+    if message.author.bot:
+        return
     # Use this to get the channel id
     if ENABLE_DEBUG:
         if (
