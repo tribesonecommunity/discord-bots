@@ -1369,30 +1369,6 @@ async def addrandomrotationmap(
     )
 
 
-# @bot.command()
-# @commands.check(is_admin)
-# async def addrotationmap(ctx: Context, map_full_name: str, map_short_name: str):
-#     message = ctx.message
-#     session = ctx.session
-#     session.add(RotationMap(map_full_name, map_short_name))
-#     try:
-#         session.commit()
-#     except IntegrityError:
-#         session.rollback()
-#         await send_message(
-#             message.channel,
-#             embed_description=f"Error adding map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
-#             colour=Colour.red(),
-#         )
-#         return
-
-#     await send_message(
-#         message.channel,
-#         embed_description=f"{map_full_name} ({map_short_name}) added to map rotation",
-#         colour=Colour.green(),
-#     )
-
-
 @bot.command()
 async def autosub(ctx: Context, member: Member = None):
     """
