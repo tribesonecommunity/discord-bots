@@ -33,8 +33,10 @@ from trueskill import Rating, rate
 from discord_bots.checks import is_admin
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
+    code_block,
     mean,
     pretty_format_team,
+    pretty_format_team_no_format,
     print_leaderboard,
     send_message,
     short_uuid,
@@ -44,7 +46,7 @@ from discord_bots.utils import (
 )
 
 from .bot import COMMAND_PREFIX, bot
-from .config import DISABLE_MAP_ROTATION, ENABLE_RAFFLE, REQUIRE_ADD_TARGET
+from .config import DISABLE_MAP_ROTATION, ENABLE_RAFFLE, RE_ADD_DELAY, REQUIRE_ADD_TARGET
 from .models import (
     DB_NAME,
     DEFAULT_TRUESKILL_MU,
@@ -92,8 +94,6 @@ DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 MAP_ROTATION_MINUTES: int = 60
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 7
-RE_ADD_DELAY: int = 30
-
 
 def debug_print(*args):
     global DEBUG
@@ -441,28 +441,24 @@ async def create_game(
     team1_players = players[len(players) // 2 :]
 
     short_game_id = short_uuid(game.id)
-    message_content = f"Game '{queue.name}' ({short_game_id}) has begun!"
+    message_content = "```autohotkey"
+    message_content += f"\nGame '{queue.name}' ({short_game_id}) has begun!\n"
     if SHOW_TRUESKILL:
-        message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})** (mu: {round(average_trueskill, 2)})\n"
+        message_content += f"\nMap: {game.map_full_name} ({game.map_short_name}) (mu: {round(average_trueskill, 2)})\n"
     else:
-        message_embed = f"**Map: {game.map_full_name} ({game.map_short_name})**\n"
-    message_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
-    message_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
+        message_content += f"\nMap: {game.map_full_name} ({game.map_short_name})\n"
+    message_content += pretty_format_team(game.team0_name, win_prob, team0_players)
+    message_content += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
+    message_content += "\n```"
 
     for player in team0_players:
         if not DISABLE_PRIVATE_MESSAGES:
             member: Member | None = guild.get_member(player.id)
             if member:
                 try:
-                    await member.send(
-                        content=message_content,
-                        embed=Embed(
-                            description=f"{message_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
-                except Exception:
-                    pass
+                    await member.send(content=message_content)
+                except Exception as e:
+                    print(f"Caught exception sending message: {e}")
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -476,15 +472,9 @@ async def create_game(
             member: Member | None = guild.get_member(player.id)
             if member:
                 try:
-                    await member.send(
-                        content=message_content,
-                        embed=Embed(
-                            description=f"{message_embed}",
-                            colour=Colour.blue(),
-                        ),
-                    )
+                    await member.send(content=message_content)
                 except Exception:
-                    pass
+                    print(f"Caught exception sending message: {e}")
 
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
@@ -493,12 +483,7 @@ async def create_game(
         )
         session.add(game_player)
 
-    await send_message(
-        channel,
-        content=message_content,
-        embed_description=message_embed,
-        colour=Colour.blue(),
-    )
+    await channel.send(message_content)
 
     categories = {category.id: category for category in guild.categories}
     tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
@@ -1940,7 +1925,7 @@ async def del_(ctx: Context, *args):
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
-        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]")
+        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]\n")
 
     # TODO: Check deleting by name / ordinal
     # session.query(QueueWaitlistPlayer).filter(
@@ -1949,12 +1934,9 @@ async def del_(ctx: Context, *args):
 
     session.commit()
 
-    await send_message(
-        message.channel,
-        content=f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}",
-        embed_description=" ".join(queue_statuses),
-        colour=Colour.green(),
-    )
+    content = f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}\n\n"
+    content += "".join(queue_statuses)
+    await message.channel.send(code_block(content))
     session.close()
 
 
@@ -3141,17 +3123,18 @@ async def resetplayertrueskill(ctx: Context, member: Member):
     )
 
 
-@bot.command()
-@commands.check(is_admin)
-async def setadddelay(ctx: Context, delay_seconds: int):
-    message = ctx.message
-    global RE_ADD_DELAY
-    RE_ADD_DELAY = delay_seconds
-    await send_message(
-        message.channel,
-        embed_description=f"Delay between games set to {RE_ADD_DELAY}",
-        colour=Colour.green(),
-    )
+# TODO: Re-enable when configs are stored in the db
+# @bot.command()
+# @commands.check(is_admin)
+# async def setadddelay(ctx: Context, delay_seconds: int):
+#     message = ctx.message
+#     global RE_ADD_DELAY
+#     RE_ADD_DELAY = delay_seconds
+#     await send_message(
+#         message.channel,
+#         embed_description=f"Delay between games set to {RE_ADD_DELAY}",
+#         colour=Colour.green(),
+#     )
 
 
 @bot.command()
@@ -3693,7 +3676,7 @@ async def status(ctx: Context, *args):
         if game.queue_id:
             games_by_queue[game.queue_id].append(game)
 
-    output = ""
+    output = "```autohotkey\n"
     # Only show map if they didn't request a specific queue
     if len(args) == 0:
         current_map: CurrentMap | None = session.query(CurrentMap).first()
@@ -3713,20 +3696,20 @@ async def status(ctx: Context, *args):
             )
             has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
             if ENABLE_RAFFLE:
-                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({DEFAULT_RAFFLE_VALUE} tickets)_\n"
+                upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name}) ({DEFAULT_RAFFLE_VALUE} tickets)\n"
                 if has_raffle_reward:
-                    upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})** _({upcoming_map.raffle_ticket_reward} tickets)_\n"
+                    upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name}) ({upcoming_map.raffle_ticket_reward} tickets)\n"
             else:
-                upcoming_map_str = f"**Next map: {upcoming_map.full_name} ({upcoming_map.short_name})**\n"
+                upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name})\n"
             if DISABLE_MAP_ROTATION:
-                output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                output += f"{upcoming_map_str}\nMap after next: {next_map.full_name} ({next_map.short_name})\n"
             else:
                 if current_map.map_rotation_index == 0:
-                    output += f"{upcoming_map_str}\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"{upcoming_map_str}\nMap after next: {next_map.full_name} ({next_map.short_name})\n"
                 else:
-                    output += f"{upcoming_map_str}\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+                    output += f"{upcoming_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})\n"
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-        output += f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+        output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
 
         # TODO: This is duplicated
         map_votes: list[MapVote] = session.query(MapVote).all()
@@ -3740,7 +3723,7 @@ async def status(ctx: Context, *args):
                 for voted_map in voted_maps
             ]
         )
-        output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
+        output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
 
     for i, queue in enumerate(queues):
         if i > 0:
@@ -3752,12 +3735,12 @@ async def status(ctx: Context, *args):
             .all()
         )
         if queue.is_locked:
-            output += f"f({queue.ordinal}) {queue.name} (locked)* [{len(players_in_queue)} / {queue.size}]\n"
+            output += f"({queue.ordinal}) {queue.name} (locked) [{len(players_in_queue)} / {queue.size}]\n"
         else:
-            output += f"**({queue.ordinal}) {queue.name}** [{len(players_in_queue)} / {queue.size}]\n"
+            output += f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
 
         if len(players_in_queue) > 0:
-            output += f"**IN QUEUE:** "
+            output += f"IN QUEUE: "
             output += ", ".join(
                 sorted([escape_markdown(player.name) for player in players_in_queue])
             )
@@ -3790,13 +3773,13 @@ async def status(ctx: Context, *args):
                 if i > 0:
                     output += "\n"
                 if SHOW_TRUESKILL:
-                    output += f"**Map: {game.map_full_name}** ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                    output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
                 else:
-                    output += f"**Map: {game.map_full_name}** ({short_game_id}):\n"
-                output += pretty_format_team(
+                    output += f"Map: {game.map_full_name} ({short_game_id}):\n"
+                output += pretty_format_team_no_format(
                     game.team0_name, game.win_probability, team0_players
                 )
-                output += pretty_format_team(
+                output += pretty_format_team_no_format(
                     game.team1_name, 1 - game.win_probability, team1_players
                 )
                 minutes_ago = (
@@ -3808,9 +3791,9 @@ async def status(ctx: Context, *args):
     if len(output) == 0:
         output = "No queues or games"
 
-    await send_message(
-        ctx.message.channel, embed_description=output, colour=Colour.blue()
-    )
+    output += "\n```"
+
+    await ctx.message.channel.send(content=output)
 
 
 def win_rate(wins, losses, ties):
@@ -3956,27 +3939,27 @@ async def stats(ctx: Context):
             .all()
         )
         if player_region_trueskills:
-            output += f"**Trueskill:**"
+            output += f"Trueskill:"
             for prt in player_region_trueskills:
                 queue_region: QueueRegion = (
                     session.query(QueueRegion)
                     .filter(QueueRegion.id == prt.queue_region_id)
                     .first()
                 )
-                output += f"\n**{queue_region.name}**: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+                output += f"\n{queue_region.name}: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} (mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})"
 
         # This assumes that if a community uses regions then they'll use regions exclusively
         else:
-            output += f"**Trueskill:** {trueskill_pct}"
-            output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)} _(mu: {round(player.rated_trueskill_mu, 2)}, sigma: {round(player.rated_trueskill_sigma, 2)})_"
+            output += f"Trueskill: {trueskill_pct}"
+            output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)} (mu: {round(player.rated_trueskill_mu, 2)}, sigma: {round(player.rated_trueskill_sigma, 2)})"
     else:
-        output += f"**Trueskill:** {trueskill_pct}"
-    output += f"\n\n**Wins / Losses / Ties / Total:**"
-    output += f"\n**Lifetime:** {len(wins)} / {len(losses)} / {len(ties)} / {total_games} _({winrate}%)_"
-    output += f"\n**Last month:** {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} _({winrate_last_month}%)_"
-    output += f"\n**Last three months:** {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} _({winrate_last_three_months}%)_"
-    output += f"\n**Last six months:** {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} _({winrate_last_six_months}%)_"
-    output += f"\n**Last year:** {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} _({winrate_last_year}%)_"
+        output += f"Trueskill: {trueskill_pct}"
+    output += f"\n\nWins / Losses / Ties / Total:"
+    output += f"\nLifetime: {len(wins)} / {len(losses)} / {len(ties)} / {total_games} ({winrate}%)"
+    output += f"\nLast month: {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} ({winrate_last_month}%)"
+    output += f"\nLast three months: {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} ({winrate_last_three_months}%)"
+    output += f"\nLast six months: {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} ({winrate_last_six_months}%)"
+    output += f"\nLast year: {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} ({winrate_last_year}%)"
 
     if ctx.message.guild:
         member_: Member | None = ctx.message.guild.get_member(player.id)
@@ -3988,10 +3971,11 @@ async def stats(ctx: Context):
         if member_:
             try:
                 await member_.send(
-                    embed=Embed(
-                        description=f"{output}",
-                        colour=Colour.blue(),
-                    ),
+                    code_block(output)
+                    # embed=Embed(
+                    #     description=f"{output}",
+                    #     colour=Colour.blue(),
+                    # ),
                 )
             except Exception:
                 pass

@@ -49,7 +49,7 @@ def pretty_format_team(
     player_names = ", ".join(
         sorted(
             [
-                f"**(C) {player.name}**" if i == 0 else player.name
+                f"(C) {player.name}" if i == 0 else player.name
                 for i, player in enumerate(players)
             ]
         )
@@ -58,7 +58,25 @@ def pretty_format_team(
     # team_mu = round(mean(list(player.rated_trueskill_mu for player in players)), 2)
     # if SHOW_TRUESKILL:
     #     return f"**{team_name}** ({round(100 * win_probability, 1)}%, mu: {team_mu}): {player_names}\n"
-    return f"**{team_name}** ({round(100 * win_probability, 1)}%): {player_names}\n"
+    return f"{team_name} ({round(100 * win_probability, 1)}%): {player_names}\n"
+
+
+def pretty_format_team_no_format(
+    team_name: str, win_probability: float, players: list[Player]
+) -> str:
+    player_names = ", ".join(
+        sorted(
+            [
+                f"(C) {player.name}" if i == 0 else player.name
+                for i, player in enumerate(players)
+            ]
+        )
+    )
+    # TODO: This isn't right for games with regions
+    # team_mu = round(mean(list(player.rated_trueskill_mu for player in players)), 2)
+    # if SHOW_TRUESKILL:
+    #     return f"**{team_name}** ({round(100 * win_probability, 1)}%, mu: {team_mu}): {player_names}\n"
+    return f"{team_name} ({round(100 * win_probability, 1)}%): {player_names}\n"
 
 
 def short_uuid(uuid: str) -> str:
@@ -108,8 +126,7 @@ async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
         key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True
     )
 
-    if len(html_files) == 0:
-        return
+    if len(html_files) == 0: return
 
     image_path = os.path.join(STATS_DIR, html_files[0] + ".png")
     imgkit.from_file(
@@ -308,3 +325,8 @@ async def print_leaderboard(test_message: str | None = None):
             await send_message(channel, embed_description=output, colour=Colour.blue())
     else:
         await send_message(channel, embed_description=output, colour=Colour.blue())
+
+
+
+def code_block(content: str) -> str:
+    return "\n".join(["```autohotkey", content, "```"])

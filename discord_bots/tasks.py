@@ -15,6 +15,7 @@ from discord.member import Member
 from discord.utils import escape_markdown
 
 from discord_bots.utils import (
+    code_block,
     print_leaderboard,
     send_message,
     update_next_map_to_map_after_next,
@@ -28,7 +29,7 @@ from .commands import (
     create_game,
     is_in_game,
 )
-from .config import DISABLE_MAP_ROTATION, LEADERBOARD_CHANNEL
+from .config import DISABLE_MAP_ROTATION
 from .models import (
     InProgressGame,
     InProgressGameChannel,
@@ -358,20 +359,13 @@ async def add_player_task():
                 )
 
                 if len(in_progress_games) > 0:
-                    queue_statuses.append(
-                        f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*"
-                    )
+                    queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*\n")
                 else:
-                    queue_statuses.append(
-                        f"{queue.name} [{len(queue_players)}/{queue.size}]"
-                    )
+                    queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]\n")
 
-            await send_message(
-                message.channel,
-                content=f"{message.player_name} added to: {', '.join(queues_added_to)}",
-                embed_description=" ".join(queue_statuses),
-                colour=Colour.green(),
-            )
+            content = f"{message.player_name} added to: {', '.join(queues_added_to)}\n\n"
+            content += "".join(queue_statuses)
+            await message.channel.send(code_block(content))
             session.close()
 
     # No messages processed, so no way that sweaty queues popped
