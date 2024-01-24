@@ -10,8 +10,8 @@ import discord
 import imgkit
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel
 from discord.ext.commands.context import Context
-from PIL import Image
 from matplotlib import image
+from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
@@ -19,9 +19,11 @@ from trueskill import Rating, global_env
 from discord_bots.bot import bot
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.models import (
+    Map,
     MapVote,
     Player,
     PlayerRegionTrueskill,
+    Queue,
     QueueRegion,
     RotationMap,
     Session,
@@ -147,63 +149,70 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     return trueskill.cdf(delta_mu / denom)
 
 
-async def update_current_map_to_next_map_in_rotation(random_map_popped: bool):
+async def update_next_map_to_map_after_next(rotation_id: str, is_task: bool):
     """
-    :random_map_popped: When a random map pops, make the next map in rotation the original map
+    :is_task: specifies whether this call came from map_rotation_task to display different messages
     """
     session = Session()
-    current_map: CurrentMap = session.query(CurrentMap).first()
-    rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-    if len(rotation_maps) > 0:
-        if current_map:
-            if random_map_popped:
-                next_rotation_map_index = current_map.map_rotation_index
-            else:
-                next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-                    rotation_maps
-                )
-            next_map = rotation_maps[next_rotation_map_index]
-            current_map.map_rotation_index = next_rotation_map_index
-            current_map.full_name = next_map.full_name
-            current_map.short_name = next_map.short_name
-            if random_map_popped:
-                current_map.is_random = False
-                current_map.random_probability = 0
-            else:
-                current_map.is_random = next_map.is_random
-                current_map.random_probability = next_map.random_probability
-            current_map.updated_at = datetime.now(timezone.utc)
-            channel = bot.get_channel(CHANNEL_ID)
-            if isinstance(channel, discord.TextChannel):
-                await send_message(
-                    channel,
-                    embed_description=f"Map automatically rotated to **{next_map.full_name}**, all votes removed",
-                    colour=discord.Colour.blue(),
-                )
-            session.query(MapVote).delete()
-            session.query(SkipMapVote).delete()
-        else:
-            next_map = rotation_maps[0]
-            session.add(
-                CurrentMap(
-                    0,
-                    next_map.full_name,
-                    next_map.short_name,
-                    is_random=next_map.is_random,
-                    random_probability=next_map.random_probability,
-                )
-            )
-            channel = bot.get_channel(CHANNEL_ID)
-            if isinstance(channel, discord.TextChannel):
-                await send_message(
-                    channel,
-                    embed_description=f"Map rotated to {next_map.full_name}, all votes removed",
-                    colour=discord.Colour.blue(),
-                )
-            session.query(MapVote).delete()
-            session.query(SkipMapVote).delete()
 
-        session.commit()
+    next_rotation_map: RotationMap | None = (
+        session.query(RotationMap)
+        .filter(RotationMap.rotation_id == rotation_id)
+        .filter(RotationMap.is_next == True)
+        .first()
+    )
+
+    rotation_map_length = (
+        session.query(RotationMap)
+        .filter(RotationMap.rotation_id == rotation_id)
+        .count()
+    )
+    rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
+    if rotation_map_after_next_ordinal > rotation_map_length:
+        rotation_map_after_next_ordinal = 1
+
+    next_rotation_map.is_next = False
+    (
+        session.query(RotationMap)
+        .filter(RotationMap.rotation_id == rotation_id)
+        .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
+        .update({"is_next": True})
+    )
+
+    map_after_next_name: str | None = (
+        session.query(Map.full_name)
+        .join(RotationMap, RotationMap.map_id == Map.id)
+        .filter(RotationMap.rotation_id == rotation_id)
+        .filter(RotationMap.is_next == True)
+        .scalar()
+    )
+
+    channel = bot.get_channel(CHANNEL_ID)
+    if isinstance(channel, discord.TextChannel):
+        if is_task:
+            rotation_queues = (
+                session.query(Queue.name).filter(Queue.rotation_id == rotation_id).all()
+            )
+            rotation_queue_names = ""
+            for name in rotation_queues:
+                rotation_queue_names += f"\n- {name[0]}"
+
+            await send_message(
+                channel,
+                embed_description=f"Map automatically rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
+                colour=Colour.blue(),
+            )
+        else:
+            await send_message(
+                channel,
+                embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed",
+                colour=Colour.blue(),
+            )
+
+    session.query(MapVote).delete()
+    session.query(SkipMapVote).delete()
+    session.commit()
+    session.close()
 
 
 async def send_message(
