@@ -133,19 +133,19 @@ class MapCog(BaseCog):
         next_rotation_map.is_next = True
         session.commit()
 
+        output = f"**{queue.name}** next map changed to **{map.short_name}**"
         affected_queues = (
             session.query(Queue.name)
             .filter(Queue.rotation_id == rotation.id)
             .filter(Queue.name != queue.name)
             .all()
         )
-        affected_queue_names = ""
-        for name in affected_queues:
-            affected_queue_names += f"- {name[0]}"
+        if affected_queues:
+            output += "\n\nQueues also affected:"
+            for name in affected_queues:
+                output += f"\n- {name[0]}"
 
-        await self.send_success_message(
-            f"**{queue.name}** next map changed to **{map.short_name}**\n\nQueues also affected:\n{affected_queue_names}"
-        )
+        await self.send_success_message(output)
 
     @command()
     async def listmaps(self, ctx: Context):
@@ -160,6 +160,49 @@ class MapCog(BaseCog):
                 output += f"- {map.full_name} ({map.short_name})\n"
 
         await self.send_info_message(output)
+
+    # TODO: update to !map <queue_name>
+    # @command(name="map")
+    # async def map_(ctx: Context):
+    #     # TODO: This is duplicated
+    #     session = ctx.session
+    #     output = ""
+    #     current_map: CurrentMap | None = session.query(CurrentMap).first()
+    #     if current_map:
+    #         rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+    #         next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+    #             rotation_maps
+    #         )
+    #         next_map = rotation_maps[next_rotation_map_index]
+
+    #         time_since_update: timedelta = datetime.now(
+    #             timezone.utc
+    #         ) - current_map.updated_at.replace(tzinfo=timezone.utc)
+    #         time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
+    #         if current_map.map_rotation_index == 0:
+    #             output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+    #         else:
+    #             output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+    #     skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
+    #     output += (
+    #         f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+    #     )
+
+    #     # TODO: This is duplicated
+    #     map_votes: list[MapVote] = session.query(MapVote).all()
+    #     voted_map_ids: list[str] = [map_vote.map_id for map_vote in map_votes]
+    #     voted_maps: list[Map] = (
+    #         session.query(Map).filter(Map.id.in_(voted_map_ids)).all()  # type: ignore
+    #     )
+    #     voted_maps_str = ", ".join(
+    #         [
+    #             f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
+    #             for voted_map in voted_maps
+    #         ]
+    #     )
+    #     output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
+    #     session.close()
+    #     await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
 
     @command()
     @check(is_admin)
