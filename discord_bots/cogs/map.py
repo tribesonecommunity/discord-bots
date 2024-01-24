@@ -116,9 +116,7 @@ class MapCog(BaseCog):
 
         next_rotation_map: RotationMap | None = (
             session.query(RotationMap)
-            .join(Map, Map.id == RotationMap.map_id)
-            .filter(RotationMap.rotation_id == rotation.id)
-            .filter(Map.short_name == map.short_name)
+            .filter(RotationMap.rotation_id == rotation.id, RotationMap.map_id = map.id)
             .first()
         )
         if not next_rotation_map:
