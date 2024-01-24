@@ -35,7 +35,7 @@ class RotationCog(BaseCog):
         session = ctx.session
 
         if ordinal < 1:
-            await self.send_error_message("Position must be a positive number")
+            await self.send_error_message("Ordinal must be a positive number")
             return
 
         try:
@@ -77,11 +77,11 @@ class RotationCog(BaseCog):
         except IntegrityError:
             session.rollback()
             await self.send_error_message(
-                f"Error adding {map_short_name} to {rotation_name} at position {ordinal}"
+                f"Error adding {map_short_name} to {rotation_name} at ordinal {ordinal}"
             )
         else:
             await self.send_success_message(
-                f"{map.short_name} added to {rotation.name} at position {ordinal}"
+                f"{map.short_name} added to {rotation.name} at ordinal {ordinal}"
             )
 
     @command()

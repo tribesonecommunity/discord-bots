@@ -116,7 +116,9 @@ class MapCog(BaseCog):
 
         next_rotation_map: RotationMap | None = (
             session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation.id, RotationMap.map_id = map.id)
+            .filter(
+                RotationMap.rotation_id == rotation.id, RotationMap.map_id == map.id
+            )
             .first()
         )
         if not next_rotation_map:
@@ -140,8 +142,8 @@ class MapCog(BaseCog):
         )
         if affected_queues:
             output += "\n\nQueues also affected:"
-            for name in affected_queues:
-                output += f"\n- {name[0]}"
+            for name_tuple in affected_queues:
+                output += f"\n- {name_tuple[0]}"
 
         await self.send_success_message(output)
 
