@@ -38,7 +38,7 @@ from discord_bots.utils import (
     print_leaderboard,
     send_message,
     short_uuid,
-    update_current_map_to_next_map_in_rotation,
+    update_next_map_to_map_after_next,
     upload_stats_screenshot_imgkit,
     win_probability,
 )
@@ -355,6 +355,9 @@ async def create_game(
     channel: TextChannel | DMChannel | GroupChannel,
     guild: Guild,
 ):
+    """
+    TODO: Add some way to determine the random maps pool.  Currently just selects from all maps.
+    """
     session = Session()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
     if len(player_ids) == 1:
@@ -406,44 +409,22 @@ async def create_game(
     if not next_rotation_map:
         raise Exception("No next map!")
 
-    # rotate to the map after next (next next)
-    next_rotation_map.is_next = False
-
-    rotation_map_length = (
-        session.query(RotationMap)
-        .join(Rotation, Rotation.id == RotationMap.rotation_id)
-        .join(Queue, Queue.rotation_id == Rotation.id)
-        .filter(Queue.id == queue.id)
-        .count()
-    )
-    next_next_ordinal = next_rotation_map.ordinal + 1
-    if next_next_ordinal > rotation_map_length:
-        next_next_ordinal = 1
-
-    (
-        session.query(RotationMap)
-        .filter(RotationMap.rotation_id == next_rotation_map.rotation_id)
-        .filter(RotationMap.ordinal == next_next_ordinal)
-        .update({"is_next": True})
-    )
-
-    next_map: Map | None = (
-        session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
-    )
-
-    next_map_full_name = next_map.full_name
-    next_map_short_name = next_map.short_name
-
     rolled_random_map = False
     if next_rotation_map.is_random:
         # Roll for random map
+        rolled_random_map = uniform(0, 1) < next_rotation_map.random_probability
+
+    if rolled_random_map:
         maps: List[Map] = session.query(Map).all()
-        roll = uniform(0, 1)
-        if roll < next_rotation_map.random_probability:
-            rolled_random_map = True
-            random_map = choice(maps)
-            next_map_full_name = random_map.full_name
-            next_map_short_name = random_map.short_name
+        random_map = choice(maps)
+        next_map_full_name = random_map.full_name
+        next_map_short_name = random_map.short_name
+    else:
+        next_map: Map | None = (
+            session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
+        )
+        next_map_full_name = next_map.full_name
+        next_map_short_name = next_map.short_name
 
     game = InProgressGame(
         average_trueskill=average_trueskill,
@@ -538,11 +519,12 @@ async def create_game(
     session.query(QueuePlayer).filter(
         QueuePlayer.player_id.in_(player_ids)  # type: ignore
     ).delete()
-    session.query(MapVote).delete()
-    session.query(SkipMapVote).delete()
     session.commit()
-    if not queue.is_isolated:
-        await update_current_map_to_next_map_in_rotation(rolled_random_map)
+
+    if not queue.is_isolated and not rolled_random_map:
+        await update_next_map_to_map_after_next(queue.rotation_id, False)
+
+    session.close()
 
 
 async def add_player_to_queue(
@@ -2696,49 +2678,6 @@ async def trueskill(ctx: Context):
     )
 
 
-@bot.command(name="map")
-async def map_(ctx: Context):
-    # TODO: This is duplicated
-    session = ctx.session
-    output = ""
-    current_map: CurrentMap | None = session.query(CurrentMap).first()
-    if current_map:
-        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-        next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-            rotation_maps
-        )
-        next_map = rotation_maps[next_rotation_map_index]
-
-        time_since_update: timedelta = datetime.now(
-            timezone.utc
-        ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-        time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
-        if current_map.map_rotation_index == 0:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
-        else:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
-    skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-    output += (
-        f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
-    )
-
-    # TODO: This is duplicated
-    map_votes: list[MapVote] = session.query(MapVote).all()
-    voted_map_ids: list[str] = [map_vote.map_id for map_vote in map_votes]
-    voted_maps: list[Map] = (
-        session.query(Map).filter(Map.id.in_(voted_map_ids)).all()  # type: ignore
-    )
-    voted_maps_str = ", ".join(
-        [
-            f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
-            for voted_map in voted_maps
-        ]
-    )
-    output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
-    session.close()
-    await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
-
-
 @bot.command(usage="<queue_name> <count>")
 @commands.check(is_admin)
 async def mockqueue(ctx: Context, queue_name: str, count: int):
@@ -2748,7 +2687,6 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
 
     This will send PMs to players, create voice channels, etc. so be careful
     """
-    print("mock_queue")
     if message.author.id not in [
         115204465589616646,
         347125254050676738,
