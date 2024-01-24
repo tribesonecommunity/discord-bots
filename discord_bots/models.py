@@ -949,6 +949,15 @@ class RotationMap:
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
+    updated_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={
+            "sa": Column(
+                DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+            )
+        },
+    )
     ordinal: int = field(
         default=None,
         metadata={"sa": Column(Integer, index=True)},
