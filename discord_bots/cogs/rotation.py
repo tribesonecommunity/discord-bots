@@ -27,7 +27,7 @@ class RotationCog(BaseCog):
         else:
             await self.send_success_message(f"Rotation **{rotation_name}** added")
 
-    @command(usage="<rotation_name> <map_short_name> <position>")
+    @command()
     @check(is_admin)
     async def addrotationmap(
         self, ctx: Context, rotation_name: str, map_short_name: str, ordinal: int
