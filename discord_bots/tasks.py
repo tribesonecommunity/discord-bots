@@ -13,12 +13,12 @@ from discord.ext import tasks
 from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
+
 from discord_bots.utils import (
     print_leaderboard,
-    update_current_map_to_next_map_in_rotation,
     send_message,
+    update_next_map_to_map_after_next,
 )
-
 
 from .bot import bot
 from .commands import (
@@ -40,6 +40,8 @@ from .models import (
     QueueRegion,
     QueueWaitlist,
     QueueWaitlistPlayer,
+    Rotation,
+    RotationMap,
     Session,
     SkipMapVote,
     VotePassedWaitlist,
@@ -289,23 +291,24 @@ async def map_rotation_task():
     """Rotate the map automatically, stopping on the 0th map
     TODO: tests
     """
-    session = Session()
-    current_map: CurrentMap | None = session.query(CurrentMap).first()
-    if not current_map:
-        return
-
     if DISABLE_MAP_ROTATION:
         return
 
-    if current_map.map_rotation_index == 0:
-        # Stop at the first map
-        return
-
-    time_since_update: timedelta = datetime.now(
-        timezone.utc
-    ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-    if (time_since_update.seconds // 60) > MAP_ROTATION_MINUTES:
-        await update_current_map_to_next_map_in_rotation(False)
+    session = Session()
+    rotations: list(Rotation) | None = session.query(Rotation).all()
+    for rotation in rotations:
+        next_rotation_map: RotationMap | None = (
+            session.query(RotationMap)
+            .filter(RotationMap.rotation_id == rotation.id)
+            .filter(RotationMap.is_next == True)
+            .first()
+        )
+        if next_rotation_map.ordinal != 1:
+            time_since_update: timedelta = datetime.now(
+                timezone.utc
+            ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
+            if (time_since_update.seconds // 60) > MAP_ROTATION_MINUTES:
+                await update_next_map_to_map_after_next(rotation.id, True)
 
 
 @tasks.loop(seconds=1)
