@@ -5,6 +5,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Map, Queue, Rotation, RotationMap
+from discord_bots.utils import update_next_map_to_map_after_next
 
 
 class RotationCog(BaseCog):
@@ -176,6 +177,9 @@ class RotationCog(BaseCog):
                 f"Could not find map **{map.short_name}** in rotation **{rotation.name}**"
             )
             return
+
+        if rotation_map.is_next:
+            await update_next_map_to_map_after_next(rotation.id, True)
 
         # adjust the rest of the ordinals in the rotation
         rotation_maps = (
