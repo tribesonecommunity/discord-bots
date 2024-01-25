@@ -51,6 +51,7 @@ from .config import (
     ENABLE_RAFFLE,
     RE_ADD_DELAY,
     REQUIRE_ADD_TARGET,
+    SHOW_LEFT_RIGHT_TEAM,
 )
 from .models import (
     DB_NAME,
@@ -4072,9 +4073,13 @@ async def status(ctx: Context, *args):
                     output += f"Map: {game.map_full_name} ({short_game_id}):\n"
                     if game.code:
                         output += f"Game code: {game.code}\n"
+                if SHOW_LEFT_RIGHT_TEAM:
+                    output += "(L) "
                 output += pretty_format_team_no_format(
                     game.team0_name, game.win_probability, team0_players
                 )
+                if SHOW_LEFT_RIGHT_TEAM:
+                    output += "(R) "
                 output += pretty_format_team_no_format(
                     game.team1_name, 1 - game.win_probability, team1_players
                 )
