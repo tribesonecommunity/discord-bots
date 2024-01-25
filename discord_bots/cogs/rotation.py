@@ -196,3 +196,77 @@ class RotationCog(BaseCog):
         await self.send_success_message(
             f"**{map.short_name}** removed from rotation **{rotation.name}**"
         )
+
+    @command()
+    @check(is_admin)
+    async def setrotationmapordinal(
+        self, ctx: Context, rotation_name: str, map_short_name: str, new_ordinal: int
+    ):
+        session = ctx.session
+
+        if new_ordinal < 1:
+            await self.send_error_message("Ordinal must be a positive number")
+            return
+
+        try:
+            rotation = (
+                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
+            )
+        except NoResultFound:
+            await self.send_error_message(
+                f"Could not find rotation **{rotation_name}**"
+            )
+            return
+
+        try:
+            map = session.query(Map).filter(Map.short_name.ilike(map_short_name)).one()
+        except NoResultFound:
+            await self.send_error_message(f"Could not find map **{map_short_name}**")
+            return
+
+        try:
+            rotation_map_to_set = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.map_id == map.id)
+                .one()
+            )
+        except NoResultFound:
+            await self.send_error_message(
+                f"Map **{map.short_name}** is not in rotation **{rotation.name}**\nPlease add it with `!addrotationmap`."
+            )
+            return
+
+        # logic for organizing ordinals.  ordinals are kept unique and consecutive.
+        current_ordinal = rotation_map_to_set.ordinal
+
+        if new_ordinal == current_ordinal:
+            await self.send_info_message(
+                f"Map **{map.short_name}** in rotation **{rotation.name}** is already set to ordinal **{new_ordinal}**."
+            )
+            return
+
+        rotation_maps = (
+            session.query(RotationMap)
+            .join(Rotation, RotationMap.rotation_id == rotation.id)
+            .order_by(RotationMap.ordinal.asc())
+            .all()
+        )
+
+        if new_ordinal > len(rotation_maps):
+            new_ordinal = len(rotation_maps)
+
+        if new_ordinal > current_ordinal:
+            for rotation_map in rotation_maps[current_ordinal:new_ordinal]:
+                rotation_map.ordinal -= 1
+        else:
+            for rotation_map in rotation_maps[new_ordinal - 1 : current_ordinal - 1]:
+                rotation_map.ordinal += 1
+
+        rotation_map_to_set.ordinal = new_ordinal
+
+        session.commit()
+
+        await self.send_success_message(
+            f"Map **{map.short_name}** in rotation **{rotation.name}** set to ordinal **{rotation_map_to_set.ordinal}**."
+        )
