@@ -166,9 +166,10 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     return trueskill.cdf(delta_mu / denom)
 
 
-async def update_next_map_to_map_after_next(rotation_id: str, is_task: bool):
+async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
     """
-    :is_task: specifies whether this call came from map_rotation_task to display different messages
+    :is_verbose: specifies if we want to see queues affected in the bot response.
+                 currently passing in False for when game pops, True for everything else.
     """
     session = Session()
 
@@ -206,7 +207,7 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_task: bool):
 
     channel = bot.get_channel(CHANNEL_ID)
     if isinstance(channel, discord.TextChannel):
-        if is_task:
+        if is_verbose:
             rotation_queues = (
                 session.query(Queue.name).filter(Queue.rotation_id == rotation_id).all()
             )
