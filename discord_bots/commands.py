@@ -46,7 +46,12 @@ from discord_bots.utils import (
 )
 
 from .bot import COMMAND_PREFIX, bot
-from .config import DISABLE_MAP_ROTATION, ENABLE_RAFFLE, RE_ADD_DELAY, REQUIRE_ADD_TARGET
+from .config import (
+    DISABLE_MAP_ROTATION,
+    ENABLE_RAFFLE,
+    RE_ADD_DELAY,
+    REQUIRE_ADD_TARGET,
+)
 from .models import (
     DB_NAME,
     DEFAULT_TRUESKILL_MU,
@@ -94,6 +99,7 @@ DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 MAP_ROTATION_MINUTES: int = 60
 # The number of votes needed to succeed a map skip / replacement
 MAP_VOTE_THRESHOLD: int = 7
+
 
 def debug_print(*args):
     global DEBUG
@@ -2140,9 +2146,7 @@ async def disablestats(ctx: Context):
     player.stats_enabled = False
     session.commit()
     await send_message(
-        ctx.message.channel,
-        embed_description="!stats disabled",
-        colour=Colour.blue()
+        ctx.message.channel, embed_description="!stats disabled", colour=Colour.blue()
     )
 
 
@@ -2231,9 +2235,7 @@ async def enablestats(ctx: Context):
     player.stats_enabled = True
     session.commit()
     await send_message(
-        ctx.message.channel,
-        embed_description="!stats enabled",
-        colour=Colour.blue()
+        ctx.message.channel, embed_description="!stats enabled", colour=Colour.blue()
     )
 
 
@@ -3424,6 +3426,52 @@ async def setcommandprefix(ctx: Context, prefix: str):
     )
 
 
+@bot.command()
+async def setgamecode(ctx: Context, code: str):
+    author = ctx.message.author
+    ipgp = (
+        ctx.session.query(InProgressGamePlayer)
+        .filter(InProgressGamePlayer.player_id == author.id)
+        .first()
+    )
+    if not ipgp:
+        await send_message(
+            ctx.message.channel,
+            embed_description="You must be in a game to set a game code!",
+            colour=Colour.red(),
+        )
+        return
+
+    ipg = (
+        ctx.session.query(InProgressGame)
+        .filter(InProgressGame.id == ipgp.in_progress_game_id)
+        .first()
+    )
+    if not ipg:
+        await send_message(
+            ctx.message.channel,
+            embed_description="You must be in a game to set a game code!",
+            colour=Colour.red(),
+        )
+        return
+
+    if ipg.code:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Game **{ipg.id}** already has a code",
+            colour=Colour.red(),
+        )
+        return
+
+    ipg.code = code
+    ctx.session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Game **{ipg.id}** code set to **{code}**",
+        colour=Colour.green(),
+    )
+
+
 @bot.command(usage="<queue_name> <ordinal>")
 @commands.check(is_admin)
 async def setqueueordinal(ctx: Context, queue_name: str, ordinal: int):
@@ -3940,7 +3988,9 @@ async def status(ctx: Context, *args):
                 if has_raffle_reward:
                     upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name}) ({upcoming_map.raffle_ticket_reward} tickets)\n"
             else:
-                upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name})\n"
+                upcoming_map_str = (
+                    f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name})\n"
+                )
             if DISABLE_MAP_ROTATION:
                 output += f"{upcoming_map_str}\nMap after next: {next_map.full_name} ({next_map.short_name})\n"
             else:
@@ -3949,7 +3999,9 @@ async def status(ctx: Context, *args):
                 else:
                     output += f"{upcoming_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})\n"
         skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-        output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
+        output += (
+            f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
+        )
 
         # TODO: This is duplicated
         map_votes: list[MapVote] = session.query(MapVote).all()
@@ -4014,8 +4066,12 @@ async def status(ctx: Context, *args):
                     output += "\n"
                 if SHOW_TRUESKILL:
                     output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                    if game.code:
+                        output += f"Game code: {game.code}\n"
                 else:
                     output += f"Map: {game.map_full_name} ({short_game_id}):\n"
+                    if game.code:
+                        output += f"Game code: {game.code}\n"
                 output += pretty_format_team_no_format(
                     game.team0_name, game.win_probability, team0_players
                 )
