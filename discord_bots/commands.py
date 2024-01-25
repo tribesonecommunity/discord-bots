@@ -3458,7 +3458,7 @@ async def setgamecode(ctx: Context, code: str):
     if ipg.code:
         await send_message(
             ctx.message.channel,
-            embed_description=f"Game **{ipg.id}** already has a code",
+            embed_description=f"Game **{short_uuid(ipg.id)}** already has a code! Code: **{ipg.code}**",
             colour=Colour.red(),
         )
         return
@@ -3467,7 +3467,7 @@ async def setgamecode(ctx: Context, code: str):
     ctx.session.commit()
     await send_message(
         ctx.message.channel,
-        embed_description=f"Game **{ipg.id}** code set to **{code}**",
+        embed_description=f"Game **{short_uuid(ipg.id)}** code set to **{code}**",
         colour=Colour.green(),
     )
 
