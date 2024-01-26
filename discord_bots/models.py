@@ -352,7 +352,6 @@ class Map:
     )
 
     rotation_maps = relationship("RotationMap", cascade="all, delete-orphan")
-    map_votes = relationship("MapVote", cascade="all, delete-orphan")
 
 
 @mapper_registry.mapped
@@ -983,6 +982,8 @@ class RotationMap:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+
+    map_votes = relationship("MapVote", cascade="all, delete-orphan")
 
 
 @mapper_registry.mapped
