@@ -23,6 +23,9 @@ class Map(BaseCog):
     @command()
     @check(is_admin)
     async def addmap(self, ctx: Context, map_full_name: str, map_short_name: str):
+        """
+        Add a map to the map pool
+        """
         session = ctx.session
         map_short_name = map_short_name.upper()
 
@@ -42,6 +45,7 @@ class Map(BaseCog):
     @command()
     async def changegamemap(self, ctx: Context, game_id: str, map_short_name: str):
         """
+        Change the map for a game
         TODO: tests
         """
         session = ctx.session
@@ -84,8 +88,7 @@ class Map(BaseCog):
     @check(is_admin)
     async def changequeuemap(self, ctx: Context, queue_name: str, map_short_name: str):
         """
-        User specifies queue for ease of use, but under the hood this affects the rotation.
-        Every queue with that rotation is also affected.
+        Change the next map for a queue (note: affects all queues sharing that rotation)
         TODO: tests
         """
 
@@ -149,6 +152,9 @@ class Map(BaseCog):
 
     @command()
     async def listmaps(self, ctx: Context):
+        """
+        List all maps in the map pool
+        """
         session = ctx.session
         maps = session.query(Map).order_by(Map.created_at.asc()).all()
 
@@ -207,6 +213,9 @@ class Map(BaseCog):
     @command()
     @check(is_admin)
     async def removemap(self, ctx: Context, map_short_name: str):
+        """
+        Remove a map from the map pool
+        """
         session = ctx.session
 
         try:

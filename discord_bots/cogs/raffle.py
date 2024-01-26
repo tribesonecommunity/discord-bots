@@ -67,40 +67,12 @@ class Raffle(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    @command()
-    @check(is_admin)
-    async def setrotationmapraffle(
-        self, ctx, rotation_name: str, map_short_name: str, raffle_ticket_reward: int
-    ):
-        if raffle_ticket_reward < 0:
-            await self.send_error_message("Raffle ticket reward must be positive")
-            return
-
-        session = ctx.session
-
-        rotation_map: RotationMap | None = (
-            session.query(RotationMap)
-            .join(Map, Map.id == RotationMap.map_id)
-            .join(Rotation, Rotation.id == RotationMap.rotation_id)
-            .filter(Map.short_name.ilike(map_short_name))
-            .filter(Rotation.name.ilike(rotation_name))
-            .first()  # type: ignore
-        )
-        if not rotation_map:
-            await self.send_error_message(
-                f"Could not find map **{map_short_name}** in rotation **{rotation_name}**"
-            )
-            return
-
-        rotation_map.raffle_ticket_reward = raffle_ticket_reward
-        session.commit()
-
-        await self.send_info_message(
-            f"Raffle tickets for **{map_short_name}** in **{rotation_name}** set to **{raffle_ticket_reward}**"
-        )
 
     @command()
     async def myraffle(self, ctx, *, member: Member = None):
+        """
+        Displays how many raffle tickets you have
+        """
         member = member or ctx.author
         session = Session()
         player = session.query(Player).filter(Player.id == member.id).first()
@@ -120,6 +92,9 @@ class Raffle(BaseCog):
 
     @command()
     async def rafflestatus(self, ctx, *, member: Member = None):
+        """
+        Displays raffle ticket information and raffle leaderboard
+        """
         session = Session()
         total_tickets = session.query(functions.sum(Player.raffle_tickets)).scalar()
         total_players = (
@@ -149,12 +124,51 @@ class Raffle(BaseCog):
 
     @command()
     @check(is_admin)
+    async def setrotationmapraffle(
+        self, ctx, rotation_name: str, map_short_name: str, raffle_ticket_reward: int
+    ):
+        """
+        Set the raffle ticket reward for a map in a rotation
+        """
+        if raffle_ticket_reward < 0:
+            await self.send_error_message("Raffle ticket reward must be positive")
+            return
+
+        session = ctx.session
+
+        rotation_map: RotationMap | None = (
+            session.query(RotationMap)
+            .join(Map, Map.id == RotationMap.map_id)
+            .join(Rotation, Rotation.id == RotationMap.rotation_id)
+            .filter(Map.short_name.ilike(map_short_name))
+            .filter(Rotation.name.ilike(rotation_name))
+            .first()  # type: ignore
+        )
+        if not rotation_map:
+            await self.send_error_message(
+                f"Could not find map **{map_short_name}** in rotation **{rotation_name}**"
+            )
+            return
+
+        rotation_map.raffle_ticket_reward = raffle_ticket_reward
+        session.commit()
+
+        await self.send_info_message(
+            f"Raffle tickets for **{map_short_name}** in **{rotation_name}** set to **{raffle_ticket_reward}**"
+        )
+
+    @command()
+    @check(is_admin)
     async def createraffle(self, ctx, *, member: Member = None):
-        # TODO: We have a month to code this
+        """
+        TODO: Implementation
+        """
         pass
 
     @command()
     @check(is_admin)
     async def runraffle(self, ctx, *, member: Member = None):
-        # TODO: We have a month to code this
+        """
+        TODO: Implementation
+        """
         pass

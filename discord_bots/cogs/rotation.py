@@ -15,6 +15,9 @@ class Rotation(BaseCog):
     @command()
     @check(is_admin)
     async def addrotation(self, ctx: Context, rotation_name: str):
+        """
+        Add a rotation to the rotation pool
+        """
         session = ctx.session
 
         try:
@@ -33,6 +36,9 @@ class Rotation(BaseCog):
     async def addrotationmap(
         self, ctx: Context, rotation_name: str, map_short_name: str, ordinal: int
     ):
+        """
+        Add a map to a rotation at a specific ordinal (position)
+        """
         session = ctx.session
 
         if ordinal < 1:
@@ -87,6 +93,9 @@ class Rotation(BaseCog):
 
     @command()
     async def listrotations(self, ctx: Context):
+        """
+        List all rotations in the rotation pool
+        """
         session = ctx.session
 
         data = (
@@ -124,7 +133,8 @@ class Rotation(BaseCog):
     @check(is_admin)
     async def removerotation(self, ctx: Context, rotation_name: str):
         """
-        TODO: Add confirmation for deleting rotation associated with a queue
+        Remove a rotation from the rotation pool
+        TODO: Add confirmation for deleting rotation still associated with a queue
         """
         session = ctx.session
 
@@ -147,6 +157,9 @@ class Rotation(BaseCog):
     async def removerotationmap(
         self, ctx: Context, rotation_name: str, map_short_name: str
     ):
+        """
+        Remove a map from a rotation
+        """
         session = ctx.session
 
         try:
@@ -202,6 +215,9 @@ class Rotation(BaseCog):
     async def setrotationmapordinal(
         self, ctx: Context, rotation_name: str, map_short_name: str, new_ordinal: int
     ):
+        """
+        Set the ordinal (position) for a map in a rotation
+        """
         session = ctx.session
 
         if new_ordinal < 1:

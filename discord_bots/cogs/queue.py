@@ -14,6 +14,9 @@ class Queue(BaseCog):
     @command()
     @check(is_admin)
     async def setqueuerotation(self, ctx: Context, queue_name: str, rotation_name: str):
+        """
+        Assign a map rotation to a queue
+        """
         session = ctx.session
 
         try:
@@ -40,6 +43,9 @@ class Queue(BaseCog):
 
     @command()
     async def showqueuerotation(self, ctx: Context, queue_name: str):
+        """
+        Shows the map rotation assigned to a queue
+        """
         session = ctx.session
 
         queue_data = (
