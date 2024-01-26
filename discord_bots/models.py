@@ -364,7 +364,7 @@ class MapVote:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "map_vote"
-    __table_args__ = (UniqueConstraint("player_id", "map_id"),)
+    __table_args__ = (UniqueConstraint("player_id", "rotation_map_id"),)
 
     channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     player_id: int = field(
@@ -372,9 +372,11 @@ class MapVote:
             "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
         }
     )
-    map_id: str = field(
+    rotation_map_id: str = field(
         metadata={
-            "sa": Column(String, ForeignKey("map.id"), nullable=False, index=True)
+            "sa": Column(
+                String, ForeignKey("rotation_map.id"), nullable=False, index=True
+            )
         },
     )
     id: str = field(
@@ -393,6 +395,7 @@ class SkipMapVote:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "skip_map_vote"
+    __table_args__ = (UniqueConstraint("player_id", "rotation_id"),)
 
     channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     player_id: int = field(
@@ -405,6 +408,11 @@ class SkipMapVote:
                 index=True,
             )
         },
+    )
+    rotation_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("rotation.id"), nullable=False, index=True)
+        }
     )
     id: str = field(
         init=False,
