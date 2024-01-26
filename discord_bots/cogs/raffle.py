@@ -63,7 +63,7 @@ strings = [
 ]
 
 
-class RaffleCog(BaseCog):
+class Raffle(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
