@@ -3947,11 +3947,6 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 
 
 @bot.command()
-async def statuscheck(ctx: Context, *args):
-    await ctx.message.channel.send(content="test")
-
-
-@bot.command()
 async def status(ctx: Context, *args):
     session = ctx.session
     queues: list[Queue] = []
