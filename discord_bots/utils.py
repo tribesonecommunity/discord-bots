@@ -217,7 +217,7 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
 
             await send_message(
                 channel,
-                embed_description=f"Map automatically rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
+                embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
                 colour=Colour.blue(),
             )
         else:
