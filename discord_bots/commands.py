@@ -2129,6 +2129,35 @@ async def delplayer(ctx: Context, member: Member, *args):
 
 
 @bot.command()
+@commands.check(is_admin)
+async def deletegame(ctx: Context, game_id: str):
+    message = ctx.message
+    session = ctx.session
+    finished_game: FinishedGame | None = (
+        session.query(FinishedGame)
+        .filter(FinishedGame.game_id.startswith(game_id))
+        .first()
+    )
+    if not finished_game:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find game: {game_id}",
+            colour=Colour.red(),
+        )
+        return
+    session.query(FinishedGamePlayer).filter(
+        FinishedGamePlayer.finished_game_id == finished_game.id
+    ).delete()
+    session.delete(finished_game)
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Game: **{finished_game.game_id}** deleted",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
 async def testleaderboard(ctx: Context, test_message: str):
     await print_leaderboard(test_message)
 
