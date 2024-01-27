@@ -49,6 +49,7 @@ from .bot import COMMAND_PREFIX, bot
 from .config import (
     DISABLE_MAP_ROTATION,
     ENABLE_RAFFLE,
+    MAXIMUM_TEAM_COMBINATIONS,
     RE_ADD_DELAY,
     REQUIRE_ADD_TARGET,
     SHOW_LEFT_RIGHT_TEAM,
@@ -142,7 +143,9 @@ def get_even_teams(
     best_teams_so_far: list[Player] = []
 
     all_combinations = list(combinations(players, team_size))
-    for team0 in all_combinations:
+    if MAXIMUM_TEAM_COMBINATIONS:
+        all_combinations = all_combinations[:MAXIMUM_TEAM_COMBINATIONS]
+    for i, team0 in enumerate(all_combinations):
         team1 = [p for p in players if p not in team0]
         if is_rated:
             team0_ratings = []
@@ -212,7 +215,10 @@ def get_even_teams(
         if current_team_evenness < best_team_evenness_so_far:
             best_win_prob_so_far = win_prob
             best_teams_so_far = list(team0[:]) + list(team1[:])
+        if best_team_evenness_so_far < 0.001:
+            break
 
+    print("Found team evenness:", best_team_evenness_so_far, "iterations:", i)
     return best_teams_so_far, best_win_prob_so_far
 
 
