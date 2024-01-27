@@ -31,6 +31,7 @@ from sqlalchemy.sql import select
 from trueskill import Rating, rate
 
 from discord_bots.checks import is_admin
+from discord_bots.cogs.vote import MAP_VOTE_THRESHOLD
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
     code_block,
@@ -46,7 +47,12 @@ from discord_bots.utils import (
 )
 
 from .bot import COMMAND_PREFIX, bot
-from .config import DISABLE_MAP_ROTATION, ENABLE_RAFFLE, RE_ADD_DELAY, REQUIRE_ADD_TARGET
+from .config import (
+    DISABLE_MAP_ROTATION,
+    ENABLE_RAFFLE,
+    RE_ADD_DELAY,
+    REQUIRE_ADD_TARGET,
+)
 from .models import (
     DB_NAME,
     DEFAULT_TRUESKILL_MU,
@@ -92,8 +98,6 @@ except:
 DEBUG: bool = bool(os.getenv("DEBUG")) or False
 DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 MAP_ROTATION_MINUTES: int = 60
-# The number of votes needed to succeed a map skip / replacement
-MAP_VOTE_THRESHOLD: int = 7
 
 def debug_print(*args):
     global DEBUG
