@@ -8,7 +8,7 @@ from discord_bots.models import Map, Queue, Rotation, RotationMap
 from discord_bots.utils import update_next_map_to_map_after_next
 
 
-class Rotation(BaseCog):
+class RotationCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 

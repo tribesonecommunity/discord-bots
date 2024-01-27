@@ -16,7 +16,7 @@ from discord_bots.models import (
 from discord_bots.utils import send_message
 
 
-class Map(BaseCog):
+class MapCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 

@@ -7,11 +7,11 @@ from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
 
-from discord_bots.cogs.map import Map
-from discord_bots.cogs.queue import Queue
-from discord_bots.cogs.raffle import Raffle
-from discord_bots.cogs.rotation import Rotation
-from discord_bots.cogs.vote import Vote
+from discord_bots.cogs.map import MapCommands
+from discord_bots.cogs.queue import QueueCommands
+from discord_bots.cogs.raffle import RaffleCommands
+from discord_bots.cogs.rotation import RotationCommands
+from discord_bots.cogs.vote import VoteCommands
 from discord_bots.config import ENABLE_DEBUG, LEADERBOARD_CHANNEL
 from discord_bots.utils import CHANNEL_ID
 
@@ -192,11 +192,11 @@ def main():
     load_dotenv()
     API_KEY = os.getenv("DISCORD_API_KEY")
     if API_KEY:
-        bot.add_cog(Raffle(bot))
-        bot.add_cog(Rotation(bot))
-        bot.add_cog(Map(bot))
-        bot.add_cog(Queue(bot))
-        bot.add_cog(Vote(bot))
+        bot.add_cog(RaffleCommands(bot))
+        bot.add_cog(RotationCommands(bot))
+        bot.add_cog(MapCommands(bot))
+        bot.add_cog(QueueCommands(bot))
+        bot.add_cog(VoteCommands(bot))
         bot.run(API_KEY)
     else:
         print("You must define DISCORD_API_KEY!")

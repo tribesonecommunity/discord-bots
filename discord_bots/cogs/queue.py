@@ -7,7 +7,7 @@ from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Map, Queue, Rotation, RotationMap
 
 
-class Queue(BaseCog):
+class QueueCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
