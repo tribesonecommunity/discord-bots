@@ -473,7 +473,7 @@ async def create_game(
             if member:
                 try:
                     await member.send(content=message_content)
-                except Exception:
+                except Exception as e:
                     print(f"Caught exception sending message: {e}")
 
         game_player = InProgressGamePlayer(
@@ -3944,6 +3944,11 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
         embed_description="\n".join(output),
         colour=Colour.blue(),
     )
+
+
+@bot.command()
+async def statuscheck(ctx: Context, *args):
+    await ctx.message.channel.send(content="test")
 
 
 @bot.command()
