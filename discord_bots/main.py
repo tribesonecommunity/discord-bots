@@ -11,6 +11,7 @@ from discord_bots.cogs.map import Map
 from discord_bots.cogs.queue import Queue
 from discord_bots.cogs.raffle import Raffle
 from discord_bots.cogs.rotation import Rotation
+from discord_bots.cogs.vote import Vote
 from discord_bots.config import ENABLE_DEBUG, LEADERBOARD_CHANNEL
 from discord_bots.utils import CHANNEL_ID
 
@@ -195,6 +196,7 @@ def main():
         bot.add_cog(Rotation(bot))
         bot.add_cog(Map(bot))
         bot.add_cog(Queue(bot))
+        bot.add_cog(Vote(bot))
         bot.run(API_KEY)
     else:
         print("You must define DISCORD_API_KEY!")
