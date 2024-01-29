@@ -239,6 +239,10 @@ class FinishedGamePlayer:
 @mapper_registry.mapped
 @dataclass
 class InProgressGame:
+    """
+    :code: A one-time game code - useful for hosting private games in T3
+    """
+
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "in_progress_game"
 
@@ -251,6 +255,9 @@ class InProgressGame:
         metadata={"sa": Column(String, ForeignKey("queue.id"), index=True)},
     )
     win_probability: float = field(metadata={"sa": Column(Float, nullable=False)})
+    code: str | None = field(
+        default=None, metadata={"sa": Column(String, nullable=True)}
+    )
     team0_name: str = field(
         default="Blood Eagle",
         metadata={"sa": Column(String, nullable=False, server_default="Blood Eagle")},

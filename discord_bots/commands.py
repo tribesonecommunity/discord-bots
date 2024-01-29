@@ -50,8 +50,10 @@ from .bot import COMMAND_PREFIX, bot
 from .config import (
     DISABLE_MAP_ROTATION,
     ENABLE_RAFFLE,
+    MAXIMUM_TEAM_COMBINATIONS,
     RE_ADD_DELAY,
     REQUIRE_ADD_TARGET,
+    SHOW_LEFT_RIGHT_TEAM,
 )
 from .models import (
     DB_NAME,
@@ -139,7 +141,9 @@ def get_even_teams(
     best_teams_so_far: list[Player] = []
 
     all_combinations = list(combinations(players, team_size))
-    for team0 in all_combinations:
+    if MAXIMUM_TEAM_COMBINATIONS:
+        all_combinations = all_combinations[:MAXIMUM_TEAM_COMBINATIONS]
+    for i, team0 in enumerate(all_combinations):
         team1 = [p for p in players if p not in team0]
         if is_rated:
             team0_ratings = []
@@ -209,7 +213,10 @@ def get_even_teams(
         if current_team_evenness < best_team_evenness_so_far:
             best_win_prob_so_far = win_prob
             best_teams_so_far = list(team0[:]) + list(team1[:])
+        if best_team_evenness_so_far < 0.001:
+            break
 
+    print("Found team evenness:", best_team_evenness_so_far, "iterations:", i)
     return best_teams_so_far, best_win_prob_so_far
 
 
@@ -477,7 +484,7 @@ async def create_game(
             if member:
                 try:
                     await member.send(content=message_content)
-                except Exception:
+                except Exception as e:
                     print(f"Caught exception sending message: {e}")
 
         game_player = InProgressGamePlayer(
@@ -1965,6 +1972,35 @@ async def delplayer(ctx: Context, member: Member, *args):
 
 
 @bot.command()
+@commands.check(is_admin)
+async def deletegame(ctx: Context, game_id: str):
+    message = ctx.message
+    session = ctx.session
+    finished_game: FinishedGame | None = (
+        session.query(FinishedGame)
+        .filter(FinishedGame.game_id.startswith(game_id))
+        .first()
+    )
+    if not finished_game:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find game: {game_id}",
+            colour=Colour.red(),
+        )
+        return
+    session.query(FinishedGamePlayer).filter(
+        FinishedGamePlayer.finished_game_id == finished_game.id
+    ).delete()
+    session.delete(finished_game)
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"Game: **{finished_game.game_id}** deleted",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
 async def testleaderboard(ctx: Context, test_message: str):
     await print_leaderboard(test_message)
 
@@ -1989,9 +2025,7 @@ async def disablestats(ctx: Context):
     player.stats_enabled = False
     session.commit()
     await send_message(
-        ctx.message.channel,
-        embed_description="!stats disabled",
-        colour=Colour.blue()
+        ctx.message.channel, embed_description="!stats disabled", colour=Colour.blue()
     )
 
 
@@ -2080,9 +2114,7 @@ async def enablestats(ctx: Context):
     player.stats_enabled = True
     session.commit()
     await send_message(
-        ctx.message.channel,
-        embed_description="!stats enabled",
-        colour=Colour.blue()
+        ctx.message.channel, embed_description="!stats enabled", colour=Colour.blue()
     )
 
 
@@ -3164,6 +3196,52 @@ async def setcommandprefix(ctx: Context, prefix: str):
     )
 
 
+@bot.command()
+async def setgamecode(ctx: Context, code: str):
+    author = ctx.message.author
+    ipgp = (
+        ctx.session.query(InProgressGamePlayer)
+        .filter(InProgressGamePlayer.player_id == author.id)
+        .first()
+    )
+    if not ipgp:
+        await send_message(
+            ctx.message.channel,
+            embed_description="You must be in a game to set a game code!",
+            colour=Colour.red(),
+        )
+        return
+
+    ipg = (
+        ctx.session.query(InProgressGame)
+        .filter(InProgressGame.id == ipgp.in_progress_game_id)
+        .first()
+    )
+    if not ipg:
+        await send_message(
+            ctx.message.channel,
+            embed_description="You must be in a game to set a game code!",
+            colour=Colour.red(),
+        )
+        return
+
+    if ipg.code:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Game **{short_uuid(ipg.id)}** already has a code! Code: **{ipg.code}**",
+            colour=Colour.red(),
+        )
+        return
+
+    ipg.code = code
+    ctx.session.commit()
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Game **{short_uuid(ipg.id)}** code set to **{code}**",
+        colour=Colour.green(),
+    )
+
+
 @bot.command(usage="<queue_name> <ordinal>")
 @commands.check(is_admin)
 async def setqueueordinal(ctx: Context, queue_name: str, ordinal: int):
@@ -3786,24 +3864,32 @@ async def status(ctx: Context, *args):
                         .all()
                     )
 
-                    short_game_id = short_uuid(game.id)
-                    if i > 0:
-                        output += "\n"
-                    if SHOW_TRUESKILL:
-                        output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
-                    else:
-                        output += f"Map: {game.map_full_name} ({short_game_id}):\n"
-                    output += pretty_format_team_no_format(
-                        game.team0_name, game.win_probability, team0_players
-                    )
-                    output += pretty_format_team_no_format(
-                        game.team1_name, 1 - game.win_probability, team1_players
-                    )
-                    minutes_ago = (
-                        datetime.now(timezone.utc)
-                        - game.created_at.replace(tzinfo=timezone.utc)
-                    ).seconds // 60
-                    output += f"@ {minutes_ago} minutes ago\n"
+                short_game_id = short_uuid(game.id)
+                if i > 0:
+                    output += "\n"
+                if SHOW_TRUESKILL:
+                    output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                    if game.code:
+                        output += f"Game code: {game.code}\n"
+                else:
+                    output += f"Map: {game.map_full_name} ({short_game_id}):\n"
+                    if game.code:
+                        output += f"Game code: {game.code}\n"
+                if SHOW_LEFT_RIGHT_TEAM:
+                    output += "(L) "
+                output += pretty_format_team_no_format(
+                    game.team0_name, game.win_probability, team0_players
+                )
+                if SHOW_LEFT_RIGHT_TEAM:
+                    output += "(R) "
+                output += pretty_format_team_no_format(
+                    game.team1_name, 1 - game.win_probability, team1_players
+                )
+                minutes_ago = (
+                    datetime.now(timezone.utc)
+                    - game.created_at.replace(tzinfo=timezone.utc)
+                ).seconds // 60
+                output += f"@ {minutes_ago} minutes ago\n"
 
         output += "\n"
 
