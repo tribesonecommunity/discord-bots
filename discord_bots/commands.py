@@ -3620,139 +3620,192 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 @bot.command()
 async def status(ctx: Context, *args):
     session = ctx.session
-    queues: list[Queue] = []
-    all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
-    if len(args) == 0:
-        queues: list[Queue] = all_queues
-    else:
-        for arg in args:
-            # Try adding by integer index first, then try string name
-            try:
-                queue_index = int(arg) - 1
-                queues.append(all_queues[queue_index])
-            except ValueError:
-                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                if queue:
-                    queues.append(queue)
-            except IndexError:
-                continue
 
-    games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
-    for game in session.query(InProgressGame):
-        if game.queue_id:
-            games_by_queue[game.queue_id].append(game)
+    all_rotations = session.query(Rotation).order_by(Rotation.created_at.asc()).all()
 
     output = "```autohotkey\n"
-    # Only show map if they didn't request a specific queue
-    if len(args) == 0:
-        current_map: CurrentMap | None = session.query(CurrentMap).first()
-        if current_map:
-            rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-            upcoming_map = rotation_maps[current_map.map_rotation_index]
-            next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-                rotation_maps
-            )
-            next_map = rotation_maps[next_rotation_map_index]
 
-            time_since_update: timedelta = datetime.now(
-                timezone.utc
-            ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-            time_until_rotation = MAP_ROTATION_MINUTES - (
-                time_since_update.seconds // 60
-            )
-            has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
-            if ENABLE_RAFFLE:
-                upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name}) ({DEFAULT_RAFFLE_VALUE} tickets)\n"
-                if has_raffle_reward:
-                    upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name}) ({upcoming_map.raffle_ticket_reward} tickets)\n"
-            else:
-                upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name})\n"
-            if DISABLE_MAP_ROTATION:
-                output += f"{upcoming_map_str}\nMap after next: {next_map.full_name} ({next_map.short_name})\n"
-            else:
-                if current_map.map_rotation_index == 0:
-                    output += f"{upcoming_map_str}\nMap after next: {next_map.full_name} ({next_map.short_name})\n"
-                else:
-                    output += f"{upcoming_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})\n"
-        skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-        output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
+    for rotation in all_rotations:
+        queues: list[Queue] = []
+        rotation_queues = session.query(Queue).filter(Queue.rotation_id == rotation.id).order_by(Queue.ordinal.asc()).all()  # type: ignore
+        if not rotation_queues:
+            continue
 
-        # TODO: This is duplicated
-        map_votes: list[MapVote] = session.query(MapVote).all()
-        voted_map_ids: list[str] = [map_vote.map_id for map_vote in map_votes]
-        voted_maps: list[Map] = (
-            session.query(Map).filter(Map.id.in_(voted_map_ids)).all()  # type: ignore
-        )
-        voted_maps_str = ", ".join(
-            [
-                f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
-                for voted_map in voted_maps
-            ]
-        )
-        output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
-
-    for i, queue in enumerate(queues):
-        if i > 0:
-            output += "\n"
-        players_in_queue = (
-            session.query(Player)
-            .join(QueuePlayer)
-            .filter(QueuePlayer.queue_id == queue.id)
-            .all()
-        )
-        if queue.is_locked:
-            output += f"({queue.ordinal}) {queue.name} (locked) [{len(players_in_queue)} / {queue.size}]\n"
+        if len(args) == 0:
+            queues: list[Queue] = rotation_queues
         else:
-            output += f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
+            for arg in args:
+                # Try adding by integer index first, then try string name
+                try:
+                    queue_index = int(arg) - 1
+                    queues.append(rotation_queues[queue_index])
+                except ValueError:
+                    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                    if queue:
+                        queues.append(queue)
+                except IndexError:
+                    continue
 
-        if len(players_in_queue) > 0:
-            output += f"IN QUEUE: "
-            output += ", ".join(
-                sorted([escape_markdown(player.name) for player in players_in_queue])
+        games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
+        for game in session.query(InProgressGame):
+            if game.queue_id:
+                games_by_queue[game.queue_id].append(game)
+
+        # Only show map if they didn't request a specific queue
+        if len(args) == 0:
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.is_next == True)
+                .first()
             )
-            output += "\n"
+            if not next_rotation_map:
+                continue
+            next_map: Map | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(next_rotation_map.map_id == Map.id)
+                .first()
+            )
+            rotation_map_after_next = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.ordinal == next_rotation_map.ordinal + 1)
+                .first()
+            )
+            if not rotation_map_after_next:
+                rotation_map_after_next = (
+                    session.query(RotationMap)
+                    .filter(RotationMap.rotation_id == rotation.id)
+                    .filter(RotationMap.ordinal == 1)
+                    .first()
+                )
+            map_after_next: Map | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(rotation_map_after_next.map_id == Map.id)
+                .first()
+            )
 
-        if queue.id in games_by_queue:
-            game: InProgressGame
-            for i, game in enumerate(games_by_queue[queue.id]):
-                team0_players = (
-                    session.query(Player)
-                    .join(InProgressGamePlayer)
-                    .filter(
-                        InProgressGamePlayer.in_progress_game_id == game.id,
-                        InProgressGamePlayer.team == 0,
+            next_map_str = f"Next map: {next_map.full_name} ({next_map.short_name})"
+            if ENABLE_RAFFLE:
+                has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
+                raffle_reward = (
+                    next_rotation_map.raffle_ticket_reward
+                    if has_raffle_reward
+                    else DEFAULT_RAFFLE_VALUE
+                )
+                next_map_str += f" ({raffle_reward} tickets)"
+            next_map_str += "\n"
+
+            if DISABLE_MAP_ROTATION or next_rotation_map.ordinal == 1:
+                output += f"{next_map_str}\nMap after next: "
+            else:
+                time_since_update: timedelta = datetime.now(
+                    timezone.utc
+                ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
+
+                time_until_rotation = MAP_ROTATION_MINUTES - (
+                    time_since_update.seconds // 60
+                )
+                output += f"{next_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): "
+
+            output += f"{map_after_next.full_name} ({map_after_next.short_name})\n"
+
+            skip_map_votes: list[SkipMapVote] = (
+                session.query(SkipMapVote)
+                .filter(SkipMapVote.rotation_id == rotation.id)
+                .all()
+            )
+            output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
+
+            # TODO: This is duplicated
+            map_vote_names = (
+                session.query(Map.short_name)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .join(MapVote, MapVote.rotation_map_id == RotationMap.id)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .all()
+            )
+
+            vote_counts = {}
+            for map_vote in map_vote_names:
+                map_name = map_vote[0]
+                vote_counts[map_name] = vote_counts.get(map_name, 0) + 1
+
+            voted_maps_str = ""
+            for map, count in vote_counts.items():
+                voted_maps_str += f"{map} [{count}/{MAP_VOTE_THRESHOLD}], "
+            voted_maps_str = voted_maps_str[:-2]
+
+            output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
+
+        for i, queue in enumerate(queues):
+            if i > 0:
+                output += "\n"
+            players_in_queue = (
+                session.query(Player)
+                .join(QueuePlayer)
+                .filter(QueuePlayer.queue_id == queue.id)
+                .all()
+            )
+            if queue.is_locked:
+                output += f"({queue.ordinal}) {queue.name} (locked) [{len(players_in_queue)} / {queue.size}]\n"
+            else:
+                output += f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
+
+            if len(players_in_queue) > 0:
+                output += f"IN QUEUE: "
+                output += ", ".join(
+                    sorted(
+                        [escape_markdown(player.name) for player in players_in_queue]
                     )
-                    .all()
                 )
+                output += "\n"
 
-                team1_players = (
-                    session.query(Player)
-                    .join(InProgressGamePlayer)
-                    .filter(
-                        InProgressGamePlayer.in_progress_game_id == game.id,
-                        InProgressGamePlayer.team == 1,
+            if queue.id in games_by_queue:
+                game: InProgressGame
+                for i, game in enumerate(games_by_queue[queue.id]):
+                    team0_players = (
+                        session.query(Player)
+                        .join(InProgressGamePlayer)
+                        .filter(
+                            InProgressGamePlayer.in_progress_game_id == game.id,
+                            InProgressGamePlayer.team == 0,
+                        )
+                        .all()
                     )
-                    .all()
-                )
 
-                short_game_id = short_uuid(game.id)
-                if i > 0:
-                    output += "\n"
-                if SHOW_TRUESKILL:
-                    output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
-                else:
-                    output += f"Map: {game.map_full_name} ({short_game_id}):\n"
-                output += pretty_format_team_no_format(
-                    game.team0_name, game.win_probability, team0_players
-                )
-                output += pretty_format_team_no_format(
-                    game.team1_name, 1 - game.win_probability, team1_players
-                )
-                minutes_ago = (
-                    datetime.now(timezone.utc)
-                    - game.created_at.replace(tzinfo=timezone.utc)
-                ).seconds // 60
-                output += f"@ {minutes_ago} minutes ago\n"
+                    team1_players = (
+                        session.query(Player)
+                        .join(InProgressGamePlayer)
+                        .filter(
+                            InProgressGamePlayer.in_progress_game_id == game.id,
+                            InProgressGamePlayer.team == 1,
+                        )
+                        .all()
+                    )
+
+                    short_game_id = short_uuid(game.id)
+                    if i > 0:
+                        output += "\n"
+                    if SHOW_TRUESKILL:
+                        output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                    else:
+                        output += f"Map: {game.map_full_name} ({short_game_id}):\n"
+                    output += pretty_format_team_no_format(
+                        game.team0_name, game.win_probability, team0_players
+                    )
+                    output += pretty_format_team_no_format(
+                        game.team1_name, 1 - game.win_probability, team1_players
+                    )
+                    minutes_ago = (
+                        datetime.now(timezone.utc)
+                        - game.created_at.replace(tzinfo=timezone.utc)
+                    ).seconds // 60
+                    output += f"@ {minutes_ago} minutes ago\n"
+
+        output += "\n"
 
     if len(output) == 0:
         output = "No queues or games"
