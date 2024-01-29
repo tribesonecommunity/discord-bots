@@ -403,7 +403,6 @@ class SkipMapVote:
                 Integer,
                 ForeignKey("player.id"),
                 nullable=False,
-                unique=True,
                 index=True,
             )
         },
