@@ -48,35 +48,36 @@ class QueueCommands(BaseCog):
         """
         session = ctx.session
 
-        queue_data = (
-            session.query(
-                Queue.name, Rotation.name, RotationMap.ordinal, Map.short_name
-            )
-            .filter(Queue.name.ilike(queue_name))
-            .outerjoin(Rotation, Rotation.id == Queue.rotation_id)
-            .outerjoin(RotationMap, RotationMap.rotation_id == Rotation.id)
-            .outerjoin(Map, RotationMap.map_id == Map.id)
-            .order_by(RotationMap.ordinal.asc())
-            .all()
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
         )
-
-        if not queue_data:
+        if not queue:
             await self.send_error_message(f"Could not find queue **{queue_name}**")
             return
 
-        if not queue_data[0][1]:
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.id == queue.rotation_id).first()
+        )
+        if not rotation:
             await self.send_error_message(
-                f"Queue **{queue_data[0][0]}** has not been assigned a rotation"
+                f"Queue **{queue.name}** has not been assigned a rotation"
             )
             return
 
-        maps = []
-        if not queue_data[0][3]:
-            maps = ["None"]
-        else:
-            for row in queue_data:
-                maps.append(row[3])
+        map_names = [
+            x[0]
+            for x in (
+                session.query(Map.short_name)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .order_by(RotationMap.ordinal.asc())
+                .all()
+            )
+        ]
 
-        output = f"**{queue_data[0][0]}** is assigned to **{queue_data[0][1]}**\n"
-        output += f"- _Maps: {', '.join(maps)}_"
+        if not map_names:
+            map_names = ["None"]
+
+        output = f"**{queue.name}** is assigned to **{rotation.name}**\n"
+        output += f"- _Maps: {', '.join(map_names)}_"
         await self.send_info_message(output)

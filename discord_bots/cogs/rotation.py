@@ -98,34 +98,33 @@ class RotationCommands(BaseCog):
         """
         session = ctx.session
 
-        data = (
-            session.query(
-                Rotation.name, Rotation.created_at, RotationMap.ordinal, Map.short_name
-            )
-            .outerjoin(RotationMap, Rotation.id == RotationMap.rotation_id)
-            .outerjoin(Map, Map.id == RotationMap.map_id)
-            .order_by(Rotation.created_at.asc())
-            .order_by(RotationMap.ordinal.asc())
-            .all()
+        rotations: list[Rotation] | None = (
+            session.query(Rotation).order_by(Rotation.created_at.asc()).all()
         )
-
-        if not data:
+        if not rotations:
             await self.send_info_message("_-- No Rotations-- _")
             return
 
-        grouped_data = {}
-        for row in data:
-            if row[0] in grouped_data:
-                grouped_data[row[0]].append(row[3])
-            elif not row[3]:
-                grouped_data[row[0]] = ["None"]
-            else:
-                grouped_data[row[0]] = [row[3]]
-
         output = ""
-        for key, value in grouped_data.items():
-            output += f"- **{key}**\n"
-            output += f" - _Maps: {', '.join(value)}_\n\n"
+
+        for rotation in rotations:
+            output += f"- **{rotation.name}**\n"
+
+            map_names = [
+                x[0]
+                for x in (
+                    session.query(Map.short_name)
+                    .join(RotationMap, RotationMap.map_id == Map.id)
+                    .filter(RotationMap.rotation_id == rotation.id)
+                    .order_by(RotationMap.ordinal.asc())
+                    .all()
+                )
+            ]
+
+            if not map_names:
+                output += f" - _Maps: None_\n\n"
+            else:
+                output += f" - _Maps: {', '.join(map_names)}_\n\n"
 
         await self.send_info_message(output)
 
