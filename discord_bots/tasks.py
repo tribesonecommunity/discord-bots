@@ -289,14 +289,18 @@ async def vote_passed_waitlist_task():
 
 @tasks.loop(minutes=1)
 async def map_rotation_task():
-    """Rotate the map automatically, stopping on the 0th map
+    """Rotate the map automatically, stopping on the 1st map
     TODO: tests
     """
     if DISABLE_MAP_ROTATION:
         return
 
     session = Session()
+
     rotations: list(Rotation) | None = session.query(Rotation).all()
+    if not rotations:
+        return
+
     for rotation in rotations:
         next_rotation_map: RotationMap | None = (
             session.query(RotationMap)
@@ -304,7 +308,7 @@ async def map_rotation_task():
             .filter(RotationMap.is_next == True)
             .first()
         )
-        if next_rotation_map.ordinal != 1:
+        if next_rotation_map and next_rotation_map.ordinal != 1:
             time_since_update: timedelta = datetime.now(
                 timezone.utc
             ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
