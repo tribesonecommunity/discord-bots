@@ -76,9 +76,16 @@ class RotationCommands(BaseCog):
             for rotation_map in rotation_maps[ordinal - 1 :]:
                 rotation_map.ordinal += 1
 
+        is_next = True if not rotation_maps else False
+
         try:
             session.add(
-                RotationMap(rotation_id=rotation.id, map_id=map.id, ordinal=ordinal)
+                RotationMap(
+                    rotation_id=rotation.id,
+                    map_id=map.id,
+                    ordinal=ordinal,
+                    is_next=is_next,
+                )
             )
             session.commit()
         except IntegrityError:
