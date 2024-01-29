@@ -227,8 +227,15 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
                 colour=Colour.blue(),
             )
 
-    session.query(MapVote).delete()
-    session.query(SkipMapVote).delete()
+    map_votes = (
+        session.query(MapVote)
+        .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
+        .filter(RotationMap.rotation_id == rotation_id)
+        .all()
+    )
+    for map_vote in map_votes:
+        session.delete(map_vote)
+    session.query(SkipMapVote).filter(SkipMapVote.rotation_id == rotation_id).delete()
     session.commit()
     session.close()
 

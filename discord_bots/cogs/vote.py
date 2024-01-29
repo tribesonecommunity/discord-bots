@@ -128,45 +128,45 @@ class VoteCommands(BaseCog):
         session = ctx.session
 
         session.add(
-            SkipMapVote(
+            MapVote(
                 message.channel.id,
                 59148727633321984,
-                "e8a8186a-d315-44e6-8ab1-c190410fe28c",
+                "f063c94a-f6ba-4679-b704-f5079e8af403",
             )
         )
         session.add(
-            SkipMapVote(
+            MapVote(
                 message.channel.id,
                 71834517970620416,
-                "e8a8186a-d315-44e6-8ab1-c190410fe28c",
+                "f063c94a-f6ba-4679-b704-f5079e8af403",
             )
         )
         session.add(
-            SkipMapVote(
+            MapVote(
                 message.channel.id,
                 79349357186396160,
-                "e8a8186a-d315-44e6-8ab1-c190410fe28c",
+                "f063c94a-f6ba-4679-b704-f5079e8af403",
             )
         )
         session.add(
-            SkipMapVote(
+            MapVote(
                 message.channel.id,
                 83207382410199040,
-                "e8a8186a-d315-44e6-8ab1-c190410fe28c",
+                "f063c94a-f6ba-4679-b704-f5079e8af403",
             )
         )
         session.add(
-            SkipMapVote(
+            MapVote(
                 message.channel.id,
                 83686402927104000,
-                "e8a8186a-d315-44e6-8ab1-c190410fe28c",
+                "f063c94a-f6ba-4679-b704-f5079e8af403",
             )
         )
         session.add(
-            SkipMapVote(
+            MapVote(
                 message.channel.id,
                 86254915835400192,
-                "e8a8186a-d315-44e6-8ab1-c190410fe28c",
+                "f063c94a-f6ba-4679-b704-f5079e8af403",
             )
         )
 
@@ -223,8 +223,18 @@ class VoteCommands(BaseCog):
                 RotationMap.rotation_id == rotation.id
             ).filter(RotationMap.is_next == True).update({"is_next": False})
             rotation_map.is_next = True
-            session.query(MapVote).delete()
-            session.query(SkipMapVote).delete()
+
+            map_votes = (
+                session.query(MapVote)
+                .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .all()
+            )
+            for map_vote in map_votes:
+                session.delete(map_vote)
+            session.query(SkipMapVote).filter(
+                SkipMapVote.rotation_id == rotation.id
+            ).delete()
 
             if message.guild:
                 # TODO: Check if another vote already exists
@@ -304,8 +314,6 @@ class VoteCommands(BaseCog):
                 f"Vote to skip the current map passed!  All votes removed."
             )
             await update_next_map_to_map_after_next(rotation.id, True)
-            session.query(MapVote).delete()
-            session.query(SkipMapVote).delete()
 
             if message.guild:
                 # TODO: Might be bugs if two votes pass one after the other
