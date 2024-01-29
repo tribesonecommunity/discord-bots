@@ -224,8 +224,21 @@ class MapCommands(BaseCog):
             await self.send_error_message(f"Could not find map **{map_short_name}**")
             return
 
-        session.delete(map)
-        session.commit()
-        await self.send_success_message(
-            f"**{map.full_name} ({map.short_name})** removed from maps"
+        map_rotations = (
+            session.query(Rotation)
+            .join(RotationMap, RotationMap.rotation_id == Rotation.id)
+            .filter(RotationMap.map_id == map.id)
+            .all()
         )
+
+        if map_rotations:
+            error = f"Please remove map from rotation first.\n\n**{map.short_name}** belongs to the following rotations:"
+            for map_rotation in map_rotations:
+                error += f"\n- {map_rotation.name}"
+            await self.send_error_message(error)
+        else:
+            session.delete(map)
+            session.commit()
+            await self.send_success_message(
+                f"**{map.full_name} ({map.short_name})** removed from maps"
+            )
