@@ -167,7 +167,10 @@ class MapCommands(BaseCog):
 
         await self.send_info_message(output)
 
+    # broken commands
+
     # TODO: update to !map <queue_name>
+
     # @command(name="map")
     # async def map_(ctx: Context):
     #     # TODO: This is duplicated
@@ -209,6 +212,65 @@ class MapCommands(BaseCog):
     #     output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
     #     session.close()
     #     await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
+
+    # TODO: decide where the random map comes from
+
+    # @bot.command()
+    # async def randommap(ctx: Context):
+    #     session = ctx.session
+    #     maps: list[Map] = session.query(Map).all()
+    #     map = choice(maps)
+    #     await send_message(
+    #         ctx.message.channel,
+    #         embed_description=f"Random map selected: **{map.full_name} ({map.short_name})**",
+    #         colour=Colour.blue(),
+    #     )
+
+    # TODO: change to !setrandommap <map_short_name> <rotation> <random_probability>
+    # random_probability stored in rotation_map
+
+    # @bot.command(usage="<map_full_name> <map_short_name> <random_probability>")
+    # @commands.check(is_admin)
+    # async def addrandomrotationmap(
+    #     ctx: Context, map_full_name: str, map_short_name: str, random_probability: float
+    # ):
+    #     """
+    #     Adds a special map to the rotation that is random each time it comes up
+    #     """
+    #     message = ctx.message
+    #     if random_probability < 0 or random_probability > 1:
+    #         await send_message(
+    #             message.channel,
+    #             embed_description=f"Random map probability must be between 0 and 1!",
+    #             colour=Colour.red(),
+    #         )
+    #         return
+
+    #     session = ctx.session
+    #     session.add(
+    #         RotationMap(
+    #             f"{map_full_name} (R)",
+    #             f"{map_short_name}R",
+    #             is_random=True,
+    #             random_probability=random_probability,
+    #         )
+    #     )
+    #     try:
+    #         session.commit()
+    #     except IntegrityError:
+    #         session.rollback()
+    #         await send_message(
+    #             message.channel,
+    #             embed_description=f"Error adding random map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
+    #             colour=Colour.red(),
+    #         )
+    #         return
+
+    #     await send_message(
+    #         message.channel,
+    #         embed_description=f"{map_full_name} (R) ({map_short_name}R) added to map rotation",
+    #         colour=Colour.green(),
+    #     )
 
     @command()
     @check(is_admin)
