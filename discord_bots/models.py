@@ -656,15 +656,9 @@ class Queue:
         metadata={"sa": Column(DateTime, index=True)},
     )
     rotation_id: str = field(
-        default="1",
+        default=None,
         metadata={
-            "sa": Column(
-                String,
-                ForeignKey("rotation.id"),
-                nullable=True,
-                index=True,
-                server_default=text("1"),
-            )
+            "sa": Column(String, ForeignKey("rotation.id"), nullable=True, index=True)
         },
     )
     id: str = field(
