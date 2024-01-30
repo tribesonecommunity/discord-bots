@@ -3808,32 +3808,32 @@ async def status(ctx: Context, *args):
                         .all()
                     )
 
-                short_game_id = short_uuid(game.id)
-                if i > 0:
-                    output += "\n"
-                if SHOW_TRUESKILL:
-                    output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
-                    if game.code:
-                        output += f"Game code: {game.code}\n"
-                else:
-                    output += f"Map: {game.map_full_name} ({short_game_id}):\n"
-                    if game.code:
-                        output += f"Game code: {game.code}\n"
-                if SHOW_LEFT_RIGHT_TEAM:
-                    output += "(L) "
-                output += pretty_format_team_no_format(
-                    game.team0_name, game.win_probability, team0_players
-                )
-                if SHOW_LEFT_RIGHT_TEAM:
-                    output += "(R) "
-                output += pretty_format_team_no_format(
-                    game.team1_name, 1 - game.win_probability, team1_players
-                )
-                minutes_ago = (
-                    datetime.now(timezone.utc)
-                    - game.created_at.replace(tzinfo=timezone.utc)
-                ).seconds // 60
-                output += f"@ {minutes_ago} minutes ago\n"
+                    short_game_id = short_uuid(game.id)
+                    if i > 0:
+                        output += "\n"
+                    if SHOW_TRUESKILL:
+                        output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                        if game.code:
+                            output += f"Game code: {game.code}\n"
+                    else:
+                        output += f"Map: {game.map_full_name} ({short_game_id}):\n"
+                        if game.code:
+                            output += f"Game code: {game.code}\n"
+                    if SHOW_LEFT_RIGHT_TEAM:
+                        output += "(L) "
+                    output += pretty_format_team_no_format(
+                        game.team0_name, game.win_probability, team0_players
+                    )
+                    if SHOW_LEFT_RIGHT_TEAM:
+                        output += "(R) "
+                    output += pretty_format_team_no_format(
+                        game.team1_name, 1 - game.win_probability, team1_players
+                    )
+                    minutes_ago = (
+                        datetime.now(timezone.utc)
+                        - game.created_at.replace(tzinfo=timezone.utc)
+                    ).seconds // 60
+                    output += f"@ {minutes_ago} minutes ago\n"
 
         output += "\n"
 
