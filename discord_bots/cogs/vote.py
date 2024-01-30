@@ -10,6 +10,7 @@ from discord_bots.config import RE_ADD_DELAY
 from discord_bots.models import (
     Map,
     MapVote,
+    Player,
     Queue,
     Rotation,
     RotationMap,
@@ -121,56 +122,83 @@ class VoteCommands(BaseCog):
             "Your vote to skip the current map was removed."
         )
 
-    @command()
-    async def mockvotes(self, ctx: Context):
-        # To be removed
+    @command(usage="<map|skip>")
+    @check(is_admin)
+    async def mockvotes(self, ctx: Context, type: str):
+        """
+        Generates 6 mock votes for testing
+        Testing must be done quick because afk_timer_task clears the votes every minute
+
+        map: mocks MapVote entries for first rotation_map
+        skip: mocks SkipMapVote entries for first rotation
+        """
+
         message = ctx.message
         session = ctx.session
 
-        session.add(
-            MapVote(
-                message.channel.id,
-                59148727633321984,
-                "f063c94a-f6ba-4679-b704-f5079e8af403",
+        lesser_gods = [115204465589616646, 347125254050676738, 508003755220926464]
+
+        if message.author.id not in lesser_gods:
+            await self.send_error_message("Only special people can use this command")
+            return
+
+        if type == "map":
+            rotation_map: RotationMap | None = session.query(RotationMap).first()
+
+            id = rotation_map.id
+            vote_class = globals()["MapVote"]
+
+            queue_name = (
+                session.query(Queue.name)
+                .join(Rotation, Rotation.id == Queue.rotation_id)
+                .filter(Rotation.id == rotation_map.rotation_id)
+                .first()[0]
             )
-        )
-        session.add(
-            MapVote(
-                message.channel.id,
-                71834517970620416,
-                "f063c94a-f6ba-4679-b704-f5079e8af403",
+            map_short_name = (
+                session.query(Map.short_name)
+                .filter(Map.id == rotation_map.map_id)
+                .first()[0]
             )
-        )
-        session.add(
-            MapVote(
-                message.channel.id,
-                79349357186396160,
-                "f063c94a-f6ba-4679-b704-f5079e8af403",
+            final_vote_command = f"!votemap {queue_name} {map_short_name}"
+        elif type == "skip":
+            rotation: Rotation | None = session.query(Rotation).first()
+
+            id = rotation.id
+            vote_class = globals()["SkipMapVote"]
+
+            queue_name = (
+                session.query(Queue.name)
+                .join(Rotation, Rotation.id == Queue.rotation_id)
+                .filter(Rotation.id == rotation.id)
+                .first()[0]
             )
-        )
-        session.add(
-            MapVote(
-                message.channel.id,
-                83207382410199040,
-                "f063c94a-f6ba-4679-b704-f5079e8af403",
+            final_vote_command = f"!voteskip {queue_name}"
+        else:
+            await self.send_error_message("Usage: !mockvotes <map|skip>")
+            return
+
+        first_six_player_ids = [
+            x[0]
+            for x in session.query(Player.id)
+            .filter(Player.id.not_in(lesser_gods))
+            .limit(6)
+            .all()
+        ]
+
+        for player_id in first_six_player_ids:
+            session.add(
+                vote_class(
+                    message.channel.id,
+                    player_id,
+                    id,
+                )
             )
-        )
-        session.add(
-            MapVote(
-                message.channel.id,
-                83686402927104000,
-                "f063c94a-f6ba-4679-b704-f5079e8af403",
-            )
-        )
-        session.add(
-            MapVote(
-                message.channel.id,
-                86254915835400192,
-                "f063c94a-f6ba-4679-b704-f5079e8af403",
-            )
-        )
 
         session.commit()
+
+        await self.send_success_message(
+            f"Mock votes added!\nTo make this vote pass use `{final_vote_command}`"
+        )
 
     @command()
     async def votemap(self, ctx: Context, queue_name: str, map_short_name: str):
