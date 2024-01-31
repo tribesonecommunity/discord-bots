@@ -43,6 +43,7 @@ class MapCommands(BaseCog):
             )
 
     @command()
+    @check(is_admin)
     async def changegamemap(self, ctx: Context, game_id: str, map_short_name: str):
         """
         Change the map for a game
