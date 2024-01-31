@@ -145,8 +145,22 @@ class VoteCommands(BaseCog):
         if type == "map":
             rotation_map: RotationMap | None = session.query(RotationMap).first()
 
-            id = rotation_map.id
-            vote_class = globals()["MapVote"]
+            first_six_player_ids = [
+                x[0]
+                for x in session.query(Player.id)
+                .filter(Player.id.not_in(lesser_gods))
+                .limit(6)
+                .all()
+            ]
+
+            for player_id in first_six_player_ids:
+                session.add(
+                    MapVote(
+                        message.channel.id,
+                        player_id,
+                        rotation_map.id,
+                    )
+                )
 
             queue_name = (
                 session.query(Queue.name)
@@ -163,8 +177,22 @@ class VoteCommands(BaseCog):
         elif type == "skip":
             rotation: Rotation | None = session.query(Rotation).first()
 
-            id = rotation.id
-            vote_class = globals()["SkipMapVote"]
+            first_six_player_ids = [
+                x[0]
+                for x in session.query(Player.id)
+                .filter(Player.id.not_in(lesser_gods))
+                .limit(6)
+                .all()
+            ]
+
+            for player_id in first_six_player_ids:
+                session.add(
+                    SkipMapVote(
+                        message.channel.id,
+                        player_id,
+                        rotation.id,
+                    )
+                )
 
             queue_name = (
                 session.query(Queue.name)
@@ -176,23 +204,6 @@ class VoteCommands(BaseCog):
         else:
             await self.send_error_message("Usage: !mockvotes <map|skip>")
             return
-
-        first_six_player_ids = [
-            x[0]
-            for x in session.query(Player.id)
-            .filter(Player.id.not_in(lesser_gods))
-            .limit(6)
-            .all()
-        ]
-
-        for player_id in first_six_player_ids:
-            session.add(
-                vote_class(
-                    message.channel.id,
-                    player_id,
-                    id,
-                )
-            )
 
         session.commit()
 
