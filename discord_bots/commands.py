@@ -3543,7 +3543,8 @@ async def status(ctx: Context, *args):
             next_map_str += "\n"
 
             if DISABLE_MAP_ROTATION or next_rotation_map.ordinal == 1:
-                output += f"{next_map_str}\nMap after next: "
+                pass
+                # output += f"{next_map_str}\nMap after next: "
             else:
                 time_since_update: timedelta = datetime.now(
                     timezone.utc
@@ -3552,7 +3553,7 @@ async def status(ctx: Context, *args):
                 time_until_rotation = MAP_ROTATION_MINUTES - (
                     time_since_update.seconds // 60
                 )
-                output += f"{next_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): "
+                # output += f"{next_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): "
 
             output += f"{map_after_next.full_name} ({map_after_next.short_name})\n"
 
