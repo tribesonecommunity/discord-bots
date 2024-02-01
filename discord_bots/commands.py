@@ -59,6 +59,7 @@ from .models import (
     DB_NAME,
     DEFAULT_TRUESKILL_MU,
     AdminRole,
+    Category,
     Commend,
     CustomCommand,
     FinishedGame,
@@ -69,12 +70,11 @@ from .models import (
     Map,
     MapVote,
     Player,
+    PlayerCategoryTrueskill,
     PlayerDecay,
-    PlayerRegionTrueskill,
     Queue,
     QueueNotification,
     QueuePlayer,
-    QueueRegion,
     QueueRole,
     QueueWaitlist,
     QueueWaitlistPlayer,
@@ -108,7 +108,7 @@ def debug_print(*args):
 
 
 def get_even_teams(
-    player_ids: list[int], team_size: int, is_rated: bool, queue_region_id: str | None
+    player_ids: list[int], team_size: int, is_rated: bool, queue_category_id: str | None
 ) -> tuple[list[Player], float]:
     """
     This is the one used when a new game is created. The other methods are for the showgamedebug command
@@ -124,19 +124,18 @@ def get_even_teams(
     players: list[Player] = (
         session.query(Player).filter(Player.id.in_(player_ids)).all()
     )
-    shuffle(
-        players
-    )  # This is important! This ensures captains are randomly distributed!
-    if queue_region_id:
-        player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
-            PlayerRegionTrueskill.player_id.in_(player_ids),
-            PlayerRegionTrueskill.queue_region_id == queue_region_id,
+    # This is important! This ensures captains are randomly distributed!
+    shuffle(players)
+    if queue_category_id:
+        player_category_trueskills = session.query(PlayerCategoryTrueskill).filter(
+            PlayerCategoryTrueskill.player_id.in_(player_ids),
+            PlayerCategoryTrueskill.category_id == queue_category_id,
         )
-        player_region_trueskills = {
-            prt.player_id: prt for prt in player_region_trueskills
+        player_category_trueskills = {
+            prt.player_id: prt for prt in player_category_trueskills
         }
     else:
-        player_region_trueskills = {}
+        player_category_trueskills = {}
     best_win_prob_so_far: float = 0.0
     best_teams_so_far: list[Player] = []
 
@@ -145,68 +144,38 @@ def get_even_teams(
         all_combinations = all_combinations[:MAXIMUM_TEAM_COMBINATIONS]
     for i, team0 in enumerate(all_combinations):
         team1 = [p for p in players if p not in team0]
-        if is_rated:
-            team0_ratings = []
-            for player in team0:
-                if queue_region_id and player.id in player_region_trueskills:
-                    player_region_trueskill = player_region_trueskills[player.id]
-                    team0_ratings.append(
-                        Rating(
-                            player_region_trueskill.rated_trueskill_mu,
-                            player_region_trueskill.rated_trueskill_sigma,
-                        )
+        team0_ratings = []
+        for player in team0:
+            if queue_category_id and player.id in player_category_trueskills:
+                player_category_trueskill: PlayerCategoryTrueskill = (
+                    player_category_trueskills[player.id]
+                )
+                team0_ratings.append(
+                    Rating(
+                        player_category_trueskill.mu,
+                        player_category_trueskill.sigma,
                     )
-                else:
-                    team0_ratings.append(
-                        Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                )
+            else:
+                team0_ratings.append(
+                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                )
+        team1_ratings = []
+        for player in team1:
+            if queue_category_id and player.id in player_category_trueskills:
+                player_category_trueskill: PlayerCategoryTrueskill = (
+                    player_category_trueskills[player.id]
+                )
+                team1_ratings.append(
+                    Rating(
+                        player_category_trueskill.mu,
+                        player_category_trueskill.sigma,
                     )
-            team1_ratings = []
-            for player in team1:
-                if queue_region_id and player.id in player_region_trueskills:
-                    player_region_trueskill = player_region_trueskills[player.id]
-                    team1_ratings.append(
-                        Rating(
-                            player_region_trueskill.rated_trueskill_mu,
-                            player_region_trueskill.rated_trueskill_sigma,
-                        )
-                    )
-                else:
-                    team1_ratings.append(
-                        Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-                    )
-        else:
-            team0_ratings = []
-            for player in team0:
-                if queue_region_id and player.id in player_region_trueskills:
-                    player_region_trueskill = player_region_trueskills[player.id]
-                    team0_ratings.append(
-                        Rating(
-                            player_region_trueskill.unrated_trueskill_mu,
-                            player_region_trueskill.unrated_trueskill_sigma,
-                        )
-                    )
-                else:
-                    team0_ratings.append(
-                        Rating(
-                            player.unrated_trueskill_mu, player.unrated_trueskill_sigma
-                        )
-                    )
-            team1_ratings = []
-            for player in team1:
-                if queue_region_id and player.id in player_region_trueskills:
-                    player_region_trueskill = player_region_trueskills[player.id]
-                    team1_ratings.append(
-                        Rating(
-                            player_region_trueskill.unrated_trueskill_mu,
-                            player_region_trueskill.unrated_trueskill_sigma,
-                        )
-                    )
-                else:
-                    team1_ratings.append(
-                        Rating(
-                            player.unrated_trueskill_mu, player.unrated_trueskill_sigma
-                        )
-                    )
+                )
+            else:
+                team1_ratings.append(
+                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                )
         win_prob = win_probability(team0_ratings, team1_ratings)
         current_team_evenness = abs(0.50 - win_prob)
         best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
@@ -366,9 +335,6 @@ async def create_game(
     channel: TextChannel | DMChannel | GroupChannel,
     guild: Guild,
 ):
-    """
-    TODO: Add some way to determine the random maps pool.  Currently just selects from all maps.
-    """
     session = Session()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
     if len(player_ids) == 1:
@@ -380,34 +346,18 @@ async def create_game(
             player_ids,
             len(player_ids) // 2,
             is_rated=queue.is_rated,
-            queue_region_id=queue.queue_region_id,
+            queue_category_id=queue.category_id,
         )
-    queue_region = (
-        session.query(QueueRegion)
-        .filter(QueueRegion.id == queue.queue_region_id)
-        .first()
-    )
-    player_region_trueskills = None
-    if queue_region:
-        player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
-            PlayerRegionTrueskill.queue_region_id == queue_region.id
+    category = session.query(Category).filter(Category.id == queue.category_id).first()
+    player_category_trueskills = None
+    if category:
+        player_category_trueskills = session.query(PlayerCategoryTrueskill).filter(
+            PlayerCategoryTrueskill.category_id == category.id
         )
-    if queue.is_rated:
-        if player_region_trueskills:
-            average_trueskill = mean(
-                list(map(lambda x: x.rated_trueskill_mu, player_region_trueskills))
-            )
-        else:
-            average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
+    if player_category_trueskills:
+        average_trueskill = mean(list(map(lambda x: x.mu, player_category_trueskills)))
     else:
-        if player_region_trueskills:
-            average_trueskill = mean(
-                list(map(lambda x: x.unrated_trueskill_mu, player_region_trueskills))
-            )
-        else:
-            average_trueskill = mean(
-                list(map(lambda x: x.unrated_trueskill_mu, players))
-            )
+        average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
 
     next_rotation_map: RotationMap | None = (
         session.query(RotationMap)
@@ -557,24 +507,20 @@ async def add_player_to_queue(
 
     player: Player = session.query(Player).filter(Player.id == player_id).first()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
-    queue_region = (
-        session.query(QueueRegion)
-        .filter(QueueRegion.id == queue.queue_region_id)
-        .first()
-    )
-    player_region_trueskill: PlayerRegionTrueskill | None = None
-    if queue_region:
-        player_region_trueskill = (
-            session.query(PlayerRegionTrueskill)
+    category = session.query(Category).filter(Category.id == queue.category_id).first()
+    player_category_trueskill: PlayerCategoryTrueskill | None = None
+    if category:
+        player_category_trueskill = (
+            session.query(PlayerCategoryTrueskill)
             .filter(
-                PlayerRegionTrueskill.player_id == player_id,
-                PlayerRegionTrueskill.queue_region_id == queue_region.id,
+                PlayerCategoryTrueskill.player_id == player_id,
+                PlayerCategoryTrueskill.category_id == category.id,
             )
             .first()
         )
     player_mu = player.rated_trueskill_mu
-    if player_region_trueskill:
-        player_mu = player_region_trueskill.rated_trueskill_mu
+    if player_category_trueskill:
+        player_mu = player_category_trueskill.mu
     if queue.mu_max is not None:
         if player_mu > queue.mu_max:
             return False, False
@@ -1279,32 +1225,6 @@ async def addadminrole(ctx: Context, role_name: str):
 
 @bot.command()
 @commands.check(is_admin)
-async def addqueueregion(ctx: Context, region_name: str):
-    session = ctx.session
-    exists = (
-        session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
-    )
-    if exists:
-        session.close()
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Region already exists: **{region_name}**",
-            colour=Colour.red(),
-        )
-        return
-
-    session.add(QueueRegion(region_name))
-    session.commit()
-    session.close()
-    await send_message(
-        ctx.message.channel,
-        embed_description=f"Region added: **{region_name}**",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
 async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
     session = ctx.session
@@ -1957,8 +1877,8 @@ async def deletegame(ctx: Context, game_id: str):
 
 
 @bot.command()
-async def testleaderboard(ctx: Context, test_message: str):
-    await print_leaderboard(test_message)
+async def testleaderboard(ctx: Context):
+    await print_leaderboard(ctx.channel)
 
 
 @bot.command()
@@ -2124,18 +2044,18 @@ async def finishgame(ctx: Context, outcome: str):
     ).all()
     player_ids: list[str] = [player.id for player in players]
     players_by_id: dict[int, Player] = {player.id: player for player in players}
-    player_region_trueskills_by_id: dict[str, PlayerRegionTrueskill] = {}
-    if queue.queue_region_id:
-        player_region_trueskills: list[PlayerRegionTrueskill] = (
-            session.query(PlayerRegionTrueskill)
+    player_category_trueskills_by_id: dict[str, PlayerCategoryTrueskill] = {}
+    if queue.category_id:
+        player_category_trueskills: list[PlayerCategoryTrueskill] = (
+            session.query(PlayerCategoryTrueskill)
             .filter(
-                PlayerRegionTrueskill.player_id.in_(player_ids),
-                PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
+                PlayerCategoryTrueskill.player_id.in_(player_ids),
+                PlayerCategoryTrueskill.category_id == queue.category_id,
             )
             .all()
         )
-        player_region_trueskills_by_id = {
-            prt.player_id: prt for prt in player_region_trueskills
+        player_category_trueskills_by_id = {
+            pct.player_id: pct for pct in player_category_trueskills
         }
     in_progress_game_players = (
         session.query(InProgressGamePlayer)
@@ -2152,14 +2072,10 @@ async def finishgame(ctx: Context, outcome: str):
         player = players_by_id[in_progress_game_player.player_id]
         if in_progress_game_player.team == 0:
             team0_players.append(in_progress_game_player)
-            if queue.queue_region_id and player.id in player_region_trueskills_by_id:
-                prt = player_region_trueskills_by_id[player.id]
-                team0_rated_ratings_before.append(
-                    Rating(prt.rated_trueskill_mu, prt.rated_trueskill_sigma)
-                )
-                team0_unrated_ratings_before.append(
-                    Rating(prt.unrated_trueskill_mu, prt.unrated_trueskill_sigma)
-                )
+            if player.id in player_category_trueskills_by_id:
+                pct = player_category_trueskills_by_id[player.id]
+                team0_rated_ratings_before.append(Rating(pct.mu, pct.sigma))
+                team0_unrated_ratings_before.append(Rating(pct.mu, pct.sigma))
             else:
                 team0_rated_ratings_before.append(
                     Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
@@ -2169,14 +2085,10 @@ async def finishgame(ctx: Context, outcome: str):
                 )
         else:
             team1_players.append(in_progress_game_player)
-            if queue.queue_region_id and player.id in player_region_trueskills_by_id:
-                prt = player_region_trueskills_by_id[player.id]
-                team1_rated_ratings_before.append(
-                    Rating(prt.rated_trueskill_mu, prt.rated_trueskill_sigma)
-                )
-                team1_unrated_ratings_before.append(
-                    Rating(prt.unrated_trueskill_mu, prt.unrated_trueskill_sigma)
-                )
+            if player.id in player_category_trueskills_by_id:
+                pct = player_category_trueskills_by_id[player.id]
+                team1_rated_ratings_before.append(Rating(pct.mu, pct.sigma))
+                team1_unrated_ratings_before.append(Rating(pct.mu, pct.sigma))
             else:
                 team1_rated_ratings_before.append(
                     Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
@@ -2185,15 +2097,15 @@ async def finishgame(ctx: Context, outcome: str):
                     Rating(player.unrated_trueskill_mu, player.unrated_trueskill_sigma)
                 )
 
-    if queue.queue_region_id:
-        queue_region_name = (
-            session.query(QueueRegion)
-            .filter(QueueRegion.id == queue.queue_region_id)
+    if queue.category_id:
+        category_name = (
+            session.query(Category)
+            .filter(Category.id == queue.category_id)
             .first()
             .name
         )
     else:
-        queue_region_name = None
+        category_name = None
 
     finished_game = FinishedGame(
         average_trueskill=in_progress_game.average_trueskill,
@@ -2203,7 +2115,7 @@ async def finishgame(ctx: Context, outcome: str):
         map_full_name=in_progress_game.map_full_name,
         map_short_name=in_progress_game.map_short_name,
         queue_name=queue.name,
-        queue_region_name=queue_region_name,
+        category_name=category_name,
         started_at=in_progress_game.created_at,
         team0_name=in_progress_game.team0_name,
         team1_name=in_progress_game.team1_name,
@@ -2224,7 +2136,7 @@ async def finishgame(ctx: Context, outcome: str):
     team1_rated_ratings_after: list[Rating]
     team0_unrated_ratings_after: list[Rating]
     team1_unrated_ratings_after: list[Rating]
-    if queue.is_rated and not queue.is_isolated:
+    if not queue.is_isolated:
         if len(players) > 1:
             team0_rated_ratings_after, team1_rated_ratings_after = rate(
                 [team0_rated_ratings_before, team1_rated_ratings_before], result
@@ -2269,29 +2181,29 @@ async def finishgame(ctx: Context, outcome: str):
             unrated_trueskill_mu_after=team0_unrated_ratings_after[i].mu,
             unrated_trueskill_sigma_after=team0_unrated_ratings_after[i].sigma,
         )
-        if not queue.queue_region_id:
-            player.rated_trueskill_mu = team0_rated_ratings_after[i].mu
-            player.rated_trueskill_sigma = team0_rated_ratings_after[i].sigma
-            player.unrated_trueskill_mu = team0_unrated_ratings_after[i].mu
-            player.unrated_trueskill_sigma = team0_unrated_ratings_after[i].sigma
+        trueskill_rating = team0_rated_ratings_after[i]
+        # Regardless of category, always update the master trueskill. That way
+        # when we create new categories off of it the data isn't completely
+        # stale
+        player.rated_trueskill_mu = trueskill_rating.mu
+        player.rated_trueskill_sigma = trueskill_rating.sigma
+        player.unrated_trueskill_mu = team0_unrated_ratings_after[i].mu
+        player.unrated_trueskill_sigma = team0_unrated_ratings_after[i].sigma
+        if player.id in player_category_trueskills_by_id:
+            pct = player_category_trueskills_by_id[player.id]
+            pct.mu = trueskill_rating.mu
+            pct.sigma = trueskill_rating.sigma
+            pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
         else:
-            if player.id in player_region_trueskills_by_id:
-                prt = player_region_trueskills_by_id[player.id]
-                prt.rated_trueskill_mu = team0_rated_ratings_after[i].mu
-                prt.rated_trueskill_sigma = team0_rated_ratings_after[i].sigma
-                prt.unrated_trueskill_mu = team0_unrated_ratings_after[i].mu
-                prt.unrated_trueskill_sigma = team0_unrated_ratings_after[i].sigma
-            else:
-                session.add(
-                    PlayerRegionTrueskill(
-                        player_id=player.id,
-                        queue_region_id=queue.queue_region_id,
-                        rated_trueskill_mu=team0_rated_ratings_after[i].mu,
-                        rated_trueskill_sigma=team0_rated_ratings_after[i].sigma,
-                        unrated_trueskill_mu=team0_unrated_ratings_after[i].mu,
-                        unrated_trueskill_sigma=team0_unrated_ratings_after[i].sigma,
-                    )
+            session.add(
+                PlayerCategoryTrueskill(
+                    player_id=player.id,
+                    category_id=queue.category_id,
+                    mu=trueskill_rating.mu,
+                    sigma=trueskill_rating.sigma,
+                    rank=trueskill_rating.mu - 3 * trueskill_rating.sigma,
                 )
+            )
         session.add(finished_game_player)
     for i, team1_gip in enumerate(team1_players):
         player = players_by_id[team1_gip.player_id]
@@ -2309,29 +2221,29 @@ async def finishgame(ctx: Context, outcome: str):
             unrated_trueskill_mu_after=team1_unrated_ratings_after[i].mu,
             unrated_trueskill_sigma_after=team1_unrated_ratings_after[i].sigma,
         )
-        if not queue.queue_region_id:
-            player.rated_trueskill_mu = team1_rated_ratings_after[i].mu
-            player.rated_trueskill_sigma = team1_rated_ratings_after[i].sigma
-            player.unrated_trueskill_mu = team1_unrated_ratings_after[i].mu
-            player.unrated_trueskill_sigma = team1_unrated_ratings_after[i].sigma
+        trueskill_rating = team1_rated_ratings_after[i]
+        # Regardless of category, always update the master trueskill. That way
+        # when we create new categories off of it the data isn't completely
+        # stale
+        player.rated_trueskill_mu = trueskill_rating.mu
+        player.rated_trueskill_sigma = trueskill_rating.sigma
+        player.unrated_trueskill_mu = team1_unrated_ratings_after[i].mu
+        player.unrated_trueskill_sigma = team1_unrated_ratings_after[i].sigma
+        if player.id in player_category_trueskills_by_id:
+            pct = player_category_trueskills_by_id[player.id]
+            pct.mu = trueskill_rating.mu
+            pct.sigma = trueskill_rating.sigma
+            pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
         else:
-            if player.id in player_region_trueskills_by_id:
-                prt = player_region_trueskills_by_id[player.id]
-                prt.rated_trueskill_mu = team1_rated_ratings_after[i].mu
-                prt.rated_trueskill_sigma = team1_rated_ratings_after[i].sigma
-                prt.unrated_trueskill_mu = team1_unrated_ratings_after[i].mu
-                prt.unrated_trueskill_sigma = team1_unrated_ratings_after[i].sigma
-            else:
-                session.add(
-                    PlayerRegionTrueskill(
-                        player_id=player.id,
-                        queue_region_id=queue.queue_region_id,
-                        rated_trueskill_mu=team1_rated_ratings_after[i].mu,
-                        rated_trueskill_sigma=team1_rated_ratings_after[i].sigma,
-                        unrated_trueskill_mu=team1_unrated_ratings_after[i].mu,
-                        unrated_trueskill_sigma=team1_unrated_ratings_after[i].sigma,
-                    )
+            session.add(
+                PlayerCategoryTrueskill(
+                    player_id=player.id,
+                    category_id=queue.category_id,
+                    mu=trueskill_rating.mu,
+                    sigma=trueskill_rating.sigma,
+                    rank=trueskill_rating.mu - 3 * trueskill_rating.sigma,
                 )
+            )
         session.add(finished_game_player)
 
     session.query(InProgressGamePlayer).filter(
@@ -2532,19 +2444,6 @@ async def listplayerdecays(ctx: Context, member: Member):
         output += f"\n- {player_decay.decayed_at.strftime('%Y-%m-%d')} - Amount: {player_decay.decay_percentage}%"
 
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
-async def listqueueregions(ctx: Context):
-    output = "Regions:"
-    session = ctx.session
-    queue_region: QueueRegion
-    for queue_region in session.query(QueueRegion).all():
-        output += f"\n- {queue_region.name}"
-    session.close()
-    await send_message(
-        ctx.message.channel, embed_description=output, colour=Colour.blue()
-    )
 
 
 @bot.command()
@@ -2939,32 +2838,6 @@ async def removedbbackup(ctx: Context, db_filename: str):
 
 @bot.command()
 @commands.check(is_admin)
-async def removequeueregion(ctx: Context, region_name: str):
-    session = ctx.session
-    region = (
-        session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
-    )
-    if region:
-        session.delete(region)
-        session.commit()
-        session.close()
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Region removed: **{region_name}**",
-            colour=Colour.green(),
-        )
-        return
-
-    session.close()
-    await send_message(
-        ctx.message.channel,
-        embed_description=f"Could not find region: **{region_name}**",
-        colour=Colour.red(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
 async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
     message = ctx.message
     session = ctx.session
@@ -3050,7 +2923,7 @@ async def resetleaderboardchannel(ctx: Context):
         return
 
     await channel.purge()
-    await print_leaderboard()
+    await print_leaderboard(ctx.channel)
     await send_message(
         ctx.message.channel,
         embed_description=f"Leaderboard channel reset",
@@ -3253,42 +3126,6 @@ async def setqueuerated(ctx: Context, queue_name: str):
             colour=Colour.red(),
         )
     session.commit()
-
-
-@bot.command()
-@commands.check(is_admin)
-async def setqueueregion(ctx: Context, queue_name: str, region_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if not queue:
-        session.close()
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-    queue_region: QueueRegion = (
-        session.query(QueueRegion).filter(QueueRegion.name.ilike(region_name)).first()
-    )
-    if not queue_region:
-        session.close()
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find region: {region_name}",
-            colour=Colour.red(),
-        )
-        return
-    queue.queue_region_id = queue_region.id
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Queue {queue.name} assigned to region {queue_region.name}",
-        colour=Colour.blue(),
-    )
-    session.commit()
-    session.close()
 
 
 @bot.command()
@@ -3588,33 +3425,18 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
         return
 
     trueskill_mus = []
-    if queue.queue_region_id:
-        player_region_trueskills = (
-            session.query(PlayerRegionTrueskill)
+    if queue.category_id:
+        player_category_trueskills: List[PlayerCategoryTrueskill] = (
+            session.query(PlayerCategoryTrueskill)
             .filter(
-                PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
+                PlayerCategoryTrueskill.category_id == queue.category_id,
             )
             .all()
         )
-        if queue.is_rated:
-            trueskill_mus = [prt.rated_trueskill_mu for prt in player_region_trueskills]
-        else:
-            player_region_trueskills = (
-                session.query(PlayerRegionTrueskill)
-                .filter(
-                    PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
-                )
-                .all()
-            )
-            trueskill_mus = [
-                prt.unrated_trueskill_mu for prt in player_region_trueskills
-            ]
+        trueskill_mus = [pct.mu for pct in player_category_trueskills]
     else:
         players = session.query(Player).filter(Player.finished_game_players.any()).all()
-        if queue.is_rated:
-            trueskill_mus = [p.rated_trueskill_mu for p in players]
-        else:
-            trueskill_mus = [p.unrated_trueskill_mu for p in players]
+        trueskill_mus = [p.rated_trueskill_mu for p in players]
 
     std_dev = std(trueskill_mus)
     average = mean(trueskill_mus)
@@ -3982,22 +3804,23 @@ async def stats(ctx: Context):
 
     output = ""
     if SHOW_TRUESKILL:
-        player_region_trueskills: list[PlayerRegionTrueskill] = (
-            session.query(PlayerRegionTrueskill)
-            .filter(PlayerRegionTrueskill.player_id == player_id)
+        player_category_trueskills: list[PlayerCategoryTrueskill] = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(PlayerCategoryTrueskill.player_id == player_id)
             .all()
         )
-        if player_region_trueskills:
+        if player_category_trueskills:
             output += f"Trueskill:"
-            for prt in player_region_trueskills:
-                queue_region: QueueRegion = (
-                    session.query(QueueRegion)
-                    .filter(QueueRegion.id == prt.queue_region_id)
+            for pct in player_category_trueskills:
+                category: Category = (
+                    session.query(Category)
+                    .filter(Category.id == pct.category_id)
                     .first()
                 )
-                output += f"\n{queue_region.name}: {round(prt.rated_trueskill_mu - 3 * prt.rated_trueskill_sigma, 1)} (mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})"
+                if category.is_rated:
+                    output += f"\n{category.name}: {round(pct.rank, 1)} (mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})"
 
-        # This assumes that if a community uses regions then they'll use regions exclusively
+        # This assumes that if a community uses categories then they'll use regions exclusively
         else:
             output += f"Trueskill: {trueskill_pct}"
             output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)} (mu: {round(player.rated_trueskill_mu, 2)}, sigma: {round(player.rated_trueskill_sigma, 2)})"
@@ -4090,7 +3913,7 @@ async def _rebalance_game(game: InProgressGame, session: Session, message: Messa
         player_ids,
         len(player_ids) // 2,
         is_rated=queue.is_rated,
-        queue_region_id=queue.queue_region_id,
+        queue_category_id=queue.category_id,
     )
     for game_player in game_players:
         session.delete(game_player)
@@ -4320,30 +4143,6 @@ async def unlockqueue(ctx: Context, queue_name: str):
         embed_description=f"Queue **{queue.name}** unlocked",
         colour=Colour.green(),
     )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def unsetqueueregion(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if not queue:
-        session.close()
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-    queue.queue_region_id = None
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Region removed from queue {queue.name}",
-        colour=Colour.blue(),
-    )
-    session.commit()
 
 
 @bot.command()

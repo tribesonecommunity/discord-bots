@@ -3,28 +3,25 @@ import itertools
 import math
 import os
 import statistics
-from datetime import datetime, timezone
-from random import choice
 
 import discord
 import imgkit
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel
 from discord.ext.commands.context import Context
-from matplotlib import image
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
 
 from discord_bots.bot import bot
-from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
+from discord_bots.config import LEADERBOARD_CHANNEL
 from discord_bots.models import (
+    Category,
     Map,
     MapVote,
     Player,
-    PlayerRegionTrueskill,
+    PlayerCategoryTrueskill,
     Queue,
-    QueueRegion,
     RotationMap,
     Session,
     SkipMapVote,
@@ -126,7 +123,8 @@ async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
         key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True
     )
 
-    if len(html_files) == 0: return
+    if len(html_files) == 0:
+        return
 
     image_path = os.path.join(STATS_DIR, html_files[0] + ".png")
     imgkit.from_file(
@@ -272,27 +270,26 @@ async def send_message(
         print("[send_message] exception:", e)
 
 
-async def print_leaderboard(test_message: str | None = None):
-    if not LEADERBOARD_CHANNEL:
-        return
-
+async def print_leaderboard(channel=None):
     output = "**Leaderboard**"
     session = Session()
-    queue_regions: list[QueueRegion] = session.query(QueueRegion).all()
-    if len(queue_regions) > 0:
-        for queue_region in queue_regions:
-            output += f"\n_{queue_region.name}_"
-            top_10_prts: list[PlayerRegionTrueskill] = (
-                session.query(PlayerRegionTrueskill)
-                .filter(PlayerRegionTrueskill.queue_region_id == queue_region.id)
-                .order_by(PlayerRegionTrueskill.leaderboard_trueskill.desc())
+    categories: list[Category] = (
+        session.query(Category).filter(Category.is_rated == True).all()
+    )
+    if len(categories) > 0:
+        for category in categories:
+            output += f"\n_{category.name}_"
+            top_10_pcts: list[PlayerCategoryTrueskill] = (
+                session.query(PlayerCategoryTrueskill)
+                .filter(PlayerCategoryTrueskill.category_id == category.id)
+                .order_by(PlayerCategoryTrueskill.rank.desc())
                 .limit(10)
             )
-            for i, prt in enumerate(top_10_prts, 1):
+            for i, pct in enumerate(top_10_pcts, 1):
                 player: Player = (
-                    session.query(Player).filter(Player.id == prt.player_id).first()
+                    session.query(Player).filter(Player.id == pct.player_id).first()
                 )
-                output += f"\n{i}. {round(prt.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(prt.rated_trueskill_mu, 1)}, sigma: {round(prt.rated_trueskill_sigma, 1)})_"
+                output += f"\n{i}. {round(pct.rank, 1)} - {player.name} _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
             output += "\n"
         pass
     else:
@@ -319,21 +316,23 @@ async def print_leaderboard(test_message: str | None = None):
     output += "\n(Leaderboard updates periodically)"
     output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
 
-    if test_message:
-        output = test_message
-
-    channel = bot.get_channel(LEADERBOARD_CHANNEL)
-    if channel:
+    leaderboard_channel = bot.get_channel(LEADERBOARD_CHANNEL)
+    if leaderboard_channel:
         try:
-            last_message = await channel.fetch_message(channel.last_message_id)
+            last_message = await leaderboard_channel.fetch_message(
+                leaderboard_channel.last_message_id
+            )
             if last_message:
                 await last_message.edit(embed=Embed(description=output))
         except Exception as e:
             print("caught exception fetching channel last message:", e)
-            await send_message(channel, embed_description=output, colour=Colour.blue())
+            if channel:
+                await send_message(
+                    channel, embed_description=output, colour=Colour.blue()
+                )
     else:
-        await send_message(channel, embed_description=output, colour=Colour.blue())
-
+        if channel:
+            await send_message(channel, embed_description=output, colour=Colour.blue())
 
 
 def code_block(content: str) -> str:

@@ -35,10 +35,9 @@ from .models import (
     InProgressGameChannel,
     MapVote,
     Player,
-    PlayerRegionTrueskill,
+    PlayerCategoryTrueskill,
     Queue,
     QueuePlayer,
-    QueueRegion,
     QueueWaitlist,
     QueueWaitlistPlayer,
     Rotation,
@@ -386,15 +385,15 @@ async def add_player_task():
         )
         if len(queue_players) >= queue.size:
             player_ids: list[int] = list(map(lambda x: x.player_id, queue_players))
-            if queue.queue_region_id:
-                player_region_trueskills = session.query(PlayerRegionTrueskill).filter(
-                    PlayerRegionTrueskill.player_id.in_(player_ids),
-                    PlayerRegionTrueskill.queue_region_id == queue.queue_region_id,
+            if queue.category_id:
+                pcts = session.query(PlayerCategoryTrueskill).filter(
+                    PlayerCategoryTrueskill.player_id.in_(player_ids),
+                    PlayerCategoryTrueskill.category_id == queue.category_id,
                 )
                 top_player_ids = [
                     prt.player_id
                     for prt in sorted(
-                        player_region_trueskills,
+                        pcts,
                         key=lambda prt: prt.rated_trueskill_mu,
                         reverse=True,
                     )[: queue.size]

@@ -7,6 +7,7 @@ from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
 
+from discord_bots.cogs.categories import CategoryCommands
 from discord_bots.cogs.map import MapCommands
 from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
@@ -192,6 +193,7 @@ def main():
     load_dotenv()
     API_KEY = os.getenv("DISCORD_API_KEY")
     if API_KEY:
+        bot.add_cog(CategoryCommands(bot))
         bot.add_cog(RaffleCommands(bot))
         bot.add_cog(RotationCommands(bot))
         bot.add_cog(MapCommands(bot))

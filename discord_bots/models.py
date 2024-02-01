@@ -76,6 +76,32 @@ class AdminRole:
 
 @mapper_registry.mapped
 @dataclass
+class Category:
+    """
+    A category is a segmentation of trueskill - for example rated vs unrated, regions, game types (CTF, Arena, Bomb, etc.)
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "category"
+
+    name: str = field(
+        metadata={"sa": Column(String, nullable=False, index=True)},
+    )
+    is_rated: bool = field(metadata={"sa": Column(Boolean, nullable=False)})
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class Commend:
     """
     Ideas:
@@ -171,6 +197,10 @@ class FinishedGame:
         metadata={"sa": Column(String, nullable=False, server_default="Diamond Sword")},
     )
     queue_region_name: str = field(
+        default=None,
+        metadata={"sa": Column(String, index=True, nullable=True)},
+    )
+    category_name: str = field(
         default=None,
         metadata={"sa": Column(String, index=True, nullable=True)},
     )
@@ -542,35 +572,32 @@ class PlayerDecay:
 
 @mapper_registry.mapped
 @dataclass
-class PlayerRegionTrueskill:
+class PlayerCategoryTrueskill:
     """
-    Separate a player's trueskill by region
+    Separate a player's trueskill by category
     """
 
     __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "player_region_trueskill"
+    __tablename__ = "player_category_trueskill"
 
     player_id: int = field(
         metadata={
             "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
-    queue_region_id: str = field(
+    category_id: str = field(
         metadata={
             "sa": Column(
                 String,
-                ForeignKey("queue_region.id"),
+                ForeignKey("category.id"),
                 nullable=False,
                 index=True,
             )
         },
     )
-    rated_trueskill_mu: float = field(metadata={"sa": Column(Float, nullable=False)})
-    rated_trueskill_sigma: float = field(metadata={"sa": Column(Float, nullable=False)})
-    unrated_trueskill_mu: float = field(metadata={"sa": Column(Float, nullable=False)})
-    unrated_trueskill_sigma: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
+    mu: float = field(metadata={"sa": Column(Float, nullable=False)})
+    sigma: float = field(metadata={"sa": Column(Float, nullable=False)})
+    rank: float = field(metadata={"sa": Column(Float, nullable=False)})
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
@@ -581,10 +608,6 @@ class PlayerRegionTrueskill:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
-
-    @hybrid_property
-    def leaderboard_trueskill(self):
-        return self.rated_trueskill_mu - 3 * self.rated_trueskill_sigma
 
 
 @mapper_registry.mapped
@@ -639,12 +662,12 @@ class Queue:
         default=0,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
     )
-    queue_region_id: str = field(
+    category_id: str = field(
         default=None,
         metadata={
             "sa": Column(
                 String,
-                ForeignKey("queue_region.id"),
+                ForeignKey("category.id"),
                 nullable=True,
                 index=True,
             )
