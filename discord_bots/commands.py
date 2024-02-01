@@ -3561,7 +3561,7 @@ async def status(ctx: Context, *args):
                 .filter(SkipMapVote.rotation_id == rotation.id)
                 .all()
             )
-            output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
+            # output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
 
             # TODO: This is duplicated
             map_vote_names = (
@@ -3582,7 +3582,7 @@ async def status(ctx: Context, *args):
                 voted_maps_str += f"{map} [{count}/{MAP_VOTE_THRESHOLD}], "
             voted_maps_str = voted_maps_str[:-2]
 
-            output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
+            # output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
 
         for i, queue in enumerate(queues):
             if i > 0:

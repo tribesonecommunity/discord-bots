@@ -211,7 +211,7 @@ class VoteCommands(BaseCog):
             f"Mock votes added!\nTo make this vote pass use `{final_vote_command}`"
         )
 
-    @command()
+    # @command()
     async def votemap(self, ctx: Context, queue_name: str, map_short_name: str):
         """
         Vote for a map in a queue
@@ -315,7 +315,7 @@ class VoteCommands(BaseCog):
             # )
 
 
-    @command()
+    # @command()
     async def voteskip(self, ctx: Context, queue_name: str):
         """
         Vote to skip a map in a queue
