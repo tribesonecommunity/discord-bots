@@ -13,12 +13,6 @@ flips, Twitch stream integration, voice channel creation, leaderboards, etc.
 See [commands.py](https://github.com/dwayneyuen/discord-bots/blob/master/discord_bots/commands.py) for a full list of
 commands.
 
-## Forks
-
-Sauon and sh4z have both maintained separate forks with some improvements - check them out!
-- https://github.com/Sauon/discord-bots
-- https://github.com/sh4zbot/discord-bots
-
 ## Installation
 
 The bot is written in Python 3 and uses sqlite for persistence. You will need a `DISCORD_API_KEY` at a minimum to run
@@ -41,8 +35,13 @@ the bot.
 1. `cp .env.example .env`. Modify `.env` by adding your API key
 1. Setup the database: `alembic upgrade head`
 
+### Linux
+
+TODO
+
 ### Windows
 
+1. Install WSL
 1. Install Python
 1. Set up a virtualenv
 
