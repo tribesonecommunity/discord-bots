@@ -72,7 +72,14 @@ The following are optional
 
 1. `cd discord-bots`
 1. `source .venv/bin/activate`
+2. `alembic upgrade head`
 1. `python -m discord_bots.main`
+
+### Pulling in updates
+
+1. `git pull`
+2. `alembic upgrade head`
+3. Restart the python process
 
 # Development
 
