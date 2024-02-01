@@ -324,12 +324,17 @@ async def print_leaderboard(channel=None):
             )
             if last_message:
                 await last_message.edit(embed=Embed(description=output))
+            else:
+                await send_message(
+                    leaderboard_channel, embed_description=output, colour=Colour.blue()
+                )
         except Exception as e:
             print("caught exception fetching channel last message:", e)
             if channel:
                 await send_message(
                     channel, embed_description=output, colour=Colour.blue()
                 )
+        return
     else:
         if channel:
             await send_message(channel, embed_description=output, colour=Colour.blue())
