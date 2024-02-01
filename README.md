@@ -6,12 +6,8 @@ This uses Microsoft's [Trueskill](https://www.microsoft.com/en-us/research/proje
 matchmaking algorithm to create fair and
 balanced teams. Players are assigned a level of skill (mu) and uncertainty (sigma) which is adjusted after each game.
 
-Games are organized using a queueing system and the bot supports numerous features like delineation by region, unranked
-queues, admins / bans, map pools / rotations / voting, database backups, post-game images, dice rolls, coin
-flips, Twitch stream integration, voice channel creation, leaderboards, etc.
-
-See [commands.py](https://github.com/dwayneyuen/discord-bots/blob/master/discord_bots/commands.py) for a full list of
-commands.
+Games are organized using a queueing system and the bot supports features like segmentation by region, game type, ranked / unranked, map rotations, voice channel creation, leaderboards, Twitch integration, dice rolls, coin
+flips, raffles, commends, post-game images, and more.
 
 ## Installation
 
@@ -69,7 +65,7 @@ The following are optional
 - `COMMAND_PREFIX` - Use a different prefix instead of `!`
 - `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Customize the default trueskill for new players
 - `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
-- `REQUIRED_ADD_TARGET` - Players have to specify a queue to add to
+- `REQUIRE_ADD_TARGET` - Players have to specify a queue to add to
 - `ALLOW_VULGAR_NAMES` - Allow dirtier team names
 
 ## Running the bot
@@ -155,107 +151,123 @@ Common issues:
   an issue like this, you may need to hand edit the migration. See here:
   https://alembic.sqlalchemy.org/en/latest/naming.html
 
-# Bugs
-
-# Wishlist
-
-- Map-specific trueskill
-- Position-specific trueskill
-- Skip game map or queue map
-- Convert from sqlite to postgres
-- Refactor commands to use cogs
-- Game betting
-- Flask API
-
-## Good first tickets
-
-- Store player display name alongside regular name
-- Allow voting for multiple maps at once
-- Add created_at timestamps to all tables (esp finished_game_player)
-- Store total games played, win/loss/tie record
-
 # Full list of commands
 
 ```
-add
-addadmin
-addadminrole
-addmap
-addqueueregion
-addqueuerole
-addrotationmap
-ban
-cancelgame
-changegamemap
-changequeuemap
-clearqueue
-coinflip
-createcommand
-createdbbackup
-createqueue
-decayplayer
-del
-delplayer
-editcommand
-editgamewinner
-finishgame
-gamehistory
-help
-imagetest
-imagetest2
-isolatequeue
-leaderboard
-listadminroles
-listadmins
-listbans
-listdbbackups
-listmaprotation
-listmaps
-listnotifications
-listplayerdecays
-listqueueregions
-listqueueroles
-lockqueue
-lt
-map
-mockrandomqueue
-notify
-pug
-randommap
-removeadmin
-removeadminrole
-removecommand
-removedbbackup
-removemap
-removenotifications
-removequeue
-removequeueregion
-removequeuerole
-removerotationmap
-resetplayertrueskill
-restart
-roll
-setadddelay
-setbias
-setcommandprefix
-setmapvotethreshold
-setqueuerated
-setqueueregion
-setqueueunrated
-showgame
-showgamedebug
-stats
-status
-streams
-sub
-trueskill
-unban
-unisolatequeue
-unlockqueue
-unsetqueueregion
-unvote
-unvotemap
-unvoteskip
-votemap
-voteskip
+CategoryCommands:
+  clearqueuecategory      
+  createcategory          
+  listcategories          
+  removecategory          
+  setcategoryname         
+  setcategoryrated        
+  setcategoryunrated      
+  setqueuecategory        
+MapCommands:
+  addmap                  Add a map to the map pool
+  changegamemap           Change the map for a game
+  changequeuemap          Change the next map for a queue (note: affects all queues sharing that rotation)
+  listmaps                List all maps in the map pool
+  removemap               Remove a map from the map pool
+QueueCommands:
+  setqueuerotation        Assign a map rotation to a queue
+  showqueuerotation       Shows the map rotation assigned to a queue
+RaffleCommands:
+  createraffle            TODO: Implementation
+  myraffle                Displays how many raffle tickets you have
+  rafflestatus            Displays raffle ticket information and raffle leaderboard
+  runraffle               TODO: Implementation
+  setrotationmapraffle    Set the raffle ticket reward for a map in a rotation
+RotationCommands:
+  addrotation             Add a rotation to the rotation pool
+  addrotationmap          Add a map to a rotation at a specific ordinal (position)
+  listrotations           List all rotations in the rotation pool
+  removerotation          Remove a rotation from the rotation pool
+  removerotationmap       Remove a map from a rotation
+  setrotationmapordinal   Set the ordinal (position) for a map in a rotation
+VoteCommands:
+  mockvotes               Generates 6 mock votes for testing
+  setmapvotethreshold     Set the number of votes required to pass
+  unvote                  Remove all of a player's votes
+  unvotemap               Remove all of a player's votes for a map
+  unvoteskip              Remove all of a player's votes to skip the next map
+​No Category:
+  add                     Players adds self to queue(s). If no args to all existing queues
+  addadmin                
+  addadminrole            
+  addqueuerole            
+  autosub                 Picks a person to sub at random
+  ban                     TODO: remove player from queues
+  cancelgame              
+  clearqueue              
+  clearqueuerange         
+  coinflip                
+  commend                 
+  commendstats            
+  createcommand           
+  createdbbackup          
+  createqueue             
+  decayplayer             
+  del                     Players deletes self from queue(s)
+  deletegame              
+  delplayer               Admin command to delete player from all queues
+  disableleaderboard      
+  disablestats            
+  editcommand             
+  editgamewinner          
+  enableleaderboard       
+  enablestats             
+  finishgame              
+  gamehistory             
+  help                    Shows this message
+  isolatequeue            
+  listadminroles          
+  listadmins              
+  listbans                
+  listchannels            
+  listdbbackups           
+  listnotifications       
+  listplayerdecays        
+  listqueueroles          
+  lockqueue               
+  lt                      
+  mockqueue               
+  notify                  
+  pug                     
+  removeadmin             
+  removeadminrole         
+  removecommand           
+  removedbbackup          
+  removenotifications     
+  removequeue             
+  removequeuerole         
+  resetleaderboardchannel 
+  resetplayertrueskill    
+  restart                 
+  roll                    
+  setbias                 
+  setcaptainbias          
+  setcommandprefix        
+  setgamecode             
+  setqueueordinal         
+  setqueuerange           
+  setqueuerated           
+  setqueuesweaty          
+  setqueueunrated         
+  setsigma                
+  showgame                
+  showgamedebug           
+  showqueuerange          
+  showsigma               Returns the player's base sigma. Doesn't consider regions
+  showtrueskillnormdist   Print the normal distribution of the trueskill in a given queue.
+  stats                   
+  status                  
+  streams                 
+  sub                     
+  testleaderboard         
+  trueskill               
+  unban                   
+  unisolatequeue          
+  unlockqueue             
+  unsetqueuesweaty        
 ```
