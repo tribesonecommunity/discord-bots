@@ -31,6 +31,7 @@ from sqlalchemy.sql import select
 from trueskill import Rating, rate
 
 from discord_bots.checks import is_admin
+from discord_bots.cogs.vote import MAP_VOTE_THRESHOLD
 from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
     code_block,
@@ -40,7 +41,7 @@ from discord_bots.utils import (
     print_leaderboard,
     send_message,
     short_uuid,
-    update_current_map_to_next_map_in_rotation,
+    update_next_map_to_map_after_next,
     upload_stats_screenshot_imgkit,
     win_probability,
 )
@@ -59,13 +60,13 @@ from .models import (
     DEFAULT_TRUESKILL_MU,
     AdminRole,
     Commend,
-    CurrentMap,
     CustomCommand,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
     InProgressGameChannel,
     InProgressGamePlayer,
+    Map,
     MapVote,
     Player,
     PlayerDecay,
@@ -77,10 +78,10 @@ from .models import (
     QueueRole,
     QueueWaitlist,
     QueueWaitlistPlayer,
+    Rotation,
     RotationMap,
     Session,
     SkipMapVote,
-    VoteableMap,
     VotePassedWaitlist,
     VotePassedWaitlistPlayer,
 )
@@ -99,9 +100,6 @@ except:
 DEBUG: bool = bool(os.getenv("DEBUG")) or False
 DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 MAP_ROTATION_MINUTES: int = 60
-# The number of votes needed to succeed a map skip / replacement
-MAP_VOTE_THRESHOLD: int = 7
-
 
 def debug_print(*args):
     global DEBUG
@@ -368,6 +366,9 @@ async def create_game(
     channel: TextChannel | DMChannel | GroupChannel,
     guild: Guild,
 ):
+    """
+    TODO: Add some way to determine the random maps pool.  Currently just selects from all maps.
+    """
     session = Session()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
     if len(player_ids) == 1:
@@ -407,29 +408,39 @@ async def create_game(
             average_trueskill = mean(
                 list(map(lambda x: x.unrated_trueskill_mu, players))
             )
-    current_map: CurrentMap | None = session.query(CurrentMap).first()
 
-    if not current_map:
-        raise Exception("No current map!")
-
-    current_map_full_name = current_map.full_name
-    current_map_short_name = current_map.short_name
+    next_rotation_map: RotationMap | None = (
+        session.query(RotationMap)
+        .join(Rotation, Rotation.id == RotationMap.rotation_id)
+        .join(Queue, Queue.rotation_id == Rotation.id)
+        .filter(Queue.id == queue.id)
+        .filter(RotationMap.is_next == True)
+        .first()
+    )
+    if not next_rotation_map:
+        raise Exception("No next map!")
 
     rolled_random_map = False
-    if current_map.is_random:
+    if next_rotation_map.is_random:
         # Roll for random map
-        voteable_maps: List[VoteableMap] = session.query(VoteableMap).all()
-        roll = uniform(0, 1)
-        if roll < current_map.random_probability:
-            rolled_random_map = True
-            random_map = choice(voteable_maps)
-            current_map_full_name = random_map.full_name
-            current_map_short_name = random_map.short_name
+        rolled_random_map = uniform(0, 1) < next_rotation_map.random_probability
+
+    if rolled_random_map:
+        maps: List[Map] = session.query(Map).all()
+        random_map = choice(maps)
+        next_map_full_name = random_map.full_name
+        next_map_short_name = random_map.short_name
+    else:
+        next_map: Map | None = (
+            session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
+        )
+        next_map_full_name = next_map.full_name
+        next_map_short_name = next_map.short_name
 
     game = InProgressGame(
         average_trueskill=average_trueskill,
-        map_full_name=current_map_full_name,
-        map_short_name=current_map_short_name,
+        map_full_name=next_map_full_name,
+        map_short_name=next_map_short_name,
         queue_id=queue.id,
         team0_name=generate_be_name(),
         team1_name=generate_ds_name(),
@@ -504,11 +515,12 @@ async def create_game(
     session.query(QueuePlayer).filter(
         QueuePlayer.player_id.in_(player_ids)  # type: ignore
     ).delete()
-    session.query(MapVote).delete()
-    session.query(SkipMapVote).delete()
     session.commit()
-    if not queue.is_isolated:
-        await update_current_map_to_next_map_in_rotation(rolled_random_map)
+
+    if not queue.is_isolated and not rolled_random_map:
+        await update_next_map_to_map_after_next(queue.rotation_id, False)
+
+    session.close()
 
 
 async def add_player_to_queue(
@@ -1324,98 +1336,6 @@ async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
         session.commit()
 
 
-@bot.command(usage="<map_full_name> <map_short_name> <random_probability>")
-@commands.check(is_admin)
-async def addrandomrotationmap(
-    ctx: Context, map_full_name: str, map_short_name: str, random_probability: float
-):
-    """
-    Adds a special map to the rotation that is random each time it comes up
-    """
-    message = ctx.message
-    if random_probability < 0 or random_probability > 1:
-        await send_message(
-            message.channel,
-            embed_description=f"Random map probability must be between 0 and 1!",
-            colour=Colour.red(),
-        )
-        return
-
-    session = ctx.session
-    session.add(
-        RotationMap(
-            f"{map_full_name} (R)",
-            f"{map_short_name}R",
-            is_random=True,
-            random_probability=random_probability,
-        )
-    )
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        await send_message(
-            message.channel,
-            embed_description=f"Error adding random map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
-            colour=Colour.red(),
-        )
-        return
-
-    await send_message(
-        message.channel,
-        embed_description=f"{map_full_name} (R) ({map_short_name}R) added to map rotation",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def addrotationmap(ctx: Context, map_full_name: str, map_short_name: str):
-    message = ctx.message
-    session = ctx.session
-    session.add(RotationMap(map_full_name, map_short_name))
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        await send_message(
-            message.channel,
-            embed_description=f"Error adding map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
-            colour=Colour.red(),
-        )
-        return
-
-    await send_message(
-        message.channel,
-        embed_description=f"{map_full_name} ({map_short_name}) added to map rotation",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def addmap(ctx: Context, map_short_name: str, map_full_name: str):
-    message = ctx.message
-    session = ctx.session
-    session.add(VoteableMap(map_full_name, map_short_name))
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        await send_message(
-            message.channel,
-            embed_description=f"Error adding map {map_full_name} ({map_short_name}). Does it already exist?",
-            colour=Colour.red(),
-        )
-        return
-
-    await send_message(
-        message.channel,
-        embed_description=f"{map_full_name} ({map_short_name}) added to map pool",
-        colour=Colour.green(),
-    )
-
-
 @bot.command()
 async def autosub(ctx: Context, member: Member = None):
     """
@@ -1581,127 +1501,6 @@ async def cancelgame(ctx: Context, game_id: str):
         message.channel,
         embed_description=f"Game {game_id} cancelled",
         colour=Colour.blue(),
-    )
-
-
-@bot.command()
-async def changegamemap(ctx: Context, game_id: str, map_short_name: str):
-    message = ctx.message
-    """
-    TODO: tests
-    """
-    session = ctx.session
-    ipg: InProgressGame | None = (
-        session.query(InProgressGame)
-        .filter(InProgressGame.id.startswith(game_id))
-        .first()
-    )
-    if not ipg:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find game: {game_id}",
-            colour=Colour.red(),
-        )
-        return
-
-    rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if rotation_map:
-        ipg.map_full_name = rotation_map.full_name
-        ipg.map_short_name = rotation_map.short_name
-        session.commit()
-    else:
-        voteable_map: VoteableMap | None = (
-            session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(map_short_name))  # type: ignore
-            .first()
-        )
-        if voteable_map:
-            ipg.map_full_name = voteable_map.full_name
-            ipg.map_short_name = voteable_map.short_name
-            session.commit()
-        else:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find map: {map_short_name}. Add to rotation or map pool first.",
-                colour=Colour.red(),
-            )
-            return
-
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Map for game {game_id} changed to {map_short_name}",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def changequeuemap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    """
-    TODO: tests
-    """
-    session = ctx.session
-    current_map: CurrentMap = session.query(CurrentMap).first()
-    rotation_map: RotationMap | None = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if rotation_map:
-        rotation_maps: list[RotationMap] = (
-            session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-        )
-        rotation_map_index = rotation_maps.index(rotation_map)
-        if current_map:
-            current_map.full_name = rotation_map.full_name
-            current_map.short_name = rotation_map.short_name
-            current_map.map_rotation_index = rotation_map_index
-            current_map.updated_at = datetime.now(timezone.utc)
-            session.commit()
-        else:
-            session.add(
-                CurrentMap(
-                    map_rotation_index=0,
-                    full_name=rotation_map.full_name,
-                    short_name=rotation_map.short_name,
-                )
-            )
-            session.commit()
-    else:
-        voteable_map: VoteableMap | None = (
-            session.query(VoteableMap)
-            .filter(VoteableMap.short_name.ilike(map_short_name))  # type: ignore
-            .first()
-        )
-        if voteable_map:
-            if current_map:
-                current_map.full_name = voteable_map.full_name
-                current_map.short_name = voteable_map.short_name
-                current_map.updated_at = datetime.now(timezone.utc)
-                session.commit()
-            else:
-                session.add(
-                    CurrentMap(
-                        map_rotation_index=0,
-                        full_name=rotation_map.full_name,
-                        short_name=rotation_map.short_name,
-                    )
-                )
-                session.commit()
-        else:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find map: {map_short_name}. Add to rotation or map pool first.",
-                colour=Colour.red(),
-            )
-            return
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Queue map changed to {map_short_name}",
-        colour=Colour.green(),
     )
 
 
@@ -2570,16 +2369,18 @@ async def finishgame(ctx: Context, outcome: str):
         )
 
     # Reward raffle tickets
-    rotation_map: RotationMap | None = (
-        session.query(RotationMap)
-        .filter(RotationMap.short_name.ilike(in_progress_game.map_short_name))
-        .first()
+    reward = (
+        session.query(RotationMap.raffle_ticket_reward)
+        .join(Map, Map.id == RotationMap.map_id)
+        .join(Rotation, Rotation.id == RotationMap.rotation_id)
+        .join(Queue, Queue.rotation_id == Rotation.id)
+        .filter(Map.short_name == in_progress_game.map_short_name)
+        .filter(Queue.id == in_progress_game.queue_id)
+        .scalar()
     )
-    reward = DEFAULT_RAFFLE_VALUE
-    if rotation_map:
+    if reward == 0:
         reward = DEFAULT_RAFFLE_VALUE
-        if rotation_map.raffle_ticket_reward > 0:
-            reward = rotation_map.raffle_ticket_reward
+
     for player in players:
         player.raffle_tickets += reward
         session.add(player)
@@ -2702,16 +2503,6 @@ async def listdbbackups(ctx: Context):
 
 
 @bot.command()
-async def listmaprotation(ctx: Context):
-    message = ctx.message
-    output = "Map rotation:"
-    rotation_map: RotationMap
-    for rotation_map in Session().query(RotationMap).order_by(RotationMap.created_at.asc()):  # type: ignore
-        output += f"\n- {rotation_map.full_name} ({rotation_map.short_name})"
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
 async def listnotifications(ctx: Context):
     message = ctx.message
     session = ctx.session
@@ -2781,16 +2572,6 @@ async def listqueueroles(ctx: Context):
 
 
 @bot.command()
-async def listmaps(ctx: Context):
-    message = ctx.message
-    output = "Voteable map pool"
-    voteable_map: VoteableMap
-    for voteable_map in Session().query(VoteableMap).order_by(VoteableMap.full_name):
-        output += f"\n- {voteable_map.full_name} ({voteable_map.short_name})"
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
 @commands.check(is_admin)
 async def lockqueue(ctx: Context, queue_name: str):
     message = ctx.message
@@ -2847,49 +2628,6 @@ async def trueskill(ctx: Context):
     )
 
 
-@bot.command(name="map")
-async def map_(ctx: Context):
-    # TODO: This is duplicated
-    session = ctx.session
-    output = ""
-    current_map: CurrentMap | None = session.query(CurrentMap).first()
-    if current_map:
-        rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-        next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-            rotation_maps
-        )
-        next_map = rotation_maps[next_rotation_map_index]
-
-        time_since_update: timedelta = datetime.now(
-            timezone.utc
-        ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-        time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
-        if current_map.map_rotation_index == 0:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
-        else:
-            output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
-    skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-    output += (
-        f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
-    )
-
-    # TODO: This is duplicated
-    map_votes: list[MapVote] = session.query(MapVote).all()
-    voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-    voted_maps: list[VoteableMap] = (
-        session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
-    )
-    voted_maps_str = ", ".join(
-        [
-            f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
-            for voted_map in voted_maps
-        ]
-    )
-    output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
-    session.close()
-    await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
-
-
 @bot.command(usage="<queue_name> <count>")
 @commands.check(is_admin)
 async def mockqueue(ctx: Context, queue_name: str, count: int):
@@ -2899,7 +2637,11 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
 
     This will send PMs to players, create voice channels, etc. so be careful
     """
-    if message.author.id not in [115204465589616646, 347125254050676738]:
+    if message.author.id not in [
+        115204465589616646,
+        347125254050676738,
+        508003755220926464,
+    ]:
         await send_message(
             message.channel,
             embed_description="Only special people can use this command",
@@ -3036,18 +2778,6 @@ async def pug(ctx: Context):
     cropped.save(ntf.name)
     await ctx.message.channel.send(file=discord.File(ntf.name))
     ntf.close()
-
-
-@bot.command()
-async def randommap(ctx: Context):
-    session = ctx.session
-    voteable_maps: list[VoteableMap] = session.query(VoteableMap).all()
-    voteable_map = choice(voteable_maps)
-    await send_message(
-        ctx.message.channel,
-        embed_description=f"Random map selected: **{voteable_map.full_name} ({voteable_map.short_name})**",
-        colour=Colour.blue(),
-    )
 
 
 @bot.command()
@@ -3288,58 +3018,6 @@ async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
         )
         session.commit()
         session.close()
-
-
-@bot.command()
-@commands.check(is_admin)
-async def removerotationmap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    session = ctx.session
-    rotation_map = (
-        session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if rotation_map:
-        session.delete(rotation_map)
-        session.commit()
-        await send_message(
-            message.channel,
-            embed_description=f"{map_short_name} removed from map rotation",
-            colour=Colour.green(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find rotation map: {map_short_name}",
-            colour=Colour.red(),
-        )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def removemap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    session = ctx.session
-    voteable_map = (
-        session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    )
-    if voteable_map:
-        session.query(MapVote).filter(
-            MapVote.voteable_map_id == voteable_map.id
-        ).delete()
-        session.delete(voteable_map)
-        await send_message(
-            message.channel,
-            embed_description=f"{map_short_name} removed from map pool",
-            colour=Colour.green(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find vote for map: {map_short_name}",
-            colour=Colour.red(),
-        )
-
-    session.commit()
 
 
 @bot.command()
@@ -3661,20 +3339,6 @@ async def setqueuesweaty(ctx: Context, queue_name: str):
 
 @bot.command()
 @commands.check(is_admin)
-async def setmapvotethreshold(ctx: Context, threshold: int):
-    message = ctx.message
-    global MAP_VOTE_THRESHOLD
-    MAP_VOTE_THRESHOLD = threshold
-
-    await send_message(
-        message.channel,
-        embed_description=f"Map vote threshold set to {MAP_VOTE_THRESHOLD}",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
 async def setsigma(ctx: Context, member: Member, sigma: float):
     if sigma < 1 or sigma > 8.33:
         await send_message(
@@ -3978,151 +3642,200 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 @bot.command()
 async def status(ctx: Context, *args):
     session = ctx.session
-    queues: list[Queue] = []
-    all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
-    if len(args) == 0:
-        queues: list[Queue] = all_queues
-    else:
-        for arg in args:
-            # Try adding by integer index first, then try string name
-            try:
-                queue_index = int(arg) - 1
-                queues.append(all_queues[queue_index])
-            except ValueError:
-                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                if queue:
-                    queues.append(queue)
-            except IndexError:
-                continue
 
-    games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
-    for game in session.query(InProgressGame):
-        if game.queue_id:
-            games_by_queue[game.queue_id].append(game)
+    all_rotations = session.query(Rotation).order_by(Rotation.created_at.asc()).all()
 
     output = "```autohotkey\n"
-    # Only show map if they didn't request a specific queue
-    if len(args) == 0:
-        current_map: CurrentMap | None = session.query(CurrentMap).first()
-        if current_map:
-            rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-            upcoming_map = rotation_maps[current_map.map_rotation_index]
-            next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-                rotation_maps
-            )
-            next_map = rotation_maps[next_rotation_map_index]
 
-            time_since_update: timedelta = datetime.now(
-                timezone.utc
-            ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-            time_until_rotation = MAP_ROTATION_MINUTES - (
-                time_since_update.seconds // 60
-            )
-            has_raffle_reward = upcoming_map.raffle_ticket_reward > 0
-            if ENABLE_RAFFLE:
-                upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name}) ({DEFAULT_RAFFLE_VALUE} tickets)\n"
-                if has_raffle_reward:
-                    upcoming_map_str = f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name}) ({upcoming_map.raffle_ticket_reward} tickets)\n"
-            else:
-                upcoming_map_str = (
-                    f"Next map: {upcoming_map.full_name} ({upcoming_map.short_name})\n"
-                )
-            if DISABLE_MAP_ROTATION:
-                output += f"{upcoming_map_str}\nMap after next: {next_map.full_name} ({next_map.short_name})\n"
-            else:
-                if current_map.map_rotation_index == 0:
-                    output += f"{upcoming_map_str}\nMap after next: {next_map.full_name} ({next_map.short_name})\n"
-                else:
-                    output += f"{upcoming_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})\n"
-        skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-        output += (
-            f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
-        )
+    for rotation in all_rotations:
+        queues: list[Queue] = []
+        rotation_queues = session.query(Queue).filter(Queue.rotation_id == rotation.id).order_by(Queue.ordinal.asc()).all()  # type: ignore
+        if not rotation_queues:
+            continue
 
-        # TODO: This is duplicated
-        map_votes: list[MapVote] = session.query(MapVote).all()
-        voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-        voted_maps: list[VoteableMap] = (
-            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
-        )
-        voted_maps_str = ", ".join(
-            [
-                f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
-                for voted_map in voted_maps
-            ]
-        )
-        output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
-
-    for i, queue in enumerate(queues):
-        if i > 0:
-            output += "\n"
-        players_in_queue = (
-            session.query(Player)
-            .join(QueuePlayer)
-            .filter(QueuePlayer.queue_id == queue.id)
-            .all()
-        )
-        if queue.is_locked:
-            output += f"({queue.ordinal}) {queue.name} (locked) [{len(players_in_queue)} / {queue.size}]\n"
+        if len(args) == 0:
+            queues: list[Queue] = rotation_queues
         else:
-            output += f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
+            for arg in args:
+                # Try adding by integer index first, then try string name
+                try:
+                    queue_index = int(arg) - 1
+                    queues.append(rotation_queues[queue_index])
+                except ValueError:
+                    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                    if queue:
+                        queues.append(queue)
+                except IndexError:
+                    continue
 
-        if len(players_in_queue) > 0:
-            output += f"IN QUEUE: "
-            output += ", ".join(
-                sorted([escape_markdown(player.name) for player in players_in_queue])
+        games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
+        for game in session.query(InProgressGame):
+            if game.queue_id:
+                games_by_queue[game.queue_id].append(game)
+
+        # Only show map if they didn't request a specific queue
+        if len(args) == 0:
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.is_next == True)
+                .first()
             )
-            output += "\n"
+            if not next_rotation_map:
+                continue
+            next_map: Map | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(next_rotation_map.map_id == Map.id)
+                .first()
+            )
+            rotation_map_after_next = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.ordinal == next_rotation_map.ordinal + 1)
+                .first()
+            )
+            if not rotation_map_after_next:
+                rotation_map_after_next = (
+                    session.query(RotationMap)
+                    .filter(RotationMap.rotation_id == rotation.id)
+                    .filter(RotationMap.ordinal == 1)
+                    .first()
+                )
+            map_after_next: Map | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(rotation_map_after_next.map_id == Map.id)
+                .first()
+            )
 
-        if queue.id in games_by_queue:
-            game: InProgressGame
-            for i, game in enumerate(games_by_queue[queue.id]):
-                team0_players = (
-                    session.query(Player)
-                    .join(InProgressGamePlayer)
-                    .filter(
-                        InProgressGamePlayer.in_progress_game_id == game.id,
-                        InProgressGamePlayer.team == 0,
+            next_map_str = f"Next map: {next_map.full_name} ({next_map.short_name})"
+            if ENABLE_RAFFLE:
+                has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
+                raffle_reward = (
+                    next_rotation_map.raffle_ticket_reward
+                    if has_raffle_reward
+                    else DEFAULT_RAFFLE_VALUE
+                )
+                next_map_str += f" ({raffle_reward} tickets)"
+            next_map_str += "\n"
+
+            if DISABLE_MAP_ROTATION or next_rotation_map.ordinal == 1:
+                output += f"{next_map_str}\nMap after next: "
+            else:
+                time_since_update: timedelta = datetime.now(
+                    timezone.utc
+                ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
+
+                time_until_rotation = MAP_ROTATION_MINUTES - (
+                    time_since_update.seconds // 60
+                )
+                output += f"{next_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): "
+
+            output += f"{map_after_next.full_name} ({map_after_next.short_name})\n"
+
+            skip_map_votes: list[SkipMapVote] = (
+                session.query(SkipMapVote)
+                .filter(SkipMapVote.rotation_id == rotation.id)
+                .all()
+            )
+            output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
+
+            # TODO: This is duplicated
+            map_vote_names = (
+                session.query(Map.short_name)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .join(MapVote, MapVote.rotation_map_id == RotationMap.id)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .all()
+            )
+
+            vote_counts = {}
+            for map_vote in map_vote_names:
+                map_name = map_vote[0]
+                vote_counts[map_name] = vote_counts.get(map_name, 0) + 1
+
+            voted_maps_str = ""
+            for map, count in vote_counts.items():
+                voted_maps_str += f"{map} [{count}/{MAP_VOTE_THRESHOLD}], "
+            voted_maps_str = voted_maps_str[:-2]
+
+            output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
+
+        for i, queue in enumerate(queues):
+            if i > 0:
+                output += "\n"
+            players_in_queue = (
+                session.query(Player)
+                .join(QueuePlayer)
+                .filter(QueuePlayer.queue_id == queue.id)
+                .all()
+            )
+            if queue.is_locked:
+                output += f"({queue.ordinal}) {queue.name} (locked) [{len(players_in_queue)} / {queue.size}]\n"
+            else:
+                output += f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
+
+            if len(players_in_queue) > 0:
+                output += f"IN QUEUE: "
+                output += ", ".join(
+                    sorted(
+                        [escape_markdown(player.name) for player in players_in_queue]
                     )
-                    .all()
                 )
+                output += "\n"
 
-                team1_players = (
-                    session.query(Player)
-                    .join(InProgressGamePlayer)
-                    .filter(
-                        InProgressGamePlayer.in_progress_game_id == game.id,
-                        InProgressGamePlayer.team == 1,
+            if queue.id in games_by_queue:
+                game: InProgressGame
+                for i, game in enumerate(games_by_queue[queue.id]):
+                    team0_players = (
+                        session.query(Player)
+                        .join(InProgressGamePlayer)
+                        .filter(
+                            InProgressGamePlayer.in_progress_game_id == game.id,
+                            InProgressGamePlayer.team == 0,
+                        )
+                        .all()
                     )
-                    .all()
-                )
 
-                short_game_id = short_uuid(game.id)
-                if i > 0:
-                    output += "\n"
-                if SHOW_TRUESKILL:
-                    output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
-                    if game.code:
-                        output += f"Game code: {game.code}\n"
-                else:
-                    output += f"Map: {game.map_full_name} ({short_game_id}):\n"
-                    if game.code:
-                        output += f"Game code: {game.code}\n"
-                if SHOW_LEFT_RIGHT_TEAM:
-                    output += "(L) "
-                output += pretty_format_team_no_format(
-                    game.team0_name, game.win_probability, team0_players
-                )
-                if SHOW_LEFT_RIGHT_TEAM:
-                    output += "(R) "
-                output += pretty_format_team_no_format(
-                    game.team1_name, 1 - game.win_probability, team1_players
-                )
-                minutes_ago = (
-                    datetime.now(timezone.utc)
-                    - game.created_at.replace(tzinfo=timezone.utc)
-                ).seconds // 60
-                output += f"@ {minutes_ago} minutes ago\n"
+                    team1_players = (
+                        session.query(Player)
+                        .join(InProgressGamePlayer)
+                        .filter(
+                            InProgressGamePlayer.in_progress_game_id == game.id,
+                            InProgressGamePlayer.team == 1,
+                        )
+                        .all()
+                    )
+
+                    short_game_id = short_uuid(game.id)
+                    if i > 0:
+                        output += "\n"
+                    if SHOW_TRUESKILL:
+                        output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                        if game.code:
+                            output += f"Game code: {game.code}\n"
+                    else:
+                        output += f"Map: {game.map_full_name} ({short_game_id}):\n"
+                        if game.code:
+                            output += f"Game code: {game.code}\n"
+                    if SHOW_LEFT_RIGHT_TEAM:
+                        output += "(L) "
+                    output += pretty_format_team_no_format(
+                        game.team0_name, game.win_probability, team0_players
+                    )
+                    if SHOW_LEFT_RIGHT_TEAM:
+                        output += "(R) "
+                    output += pretty_format_team_no_format(
+                        game.team1_name, 1 - game.win_probability, team1_players
+                    )
+                    minutes_ago = (
+                        datetime.now(timezone.utc)
+                        - game.created_at.replace(tzinfo=timezone.utc)
+                    ).seconds // 60
+                    output += f"@ {minutes_ago} minutes ago\n"
+
+        output += "\n"
 
     if len(output) == 0:
         output = "No queues or games"
@@ -4653,226 +4366,3 @@ async def unsetqueuesweaty(ctx: Context, queue_name: str):
             colour=Colour.red(),
         )
     session.commit()
-
-
-@bot.command()
-async def unvote(ctx: Context):
-    message = ctx.message
-    """
-    Remove all of a player's votes
-    """
-    session = ctx.session
-    session.query(MapVote).filter(MapVote.player_id == message.author.id).delete()
-    session.query(SkipMapVote).filter(
-        SkipMapVote.player_id == message.author.id
-    ).delete()
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description="All map votes deleted",
-        colour=Colour.green(),
-    )
-
-
-# TODO: Unvote for many maps at once
-@bot.command()
-async def unvotemap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    session = ctx.session
-    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(args[0])).first()  # type: ignore
-    if not voteable_map:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find voteable map: {map_short_name}",
-            colour=Colour.red(),
-        )
-        return
-    map_vote: MapVote | None = (
-        session.query(MapVote)
-        .filter(
-            MapVote.player_id == message.author.id,
-            MapVote.voteable_map_id == voteable_map.id,
-        )
-        .first()
-    )
-    if not map_vote:
-        await send_message(
-            message.channel,
-            embed_description=f"You don't have a vote for: {map_short_name}",
-            colour=Colour.red(),
-        )
-        return
-    else:
-        session.delete(map_vote)
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Your vote for {map_short_name} was removed",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-async def unvoteskip(ctx: Context):
-    message = ctx.message
-    """
-    A player votes to go to the next map in rotation
-    """
-    session = ctx.session
-    skip_map_vote: SkipMapVote | None = (
-        session.query(SkipMapVote)
-        .filter(SkipMapVote.player_id == message.author.id)
-        .first()
-    )
-    if skip_map_vote:
-        session.delete(skip_map_vote)
-        session.commit()
-        await send_message(
-            message.channel,
-            embed_description="Your vote to skip the current map was removed.",
-            colour=Colour.green(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description="You don't have a vote to skip the current map.",
-            colour=Colour.green(),
-        )
-
-
-def get_voteable_maps_str():
-    voteable_maps: list[VoteableMap] = Session().query(VoteableMap).all()
-    return ", ".join([voteable_map.short_name for voteable_map in voteable_maps])
-
-
-# TODO: Vote for many maps at once
-@bot.command(usage=f"<map_short_name>\nMaps:{get_voteable_maps_str()}")
-async def votemap(ctx: Context, map_short_name: str):
-    message = ctx.message
-    session = ctx.session
-    voteable_map: VoteableMap | None = session.query(VoteableMap).filter(VoteableMap.short_name.ilike(map_short_name)).first()  # type: ignore
-    if not voteable_map:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find voteable map: {map_short_name}\nMaps: {get_voteable_maps_str()}",
-            colour=Colour.red(),
-        )
-        return
-
-    session.add(
-        MapVote(message.channel.id, message.author.id, voteable_map_id=voteable_map.id)
-    )
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-
-    map_votes: list[MapVote] = (
-        Session()
-        .query(MapVote)
-        .filter(MapVote.voteable_map_id == voteable_map.id)
-        .all()
-    )
-    if len(map_votes) == MAP_VOTE_THRESHOLD:
-        current_map: CurrentMap | None = session.query(CurrentMap).first()
-        if current_map:
-            current_map.full_name = voteable_map.full_name
-            current_map.short_name = voteable_map.short_name
-            current_map.updated_at = datetime.now(timezone.utc)
-        else:
-            session.add(
-                CurrentMap(
-                    full_name=voteable_map.full_name,
-                    map_rotation_index=0,
-                    short_name=voteable_map.short_name,
-                )
-            )
-            try:
-                session.commit()
-            except IntegrityError:
-                session.rollback()
-
-        await send_message(
-            message.channel,
-            embed_description=f"Vote for {voteable_map.full_name} ({voteable_map.short_name}) passed!\n**New map: {voteable_map.full_name} ({voteable_map.short_name})**",
-            colour=Colour.green(),
-        )
-        session.query(MapVote).delete()
-        session.query(SkipMapVote).delete()
-        if message.guild:
-            # TODO: Check if another vote already exists
-            session.add(
-                VotePassedWaitlist(
-                    channel_id=message.channel.id,
-                    guild_id=message.guild.id,
-                    end_waitlist_at=datetime.now(timezone.utc)
-                    + timedelta(seconds=RE_ADD_DELAY),
-                )
-            )
-        session.commit()
-    else:
-        map_votes: list[MapVote] = session.query(MapVote).all()
-        voted_map_ids: list[str] = [map_vote.voteable_map_id for map_vote in map_votes]
-        voted_maps: list[VoteableMap] = (
-            session.query(VoteableMap).filter(VoteableMap.id.in_(voted_map_ids)).all()  # type: ignore
-        )
-        voted_maps_str = ", ".join(
-            [
-                f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
-                for voted_map in voted_maps
-            ]
-        )
-        await send_message(
-            message.channel,
-            embed_description=f"Added map vote for {map_short_name}.\n!unvotemap to remove your vote.\nVotes: {voted_maps_str}",
-            colour=Colour.green(),
-        )
-
-    session.commit()
-
-
-@bot.command()
-async def voteskip(ctx: Context):
-    message = ctx.message
-    """
-    A player votes to go to the next map in rotation
-    """
-    session = ctx.session
-    session.add(SkipMapVote(message.channel.id, message.author.id))
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-
-    skip_map_votes: list[SkipMapVote] = Session().query(SkipMapVote).all()
-    if len(skip_map_votes) >= MAP_VOTE_THRESHOLD:
-        await update_current_map_to_next_map_in_rotation(False)
-        current_map: CurrentMap = Session().query(CurrentMap).first()
-        await send_message(
-            message.channel,
-            embed_description=f"Vote to skip the current map passed!\n**New map: {current_map.full_name} ({current_map.short_name})**",
-            colour=Colour.green(),
-        )
-
-        session.query(MapVote).delete()
-        session.query(SkipMapVote).delete()
-        if message.guild:
-            # TODO: Might be bugs if two votes pass one after the other
-            vpw: VotePassedWaitlist | None = session.query(VotePassedWaitlist).first()
-            if not vpw:
-                session.add(
-                    VotePassedWaitlist(
-                        channel_id=message.channel.id,
-                        guild_id=message.guild.id,
-                        end_waitlist_at=datetime.now(timezone.utc)
-                        + timedelta(seconds=RE_ADD_DELAY),
-                    )
-                )
-        session.commit()
-    else:
-        skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-        await send_message(
-            message.channel,
-            embed_description=f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]",
-            colour=Colour.green(),
-        )

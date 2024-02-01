@@ -115,49 +115,6 @@ class Commend:
 
 @mapper_registry.mapped
 @dataclass
-class CurrentMap:
-    """
-    The current map up to play - not necessarily a rotation map. The rotation
-    index is stored so we can find the next map.
-
-    This table is intended to store one and only one row.
-    """
-
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "current_map"
-
-    map_rotation_index: int = field(metadata={"sa": Column(Integer)})
-    full_name: str = field(metadata={"sa": Column(String)})
-    short_name: str = field(metadata={"sa": Column(String)})
-    is_random: bool = field(
-        default=False,
-        metadata={
-            "sa": Column(Boolean, nullable=False, server_default=expression.false())
-        },
-    )
-    random_probability: float = field(
-        default=0,
-        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
-    )
-    updated_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        init=False,
-        metadata={"sa": Column(DateTime, nullable=False, server_default=func.now())},
-    )
-    created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        init=False,
-        metadata={"sa": Column(DateTime, nullable=False)},
-    )
-    id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-
-
-@mapper_registry.mapped
-@dataclass
 class CustomCommand:
     """
     A way for users to add custom text commands to the bot
@@ -380,6 +337,32 @@ class InProgressGameChannel:
 
 @mapper_registry.mapped
 @dataclass
+class Map:
+    """
+    A map that can be voted in to replace the current map in rotation
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "map"
+
+    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+    rotation_maps = relationship("RotationMap", cascade="all, delete-orphan")
+
+
+@mapper_registry.mapped
+@dataclass
 class MapVote:
     """
     A player's vote to replace the current map
@@ -387,7 +370,7 @@ class MapVote:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "map_vote"
-    __table_args__ = (UniqueConstraint("player_id", "voteable_map_id"),)
+    __table_args__ = (UniqueConstraint("player_id", "rotation_map_id"),)
 
     channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     player_id: int = field(
@@ -395,10 +378,10 @@ class MapVote:
             "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
         }
     )
-    voteable_map_id: str = field(
+    rotation_map_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("voteable_map.id"), nullable=False, index=True
+                String, ForeignKey("rotation_map.id"), nullable=False, index=True
             )
         },
     )
@@ -418,6 +401,7 @@ class SkipMapVote:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "skip_map_vote"
+    __table_args__ = (UniqueConstraint("player_id", "rotation_id"),)
 
     channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
     player_id: int = field(
@@ -426,10 +410,14 @@ class SkipMapVote:
                 Integer,
                 ForeignKey("player.id"),
                 nullable=False,
-                unique=True,
                 index=True,
             )
         },
+    )
+    rotation_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("rotation.id"), nullable=False, index=True)
+        }
     )
     id: str = field(
         init=False,
@@ -667,11 +655,19 @@ class Queue:
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
+    rotation_id: str = field(
+        default=None,
+        metadata={
+            "sa": Column(String, ForeignKey("rotation.id"), nullable=True, index=True)
+        },
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+
+    rotation = relationship("Rotation", back_populates="queues")
 
 
 @mapper_registry.mapped
@@ -890,10 +886,39 @@ class Raffle:
 
 @mapper_registry.mapped
 @dataclass
+class Rotation:
+    """
+    A sequence of maps to be played in a queue
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "rotation"
+
+    name: str = field(
+        default=None, metadata={"sa": Column(String, nullable=False, unique=True)}
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+    rotation_maps = relationship("RotationMap", cascade="all, delete-orphan")
+    queues = relationship("Queue", back_populates="rotation")
+
+
+@mapper_registry.mapped
+@dataclass
 class RotationMap:
     """
-    A map that's part of the fixed rotation
+    Puts a map in a rotation
 
+    :ordinal: Where this map sits in the rotation
     :raffle_ticket_reward: The number of raffle tickets this map rewards for playing it
     :default_full_name: For random maps, the default when random map is not rolled
     :default_short_name: For random maps, the default when random map is not rolled
@@ -904,12 +929,16 @@ class RotationMap:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "rotation_map"
 
-    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
     raffle_ticket_reward: int = field(
         default=0,
         metadata={
             "sa": Column(Integer, index=True, nullable=False, server_default=text("0"))
+        },
+    )
+    is_next: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
         },
     )
     is_random: bool = field(
@@ -927,35 +956,34 @@ class RotationMap:
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
-    id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-
-
-@mapper_registry.mapped
-@dataclass
-class VoteableMap:
-    """
-    A map that can be voted in to replace the current map in rotation
-    """
-
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "voteable_map"
-
-    full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
-    created_at: datetime = field(
+    updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
-        metadata={"sa": Column(DateTime, index=True)},
+        metadata={
+            "sa": Column(
+                DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+            )
+        },
+    )
+    ordinal: int = field(
+        default=None,
+        metadata={"sa": Column(Integer, index=True)},
+    )
+    rotation_id: str = field(
+        default=None,
+        metadata={"sa": Column(String, ForeignKey("rotation.id"), index=True)},
+    )
+    map_id: str = field(
+        default=None,
+        metadata={"sa": Column(String, ForeignKey("map.id"), index=True)},
     )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+
+    map_votes = relationship("MapVote", cascade="all, delete-orphan")
 
 
 @mapper_registry.mapped

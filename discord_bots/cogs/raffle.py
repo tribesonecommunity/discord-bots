@@ -1,15 +1,15 @@
 from random import choice
 
 from discord import Colour
-from discord.ext.commands import Bot, Cog, Context, check, command
+from discord.ext.commands import Bot, Context, check, command
 from discord.member import Member
 from emoji import emojize
 from sqlalchemy.sql import functions
 
 from discord_bots.checks import is_admin
-from discord_bots.models import Player, RotationMap, Session
+from discord_bots.cogs.base import BaseCog
+from discord_bots.models import Map, Player, Rotation, RotationMap, Session
 from discord_bots.utils import send_message
-
 
 strings = [
     "Don't give up!",
@@ -63,36 +63,16 @@ strings = [
 ]
 
 
-class RaffleCog(Cog):
+class RaffleCommands(BaseCog):
     def __init__(self, bot: Bot):
-        self.bot = bot
+        super().__init__(bot)
 
-    @command(usage="<map_short_name> <raffle_ticket_reward>")
-    @check(is_admin)
-    async def setmapraffle(self, ctx, map_short_name: str, raffle_ticket_reward: int):
-        session = Session()
-        rotation_map: RotationMap | None = (
-            session.query(RotationMap).filter(RotationMap.short_name.ilike(map_short_name)).first()  # type: ignore
-        )
-        if not rotation_map:
-            await send_message(
-                ctx.message.channel,
-                embed_description=f"Could not find map: {map_short_name}",
-                colour=Colour.red(),
-            )
-            return
-
-        rotation_map.raffle_ticket_reward = raffle_ticket_reward
-        session.commit()
-
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Raffle tickets for **{rotation_map.full_name} ({rotation_map.short_name})** set to **{raffle_ticket_reward}**",
-            colour=Colour.blue(),
-        )
 
     @command()
     async def myraffle(self, ctx, *, member: Member = None):
+        """
+        Displays how many raffle tickets you have
+        """
         member = member or ctx.author
         session = Session()
         player = session.query(Player).filter(Player.id == member.id).first()
@@ -112,6 +92,9 @@ class RaffleCog(Cog):
 
     @command()
     async def rafflestatus(self, ctx, *, member: Member = None):
+        """
+        Displays raffle ticket information and raffle leaderboard
+        """
         session = Session()
         total_tickets = session.query(functions.sum(Player.raffle_tickets)).scalar()
         total_players = (
@@ -141,12 +124,51 @@ class RaffleCog(Cog):
 
     @command()
     @check(is_admin)
+    async def setrotationmapraffle(
+        self, ctx, rotation_name: str, map_short_name: str, raffle_ticket_reward: int
+    ):
+        """
+        Set the raffle ticket reward for a map in a rotation
+        """
+        if raffle_ticket_reward < 0:
+            await self.send_error_message("Raffle ticket reward must be positive")
+            return
+
+        session = ctx.session
+
+        rotation_map: RotationMap | None = (
+            session.query(RotationMap)
+            .join(Map, Map.id == RotationMap.map_id)
+            .join(Rotation, Rotation.id == RotationMap.rotation_id)
+            .filter(Map.short_name.ilike(map_short_name))
+            .filter(Rotation.name.ilike(rotation_name))
+            .first()  # type: ignore
+        )
+        if not rotation_map:
+            await self.send_error_message(
+                f"Could not find map **{map_short_name}** in rotation **{rotation_name}**"
+            )
+            return
+
+        rotation_map.raffle_ticket_reward = raffle_ticket_reward
+        session.commit()
+
+        await self.send_info_message(
+            f"Raffle tickets for **{map_short_name}** in **{rotation_name}** set to **{raffle_ticket_reward}**"
+        )
+
+    @command()
+    @check(is_admin)
     async def createraffle(self, ctx, *, member: Member = None):
-        # TODO: We have a month to code this
+        """
+        TODO: Implementation
+        """
         pass
 
     @command()
     @check(is_admin)
     async def runraffle(self, ctx, *, member: Member = None):
-        # TODO: We have a month to code this
+        """
+        TODO: Implementation
+        """
         pass

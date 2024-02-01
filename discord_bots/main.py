@@ -6,9 +6,13 @@ from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 from dotenv import load_dotenv
-from discord_bots.cogs.raffle import RaffleCog
-from discord_bots.config import ENABLE_DEBUG, LEADERBOARD_CHANNEL
 
+from discord_bots.cogs.map import MapCommands
+from discord_bots.cogs.queue import QueueCommands
+from discord_bots.cogs.raffle import RaffleCommands
+from discord_bots.cogs.rotation import RotationCommands
+from discord_bots.cogs.vote import VoteCommands
+from discord_bots.config import ENABLE_DEBUG, LEADERBOARD_CHANNEL
 from discord_bots.utils import CHANNEL_ID
 
 from .bot import COMMAND_PREFIX, bot
@@ -74,6 +78,9 @@ async def on_command_error(ctx: Context, error: CommandError):
 
 @bot.event
 async def on_message(message: Message):
+    # only respond to users
+    if message.author.bot:
+        return
     # Use this to get the channel id
     if ENABLE_DEBUG:
         if (
@@ -185,7 +192,11 @@ def main():
     load_dotenv()
     API_KEY = os.getenv("DISCORD_API_KEY")
     if API_KEY:
-        bot.add_cog(RaffleCog(bot))
+        bot.add_cog(RaffleCommands(bot))
+        bot.add_cog(RotationCommands(bot))
+        bot.add_cog(MapCommands(bot))
+        bot.add_cog(QueueCommands(bot))
+        bot.add_cog(VoteCommands(bot))
         bot.run(API_KEY)
     else:
         print("You must define DISCORD_API_KEY!")
