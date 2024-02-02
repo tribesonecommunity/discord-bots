@@ -101,6 +101,7 @@ DEBUG: bool = bool(os.getenv("DEBUG")) or False
 DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 MAP_ROTATION_MINUTES: int = 60
 
+
 def debug_print(*args):
     global DEBUG
     if DEBUG:
@@ -1042,9 +1043,9 @@ async def add(ctx: Context, *args):
             session.close()
             return
         # Don't auto-add to isolated queues
-        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False).order_by(Queue.ordinal.asc()).all()  # type: ignore
+        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False, Queue.is_locked == False).order_by(Queue.ordinal.asc()).all()  # type: ignore
     else:
-        all_queues = session.query(Queue).order_by(Queue.ordinal.asc()).all()  # type: ignore
+        all_queues = session.query(Queue).filter(Queue.is_locked == False).order_by(Queue.ordinal.asc()).all()  # type: ignore
         for arg in args:
             # Try adding by integer index first, then try string name
             try:
@@ -1784,7 +1785,7 @@ async def del_(ctx: Context, *args):
 
     queue_statuses = []
     queue: Queue
-    for queue in session.query(Queue).order_by(Queue.ordinal.asc()).all():  # type: ignore
+    for queue in session.query(Queue).filter(Queue.is_locked == False).order_by(Queue.ordinal.asc()).all():  # type: ignore
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
@@ -3596,7 +3597,7 @@ async def status(ctx: Context, *args):
                 .all()
             )
             if queue.is_locked:
-                output += f"({queue.ordinal}) {queue.name} (locked) [{len(players_in_queue)} / {queue.size}]\n"
+                continue
             else:
                 output += f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
 
