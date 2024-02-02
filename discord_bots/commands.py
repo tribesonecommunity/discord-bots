@@ -2137,30 +2137,20 @@ async def finishgame(ctx: Context, outcome: str):
     team1_rated_ratings_after: list[Rating]
     team0_unrated_ratings_after: list[Rating]
     team1_unrated_ratings_after: list[Rating]
-    if not queue.is_isolated:
-        if len(players) > 1:
-            team0_rated_ratings_after, team1_rated_ratings_after = rate(
-                [team0_rated_ratings_before, team1_rated_ratings_before], result
-            )
-        else:
-            # Mostly useful for creating solo queues for testing, no real world
-            # application
-            team0_rated_ratings_after, team1_rated_ratings_after = (
-                team0_rated_ratings_before,
-                team1_rated_ratings_before,
-            )
-    else:
-        # Don't modify rated ratings if the queue isn't rated
-        team0_rated_ratings_after, team1_rated_ratings_after = (
-            team0_rated_ratings_before,
-            team1_rated_ratings_before,
+    if len(players) > 1:
+        team0_rated_ratings_after, team1_rated_ratings_after = rate(
+            [team0_rated_ratings_before, team1_rated_ratings_before], result
         )
-
-    if len(players) > 1 and not queue.is_isolated:
         team0_unrated_ratings_after, team1_unrated_ratings_after = rate(
             [team0_unrated_ratings_before, team1_unrated_ratings_before], result
         )
     else:
+        # Mostly useful for creating solo queues for testing, no real world
+        # application
+        team0_rated_ratings_after, team1_rated_ratings_after = (
+            team0_rated_ratings_before,
+            team1_rated_ratings_before,
+        )
         team0_unrated_ratings_after, team1_unrated_ratings_after = (
             team0_unrated_ratings_before,
             team1_unrated_ratings_before,
