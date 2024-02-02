@@ -94,9 +94,26 @@ class QueueCommands(BaseCog):
         )
         if not queue:
             await self.send_error_message(f"Could not find queue **{old_queue_name}**")
+            return
 
         queue.name = new_queue_name
         session.commit()
         await self.send_success_message(
             f"Queue name updated from **{old_queue_name}** to **{new_queue_name}**"
         )
+
+    @command()
+    @check(is_admin)
+    async def setqueuesize(self, ctx: Context, queue_name: str, queue_size: int):
+        session = ctx.session
+
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+        )
+        if not queue:
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
+            return
+
+        queue.size = queue_size
+        session.commit()
+        await self.send_success_message(f"Queue size updated to **{queue.size}**")
