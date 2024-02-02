@@ -81,3 +81,22 @@ class QueueCommands(BaseCog):
         output = f"**{queue.name}** is assigned to **{rotation.name}**\n"
         output += f"- _Maps: {', '.join(map_names)}_"
         await self.send_info_message(output)
+
+    @command()
+    @check(is_admin)
+    async def setqueuename(
+        self, ctx: Context, old_queue_name: str, new_queue_name: str
+    ):
+        session = ctx.session
+
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(old_queue_name)).first()
+        )
+        if not queue:
+            await self.send_error_message(f"Could not find queue **{old_queue_name}**")
+
+        queue.name = new_queue_name
+        session.commit()
+        await self.send_success_message(
+            f"Queue name updated from **{old_queue_name}** to **{new_queue_name}**"
+        )
