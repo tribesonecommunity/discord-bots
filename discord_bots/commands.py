@@ -467,7 +467,7 @@ async def create_game(
     ).delete()
     session.commit()
 
-    if not queue.is_isolated and not rolled_random_map:
+    if not rolled_random_map:
         await update_next_map_to_map_after_next(queue.rotation_id, False)
 
     session.close()
