@@ -15,7 +15,6 @@ from typing import List, Union
 
 import discord
 import imgkit
-import numpy
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -1225,39 +1224,6 @@ async def addadminrole(ctx: Context, role_name: str):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def addqueuerole(ctx: Context, queue_name: str, role_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if not queue:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-    if message.guild:
-        role_name_to_role_id: dict[str, int] = {
-            role.name.lower(): role.id for role in message.guild.roles
-        }
-        if role_name.lower() not in role_name_to_role_id:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find role: {role_name}",
-                colour=Colour.red(),
-            )
-            return
-        session.add(QueueRole(queue.id, role_name_to_role_id[role_name.lower()]))
-        await send_message(
-            message.channel,
-            embed_description=f"Added role {role_name} to queue {queue_name}",
-            colour=Colour.green(),
-        )
-        session.commit()
-
-
-@bot.command()
 async def autosub(ctx: Context, member: Member = None):
     """
     Picks a person to sub at random
@@ -1618,76 +1584,6 @@ async def createdbbackup(ctx: Context):
 async def restart(ctx):
     await ctx.send("Restarting bot... ")
     os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
-
-
-@bot.command()
-@commands.check(is_admin)
-async def clearqueue(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if not queue:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-    session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).delete()
-    session.commit()
-
-    await send_message(
-        message.channel,
-        embed_description=f"Queue cleared: {queue_name}",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def clearqueuerange(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.mu_min = None
-        queue.mu_max = None
-        session.commit()
-        await send_message(
-            message.channel,
-            embed_description=f"Queue {queue_name} range cleared",
-            colour=Colour.blue(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def createqueue(ctx: Context, queue_name: str, queue_size: int):
-    message = ctx.message
-    queue = Queue(name=queue_name, size=queue_size)
-    session = ctx.session
-
-    try:
-        session.add(queue)
-        session.commit()
-        await send_message(
-            message.channel,
-            embed_description=f"Queue created: {queue.name}",
-            colour=Colour.green(),
-        )
-    except IntegrityError:
-        session.rollback()
-        await send_message(
-            message.channel,
-            embed_description="A queue already exists with that name",
-            colour=Colour.red(),
-        )
 
 
 @bot.command()
@@ -2314,28 +2210,6 @@ async def finishgame(ctx: Context, outcome: str):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def isolatequeue(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.is_isolated = True
-        await send_message(
-            message.channel,
-            embed_description=f"Queue {queue_name} is now isolated (unrated, no map rotation, no auto-adds)",
-            colour=Colour.blue(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-    session.commit()
-
-
-@bot.command()
 async def listadmins(ctx: Context):
     message = ctx.message
     output = "Admins:"
@@ -2438,56 +2312,6 @@ async def listplayerdecays(ctx: Context, member: Member):
 
 
 @bot.command()
-async def listqueueroles(ctx: Context):
-    message = ctx.message
-    if not message.guild:
-        return
-
-    output = "Queues:\n"
-    session = ctx.session
-    queue: Queue
-    for i, queue in enumerate(session.query(Queue).all()):
-        queue_role_names: list[str] = []
-        queue_role: QueueRole
-        for queue_role in (
-            session.query(QueueRole).filter(QueueRole.queue_id == queue.id).all()
-        ):
-            role = message.guild.get_role(queue_role.role_id)
-            if role:
-                queue_role_names.append(role.name)
-            else:
-                queue_role_names.append(str(queue_role.role_id))
-        output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
-@commands.check(is_admin)
-async def lockqueue(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue | None = (
-        session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
-    )
-    if not queue:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-
-    queue.is_locked = True
-    session.commit()
-
-    await send_message(
-        message.channel,
-        embed_description=f"Queue **{queue.name}** locked",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
 async def lt(ctx: Context):
     query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132:28006&port=28006"
     await ctx.message.channel.send(query_url)
@@ -2516,59 +2340,6 @@ async def trueskill(ctx: Context):
         embed_title="Trueskill",
         colour=Colour.blue(),
     )
-
-
-@bot.command(usage="<queue_name> <count>")
-@commands.check(is_admin)
-async def mockqueue(ctx: Context, queue_name: str, count: int):
-    message = ctx.message
-    """
-    Helper test method for adding random players to queues
-
-    This will send PMs to players, create voice channels, etc. so be careful
-    """
-    if message.author.id not in [
-        115204465589616646,
-        347125254050676738,
-        508003755220926464,
-    ]:
-        await send_message(
-            message.channel,
-            embed_description="Only special people can use this command",
-            colour=Colour.red(),
-        )
-        return
-
-    session = ctx.session
-    players_from_last_30_days = (
-        session.query(Player)
-        .join(FinishedGamePlayer, FinishedGamePlayer.player_id == Player.id)
-        .join(FinishedGame, FinishedGame.id == FinishedGamePlayer.finished_game_id)
-        .filter(
-            FinishedGame.finished_at > datetime.now(timezone.utc) - timedelta(days=30),
-        )
-        .order_by(FinishedGame.finished_at.desc())  # type: ignore
-        .all()
-    )
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    # This throws an error if people haven't played in 30 days
-    for player in numpy.random.choice(
-        players_from_last_30_days, size=int(count), replace=False
-    ):
-        if isinstance(message.channel, TextChannel) and message.guild:
-            add_player_queue.put(
-                AddPlayerQueueMessage(
-                    player.id,
-                    player.name,
-                    [queue.id],
-                    False,
-                    message.channel,
-                    message.guild,
-                )
-            )
-            player.last_activity_at = datetime.now(timezone.utc)
-            session.add(player)
-            session.commit()
 
 
 @bot.command()
@@ -2773,42 +2544,6 @@ async def removenotifications(ctx: Context):
 
 @bot.command()
 @commands.check(is_admin)
-async def removequeue(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        games_in_progress = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.queue_id == queue.id)
-            .all()
-        )
-        if len(games_in_progress) > 0:
-            await send_message(
-                message.channel,
-                embed_description=f"Cannot remove queue with game in progress: {queue_name}",
-                colour=Colour.red(),
-            )
-            return
-        else:
-            session.delete(queue)
-            session.commit()
-            await send_message(
-                message.channel,
-                embed_description=f"Queue removed: {queue.name}",
-                colour=Colour.blue(),
-            )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue.name}",
-            colour=Colour.red(),
-        )
-
-
-@bot.command()
-@commands.check(is_admin)
 async def removedbbackup(ctx: Context, db_filename: str):
     message = ctx.message
     if not db_filename.startswith("tribes") or not db_filename.endswith(".db"):
@@ -2825,63 +2560,6 @@ async def removedbbackup(ctx: Context, db_filename: str):
         embed_description=f"DB backup {db_filename} removed",
         colour=Colour.green(),
     )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def removequeuerole(ctx: Context, queue_name: str, role_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if not queue:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-    if message.guild:
-        role_name_to_role_id: dict[str, int] = {
-            role.name.lower(): role.id for role in message.guild.roles
-        }
-        if role_name.lower() not in role_name_to_role_id:
-            # In case a queue role was deleted from the server
-            queue_role_by_role_id = session.query(QueueRole).filter(
-                QueueRole.queue_id == queue.id,
-                QueueRole.role_id == role_name,
-            )
-            if queue_role_by_role_id:
-                session.query(QueueRole).filter(
-                    QueueRole.queue_id == queue.id,
-                    QueueRole.role_id == role_name,
-                ).delete()
-                session.commit()
-                session.close()
-                await send_message(
-                    message.channel,
-                    embed_description=f"Removed role {role_name} from queue {queue_name}",
-                    colour=Colour.green(),
-                )
-                return
-
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find role: {role_name}",
-                colour=Colour.red(),
-            )
-            session.close()
-            return
-        session.query(QueueRole).filter(
-            QueueRole.queue_id == queue.id,
-            QueueRole.role_id == role_name_to_role_id[role_name.lower()],
-        ).delete()
-        await send_message(
-            message.channel,
-            embed_description=f"Removed role {role_name} from queue {queue_name}",
-            colour=Colour.green(),
-        )
-        session.commit()
-        session.close()
 
 
 @bot.command()
@@ -3048,121 +2726,6 @@ async def setgamecode(ctx: Context, code: str):
         embed_description=f"Game **{short_uuid(ipg.id)}** code set to **{code}**",
         colour=Colour.green(),
     )
-
-
-@bot.command(usage="<queue_name> <ordinal>")
-@commands.check(is_admin)
-async def setqueueordinal(ctx: Context, queue_name: str, ordinal: int):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.ordinal = ordinal
-        session.commit()
-        session.close()
-        await send_message(
-            message.channel,
-            embed_description=f"Queue {queue_name} ordinal set to {ordinal}",
-            colour=Colour.blue(),
-        )
-    else:
-        session.close()
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-
-
-@bot.command(usage="<queue_name> <min> <max>")
-@commands.check(is_admin)
-async def setqueuerange(ctx: Context, queue_name: str, min: float, max: float):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.mu_min = min
-        queue.mu_max = max
-        session.commit()
-        await send_message(
-            message.channel,
-            embed_description=f"Queue {queue_name} range set to [{min}, {max}]",
-            colour=Colour.blue(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def setqueuerated(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.is_rated = True
-        await send_message(
-            message.channel,
-            embed_description=f"Queue {queue_name} is now rated",
-            colour=Colour.blue(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-    session.commit()
-
-
-@bot.command()
-@commands.check(is_admin)
-async def setqueueunrated(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.is_rated = False
-        await send_message(
-            message.channel,
-            embed_description=f"Queue {queue_name} is now unrated",
-            colour=Colour.blue(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-    session.commit()
-    session.close()
-
-
-@bot.command()
-@commands.check(is_admin)
-async def setqueuesweaty(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.is_sweaty = True
-        await send_message(
-            message.channel,
-            embed_description=f"Queue {queue_name} is now sweaty",
-            colour=Colour.blue(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-    session.commit()
-    session.close()
 
 
 @bot.command()
@@ -3357,25 +2920,6 @@ async def showgamedebug(ctx: Context, game_id: str):
             #     embed_description=game_str,
             #     colour=Colour.blue(),
             # )
-
-
-@bot.command(usage="<queue_name>")
-async def showqueuerange(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if not queue:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-    await send_message(
-        message.channel,
-        embed_description=f"Queue range: [{queue.mu_min}, {queue.mu_max}]",
-        colour=Colour.green(),
-    )
 
 
 @bot.command()
@@ -4088,73 +3632,3 @@ async def unban(ctx: Context, member: Member):
         embed_description=f"{escape_markdown(member.name)} unbanned",
         colour=Colour.green(),
     )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def unisolatequeue(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.is_isolated = False
-        await send_message(
-            message.channel,
-            embed_description=f"Queue {queue_name} is now unisolated",
-            colour=Colour.blue(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-    session.commit()
-
-
-@bot.command()
-@commands.check(is_admin)
-async def unlockqueue(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue | None = (
-        session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
-    )
-    if not queue:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-
-    queue.is_locked = False
-    session.commit()
-
-    await send_message(
-        message.channel,
-        embed_description=f"Queue **{queue.name}** unlocked",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def unsetqueuesweaty(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if queue:
-        queue.is_sweaty = False
-        await send_message(
-            message.channel,
-            embed_description=f"Queue {queue_name} is no longer sweaty",
-            colour=Colour.blue(),
-        )
-    else:
-        await send_message(
-            message.channel,
-            embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-    session.commit()
