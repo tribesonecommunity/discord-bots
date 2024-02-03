@@ -9,6 +9,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
+    Category,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -117,6 +118,46 @@ class QueueCommands(BaseCog):
             )
         else:
             await self.send_error_message(f"Queue not found: {queue_name}")
+
+    @command()
+    async def listqueues(self, ctx: Context):
+        """
+        List all queues with their category and rotation
+        """
+        session = ctx.session
+
+        queues: list[Queue] | None = session.query(Queue).all()
+        if not queues:
+            self.send_error_message("No queues found")
+            return
+
+        output = ""
+        for queue in queues:
+            output += f"### {queue.name}\n"
+
+            output += "- Category: "
+            category_name: str | None = (
+                session.query(Category.name)
+                .filter(Category.id == queue.category_id)
+                .scalar()
+            )
+            if category_name:
+                output += f"{category_name}\n"
+            else:
+                output += "None\n"
+
+            output += "- Rotation: "
+            rotation_name: str | None = (
+                session.query(Rotation.name)
+                .filter(Rotation.id == queue.rotation_id)
+                .scalar()
+            )
+            if rotation_name:
+                output += f"{rotation_name}\n"
+            else:
+                output += "None\n"
+
+        await self.send_info_message(output)
 
     @command()
     async def listqueueroles(self, ctx: Context):
