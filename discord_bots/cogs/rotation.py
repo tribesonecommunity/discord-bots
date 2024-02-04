@@ -298,4 +298,7 @@ class RotationCommands(BaseCog):
     async def setrotationname(
         self, ctx: Context, old_rotation_name: str, new_rotation_name: str
     ):
+        """
+        Set rotation name
+        """
         await self.setname(ctx, Rotation, old_rotation_name, new_rotation_name)

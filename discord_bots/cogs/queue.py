@@ -335,21 +335,7 @@ class QueueCommands(BaseCog):
         """
         Set queue name
         """
-        session = ctx.session
-
-        queue: Queue | None = (
-            session.query(Queue).filter(Queue.name.ilike(old_queue_name)).first()
-        )
-        if not queue:
-            await self.send_error_message(f"Could not find queue **{old_queue_name}**")
-            return
-
-        old_queue_name = queue.name
-        queue.name = new_queue_name
-        session.commit()
-        await self.send_success_message(
-            f"Queue name updated from **{old_queue_name}** to **{new_queue_name}**"
-        )
+        await self.setname(ctx, Queue, old_queue_name, new_queue_name)
 
     @command()
     @check(is_admin)
