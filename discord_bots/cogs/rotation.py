@@ -292,3 +292,10 @@ class RotationCommands(BaseCog):
         await self.send_success_message(
             f"Map **{map.short_name}** in rotation **{rotation.name}** set to ordinal **{rotation_map_to_set.ordinal}**."
         )
+
+    @command()
+    @check(is_admin)
+    async def setrotationname(
+        self, ctx: Context, old_rotation_name: str, new_rotation_name: str
+    ):
+        await self.setname(ctx, Rotation, old_rotation_name, new_rotation_name)
