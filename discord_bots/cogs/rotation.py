@@ -221,6 +221,9 @@ class RotationCommands(BaseCog):
     async def setrotationname(
         self, ctx: Context, old_rotation_name: str, new_rotation_name: str
     ):
+        """
+        Change the name of an existing rotation
+        """
         session = ctx.session
 
         rotation: Rotation | None = (
