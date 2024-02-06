@@ -459,7 +459,7 @@ class SkipMapVote:
 default_rating = trueskill.Rating()
 DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
 DEFAULT_TRUESKILL_SIGMA = float(
-    os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.sigma
+    os.getenv("DEFAULT_TRUESKILL_SIGMA") or default_rating.sigma
 )
 
 
