@@ -1,9 +1,11 @@
+from typing import Protocol
+
 from discord import Colour, Message
 from discord.ext.commands.context import Context
 
 from discord_bots.utils import send_message
 
-from .models import Session, Player, AdminRole
+from .models import AdminRole, Player, Session
 
 
 async def is_admin(ctx: Context):
@@ -47,3 +49,7 @@ async def is_admin(ctx: Context):
         )
         session.close()
         return False
+
+
+class HasName(Protocol):
+    name: str

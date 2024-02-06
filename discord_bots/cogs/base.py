@@ -1,6 +1,9 @@
-from discord import Colour, Message
+from typing import Type
+
+from discord import Colour
 from discord.ext.commands import Cog, Context
 
+from discord_bots.checks import HasName
 from discord_bots.utils import send_message
 
 
@@ -30,7 +33,9 @@ class BaseCog(Cog):
             self.message.channel, embed_description=error_message, colour=Colour.red()
         )
 
-    async def setname(self, ctx: Context, class_, old_name: str, new_name: str):
+    async def setname(
+        self, ctx: Context, class_: Type[HasName], old_name: str, new_name: str
+    ):
         session = ctx.session
 
         entry: class_ | None = (

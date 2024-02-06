@@ -4,7 +4,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import Map, Queue, Rotation, RotationMap
+from discord_bots.models import Map, Rotation, RotationMap
 from discord_bots.utils import update_next_map_to_map_after_next
 
 
