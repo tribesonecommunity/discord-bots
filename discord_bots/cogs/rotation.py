@@ -218,6 +218,30 @@ class RotationCommands(BaseCog):
 
     @command()
     @check(is_admin)
+    async def setrotationname(
+        self, ctx: Context, old_rotation_name: str, new_rotation_name: str
+    ):
+        """
+        Change the name of an existing rotation
+        """
+        session = ctx.session
+
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.name.ilike(old_rotation_name)).first()
+        )
+        if not rotation:
+            await self.send_error_message(f"Could not find rotation **{old_rotation_name}**")
+            return
+
+        old_rotation_name = rotation.name
+        rotation.name = new_rotation_name
+        session.commit()
+        await self.send_success_message(
+            f"Rotation name updated from **{old_rotation_name}** to **{new_rotation_name}**"
+        )
+
+    @command()
+    @check(is_admin)
     async def setrotationmapordinal(
         self, ctx: Context, rotation_name: str, map_short_name: str, new_ordinal: int
     ):
