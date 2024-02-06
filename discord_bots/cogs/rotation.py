@@ -233,6 +233,7 @@ class RotationCommands(BaseCog):
             await self.send_error_message(f"Could not find rotation **{old_rotation_name}**")
             return
 
+        old_rotation_name = rotation.name
         rotation.name = new_rotation_name
         session.commit()
         await self.send_success_message(
