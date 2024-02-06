@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
-from dotenv import load_dotenv
 
 import trueskill
 from sqlalchemy import (
@@ -19,7 +17,6 @@ from sqlalchemy import (
     create_engine,
     text,
 )
-
 from sqlalchemy.ext.hybrid import hybrid_property
 
 # pylance issue with sqlalchemy:
@@ -28,16 +25,16 @@ from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
 from sqlalchemy.sql import expression, func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
-load_dotenv()
-DB_NAME = "tribes"
+import discord_bots.config as config
+
 
 # It may be tempting, but do not set check_same_thread=False here. Sqlite
 # doesn't handle concurrency well and writing to the db on different threads
 # could cause file corruption. Use tasks to ensure that writes happen on the main thread.
 db_url = (
-    f"sqlite:///{DB_NAME}.test.db"
+    f"sqlite:///{config.DB_NAME}.test.db"
     if "pytest" in sys.modules
-    else f"sqlite:///{DB_NAME}.db"
+    else f"sqlite:///{config.DB_NAME}.db"
 )
 engine = create_engine(db_url, echo=False)
 naming_convention = {
@@ -456,13 +453,6 @@ class SkipMapVote:
     )
 
 
-default_rating = trueskill.Rating()
-DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
-DEFAULT_TRUESKILL_SIGMA = float(
-    os.getenv("DEFAULT_TRUESKILL_SIGMA") or default_rating.sigma
-)
-
-
 @mapper_registry.mapped
 @dataclass
 class Player:
@@ -491,16 +481,16 @@ class Player:
         metadata={"sa": Column(DateTime)},
     )
     rated_trueskill_mu: float = field(
-        default=DEFAULT_TRUESKILL_MU, metadata={"sa": Column(Float, nullable=False)}
+        default=config.DEFAULT_TRUESKILL_MU, metadata={"sa": Column(Float, nullable=False)}
     )
     rated_trueskill_sigma: float = field(
-        default=DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
+        default=config.DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
     )
     unrated_trueskill_mu: float = field(
-        default=DEFAULT_TRUESKILL_MU, metadata={"sa": Column(Float, nullable=False)}
+        default=config.DEFAULT_TRUESKILL_MU, metadata={"sa": Column(Float, nullable=False)}
     )
     unrated_trueskill_sigma: float = field(
-        default=DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
+        default=config.DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
     )
     raffle_tickets: int = field(
         default=0,
