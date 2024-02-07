@@ -3103,6 +3103,15 @@ async def setgamecode(ctx: Context, code: str):
 @commands.check()
 async def setmoveenabled(ctx: Context, enabled_option: bool = True):
     session = ctx.session
+
+    if not ENABLE_VOICE_MOVE:
+        await send_message(
+            ctx.message.channel, 
+            embed_description="Voice movement is disabled",
+            colour=Colour.red()
+        )
+        return
+
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     player.move_enabled = enabled_option
     session.commit()
