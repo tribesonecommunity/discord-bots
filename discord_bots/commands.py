@@ -2493,7 +2493,7 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
             session.add(player)
             session.commit()
 
-@bot.command(usage="<queue_name> <count>")
+@bot.command(usage="<game_id>")
 @commands.check(is_admin)
 async def movegameplayers (ctx: Context, game_id: str):
     """
