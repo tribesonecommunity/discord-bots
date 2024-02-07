@@ -23,4 +23,4 @@ RE_ADD_DELAY = int(os.getenv("RE_ADD_DELAY") or "30")
 REQUIRE_ADD_TARGET = bool(os.getenv("REQUIRE_ADD_TARGET"))
 
 #Disable moving players to voice channels
-ENABLE_VOICE_MOVE = bool(os.getenv("DISABLE_VOICE_MOVE"))
+ENABLE_VOICE_MOVE = bool(os.getenv("ENABLE_VOICE_MOVE"))
