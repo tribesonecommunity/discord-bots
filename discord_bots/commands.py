@@ -3104,13 +3104,21 @@ async def setgamecode(ctx: Context, code: str):
 async def setmoveenabled(ctx: Context, enabled_option: bool = True):
     session = ctx.session
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
-    player.move_enabled = True
+    player.move_enabled = enabled_option
     session.commit()
-    await send_message(
-        ctx.message.channel, 
-        embed_description="Player moving enabled",
-        colour=Colour.blue()
-    )
+    
+    if enabled_option:
+        await send_message(
+            ctx.message.channel, 
+            embed_description="Player moving enabled",
+            colour=Colour.blue()
+        )
+    else:
+        await send_message(
+            ctx.message.channel, 
+            embed_description="Player moving disabled",
+            colour=Colour.blue()
+        )
 
 
 @bot.command(usage="<queue_name> <ordinal>")
