@@ -2542,7 +2542,7 @@ async def movegameplayers (ctx: Context, game_id: str):
     if not ENABLE_VOICE_MOVE:
         await send_message(
             message.channel,
-            embed_description=f"Voice movement is disabled",
+            embed_description="Voice movement is disabled",
             colour=Colour.red()
         )
         return
