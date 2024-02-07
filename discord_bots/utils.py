@@ -8,6 +8,7 @@ import discord
 import imgkit
 from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel
 from discord.ext.commands.context import Context
+from discord.member import Member
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -30,6 +31,7 @@ from discord_bots.models import (
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 STATS_DIR: str | None = os.getenv("STATS_DIR")
+DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
 
 
 # Convenience mean function that can handle lists of 0 or 1 length
@@ -236,6 +238,16 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
     session.query(SkipMapVote).filter(SkipMapVote.rotation_id == rotation_id).delete()
     session.commit()
     session.close()
+
+
+async def send_in_guild_message(guild, user_id, message_content=None, embed=None):
+    if not DISABLE_PRIVATE_MESSAGES:
+        member: Member | None = guild.get_member(user_id)
+        if member:
+            try:
+                await member.send(content=message_content, embed=embed)
+            except Exception as e:
+                print(f"Caught exception sending message: {e}")
 
 
 async def send_message(

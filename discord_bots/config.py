@@ -2,7 +2,6 @@ import os
 from dotenv import load_dotenv
 
 
-load_dotenv()
 
 ALLOW_VULGAR_NAMES = bool(os.getenv("ALLOW_VULGAR_NAMES"))
 ENABLE_DEBUG = bool(os.getenv("ENABLE_DEBUG"))

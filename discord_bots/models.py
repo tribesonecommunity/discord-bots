@@ -28,7 +28,6 @@ from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
 from sqlalchemy.sql import expression, func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
-load_dotenv()
 DB_NAME = "tribes"
 
 # It may be tempting, but do not set check_same_thread=False here. Sqlite
