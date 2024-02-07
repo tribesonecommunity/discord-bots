@@ -411,6 +411,7 @@ async def create_game(
     message_content += pretty_format_team(game.team0_name, win_prob, team0_players)
     message_content += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
     message_content += "\n```"
+    message_content += "Use `!setgamecode` to set the lobby code"
 
     be_channel, ds_channel = await create_team_voice_channels(session, guild, game)
     embed = Embed(
@@ -3047,9 +3048,11 @@ async def setgamecode(ctx: Context, code: str):
 
     for ipg_player in ipg_players:
         embed = Embed(
-            description=f"Lobby code for ({short_uuid(ipg.id)}) set by {ctx.message.author}: `{code}`",
+            title=f"Lobby code for ({short_uuid(ipg.id)})",
+            description=f"`{code}`",
             colour=Colour.blue(),
         )
+        embed.set_footer(text=f"set by {ctx.message.author}")
         await send_in_guild_message(
             ctx.message.guild, ipg_player.player_id, embed=embed
         )
