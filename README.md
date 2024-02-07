@@ -42,7 +42,7 @@ TODO
 1. Set up a virtualenv
 
 - `python3 -m venv .venv`
-- `source .venv/bin/activate`. If you see this error:
+- `.venv\Scripts\activate`. If you see this error:
   ```
   File <>\discord-bots\.venv\Scripts\Activate.ps1 cannot be loaded because running scripts is disabled on this system. For more information, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170.
   ```
@@ -63,11 +63,24 @@ The following are optional
 - `TWITCH_GAME_NAME`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` - These enable the `streams` command to list current
   streams of the specified game
 - `COMMAND_PREFIX` - Use a different prefix instead of `!`
-- `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Customize the default trueskill for new players
+- `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Customize the default trueskill for new players. Handle with care!
 - `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
 - `REQUIRE_ADD_TARGET` - Players have to specify a queue to add to
-- `ALLOW_VULGAR_NAMES` - Allow dirtier team names
 - `ENABLE_VOICE_MOVE` - Enables moving players between voice channels
+- `ALLOW_VULGAR_NAMES` - Allow dirtier team names. Defaults to False
+- `ENABLE_DEBUG` - Defaults to False
+- `ENABLE_RAFFLE` - Defaults to False
+- `DEFAULT_RAFFLE_VALUE` - Defaults to 5
+- `SHOW_LEFT_RIGHT_TEAM` - Add an indicator which team to add to (`(L)` or `(R)`)
+- `MAXIMUM_TEAM_COMBINATIONS` - Maximum amount of team combinations to try. Performance optimization for larger game modes like 12v12 at the cost of potentially not finding the ideal game.
+- `LEADERBOARD_CHANNEL`
+- `RE_ADD_DELAY` - Time after votes or games finish until the add is processed to allow equal access to all players, so they don't have to exit their game early to participate in the next one.
+- `AFK_TIME_MINUTES` - If no activity is registered within this time, the player is automatically deleted from all queues and votes are removed. Defaults to 45.
+- `MAP_ROTATION_MINUTES` - Time since last map switch after which the maps auto-rotates. Defaults to 60.
+- `DISABLE_MAP_ROTATION`
+- `MAP_VOTE_THRESHOLD` - Defaults to 7. The number of votes needed to succeed a map skip / replacement
+- `STATS_DIR` - Defaults to None. Store screenshots if configured. Doesn't work on Windows.
+- `STATS_WIDTH`, `STATS_HEIGHT`
 
 ## Running the bot
 

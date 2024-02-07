@@ -23,13 +23,11 @@ from discord_bots.utils import (
 
 from .bot import bot
 from .commands import (
-    AFK_TIME_MINUTES,
-    MAP_ROTATION_MINUTES,
     add_player_to_queue,
     create_game,
     is_in_game,
 )
-from .config import DISABLE_MAP_ROTATION
+import discord_bots.config as config
 from .models import (
     InProgressGame,
     InProgressGameChannel,
@@ -53,7 +51,7 @@ from .queues import AddPlayerQueueMessage, add_player_queue
 @tasks.loop(minutes=1)
 async def afk_timer_task():
     session = Session()
-    timeout: datetime = datetime.now(timezone.utc) - timedelta(minutes=AFK_TIME_MINUTES)
+    timeout: datetime = datetime.now(timezone.utc) - timedelta(minutes=config.AFK_TIME_MINUTES)
 
     player: Player
     for player in (
@@ -75,7 +73,7 @@ async def afk_timer_task():
                         channel,
                         content=member.mention,
                         embed_content=False,
-                        embed_description=f"{escape_markdown(player.name)} was removed from all queues for being inactive for {AFK_TIME_MINUTES} minutes",
+                        embed_description=f"{escape_markdown(player.name)} was removed from all queues for being inactive for {config.AFK_TIME_MINUTES} minutes",
                         colour=Colour.red(),
                     )
             session.query(QueuePlayer).filter(
@@ -101,7 +99,7 @@ async def afk_timer_task():
                         channel,
                         content=member.mention,
                         embed_content=False,
-                        embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {AFK_TIME_MINUTES} minutes",
+                        embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {config.AFK_TIME_MINUTES} minutes",
                         colour=Colour.red(),
                     )
                     votes_removed_sent = True
@@ -127,7 +125,7 @@ async def afk_timer_task():
                             channel,
                             content=member.mention,
                             embed_content=False,
-                            embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {AFK_TIME_MINUTES} minutes",
+                            embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {config.AFK_TIME_MINUTES} minutes",
                             colour=Colour.red(),
                         )
             session.query(SkipMapVote).filter(
@@ -291,12 +289,12 @@ async def map_rotation_task():
     """Rotate the map automatically, stopping on the 1st map
     TODO: tests
     """
-    if DISABLE_MAP_ROTATION:
+    if config.DISABLE_MAP_ROTATION:
         return
 
     session = Session()
 
-    rotations: list(Rotation) | None = session.query(Rotation).all()
+    rotations: list[Rotation] | None = session.query(Rotation).all()
     if not rotations:
         return
 
@@ -311,7 +309,7 @@ async def map_rotation_task():
             time_since_update: timedelta = datetime.now(
                 timezone.utc
             ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
-            if (time_since_update.seconds // 60) > MAP_ROTATION_MINUTES:
+            if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
                 await update_next_map_to_map_after_next(rotation.id, True)
 
 

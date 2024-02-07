@@ -1,6 +1,6 @@
 from random import choice
 
-from discord_bots.config import ALLOW_VULGAR_NAMES
+import discord_bots.config as config
 
 B = [
     "Babbling",
@@ -528,12 +528,12 @@ S_VULGAR = [
 
 
 def generate_be_name() -> str:
-    if ALLOW_VULGAR_NAMES:
+    if config.ALLOW_VULGAR_NAMES:
         return f"{choice(B + B_VULGAR)} {choice(E + E_VULGAR)}"
     return f"{choice(B)} {choice(E)}"
 
 
 def generate_ds_name() -> str:
-    if ALLOW_VULGAR_NAMES:
+    if config.ALLOW_VULGAR_NAMES:
         return f"{choice(D + D_VULGAR)} {choice(S + S_VULGAR)}"
     return f"{choice(D)} {choice(S)}"
