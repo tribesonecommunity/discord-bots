@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-intents = discord.Intents.default()
+intents = discord.Intents.all()  # TODO: should manually specify each intent
 intents.members = True
 
 load_dotenv()
