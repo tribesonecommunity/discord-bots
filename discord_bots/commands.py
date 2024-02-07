@@ -2619,12 +2619,13 @@ async def movegameplayers (ctx: Context, game_id: str):
     team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
     team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
 
+
     in_progress_game_channels: list[InProgressGameChannel] = session.query(
         InProgressGameChannel
     ).filter(
         InProgressGameChannel.in_progress_game_id == in_progress_game.id
     )
-    
+    print(f"in_progress_game_channels list created")
 
     for player in team0_players:
         member: Member | None = guild.get_member(player.id)
