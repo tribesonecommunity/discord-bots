@@ -3108,7 +3108,7 @@ async def setmoveenabled(ctx: Context, enabled_option: bool = True):
     session.commit()
     await send_message(
         ctx.message.channel, 
-        embed_description="!stats enabled",
+        embed_description="Player moving enabled",
         colour=Colour.blue()
     )
 
