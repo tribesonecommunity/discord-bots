@@ -2579,7 +2579,7 @@ async def movegameplayers (ctx: Context, game_id: str):
     """
     message = ctx.message
     session = ctx.session
-    guild: ctx.guild
+    guild = ctx.guild
     in_progress_game = (
         session.query(InProgressGame)
         .filter(InProgressGame.id.startswith(game_id))
