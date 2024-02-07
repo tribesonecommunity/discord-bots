@@ -14,7 +14,7 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
 
 from discord_bots.bot import bot
-from discord_bots.config import LEADERBOARD_CHANNEL
+import discord_bots.config as config
 from discord_bots.models import (
     Category,
     Map,
@@ -26,10 +26,6 @@ from discord_bots.models import (
     Session,
     SkipMapVote,
 )
-
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
-
-STATS_DIR: str | None = os.getenv("STATS_DIR")
 
 
 # Convenience mean function that can handle lists of 0 or 1 length
@@ -82,12 +78,12 @@ def short_uuid(uuid: str) -> str:
 
 async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
     # Assume the most recently modified HTML file is the correct stat sheet
-    if not STATS_DIR:
+    if not config.STATS_DIR:
         return
 
-    html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(STATS_DIR)))
+    html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(config.STATS_DIR)))
     html_files.sort(
-        key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True
+        key=lambda x: os.path.getmtime(os.path.join(config.STATS_DIR, x)), reverse=True
     )
 
     opts = FirefoxOptions()
@@ -96,8 +92,8 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
     if len(html_files) == 0:
         return
 
-    driver.get("file://" + os.path.join(STATS_DIR, html_files[0]))
-    image_path = os.path.join(STATS_DIR, html_files[0] + ".png")
+    driver.get("file://" + os.path.join(config.STATS_DIR, html_files[0]))
+    image_path = os.path.join(config.STATS_DIR, html_files[0] + ".png")
     driver.save_screenshot(image_path)
     image = Image.open(image_path)
     # TODO: Un-hardcode these
@@ -108,35 +104,34 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
 
     # Clean up everything
     if cleanup:
-        for file_ in os.listdir(STATS_DIR):
+        for file_ in os.listdir(config.STATS_DIR):
             if file_.endswith(".png") or file_.endswith(".html"):
-                os.remove(os.path.join(STATS_DIR, file_))
+                os.remove(os.path.join(config.STATS_DIR, file_))
 
 
 async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
     # Assume the most recently modified HTML file is the correct stat sheet
-    if not STATS_DIR:
+    if not config.STATS_DIR:
         return
 
-    html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(STATS_DIR)))
+    html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(config.STATS_DIR)))
     html_files.sort(
-        key=lambda x: os.path.getmtime(os.path.join(STATS_DIR, x)), reverse=True
+        key=lambda x: os.path.getmtime(os.path.join(config.STATS_DIR, x)), reverse=True
     )
 
     if len(html_files) == 0:
         return
 
-    image_path = os.path.join(STATS_DIR, html_files[0] + ".png")
+    image_path = os.path.join(config.STATS_DIR, html_files[0] + ".png")
     imgkit.from_file(
-        os.path.join(STATS_DIR, html_files[0]),
+        os.path.join(config.STATS_DIR, html_files[0]),
         image_path,
         options={"enable-local-file-access": None},
     )
-    if os.getenv("STATS_WIDTH") and os.getenv("STATS_HEIGHT"):
+    if config.STATS_WIDTH and config.STATS_HEIGHT:
         image = Image.open(image_path)
-        # TODO: Un-hardcode these
         cropped = image.crop(
-            (0, 0, int(os.getenv("STATS_WIDTH")), int(os.getenv("STATS_HEIGHT")))
+            (0, 0, config.STATS_WIDTH, config.STATS_HEIGHT)
         )
         cropped.save(image_path)
 
@@ -144,9 +139,9 @@ async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
 
     # Clean up everything
     if cleanup:
-        for file_ in os.listdir(STATS_DIR):
+        for file_ in os.listdir(config.STATS_DIR):
             if file_.endswith(".png") or file_.endswith(".html"):
-                os.remove(os.path.join(STATS_DIR, file_))
+                os.remove(os.path.join(config.STATS_DIR, file_))
 
 
 def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
@@ -203,7 +198,7 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
         .scalar()
     )
 
-    channel = bot.get_channel(CHANNEL_ID)
+    channel = bot.get_channel(config.CHANNEL_ID)
     if isinstance(channel, discord.TextChannel):
         if is_verbose:
             rotation_queues = (
@@ -316,7 +311,8 @@ async def print_leaderboard(channel=None):
     output += "\n(Leaderboard updates periodically)"
     output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
 
-    leaderboard_channel = bot.get_channel(LEADERBOARD_CHANNEL)
+    if config.LEADERBOARD_CHANNEL:
+        leaderboard_channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
     if leaderboard_channel:
         try:
             last_message = await leaderboard_channel.fetch_message(

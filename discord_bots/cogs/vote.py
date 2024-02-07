@@ -2,11 +2,11 @@ from datetime import datetime, timedelta, timezone
 
 from discord.ext.commands import Bot, Context, check, command
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm.exc import NoResultFound
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.config import RE_ADD_DELAY
+import discord_bots.config as config
+from discord_bots.config import MAP_VOTE_THRESHOLD
 from discord_bots.models import (
     Map,
     MapVote,
@@ -19,9 +19,6 @@ from discord_bots.models import (
     VotePassedWaitlist,
 )
 from discord_bots.utils import update_next_map_to_map_after_next
-
-# The number of votes needed to succeed a map skip / replacement
-MAP_VOTE_THRESHOLD: int = 7
 
 
 class VoteCommands(BaseCog):
@@ -37,6 +34,7 @@ class VoteCommands(BaseCog):
     async def setmapvotethreshold(self, ctx: Context, threshold: int):
         """
         Set the number of votes required to pass
+        # TODO move to db-config, make dependent on queue size if possible
         """
         global MAP_VOTE_THRESHOLD
         MAP_VOTE_THRESHOLD = threshold
@@ -257,7 +255,7 @@ class VoteCommands(BaseCog):
             .filter(MapVote.rotation_map_id == rotation_map.id)
             .all()
         )
-        if len(rotation_map_votes) == MAP_VOTE_THRESHOLD:
+        if len(rotation_map_votes) >= config.MAP_VOTE_THRESHOLD:
             session.query(RotationMap).filter(
                 RotationMap.rotation_id == rotation.id
             ).filter(RotationMap.is_next == True).update({"is_next": False})
@@ -282,7 +280,7 @@ class VoteCommands(BaseCog):
                         channel_id=message.channel.id,
                         guild_id=message.guild.id,
                         end_waitlist_at=datetime.now(timezone.utc)
-                        + timedelta(seconds=RE_ADD_DELAY),
+                        + timedelta(seconds=config.RE_ADD_DELAY),
                     )
                 )
             session.commit()
@@ -298,7 +296,7 @@ class VoteCommands(BaseCog):
             )
 
             await self.send_success_message(
-                f"Added map vote for **{map.short_name}** in **{queue.name}**.\n`!unvotemap` to remove your vote.\nMap vote status: [{map_votes}/{MAP_VOTE_THRESHOLD}]"
+                f"Added map vote for **{map.short_name}** in **{queue.name}**.\n`!unvotemap` to remove your vote.\nMap vote status: [{map_votes}/{config.MAP_VOTE_THRESHOLD}]"
             )
 
             # old logic for showing current vote status
@@ -309,7 +307,7 @@ class VoteCommands(BaseCog):
             # )
             # voted_maps_str = ", ".join(
             #     [
-            #         f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
+            #         f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{config.MAP_VOTE_THRESHOLD}]"
             #         for voted_map in voted_maps
             #     ]
             # )
@@ -348,7 +346,7 @@ class VoteCommands(BaseCog):
             .filter(SkipMapVote.rotation_id == rotation.id)
             .count()
         )
-        if skip_map_votes_count >= MAP_VOTE_THRESHOLD:
+        if skip_map_votes_count >= config.MAP_VOTE_THRESHOLD:
             await self.send_success_message(
                 f"Vote to skip the current map passed!  All votes removed."
             )
@@ -365,12 +363,12 @@ class VoteCommands(BaseCog):
                             channel_id=message.channel.id,
                             guild_id=message.guild.id,
                             end_waitlist_at=datetime.now(timezone.utc)
-                            + timedelta(seconds=RE_ADD_DELAY),
+                            + timedelta(seconds=config.RE_ADD_DELAY),
                         )
                     )
 
             session.commit()
         else:
             await self.send_success_message(
-                f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{skip_map_votes_count}/{MAP_VOTE_THRESHOLD}]"
+                f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{skip_map_votes_count}/{config.MAP_VOTE_THRESHOLD}]"
             )
