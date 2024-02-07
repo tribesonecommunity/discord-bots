@@ -16,6 +16,7 @@ from typing import List, Union
 import discord
 import imgkit
 import numpy
+import sqlalchemy.orm
 from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -404,7 +405,7 @@ async def create_game(
     message_content = "```autohotkey"
     message_content += f"\nGame '{queue.name}' ({short_game_id}) has begun!\n"
     if SHOW_TRUESKILL:
-        message_content += f"\nMap: {game.map_full_name} ({game.map_short_name}) (mu: {round(average_trueskill, 2)})\n"
+        message_content += f"\nMap: {game.map_full_name} ({game.map_short_name}) (mean mu: {round(average_trueskill, 2)})\n"
     else:
         message_content += f"\nMap: {game.map_full_name} ({game.map_short_name})\n"
     message_content += pretty_format_team(game.team0_name, win_prob, team0_players)
@@ -412,10 +413,14 @@ async def create_game(
     message_content += "\n```"
 
     be_channel, ds_channel = await create_team_voice_channels(session, guild, game)
-
+    embed = Embed(
+        description=message_content,
+        colour=Colour.blue(),
+    )
     for player in team0_players:
-        await send_in_guild_message(guild, player.id, message_content)
-        await send_in_guild_message(guild, player.id, be_channel.jump_url)
+        await send_in_guild_message(
+            guild, player.id, message_content=be_channel.jump_url, embed=embed
+        )
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
@@ -424,8 +429,9 @@ async def create_game(
         session.add(game_player)
 
     for player in team1_players:
-        await send_in_guild_message(guild, player.id, message_content)
-        await send_in_guild_message(guild, player.id, ds_channel.jump_url)
+        await send_in_guild_message(
+            guild, player.id, message_content=ds_channel.jump_url, embed=embed
+        )
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
@@ -433,7 +439,7 @@ async def create_game(
         )
         session.add(game_player)
 
-    await channel.send(message_content)
+    await channel.send(embed=embed)
 
     session.query(QueuePlayer).filter(QueuePlayer.player_id.in_(player_ids)).delete()  # type: ignore
     session.commit()
@@ -444,7 +450,9 @@ async def create_game(
     session.close()
 
 
-async def create_team_voice_channels(session, guild, game):
+async def create_team_voice_channels(
+    session: sqlalchemy.orm.Session, guild: Guild, game: InProgressGame
+) -> tuple[discord.VoiceChannel, discord.VoiceChannel]:
     categories = {category.id: category for category in guild.categories}
     tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
     if tribes_voice_category:
@@ -461,6 +469,10 @@ async def create_team_voice_channels(session, guild, game):
             InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
         )
         return be_channel, ds_channel
+    else:
+        raise ValueError(
+            f"could not find tribes_voice_category with id {TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
+        )
 
 
 async def add_player_to_queue(
@@ -3027,7 +3039,7 @@ async def setgamecode(ctx: Context, code: str):
         ctx.session.query(InProgressGamePlayer)
         .filter(
             InProgressGamePlayer.in_progress_game_id == ipg.id,
-            # InProgressGamePlayer.player_id != ctx.message.author.id
+            InProgressGamePlayer.player_id != ctx.message.author.id,
         )
         .all()
     )
