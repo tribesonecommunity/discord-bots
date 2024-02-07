@@ -511,9 +511,9 @@ class Player:
         },
     )
     move_enabled: bool = field(
-        default=False,
+        default=config.DEFAULT_VOICE_MOVE,
         metadata={
-            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+            "sa": Column(Boolean, nullable=False)
         },
     )
     finished_game_players = relationship("FinishedGamePlayer", back_populates="player")
@@ -686,9 +686,9 @@ class Queue:
         metadata={"sa": Column(String, primary_key=True)},
     )
     move_enabled: bool = field(
-        default=False,
+        default=config.DEFAULT_VOICE_MOVE,
         metadata={
-            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+            "sa": Column(Boolean, nullable=False)
         },
     )
 

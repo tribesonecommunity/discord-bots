@@ -67,6 +67,7 @@ The following are optional
 - `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
 - `REQUIRE_ADD_TARGET` - Players have to specify a queue to add to
 - `ENABLE_VOICE_MOVE` - Enables moving players between voice channels
+- `DEFAULT_VOICE_MOVE` - Sets default move behaviour. True will auto opt-in new players. Defaults to False
 - `ALLOW_VULGAR_NAMES` - Allow dirtier team names. Defaults to False
 - `ENABLE_DEBUG` - Defaults to False
 - `ENABLE_RAFFLE` - Defaults to False
