@@ -520,6 +520,12 @@ class Player:
             "sa": Column(Boolean, nullable=False, server_default=expression.true())
         },
     )
+    move_enabled: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
+    )
     finished_game_players = relationship("FinishedGamePlayer", back_populates="player")
 
     @hybrid_property
@@ -688,6 +694,12 @@ class Queue:
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
+    )
+    move_enabled: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
     )
 
     rotation = relationship("Rotation", back_populates="queues")
