@@ -2619,19 +2619,16 @@ async def movegameplayers (ctx: Context, game_id: str):
     team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
     team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
 
-
-    print(f"BEFORE in_progress_game_channels list created")
     in_progress_game_channels: list[InProgressGameChannel] = session.query(
         InProgressGameChannel
     ).filter(
         InProgressGameChannel.in_progress_game_id == in_progress_game.id
     )
-    print(f"AFTER in_progress_game_channels list created")
 
     for player in team0_players:
         member: Member | None = guild.get_member(player.id)
         if member:
-            channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[0])
+            channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[0].channel_id)
             if channel:
                 try:
                     #Feed in team0_channel_id
@@ -2642,7 +2639,7 @@ async def movegameplayers (ctx: Context, game_id: str):
     for player in team1_players:
         member: Member | None = guild.get_member(player.id)
         if member:
-            channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[1])
+            channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[1].channel_id)
             if channel:
                 try:
                     #Feed in team1_channel_id
