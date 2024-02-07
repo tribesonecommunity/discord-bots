@@ -2560,7 +2560,7 @@ async def movegameplayers (ctx: Context, game_id: str):
         )
         return
     
-    if not queue or queue.move_enabled == False:
+    if not queue or not queue.move_enabled:
         await send_message(
             message.channel,
             embed_description=f"**{queue.name}** is not move enabled",
