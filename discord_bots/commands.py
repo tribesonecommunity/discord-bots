@@ -3069,7 +3069,6 @@ async def setgamecode(ctx: Context, code: str):
 
 
 @bot.command(usage="<true|false>")
-@commands.check()
 async def setmoveenabled(ctx: Context, enabled_option: bool = True):
     session = ctx.session
 
