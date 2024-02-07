@@ -21,3 +21,6 @@ RE_ADD_DELAY = int(os.getenv("RE_ADD_DELAY") or "30")
 
 # Requiring specifying a queue to add to
 REQUIRE_ADD_TARGET = bool(os.getenv("REQUIRE_ADD_TARGET"))
+
+#Disable moving players to voice channels
+DISABLE_VOICE_MOVE = bool(os.getenv("DISABLE_VOICE_MOVE")) or True

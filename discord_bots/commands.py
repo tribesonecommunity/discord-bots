@@ -16,7 +16,7 @@ from typing import List, Union
 import discord
 import imgkit
 import numpy
-from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
+from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel, VoiceChannel
 from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
@@ -54,6 +54,7 @@ from .config import (
     RE_ADD_DELAY,
     REQUIRE_ADD_TARGET,
     SHOW_LEFT_RIGHT_TEAM,
+    DISABLE_VOICE_MOVE,
 )
 from .models import (
     DB_NAME,
@@ -2569,6 +2570,89 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
             player.last_activity_at = datetime.now(timezone.utc)
             session.add(player)
             session.commit()
+
+@bot.command(usage="<queue_name> <count>")
+@commands.check(is_admin)
+async def movegameplayers (ctx: Context, game_id: str):
+    """
+    Move players in a given in-progress game to the correct voice channels
+    """
+    message = ctx.message
+    session = ctx.session
+    guild: ctx.guild
+    in_progress_game = (
+        session.query(InProgressGame)
+        .filter(InProgressGame.id.startswith(game_id))
+        .first()
+    )
+    
+    if DISABLE_VOICE_MOVE:
+        await send_message(
+            message.channel,
+            embed_description=f"Voice movement is disabled",
+            colour=Colour.red()
+        )
+        return
+    
+    if not in_progress_game:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find game: {game_id}",
+            colour=Colour.red()
+        )
+        return
+    
+    team0_ipg_players: list[InProgressGamePlayer] = session.query(
+        InProgressGamePlayer
+    ).filter(
+        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+        InProgressGamePlayer.team == 0,
+    )
+    team1_ipg_players: list[InProgressGamePlayer] = session.query(
+        InProgressGamePlayer
+    ).filter(
+        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+        InProgressGamePlayer.team == 1,
+    )
+    team0_player_ids = set(map(lambda x: x.player_id, team0_ipg_players))
+    team1_player_ids = set(map(lambda x: x.player_id, team1_ipg_players))
+    team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+    team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+
+    in_progress_game_channels: list[InProgressGameChannel] = session.query(
+        InProgressGameChannel
+    ).filter(
+        InProgressGameChannel.in_progress_game_id == in_progress_game.id
+    )
+    
+
+    for player in team0_players:
+        member: Member | None = guild.get_member(player.id)
+        if member:
+            channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[0])
+            if channel:
+                try:
+                    #Feed in team0_channel_id
+                    await member.move_to(channel.id, reason = game_id)
+                except Exception as e:
+                    print(f"Caught exception sending message: {e}")
+
+    for player in team1_players:
+        member: Member | None = guild.get_member(player.id)
+        if member:
+            channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[1])
+            if channel:
+                try:
+                    #Feed in team1_channel_id
+                    await member.move_to(channel.id, reason = game_id)
+                except Exception as e:
+                    print(f"Caught exception sending message: {e}")
+    
+    await send_message(
+        message.channel,
+        embed_description=f"Players moved to voice channels for game {game_id}",
+        colour=Colour.green()
+    )
 
 
 @bot.command()
