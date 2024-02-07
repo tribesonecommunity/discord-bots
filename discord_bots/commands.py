@@ -3099,6 +3099,20 @@ async def setgamecode(ctx: Context, code: str):
     )
 
 
+@bot.command()
+@commands.check(is_admin)
+async def setmoveenabled(ctx: Context, enabled_option: bool = True):
+    session = ctx.session
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player.move_enabled = True
+    session.commit()
+    await send_message(
+        ctx.message.channel, 
+        embed_description="!stats enabled",
+        colour=Colour.blue()
+    )
+
+
 @bot.command(usage="<queue_name> <ordinal>")
 @commands.check(is_admin)
 async def setqueueordinal(ctx: Context, queue_name: str, ordinal: int):
