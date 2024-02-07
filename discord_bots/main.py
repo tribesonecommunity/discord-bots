@@ -191,7 +191,7 @@ async def after_invoke(context: Context):
 
 
 def main():
-    if not config.CONFIG_VALID:
+    if not config.CONFIG_IS_VALID:
         print("You must provide a valid config!")
         return
 
