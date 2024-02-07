@@ -22,7 +22,7 @@ def upgrade():
             sa.Column(
                 "move_enabled",
                 sa.Boolean(),
-                server_default=sa.Boolean(0),
+                server_default=sa.text("0"),
                 nullable=False,
             )
         )
@@ -32,7 +32,7 @@ def upgrade():
             sa.Column(
                 "move_enabled",
                 sa.Boolean(),
-                server_default=sa.Boolean(0),
+                server_default=sa.text("0"),
                 nullable=False,
             )
         )
