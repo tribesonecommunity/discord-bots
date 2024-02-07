@@ -2631,7 +2631,7 @@ async def movegameplayers (ctx: Context, game_id: str):
             channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[0].channel_id)
             if channel:
                 try:
-                    await member.move_to(in_progress_game_channels[0].channel_id, reason = game_id)
+                    await member.move_to(channel, reason = game_id)
                 except Exception as e:
                     print(f"Caught exception sending message: {e}")
 
@@ -2641,7 +2641,7 @@ async def movegameplayers (ctx: Context, game_id: str):
             channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[1].channel_id)
             if channel:
                 try:
-                    await member.move_to(in_progress_game_channels[1].channel_id, reason = game_id)
+                    await member.move_to(channel, reason = game_id)
                 except Exception as e:
                     print(f"Caught exception sending message: {e}")
     
