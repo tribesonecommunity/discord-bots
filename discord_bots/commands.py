@@ -54,7 +54,7 @@ from .config import (
     RE_ADD_DELAY,
     REQUIRE_ADD_TARGET,
     SHOW_LEFT_RIGHT_TEAM,
-    DISABLE_VOICE_MOVE,
+    ENABLE_VOICE_MOVE,
 )
 from .models import (
     DB_NAME,
@@ -2586,7 +2586,7 @@ async def movegameplayers (ctx: Context, game_id: str):
         .first()
     )
     
-    if DISABLE_VOICE_MOVE:
+    if not ENABLE_VOICE_MOVE:
         await send_message(
             message.channel,
             embed_description=f"Voice movement is disabled",

@@ -67,7 +67,7 @@ The following are optional
 - `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
 - `REQUIRE_ADD_TARGET` - Players have to specify a queue to add to
 - `ALLOW_VULGAR_NAMES` - Allow dirtier team names
-- `DISABLE_VOICE_MOVE` - Disables moving players between voice channels
+- `ENABLE_VOICE_MOVE` - Enables moving players between voice channels
 
 ## Running the bot
 
