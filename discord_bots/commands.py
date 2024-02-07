@@ -2538,6 +2538,11 @@ async def movegameplayers (ctx: Context, game_id: str):
         .filter(InProgressGame.id.startswith(game_id))
         .first()
     )
+    queue = (
+        session.query(Queue)
+        .filter(Queue.id.ilike(in_progress_game.queue_id))
+        .one()
+    )
     
     if not ENABLE_VOICE_MOVE:
         await send_message(
@@ -2551,6 +2556,14 @@ async def movegameplayers (ctx: Context, game_id: str):
         await send_message(
             message.channel,
             embed_description=f"Could not find game: {game_id}",
+            colour=Colour.red()
+        )
+        return
+    
+    if not queue or queue.move_enabled == False:
+        await send_message(
+            message.channel,
+            embed_description=f"**{queue.name}** is not move enabled",
             colour=Colour.red()
         )
         return
