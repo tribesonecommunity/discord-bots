@@ -1623,29 +1623,6 @@ async def restart(ctx):
 
 @bot.command()
 @commands.check(is_admin)
-async def clearqueue(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if not queue:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-    session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).delete()
-    session.commit()
-
-    await send_message(
-        message.channel,
-        embed_description=f"Queue cleared: {queue_name}",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
 async def clearqueuerange(ctx: Context, queue_name: str):
     message = ctx.message
     session = ctx.session
@@ -1663,30 +1640,6 @@ async def clearqueuerange(ctx: Context, queue_name: str):
         await send_message(
             message.channel,
             embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def createqueue(ctx: Context, queue_name: str, queue_size: int):
-    message = ctx.message
-    queue = Queue(name=queue_name, size=queue_size)
-    session = ctx.session
-
-    try:
-        session.add(queue)
-        session.commit()
-        await send_message(
-            message.channel,
-            embed_description=f"Queue created: {queue.name}",
-            colour=Colour.green(),
-        )
-    except IntegrityError:
-        session.rollback()
-        await send_message(
-            message.channel,
-            embed_description="A queue already exists with that name",
             colour=Colour.red(),
         )
 
