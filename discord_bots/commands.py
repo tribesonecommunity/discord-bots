@@ -2626,24 +2626,26 @@ async def movegameplayers (ctx: Context, game_id: str):
     )
 
     for player in team0_players:
-        member: Member | None = guild.get_member(player.id)
-        if member:
-            channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[0].channel_id)
-            if channel:
-                try:
-                    await member.move_to(channel, reason = game_id)
-                except Exception as e:
-                    print(f"Caught exception sending message: {e}")
+        if player.move_enabled:
+            member: Member | None = guild.get_member(player.id)
+            if member:
+                channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[0].channel_id)
+                if channel:
+                    try:
+                        await member.move_to(channel, reason = game_id)
+                    except Exception as e:
+                        print(f"Caught exception sending message: {e}")
 
     for player in team1_players:
-        member: Member | None = guild.get_member(player.id)
-        if member:
-            channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[1].channel_id)
-            if channel:
-                try:
-                    await member.move_to(channel, reason = game_id)
-                except Exception as e:
-                    print(f"Caught exception sending message: {e}")
+        if player.move_enabled:
+            member: Member | None = guild.get_member(player.id)
+            if member:
+                channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[1].channel_id)
+                if channel:
+                    try:
+                        await member.move_to(channel, reason = game_id)
+                    except Exception as e:
+                        print(f"Caught exception sending message: {e}")
     
     await send_message(
         message.channel,
