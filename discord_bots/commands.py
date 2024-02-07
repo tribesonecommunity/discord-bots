@@ -3099,7 +3099,7 @@ async def setgamecode(ctx: Context, code: str):
     )
 
 
-@bot.command()
+@bot.command(usage="<true|false")
 @commands.check(is_admin)
 async def setmoveenabled(ctx: Context, enabled_option: bool = True):
     session = ctx.session
