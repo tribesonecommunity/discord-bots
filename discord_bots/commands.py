@@ -3100,7 +3100,7 @@ async def setgamecode(ctx: Context, code: str):
 
 
 @bot.command(usage="<true|false>")
-@commands.check(is_admin)
+@commands.check()
 async def setmoveenabled(ctx: Context, enabled_option: bool = True):
     session = ctx.session
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
