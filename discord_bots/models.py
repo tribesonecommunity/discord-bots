@@ -15,10 +15,10 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     create_engine,
+    event,
     text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
-
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
@@ -26,7 +26,6 @@ from sqlalchemy.sql import expression, func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
 import discord_bots.config as config
-
 
 # It may be tempting, but do not set check_same_thread=False here. Sqlite
 # doesn't handle concurrency well and writing to the db on different threads
@@ -626,6 +625,9 @@ class Queue:
         metadata={"sa": Column(String, unique=True, nullable=False, index=True)}
     )
     size: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    vote_threshold: int = field(
+        default=None, metadata={"sa": Column(Integer, nullable=True)}
+    )
     is_rated: bool = field(
         default=True, metadata={"sa": Column(Boolean, nullable=False)}
     )
