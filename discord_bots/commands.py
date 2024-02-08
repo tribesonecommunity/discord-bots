@@ -15,13 +15,13 @@ from typing import List, Union
 
 import discord
 import imgkit
-from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
+
+from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel, VoiceChannel
 from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
-from dotenv import load_dotenv
 from numpy import std
 from PIL import Image
 from sqlalchemy import func, or_
@@ -30,8 +30,6 @@ from sqlalchemy.sql import select
 from trueskill import Rating, rate
 
 from discord_bots.checks import is_admin
-from discord_bots.cogs.vote import MAP_VOTE_THRESHOLD
-from discord_bots.config import LEADERBOARD_CHANNEL, SHOW_TRUESKILL
 from discord_bots.utils import (
     code_block,
     mean,
@@ -45,18 +43,9 @@ from discord_bots.utils import (
     win_probability,
 )
 
-from .bot import COMMAND_PREFIX, bot
-from .config import (
-    DISABLE_MAP_ROTATION,
-    ENABLE_RAFFLE,
-    MAXIMUM_TEAM_COMBINATIONS,
-    RE_ADD_DELAY,
-    REQUIRE_ADD_TARGET,
-    SHOW_LEFT_RIGHT_TEAM,
-)
+from .bot import bot
+import discord_bots.config as config
 from .models import (
-    DB_NAME,
-    DEFAULT_TRUESKILL_MU,
     AdminRole,
     Category,
     Commend,
@@ -88,27 +77,9 @@ from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
 
-load_dotenv()
-
-AFK_TIME_MINUTES: int = 45
-DEFAULT_RAFFLE_VALUE = 5
-try:
-    DEFAULT_RAFFLE_VALUE = int(os.getenv("DEFAULT_RAFFLE_VALUE"))
-except:
-    pass
-DEBUG: bool = bool(os.getenv("DEBUG")) or False
-DISABLE_PRIVATE_MESSAGES = bool(os.getenv("DISABLE_PRIVATE_MESSAGES"))
-MAP_ROTATION_MINUTES: int = 60
-
-
-def debug_print(*args):
-    global DEBUG
-    if DEBUG:
-        print(args)
-
 
 def get_even_teams(
-    player_ids: list[int], team_size: int, is_rated: bool, queue_category_id: str | None
+        player_ids: list[int], team_size: int, is_rated: bool, queue_category_id: str | None
 ) -> tuple[list[Player], float]:
     """
     This is the one used when a new game is created. The other methods are for the showgamedebug command
@@ -140,8 +111,8 @@ def get_even_teams(
     best_teams_so_far: list[Player] = []
 
     all_combinations = list(combinations(players, team_size))
-    if MAXIMUM_TEAM_COMBINATIONS:
-        all_combinations = all_combinations[:MAXIMUM_TEAM_COMBINATIONS]
+    if config.MAXIMUM_TEAM_COMBINATIONS:
+        all_combinations = all_combinations[:config.MAXIMUM_TEAM_COMBINATIONS]
     for i, team0 in enumerate(all_combinations):
         team1 = [p for p in players if p not in team0]
         team0_ratings = []
@@ -192,11 +163,11 @@ def get_even_teams(
 # Return n of the most even or least even teams
 # For best teams, use direction = 1, for worst teams use direction = -1
 def get_n_teams(
-    players: list[Player],
-    team_size: int,
-    is_rated: bool,
-    n: int,
-    direction: int = 1,
+        players: list[Player],
+        team_size: int,
+        is_rated: bool,
+        n: int,
+        direction: int = 1,
 ) -> list[tuple[list[Player], float]]:
     teams: list[tuple[float, list[Player]]] = []
 
@@ -244,13 +215,13 @@ def get_n_teams(
 
 
 def get_n_best_teams(
-    players: list[Player], team_size: int, is_rated: bool, n: int
+        players: list[Player], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[Player], float]]:
     return get_n_teams(players, team_size, is_rated, n, 1)
 
 
 def get_n_worst_teams(
-    players: list[Player], team_size: int, is_rated: bool, n: int
+        players: list[Player], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[Player], float]]:
     return get_n_teams(players, team_size, is_rated, n, -1)
 
@@ -258,11 +229,11 @@ def get_n_worst_teams(
 # Return n of the most even or least even teams
 # For best teams, use direction = 1, for worst teams use direction = -1
 def get_n_finished_game_teams(
-    fgps: list[FinishedGamePlayer],
-    team_size: int,
-    is_rated: bool,
-    n: int,
-    direction: int = 1,
+        fgps: list[FinishedGamePlayer],
+        team_size: int,
+        is_rated: bool,
+        n: int,
+        direction: int = 1,
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     teams: list[tuple[float, list[FinishedGamePlayer]]] = []
 
@@ -318,22 +289,22 @@ def get_n_finished_game_teams(
 
 
 def get_n_best_finished_game_teams(
-    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+        fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     return get_n_finished_game_teams(fgps, team_size, is_rated, n, 1)
 
 
 def get_n_worst_finished_game_teams(
-    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+        fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     return get_n_finished_game_teams(fgps, team_size, is_rated, n, -1)
 
 
 async def create_game(
-    queue_id: str,
-    player_ids: list[int],
-    channel: TextChannel | DMChannel | GroupChannel,
-    guild: Guild,
+        queue_id: str,
+        player_ids: list[int],
+        channel: TextChannel | DMChannel | GroupChannel,
+        guild: Guild,
 ):
     session = Session()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
@@ -399,12 +370,12 @@ async def create_game(
     session.add(game)
 
     team0_players = players[: len(players) // 2]
-    team1_players = players[len(players) // 2 :]
+    team1_players = players[len(players) // 2:]
 
     short_game_id = short_uuid(game.id)
     message_content = "```autohotkey"
     message_content += f"\nGame '{queue.name}' ({short_game_id}) has begun!\n"
-    if SHOW_TRUESKILL:
+    if config.SHOW_TRUESKILL:
         message_content += f"\nMap: {game.map_full_name} ({game.map_short_name}) (mu: {round(average_trueskill, 2)})\n"
     else:
         message_content += f"\nMap: {game.map_full_name} ({game.map_short_name})\n"
@@ -413,7 +384,7 @@ async def create_game(
     message_content += "\n```"
 
     for player in team0_players:
-        if not DISABLE_PRIVATE_MESSAGES:
+        if not config.DISABLE_PRIVATE_MESSAGES:
             member: Member | None = guild.get_member(player.id)
             if member:
                 try:
@@ -429,7 +400,7 @@ async def create_game(
         session.add(game_player)
 
     for player in team1_players:
-        if not DISABLE_PRIVATE_MESSAGES:
+        if not config.DISABLE_PRIVATE_MESSAGES:
             member: Member | None = guild.get_member(player.id)
             if member:
                 try:
@@ -447,7 +418,7 @@ async def create_game(
     await channel.send(message_content)
 
     categories = {category.id: category for category in guild.categories}
-    tribes_voice_category = categories[TRIBES_VOICE_CATEGORY_CHANNEL_ID]
+    tribes_voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
     if tribes_voice_category:
         be_channel = await guild.create_voice_channel(
             f"{game.team0_name}", category=tribes_voice_category
@@ -472,12 +443,22 @@ async def create_game(
 
     session.close()
 
+    if tribes_voice_category:
+        if config.ENABLE_VOICE_MOVE:
+            if queue.move_enabled:
+                await _movegameplayers(short_game_id, None, guild)
+                await send_message(
+                    channel,
+                    embed_description=f"Players moved to voice channels for game {short_game_id}",
+                    colour=Colour.green()
+                )
+
 
 async def add_player_to_queue(
-    queue_id: str,
-    player_id: int,
-    channel: TextChannel | DMChannel | GroupChannel,
-    guild: Guild,
+        queue_id: str,
+        player_id: int,
+        channel: TextChannel | DMChannel | GroupChannel,
+        guild: Guild,
 ) -> tuple[bool, bool]:
     """
     Helper function to add player to a queue and pop if needed.
@@ -580,9 +561,9 @@ async def add_player_to_queue(
 
 
 def mock_teams_str(
-    team0_players: list[Player],
-    team1_players: list[Player],
-    is_rated: bool,
+        team0_players: list[Player],
+        team1_players: list[Player],
+        is_rated: bool,
 ) -> str:
     """
     Helper method to debug print teams if these were the players
@@ -649,9 +630,9 @@ def mock_teams_str(
 
 
 def mock_finished_game_teams_str(
-    team0_fg_players: list[FinishedGamePlayer],
-    team1_fg_players: list[FinishedGamePlayer],
-    is_rated: bool,
+        team0_fg_players: list[FinishedGamePlayer],
+        team1_fg_players: list[FinishedGamePlayer],
+        is_rated: bool,
 ) -> str:
     """
     Helper method to debug print teams if these were the players
@@ -768,7 +749,7 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         .all()
     )
 
-    if SHOW_TRUESKILL:
+    if config.SHOW_TRUESKILL:
         output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id}) (mu: {round(finished_game.average_trueskill, 2)})"
     else:
         output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id})"
@@ -945,11 +926,6 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
     return output
 
 
-TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = int(
-    os.getenv("TRIBES_VOICE_CATEGORY_CHANNEL_ID") or ""
-)
-
-
 def is_in_game(player_id: int) -> bool:
     return get_player_game(player_id, Session()) is not None
 
@@ -1033,7 +1009,7 @@ async def add(ctx: Context, *args):
 
     queues_to_add: list[Queue] = []
     if len(args) == 0:
-        if REQUIRE_ADD_TARGET:
+        if config.REQUIRE_ADD_TARGET:
             await send_message(
                 message.channel,
                 embed_description=f"Usage: !add [queue]",
@@ -1042,9 +1018,11 @@ async def add(ctx: Context, *args):
             session.close()
             return
         # Don't auto-add to isolated queues
-        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False, Queue.is_locked == False).order_by(Queue.ordinal.asc()).all()  # type: ignore
+        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False, Queue.is_locked == False).order_by(
+            Queue.ordinal.asc()).all()  # type: ignore
     else:
-        all_queues = session.query(Queue).filter(Queue.is_locked == False).order_by(Queue.ordinal.asc()).all()  # type: ignore
+        all_queues = session.query(Queue).filter(Queue.is_locked == False).order_by(
+            Queue.ordinal.asc()).all()  # type: ignore
         for arg in args:
             # Try adding by integer index first, then try string name
             try:
@@ -1089,9 +1067,9 @@ async def add(ctx: Context, *args):
         # The assumption is the end timestamp is later than now, otherwise it
         # would have been processed
         difference: float = (
-            vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
+                vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
         ).total_seconds()
-        if difference < RE_ADD_DELAY:
+        if difference < config.RE_ADD_DELAY:
             waitlist_message = f"A vote just passed, you will be randomized into the queue in {floor(difference)} seconds"
             await send_message(
                 message.channel,
@@ -1112,8 +1090,8 @@ async def add(ctx: Context, *args):
         )
         current_time: datetime = datetime.now(timezone.utc)
         difference: float = (current_time - finish_time).total_seconds()
-        if difference < RE_ADD_DELAY:
-            time_to_wait: int = floor(RE_ADD_DELAY - difference)
+        if difference < config.RE_ADD_DELAY:
+            time_to_wait: int = floor(config.RE_ADD_DELAY - difference)
             waitlist_message = f"Your game has just finished, you will be randomized into the queue in {time_to_wait} seconds"
             is_waitlist = True
 
@@ -1374,7 +1352,7 @@ async def cancelgame(ctx: Context, game_id: str):
         InProgressGamePlayer.in_progress_game_id == game.id
     ).delete()
     for channel in session.query(InProgressGameChannel).filter(
-        InProgressGameChannel.in_progress_game_id == game.id
+            InProgressGameChannel.in_progress_game_id == game.id
     ):
         if message.guild:
             guild_channel = message.guild.get_channel(channel.channel_id)
@@ -1519,8 +1497,8 @@ async def commendstats(ctx: Context):
         count = row["commend_count"]
         output += f"\n{i}. {count} - {player.name}"
 
-    if LEADERBOARD_CHANNEL:
-        channel = bot.get_channel(LEADERBOARD_CHANNEL)
+    if config.LEADERBOARD_CHANNEL:
+        channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
         await send_message(channel, embed_description=output, colour=Colour.blue())
         await send_message(
             ctx.message.channel,
@@ -1571,10 +1549,10 @@ async def createcommand(ctx: Context, name: str, *, output: str):
 async def createdbbackup(ctx: Context):
     message = ctx.message
     date_string = datetime.now().strftime("%Y-%m-%d")
-    copyfile(f"{DB_NAME}.db", f"{DB_NAME}_{date_string}.db")
+    copyfile(f"{config.DB_NAME}.db", f"{config.DB_NAME}_{date_string}.db")
     await send_message(
         message.channel,
-        embed_description=f"Backup made to {DB_NAME}_{date_string}.db",
+        embed_description=f"Backup made to {config.DB_NAME}_{date_string}.db",
         colour=Colour.green(),
     )
 
@@ -1618,7 +1596,7 @@ async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
     rated_trueskill_mu_after = player.rated_trueskill_mu * (100 - decay_amount) / 100
     unrated_trueskill_mu_before = player.unrated_trueskill_mu
     unrated_trueskill_mu_after = (
-        player.unrated_trueskill_mu * (100 - decay_amount) / 100
+            player.unrated_trueskill_mu * (100 - decay_amount) / 100
     )
     player.rated_trueskill_mu = rated_trueskill_mu_after
     player.unrated_trueskill_mu = unrated_trueskill_mu_after
@@ -1649,7 +1627,8 @@ async def del_(ctx: Context, *args):
     """
     message = ctx.message
     session = ctx.session
-    queues_to_del_query = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == message.author.id).order_by(Queue.ordinal.asc())  # type: ignore
+    queues_to_del_query = session.query(Queue).join(QueuePlayer).filter(
+        QueuePlayer.player_id == message.author.id).order_by(Queue.ordinal.asc())  # type: ignore
 
     if len(args) > 0:
         queues_to_del_query = queues_to_del_query.filter(
@@ -1681,7 +1660,8 @@ async def del_(ctx: Context, *args):
 
     queue_statuses = []
     queue: Queue
-    for queue in session.query(Queue).filter(Queue.is_locked == False).order_by(Queue.ordinal.asc()).all():  # type: ignore
+    for queue in session.query(Queue).filter(Queue.is_locked == False).order_by(
+            Queue.ordinal.asc()).all():  # type: ignore
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
@@ -1708,7 +1688,8 @@ async def delplayer(ctx: Context, member: Member, *args):
     """
     message = ctx.message
     session = ctx.session
-    queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(Queue.created_at.asc()).all()  # type: ignore
+    queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(
+        Queue.created_at.asc()).all()  # type: ignore
     for queue in queues:
         session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id
@@ -1862,7 +1843,7 @@ async def editgamewinner(ctx: Context, game_id: str, outcome: str):
     await send_message(
         message.channel,
         embed_description=f"Game {game_id} outcome changed:\n\n"
-        + finished_game_str(game),
+                          + finished_game_str(game),
         colour=Colour.green(),
     )
 
@@ -2163,7 +2144,7 @@ async def finishgame(ctx: Context, outcome: str):
                 in_progress_game_id=in_progress_game.id,
                 queue_id=queue.id,
                 end_waitlist_at=datetime.now(timezone.utc)
-                + timedelta(seconds=RE_ADD_DELAY),
+                                + timedelta(seconds=config.RE_ADD_DELAY),
             )
         )
 
@@ -2178,7 +2159,7 @@ async def finishgame(ctx: Context, outcome: str):
         .scalar()
     )
     if reward == 0:
-        reward = DEFAULT_RAFFLE_VALUE
+        reward = config.DEFAULT_RAFFLE_VALUE
 
     for player in players:
         player.raffle_tickets += reward
@@ -2269,7 +2250,7 @@ async def listchannels(ctx: Context):
 async def listdbbackups(ctx: Context):
     message = ctx.message
     output = "Backups:"
-    for filename in glob("tribes_*.db"):
+    for filename in glob(f"{config.DB_NAME}_*.db"):
         output += f"\n- {filename}"
 
     await send_message(
@@ -2341,6 +2322,98 @@ async def trueskill(ctx: Context):
         colour=Colour.blue(),
     )
 
+async def _movegameplayers (game_id: str, ctx: Context = None, guild: Guild = None):
+    if ctx:
+        message = ctx.message
+        session = ctx.session
+        guild = ctx.guild
+    elif guild:
+        message = None
+        session = Session()
+    else:
+        raise Exception("No Context or Guild on _movegameplayers")
+    
+    in_progress_game = (
+        session.query(InProgressGame)
+        .filter(InProgressGame.id.startswith(game_id))
+        .first()
+    )
+    if not in_progress_game:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find game: {game_id}",
+            colour=Colour.red()
+        )
+        return
+    
+    team0_ipg_players: list[InProgressGamePlayer] = session.query(
+        InProgressGamePlayer
+    ).filter(
+        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+        InProgressGamePlayer.team == 0,
+    )
+    team1_ipg_players: list[InProgressGamePlayer] = session.query(
+        InProgressGamePlayer
+    ).filter(
+        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+        InProgressGamePlayer.team == 1,
+    )
+    team0_player_ids = set(map(lambda x: x.player_id, team0_ipg_players))
+    team1_player_ids = set(map(lambda x: x.player_id, team1_ipg_players))
+    team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+    team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+
+    in_progress_game_channels: list[InProgressGameChannel] = session.query(
+        InProgressGameChannel
+    ).filter(
+        InProgressGameChannel.in_progress_game_id == in_progress_game.id
+    )
+
+    for player in team0_players:
+        if player.move_enabled:
+            member: Member | None = guild.get_member(player.id)
+            if member:
+                channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[0].channel_id)
+                if channel:
+                    try:
+                        await member.move_to(channel, reason = game_id)
+                    except Exception as e:
+                        print(f"Caught exception sending message: {e}")
+
+    for player in team1_players:
+        if player.move_enabled:
+            member: Member | None = guild.get_member(player.id)
+            if member:
+                channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[1].channel_id)
+                if channel:
+                    try:
+                        await member.move_to(channel, reason = game_id)
+                    except Exception as e:
+                        print(f"Caught exception sending message: {e}")
+
+
+@bot.command(usage="<game_id>")
+@commands.check(is_admin)
+async def movegameplayers (ctx: Context, game_id: str):
+    """
+    Move players in a given in-progress game to the correct voice channels
+    """
+    message = ctx.message
+
+    if not config.ENABLE_VOICE_MOVE:
+        await send_message(
+            message.channel,
+            embed_description="Voice movement is disabled",
+            colour=Colour.red()
+        )
+        return
+    else:
+        await _movegameplayers(game_id, ctx)
+        await send_message(
+            message.channel,
+            embed_description=f"Players moved to voice channels for game {game_id}",
+            colour=Colour.green()
+    )
 
 @bot.command()
 async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
@@ -2546,10 +2619,10 @@ async def removenotifications(ctx: Context):
 @commands.check(is_admin)
 async def removedbbackup(ctx: Context, db_filename: str):
     message = ctx.message
-    if not db_filename.startswith("tribes") or not db_filename.endswith(".db"):
+    if not db_filename.startswith(config.DB_NAME) or not db_filename.endswith(".db"):
         await send_message(
             message.channel,
-            embed_description="Filename must be of the format tribes_{date}.db",
+            embed_description=f"Filename must be of the format {config.DB_NAME}_{{date}}.db",
             colour=Colour.red(),
         )
         return
@@ -2575,14 +2648,14 @@ async def roll(ctx: Context, low_range: int, high_range: int):
 @bot.command()
 @commands.check(is_admin)
 async def resetleaderboardchannel(ctx: Context):
-    if not LEADERBOARD_CHANNEL:
+    if not config.LEADERBOARD_CHANNEL:
         await send_message(
             ctx.message.channel,
             embed_description=f"Leaderboard channel ID not configured",
             colour=Colour.red(),
         )
         return
-    channel = bot.get_channel(LEADERBOARD_CHANNEL)
+    channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
     if not channel:
         await send_message(
             ctx.message.channel,
@@ -2607,11 +2680,10 @@ async def resetplayertrueskill(ctx: Context, member: Member):
     message = ctx.message
     session = ctx.session
     player: Player = session.query(Player).filter(Player.id == member.id).first()
-    default_rating = Rating(DEFAULT_TRUESKILL_MU)
-    player.rated_trueskill_mu = default_rating.mu
-    player.rated_trueskill_sigma = default_rating.sigma
-    player.unrated_trueskill_mu = default_rating.mu
-    player.unrated_trueskill_sigma = default_rating.sigma
+    player.rated_trueskill_mu = config.DEFAULT_TRUESKILL_MU
+    player.rated_trueskill_sigma = config.DEFAULT_TRUESKILL_SIGMA
+    player.unrated_trueskill_mu = config.DEFAULT_TRUESKILL_MU
+    player.unrated_trueskill_sigma = config.DEFAULT_TRUESKILL_SIGMA
     session.commit()
     session.close()
     await send_message(
@@ -2672,6 +2744,7 @@ async def setcaptainbias(ctx: Context, member: Member, amount: float):
 @bot.command()
 @commands.check(is_admin)
 async def setcommandprefix(ctx: Context, prefix: str):
+    # TODO move to db-config
     message = ctx.message
     global COMMAND_PREFIX
     COMMAND_PREFIX = prefix
@@ -2728,6 +2801,36 @@ async def setgamecode(ctx: Context, code: str):
     )
 
 
+@bot.command(usage="<true|false>")
+async def setmoveenabled(ctx: Context, enabled_option: bool = True):
+    session = ctx.session
+
+    if not config.ENABLE_VOICE_MOVE:
+        await send_message(
+            ctx.message.channel, 
+            embed_description="Voice movement is disabled",
+            colour=Colour.red()
+        )
+        return
+
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player.move_enabled = enabled_option
+    session.commit()
+    
+    if enabled_option:
+        await send_message(
+            ctx.message.channel, 
+            embed_description="Player moving enabled",
+            colour=Colour.blue()
+        )
+    else:
+        await send_message(
+            ctx.message.channel, 
+            embed_description="Player moving disabled",
+            colour=Colour.blue()
+        )
+
+        
 @bot.command()
 @commands.check(is_admin)
 async def setsigma(ctx: Context, member: Member, sigma: float):
@@ -2816,12 +2919,12 @@ async def showgamedebug(ctx: Context, game_id: str):
             if i % 2 == 0:
                 continue
             team0_players = best_team[: len(best_team) // 2]
-            team1_players = best_team[len(best_team) // 2 :]
+            team1_players = best_team[len(best_team) // 2:]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
         game_str += "\n\n**Least even team combination:**"
         for _, worst_team in worst_teams:
             team0_players = worst_team[: len(worst_team) // 2]
-            team1_players = worst_team[len(worst_team) // 2 :]
+            team1_players = worst_team[len(worst_team) // 2:]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
         # await send_message(
         #     message.channel,
@@ -2885,14 +2988,14 @@ async def showgamedebug(ctx: Context, game_id: str):
             game_str += "\n**Most even team combinations:**"
             for _, best_team in best_teams:
                 team0_players = best_team[: len(best_team) // 2]
-                team1_players = best_team[len(best_team) // 2 :]
+                team1_players = best_team[len(best_team) // 2:]
                 game_str += (
                     f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                 )
             game_str += "\n\n**Least even team combination:**"
             for _, worst_team in worst_teams:
                 team0_players = worst_team[: len(worst_team) // 2]
-                team1_players = worst_team[len(worst_team) // 2 :]
+                team1_players = worst_team[len(worst_team) // 2:]
                 game_str += (
                     f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                 )
@@ -3006,7 +3109,8 @@ async def status(ctx: Context, *args):
 
     for rotation in all_rotations:
         queues: list[Queue] = []
-        rotation_queues = session.query(Queue).filter(Queue.rotation_id == rotation.id).order_by(Queue.ordinal.asc()).all()  # type: ignore
+        rotation_queues = session.query(Queue).filter(Queue.rotation_id == rotation.id).order_by(
+            Queue.ordinal.asc()).all()  # type: ignore
         if not rotation_queues:
             continue
 
@@ -3067,17 +3171,17 @@ async def status(ctx: Context, *args):
             )
 
             next_map_str = f"Next map: {next_map.full_name} ({next_map.short_name})"
-            if ENABLE_RAFFLE:
+            if config.ENABLE_RAFFLE:
                 has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
                 raffle_reward = (
                     next_rotation_map.raffle_ticket_reward
                     if has_raffle_reward
-                    else DEFAULT_RAFFLE_VALUE
+                    else config.DEFAULT_RAFFLE_VALUE
                 )
                 next_map_str += f" ({raffle_reward} tickets)"
             next_map_str += "\n"
 
-            if DISABLE_MAP_ROTATION or next_rotation_map.ordinal == 1:
+            if config.DISABLE_MAP_ROTATION or next_rotation_map.ordinal == 1:
                 # output += f"{next_map_str}\nMap after next: "
                 output += f"{next_map_str}\n"
             else:
@@ -3085,8 +3189,8 @@ async def status(ctx: Context, *args):
                     timezone.utc
                 ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
 
-                time_until_rotation = MAP_ROTATION_MINUTES - (
-                    time_since_update.seconds // 60
+                time_until_rotation = config.MAP_ROTATION_MINUTES - (
+                        time_since_update.seconds // 60
                 )
                 # output += f"{next_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): "
                 output += f"{next_map_str}\n"
@@ -3098,7 +3202,7 @@ async def status(ctx: Context, *args):
                 .filter(SkipMapVote.rotation_id == rotation.id)
                 .all()
             )
-            # output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]\n"
+            # output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{config.MAP_VOTE_THRESHOLD}]\n"
 
             # TODO: This is duplicated
             map_vote_names = (
@@ -3116,7 +3220,7 @@ async def status(ctx: Context, *args):
 
             voted_maps_str = ""
             for map, count in vote_counts.items():
-                voted_maps_str += f"{map} [{count}/{MAP_VOTE_THRESHOLD}], "
+                voted_maps_str += f"{map} [{count}/{config.MAP_VOTE_THRESHOLD}], "
             voted_maps_str = voted_maps_str[:-2]
 
             # output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
@@ -3170,7 +3274,7 @@ async def status(ctx: Context, *args):
                     short_game_id = short_uuid(game.id)
                     if i > 0:
                         output += "\n"
-                    if SHOW_TRUESKILL:
+                    if config.SHOW_TRUESKILL:
                         output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
                         if game.code:
                             output += f"Game code: {game.code}\n"
@@ -3178,20 +3282,20 @@ async def status(ctx: Context, *args):
                         output += f"Map: {game.map_full_name} ({short_game_id}):\n"
                         if game.code:
                             output += f"Game code: {game.code}\n"
-                    if SHOW_LEFT_RIGHT_TEAM:
+                    if config.SHOW_LEFT_RIGHT_TEAM:
                         output += "(L) "
                     output += pretty_format_team_no_format(
                         game.team0_name, game.win_probability, team0_players
                     )
-                    if SHOW_LEFT_RIGHT_TEAM:
+                    if config.SHOW_LEFT_RIGHT_TEAM:
                         output += "(R) "
                     output += pretty_format_team_no_format(
                         game.team1_name, 1 - game.win_probability, team1_players
                     )
                     minutes_ago = (
-                        datetime.now(timezone.utc)
-                        - game.created_at.replace(tzinfo=timezone.utc)
-                    ).seconds // 60
+                                          datetime.now(timezone.utc)
+                                          - game.created_at.replace(tzinfo=timezone.utc)
+                                  ).seconds // 60
                     output += f"@ {minutes_ago} minutes ago\n"
 
         output += "\n"
@@ -3240,13 +3344,13 @@ async def stats(ctx: Context):
     players: list[Player] = session.query(Player).all()
 
     default_rating = Rating()
-    DEFAULT_TRUESKILL_MU = float(os.getenv("DEFAULT_TRUESKILL_MU") or default_rating.mu)
-
     # Filter players that haven't played a game
     players = list(
         filter(
-            lambda x: x.rated_trueskill_mu != default_rating.mu
-            and x.rated_trueskill_mu != DEFAULT_TRUESKILL_MU,
+            lambda x:
+            (x.rated_trueskill_mu != default_rating.mu and x.rated_trueskill_sigma != default_rating.sigma)
+            and
+            (x.rated_trueskill_mu != config.DEFAULT_TRUESKILL_MU and x.rated_trueskill_sigma != config.DEFAULT_TRUESKILL_SIGMA),
             players,
         )
     )
@@ -3278,17 +3382,17 @@ async def stats(ctx: Context):
 
     def is_win(finished_game: FinishedGame) -> bool:
         if (
-            fgps_by_finished_game_id[finished_game.id].team
-            == finished_game.winning_team
+                fgps_by_finished_game_id[finished_game.id].team
+                == finished_game.winning_team
         ):
             return True
         return False
 
     def is_loss(finished_game: FinishedGame) -> bool:
         if (
-            fgps_by_finished_game_id[finished_game.id].team
-            != finished_game.winning_team
-            and finished_game.winning_team != -1
+                fgps_by_finished_game_id[finished_game.id].team
+                != finished_game.winning_team
+                and finished_game.winning_team != -1
         ):
             return True
         return False
@@ -3340,7 +3444,7 @@ async def stats(ctx: Context):
     winrate_last_year = win_rate(wins_last_year, losses_last_year, ties_last_year)
 
     output = ""
-    if SHOW_TRUESKILL:
+    if config.SHOW_TRUESKILL:
         player_category_trueskills: list[PlayerCategoryTrueskill] = (
             session.query(PlayerCategoryTrueskill)
             .filter(PlayerCategoryTrueskill.player_id == player_id)
@@ -3390,28 +3494,17 @@ async def stats(ctx: Context):
                 pass
 
 
-TWITCH_GAME_NAME: str | None = os.getenv("TWITCH_GAME_NAME")
-
-
 @bot.command()
 async def streams(ctx: Context):
-    if not TWITCH_GAME_NAME:
-        await send_message(
-            channel=ctx.message.channel,
-            embed_description=f"TWITCH_GAME_NAME not set!",
-            colour=Colour.red(),
-        )
-        return
-
     if not twitch:
         await send_message(
             channel=ctx.message.channel,
-            embed_description=f"TWITCH_CLIENT_ID or TWITCH_CLIENT_SECRET not set!",
+            embed_description=f"TWITCH_GAME_NAME, TWITCH_CLIENT_ID or TWITCH_CLIENT_SECRET not set!",
             colour=Colour.red(),
         )
         return
 
-    games_data = twitch.get_games(names=[TWITCH_GAME_NAME])
+    games_data = twitch.get_games(names=[config.TWITCH_GAME_NAME])
     game_id = games_data["data"][0]["id"]
     game_name = games_data["data"][0]["name"]
     game_box_art_url = (
@@ -3456,7 +3549,7 @@ async def _rebalance_game(game: InProgressGame, session: Session, message: Messa
         session.delete(game_player)
     game.win_probability = win_prob
     team0_players = players[: len(players) // 2]
-    team1_players = players[len(players) // 2 :]
+    team1_players = players[len(players) // 2:]
 
     short_game_id = short_uuid(game.id)
     channel_message = f"New teams ({short_game_id}):"
@@ -3466,7 +3559,7 @@ async def _rebalance_game(game: InProgressGame, session: Session, message: Messa
 
     for player in team0_players:
         # TODO: This block is duplicated
-        if not DISABLE_PRIVATE_MESSAGES:
+        if not config.DISABLE_PRIVATE_MESSAGES:
             if message.guild:
                 member_: Member | None = message.guild.get_member(player.id)
                 if member_:
@@ -3490,7 +3583,7 @@ async def _rebalance_game(game: InProgressGame, session: Session, message: Messa
 
     for player in team1_players:
         # TODO: This block is duplicated
-        if not DISABLE_PRIVATE_MESSAGES:
+        if not config.DISABLE_PRIVATE_MESSAGES:
             if message.guild:
                 member_: Member | None = message.guild.get_member(player.id)
                 if member_:
@@ -3519,6 +3612,15 @@ async def _rebalance_game(game: InProgressGame, session: Session, message: Messa
         colour=Colour.blue(),
     )
     session.commit()
+
+    if config.ENABLE_VOICE_MOVE:
+        if queue.move_enabled:
+            await _movegameplayers(short_game_id, None, message.guild)
+            await send_message(
+                message.channel,
+                embed_description=f"Players moved to new team voice channels for game {short_game_id}",
+                colour=Colour.green()
+            )
 
     pass
 

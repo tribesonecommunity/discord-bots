@@ -8,6 +8,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
+
 from discord_bots.models import (
     Category,
     FinishedGame,
@@ -22,6 +23,8 @@ from discord_bots.models import (
     RotationMap,
 )
 from discord_bots.queues import AddPlayerQueueMessage, add_player_queue
+from discord_bots.config import ENABLE_VOICE_MOVE
+
 
 
 class QueueCommands(BaseCog):
@@ -61,6 +64,7 @@ class QueueCommands(BaseCog):
         """
         session = ctx.session
         queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+
         if not queue:
             await self.send_error_message(f"Could not find queue: {queue_name}")
             return
@@ -91,6 +95,7 @@ class QueueCommands(BaseCog):
         """
         Create a queue
         """
+
         queue = Queue(name=queue_name, size=queue_size)
         session = ctx.session
 
@@ -326,6 +331,30 @@ class QueueCommands(BaseCog):
                 f"Removed role {role_name} from queue {queue.name}"
             )
             session.commit()
+            
+    @command()
+    @check(is_admin)
+    async def setqueuemoveenabled(self, ctx: Context, queue_name: str, enabled_option: bool):
+        """
+        Enables automatic moving of people in game when queue pops
+        """
+        session = ctx.session
+
+        if not ENABLE_VOICE_MOVE:
+            await self.send_error_message("Voice movement is disabled")
+            return
+        
+        try:
+            queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
+        except NoResultFound:
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
+            return
+
+        queue.move_enabled = enabled_option
+        session.commit()
+        await self.send_success_message(
+            f"Player moving enabled on queue **{queue_name}**"
+        )
 
     @command()
     @check(is_admin)
@@ -521,7 +550,6 @@ class QueueCommands(BaseCog):
         output += f"- _Maps: {', '.join(map_names)}_"
         await self.send_info_message(output)
 
-
     @command()
     @check(is_admin)
     async def unisolatequeue(self, ctx: Context, queue_name: str):
@@ -536,8 +564,7 @@ class QueueCommands(BaseCog):
             await self.send_success_message(f"Queue {queue.name} is now unisolated")
         else:
             await self.send_error_message(f"Queue not found: {queue_name}")
-
-
+            
     @command()
     @check(is_admin)
     async def unlockqueue(self, ctx: Context, queue_name: str):
