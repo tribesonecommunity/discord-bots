@@ -432,6 +432,15 @@ async def create_game(
         session.add(
             InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
         )
+        if config.ENABLE_VOICE_MOVE:
+            if queue.move_enabled:
+                await _movegameplayers(short_game_id, None, guild)
+                await send_message(
+                    channel,
+                    embed_description=f"Players moved to voice channels for game {short_game_id}",
+                    colour=Colour.green()
+                )
+
 
     session.query(QueuePlayer).filter(
         QueuePlayer.player_id.in_(player_ids)  # type: ignore
@@ -2493,29 +2502,22 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
             session.add(player)
             session.commit()
 
-@bot.command(usage="<game_id>")
-@commands.check(is_admin)
-async def movegameplayers (ctx: Context, game_id: str):
-    """
-    Move players in a given in-progress game to the correct voice channels
-    """
-    message = ctx.message
-    session = ctx.session
-    guild = ctx.guild
+async def _movegameplayers (game_id: str, ctx: Context | None, guild: Guild | None):
+    if ctx:
+        message = ctx.message
+        session = ctx.session
+        guild = ctx.guild
+    elif guild:
+        message = None
+        session = Session()
+    else:
+        raise Exception("No Context or Guild on _movegameplayers")
+    
     in_progress_game = (
         session.query(InProgressGame)
         .filter(InProgressGame.id.startswith(game_id))
         .first()
     )
-    
-    if not config.ENABLE_VOICE_MOVE:
-        await send_message(
-            message.channel,
-            embed_description="Voice movement is disabled",
-            colour=Colour.red()
-        )
-        return
-    
     if not in_progress_game:
         await send_message(
             message.channel,
@@ -2568,8 +2570,26 @@ async def movegameplayers (ctx: Context, game_id: str):
                         await member.move_to(channel, reason = game_id)
                     except Exception as e:
                         print(f"Caught exception sending message: {e}")
+
+
+@bot.command(usage="<game_id>")
+@commands.check(is_admin)
+async def movegameplayers (ctx: Context, game_id: str):
+    """
+    Move players in a given in-progress game to the correct voice channels
+    """
+    message = ctx.message
     
-    await send_message(
+    if not config.ENABLE_VOICE_MOVE:
+        await send_message(
+            message.channel,
+            embed_description="Voice movement is disabled",
+            colour=Colour.red()
+        )
+        return
+    else:
+        await _movegameplayers(game_id, ctx)
+        await send_message(
         message.channel,
         embed_description=f"Players moved to voice channels for game {game_id}",
         colour=Colour.green()
