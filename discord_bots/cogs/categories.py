@@ -84,26 +84,10 @@ class CategoryCommands(BaseCog):
     async def setcategoryname(
         self, ctx: Context, old_category_name: str, new_category_name: str
     ):
-        session = ctx.session
-
-        try:
-            category = (
-                session.query(Category)
-                .filter(Category.name.ilike(old_category_name))
-                .one()
-            )
-        except NoResultFound:
-            await self.send_error_message(
-                f"Could not find category **{old_category_name}**"
-            )
-            return
-
-        old_category_name_ = category.name
-        category.name = new_category_name
-        session.commit()
-        await self.send_success_message(
-            f"Category name changed from **{old_category_name_}** to **{new_category_name}**"
-        )
+        """
+        Set category name
+        """
+        await self.setname(ctx, Category, old_category_name, new_category_name)
 
     @command()
     @check(is_admin)
