@@ -313,20 +313,20 @@ async def print_leaderboard(channel=None):
 
     if config.LEADERBOARD_CHANNEL:
         leaderboard_channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
-    if leaderboard_channel:
-        try:
-            last_message = await leaderboard_channel.fetch_message(
-                leaderboard_channel.last_message_id
+        if leaderboard_channel:
+            try:
+                last_message = await leaderboard_channel.fetch_message(
+                    leaderboard_channel.last_message_id
+                )
+                if last_message:
+                    await last_message.edit(embed=Embed(description=output))
+                    return
+            except Exception as e:
+                print("caught exception fetching channel last message:", e)
+            await send_message(
+                leaderboard_channel, embed_description=output, colour=Colour.blue()
             )
-            if last_message:
-                await last_message.edit(embed=Embed(description=output))
-                return
-        except Exception as e:
-            print("caught exception fetching channel last message:", e)
-        await send_message(
-            leaderboard_channel, embed_description=output, colour=Colour.blue()
-        )
-        return
+            return
     else:
         if channel:
             await send_message(channel, embed_description=output, colour=Colour.blue())
