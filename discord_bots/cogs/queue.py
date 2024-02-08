@@ -119,7 +119,7 @@ class QueueCommands(BaseCog):
             queue.is_isolated = True
             session.commit()
             await self.send_success_message(
-                f"Queue {queue.name} is now isolated (unrated, no map rotation, no auto-adds)"
+                f"Queue {queue.name} is now isolated (no auto-adds)"
             )
         else:
             await self.send_error_message(f"Queue not found: {queue_name}")
