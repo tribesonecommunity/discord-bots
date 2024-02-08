@@ -16,7 +16,7 @@ from typing import List, Union
 import discord
 import imgkit
 import numpy
-from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel
+from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel, VoiceChannel
 from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
@@ -442,6 +442,16 @@ async def create_game(
         await update_next_map_to_map_after_next(queue.rotation_id, False)
 
     session.close()
+
+    if tribes_voice_category:
+        if config.ENABLE_VOICE_MOVE:
+            if queue.move_enabled:
+                await _movegameplayers(short_game_id, None, guild)
+                await send_message(
+                    channel,
+                    embed_description=f"Players moved to voice channels for game {short_game_id}",
+                    colour=Colour.green()
+                )
 
 
 async def add_player_to_queue(
@@ -1589,29 +1599,6 @@ async def restart(ctx):
 
 @bot.command()
 @commands.check(is_admin)
-async def clearqueue(ctx: Context, queue_name: str):
-    message = ctx.message
-    session = ctx.session
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if not queue:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find queue: {queue_name}",
-            colour=Colour.red(),
-        )
-        return
-    session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).delete()
-    session.commit()
-
-    await send_message(
-        message.channel,
-        embed_description=f"Queue cleared: {queue_name}",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
 async def clearqueuerange(ctx: Context, queue_name: str):
     message = ctx.message
     session = ctx.session
@@ -1629,30 +1616,6 @@ async def clearqueuerange(ctx: Context, queue_name: str):
         await send_message(
             message.channel,
             embed_description=f"Queue not found: {queue_name}",
-            colour=Colour.red(),
-        )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def createqueue(ctx: Context, queue_name: str, queue_size: int):
-    message = ctx.message
-    queue = Queue(name=queue_name, size=queue_size)
-    session = ctx.session
-
-    try:
-        session.add(queue)
-        session.commit()
-        await send_message(
-            message.channel,
-            embed_description=f"Queue created: {queue.name}",
-            colour=Colour.green(),
-        )
-    except IntegrityError:
-        session.rollback()
-        await send_message(
-            message.channel,
-            embed_description="A queue already exists with that name",
             colour=Colour.red(),
         )
 
@@ -2540,6 +2503,99 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
             session.add(player)
             session.commit()
 
+async def _movegameplayers (game_id: str, ctx: Context = None, guild: Guild = None):
+    if ctx:
+        message = ctx.message
+        session = ctx.session
+        guild = ctx.guild
+    elif guild:
+        message = None
+        session = Session()
+    else:
+        raise Exception("No Context or Guild on _movegameplayers")
+    
+    in_progress_game = (
+        session.query(InProgressGame)
+        .filter(InProgressGame.id.startswith(game_id))
+        .first()
+    )
+    if not in_progress_game:
+        await send_message(
+            message.channel,
+            embed_description=f"Could not find game: {game_id}",
+            colour=Colour.red()
+        )
+        return
+    
+    team0_ipg_players: list[InProgressGamePlayer] = session.query(
+        InProgressGamePlayer
+    ).filter(
+        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+        InProgressGamePlayer.team == 0,
+    )
+    team1_ipg_players: list[InProgressGamePlayer] = session.query(
+        InProgressGamePlayer
+    ).filter(
+        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+        InProgressGamePlayer.team == 1,
+    )
+    team0_player_ids = set(map(lambda x: x.player_id, team0_ipg_players))
+    team1_player_ids = set(map(lambda x: x.player_id, team1_ipg_players))
+    team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+    team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+
+    in_progress_game_channels: list[InProgressGameChannel] = session.query(
+        InProgressGameChannel
+    ).filter(
+        InProgressGameChannel.in_progress_game_id == in_progress_game.id
+    )
+
+    for player in team0_players:
+        if player.move_enabled:
+            member: Member | None = guild.get_member(player.id)
+            if member:
+                channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[0].channel_id)
+                if channel:
+                    try:
+                        await member.move_to(channel, reason = game_id)
+                    except Exception as e:
+                        print(f"Caught exception sending message: {e}")
+
+    for player in team1_players:
+        if player.move_enabled:
+            member: Member | None = guild.get_member(player.id)
+            if member:
+                channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[1].channel_id)
+                if channel:
+                    try:
+                        await member.move_to(channel, reason = game_id)
+                    except Exception as e:
+                        print(f"Caught exception sending message: {e}")
+
+
+@bot.command(usage="<game_id>")
+@commands.check(is_admin)
+async def movegameplayers (ctx: Context, game_id: str):
+    """
+    Move players in a given in-progress game to the correct voice channels
+    """
+    message = ctx.message
+
+    if not config.ENABLE_VOICE_MOVE:
+        await send_message(
+            message.channel,
+            embed_description="Voice movement is disabled",
+            colour=Colour.red()
+        )
+        return
+    else:
+        await _movegameplayers(game_id, ctx)
+        await send_message(
+        message.channel,
+        embed_description=f"Players moved to voice channels for game {game_id}",
+        colour=Colour.green()
+    )
+
 
 @bot.command()
 async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
@@ -3018,6 +3074,36 @@ async def setgamecode(ctx: Context, code: str):
         embed_description=f"Game **{short_uuid(ipg.id)}** code set to **{code}**",
         colour=Colour.green(),
     )
+
+
+@bot.command(usage="<true|false>")
+async def setmoveenabled(ctx: Context, enabled_option: bool = True):
+    session = ctx.session
+
+    if not config.ENABLE_VOICE_MOVE:
+        await send_message(
+            ctx.message.channel, 
+            embed_description="Voice movement is disabled",
+            colour=Colour.red()
+        )
+        return
+
+    player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
+    player.move_enabled = enabled_option
+    session.commit()
+    
+    if enabled_option:
+        await send_message(
+            ctx.message.channel, 
+            embed_description="Player moving enabled",
+            colour=Colour.blue()
+        )
+    else:
+        await send_message(
+            ctx.message.channel, 
+            embed_description="Player moving disabled",
+            colour=Colour.blue()
+        )
 
 
 @bot.command(usage="<queue_name> <ordinal>")
@@ -3935,6 +4021,15 @@ async def _rebalance_game(game: InProgressGame, session: Session, message: Messa
         colour=Colour.blue(),
     )
     session.commit()
+
+    if config.ENABLE_VOICE_MOVE:
+        if queue.move_enabled:
+            await _movegameplayers(short_game_id, None, message.guild)
+            await send_message(
+                message.channel,
+                embed_description=f"Players moved to new team voice channels for game {short_game_id}",
+                colour=Colour.green()
+            )
 
     pass
 

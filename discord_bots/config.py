@@ -70,6 +70,8 @@ CHANNEL_ID: int = _to_int(key="CHANNEL_ID", required=True)
 TRIBES_VOICE_CATEGORY_CHANNEL_ID: int = _to_int(key="TRIBES_VOICE_CATEGORY_CHANNEL_ID", required=True)
 __admin_ids = os.getenv("SEED_ADMIN_IDS").split(",") if os.getenv("SEED_ADMIN_IDS") else []
 SEED_ADMIN_IDS: list[int] = list(filter(lambda x: x is not None, map(_convert_to_int, __admin_ids)))
+ENABLE_VOICE_MOVE: bool = _to_bool(key="ENABLE_VOICE_MOVE", default=False)
+DEFAULT_VOICE_MOVE: bool = _to_bool(key="DEFAULT_VOICE_MOVE", default=False)
 ALLOW_VULGAR_NAMES: bool = _to_bool(key="ALLOW_VULGAR_NAMES", default=False)
 ENABLE_DEBUG: bool = _to_bool(key="ENABLE_DEBUG", default=False)
 ENABLE_RAFFLE: bool = _to_bool(key="ENABLE_RAFFLE", default=False)

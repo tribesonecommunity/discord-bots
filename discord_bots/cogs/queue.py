@@ -4,13 +4,69 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import Map, Queue, Rotation, RotationMap
+from discord_bots.models import Map, Queue, QueuePlayer, Rotation, RotationMap
+from discord_bots.config import ENABLE_VOICE_MOVE
 
 
 class QueueCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
+    @command()
+    @check(is_admin)
+    async def clearqueue(self, ctx: Context, queue_name: str):
+        message = ctx.message
+        session = ctx.session
+        queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        
+        if not queue:
+            await self.send_error_message(f"Could not find queue: {queue_name}")
+            return
+        session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).delete()
+        session.commit()
+
+        await self.send_success_message(f"Queue cleared: {queue_name}")
+        
+    @command()
+    @check(is_admin)
+    async def createqueue(self, ctx: Context, queue_name: str, queue_size: int):
+        message = ctx.message
+        queue = Queue(name=queue_name, size=queue_size)
+        session = ctx.session
+
+        try:
+            session.add(queue)
+            session.commit()
+            await self.send_success_message(f"Queue created: {queue.name}")
+        except IntegrityError:
+            session.rollback()
+            await self.send_error_message("A queue already exists with that name")
+    
+    @command()
+    @check(is_admin)
+    async def setqueuemoveenabled(self, ctx: Context, queue_name: str, enabled_option: bool):
+        """
+        Enables automatic moving of people in game when queue pops
+        """
+        session = ctx.session
+
+        if not ENABLE_VOICE_MOVE:
+            await self.send_error_message("Voice movement is disabled")
+            return
+        
+        try:
+            queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
+        except NoResultFound:
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
+            return
+
+        queue.move_enabled = enabled_option
+        session.commit()
+        await self.send_success_message(
+            f"Player moving enabled on queue **{queue_name}**"
+        )
+
+    
     @command()
     @check(is_admin)
     async def setqueuerotation(self, ctx: Context, queue_name: str, rotation_name: str):
