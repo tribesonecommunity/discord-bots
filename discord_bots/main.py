@@ -1,9 +1,12 @@
+import asyncio
+import os
 from datetime import datetime, timezone
 
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 
+import discord_bots.config as config
 from discord_bots.cogs.categories import CategoryCommands
 from discord_bots.cogs.map import MapCommands
 from discord_bots.cogs.queue import QueueCommands
@@ -11,7 +14,6 @@ from discord_bots.cogs.raffle import RaffleCommands
 from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.vote import VoteCommands
 
-import discord_bots.config as config
 from .bot import bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
 from .tasks import (
@@ -22,13 +24,6 @@ from .tasks import (
     queue_waitlist_task,
     vote_passed_waitlist_task,
 )
-
-add_player_task.start()
-afk_timer_task.start()
-leaderboard_task.start()
-map_rotation_task.start()
-queue_waitlist_task.start()
-vote_passed_waitlist_task.start()
 
 
 def create_seed_admins():

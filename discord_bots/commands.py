@@ -424,7 +424,7 @@ async def create_game(
 
 
 async def create_team_voice_channels(
-    session: sqlalchemy.orm.Session, guild: Guild, game: InProgressGame
+    session: Session, guild: Guild, game: InProgressGame
 ) -> tuple[discord.VoiceChannel, discord.VoiceChannel]:
     categories = {category.id: category for category in guild.categories}
     tribes_voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
@@ -2336,7 +2336,7 @@ async def _movegameplayers (game_id: str, ctx: Context = None, guild: Guild = No
         session = Session()
     else:
         raise Exception("No Context or Guild on _movegameplayers")
-    
+
     in_progress_game = (
         session.query(InProgressGame)
         .filter(InProgressGame.id.startswith(game_id))
@@ -2349,7 +2349,7 @@ async def _movegameplayers (game_id: str, ctx: Context = None, guild: Guild = No
             colour=Colour.red()
         )
         return
-    
+
     team0_ipg_players: list[InProgressGamePlayer] = session.query(
         InProgressGamePlayer
     ).filter(
@@ -2823,7 +2823,7 @@ async def setmoveenabled(ctx: Context, enabled_option: bool = True):
 
     if not config.ENABLE_VOICE_MOVE:
         await send_message(
-            ctx.message.channel, 
+            ctx.message.channel,
             embed_description="Voice movement is disabled",
             colour=Colour.red()
         )
@@ -2832,21 +2832,21 @@ async def setmoveenabled(ctx: Context, enabled_option: bool = True):
     player = session.query(Player).filter(Player.id == ctx.message.author.id).first()
     player.move_enabled = enabled_option
     session.commit()
-    
+
     if enabled_option:
         await send_message(
-            ctx.message.channel, 
+            ctx.message.channel,
             embed_description="Player moving enabled",
             colour=Colour.blue()
         )
     else:
         await send_message(
-            ctx.message.channel, 
+            ctx.message.channel,
             embed_description="Player moving disabled",
             colour=Colour.blue()
         )
 
-        
+
 @bot.command()
 @commands.check(is_admin)
 async def setsigma(ctx: Context, member: Member, sigma: float):
