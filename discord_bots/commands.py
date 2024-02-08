@@ -432,15 +432,6 @@ async def create_game(
         session.add(
             InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
         )
-        if config.ENABLE_VOICE_MOVE:
-            if queue.move_enabled:
-                await _movegameplayers(short_game_id, None, guild)
-                await send_message(
-                    channel,
-                    embed_description=f"Players moved to voice channels for game {short_game_id}",
-                    colour=Colour.green()
-                )
-
 
     session.query(QueuePlayer).filter(
         QueuePlayer.player_id.in_(player_ids)  # type: ignore
@@ -451,6 +442,16 @@ async def create_game(
         await update_next_map_to_map_after_next(queue.rotation_id, False)
 
     session.close()
+
+    if tribes_voice_category:
+        if config.ENABLE_VOICE_MOVE:
+            if queue.move_enabled:
+                await _movegameplayers(short_game_id, None, guild)
+                await send_message(
+                    channel,
+                    embed_description=f"Players moved to voice channels for game {short_game_id}",
+                    colour=Colour.green()
+                )
 
 
 async def add_player_to_queue(
