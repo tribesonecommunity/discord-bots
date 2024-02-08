@@ -1,12 +1,8 @@
-import asyncio
-import os
 from datetime import datetime, timezone
-from tempfile import NamedTemporaryFile
 
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
-from dotenv import load_dotenv
 
 from discord_bots.cogs.categories import CategoryCommands
 from discord_bots.cogs.map import MapCommands
@@ -14,10 +10,9 @@ from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
 from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.vote import VoteCommands
-from discord_bots.config import ENABLE_DEBUG, LEADERBOARD_CHANNEL
-from discord_bots.utils import CHANNEL_ID
 
-from .bot import COMMAND_PREFIX, bot
+import discord_bots.config as config
+from .bot import bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
 from .tasks import (
     add_player_task,
@@ -28,17 +23,30 @@ from .tasks import (
     vote_passed_waitlist_task,
 )
 
-SEED_ADMIN_IDS = os.getenv("SEED_ADMIN_IDS")
-if SEED_ADMIN_IDS:
-    session = Session()
-    seed_admin_ids = SEED_ADMIN_IDS.split(",")
-    for seed_admin_id in seed_admin_ids:
-        # There always has to be at least one initial admin to add others!
-        player = session.query(Player).filter(Player.id == seed_admin_id).first()
-        if player:
-            player.is_admin = True
-            session.commit()
-    session.close()
+add_player_task.start()
+afk_timer_task.start()
+leaderboard_task.start()
+map_rotation_task.start()
+queue_waitlist_task.start()
+vote_passed_waitlist_task.start()
+
+
+def create_seed_admins():
+    with Session() as session:
+        for seed_admin_id in config.SEED_ADMIN_IDS:
+            player = session.query(Player).filter(Player.id == seed_admin_id).first()
+            if player:
+                player.is_admin = True
+            else:
+                session.add(
+                    Player(
+                        id=seed_admin_id,
+                        is_admin=True,
+                        name='AUTO_GENERATED_ADMIN',
+                        last_activity_at=datetime.now(timezone.utc),
+                    )
+                )
+        session.commit()
 
 
 @bot.event
@@ -58,14 +66,14 @@ async def on_command_error(ctx: Context, error: CommandError):
         if ctx.command.usage:
             await ctx.channel.send(
                 embed=Embed(
-                    description=f"Usage: {COMMAND_PREFIX}{ctx.command.name} {ctx.command.usage}",
+                    description=f"Usage: {config.COMMAND_PREFIX}{ctx.command.name} {ctx.command.usage}",
                     colour=Colour.red(),
                 )
             )
         else:
             await ctx.channel.send(
                 embed=Embed(
-                    description=f"Usage: {COMMAND_PREFIX}{ctx.command.name} {ctx.command.signature}",
+                    description=f"Usage: {config.COMMAND_PREFIX}{ctx.command.name} {ctx.command.signature}",
                     colour=Colour.red(),
                 )
             )
@@ -82,9 +90,9 @@ async def on_message(message: Message):
     if message.author.bot:
         return
     # Use this to get the channel id
-    if ENABLE_DEBUG:
+    if config.ENABLE_DEBUG:
         if (
-            message.content.startswith(COMMAND_PREFIX)
+            message.content.startswith(config.COMMAND_PREFIX)
             and "configurebot" in message.content
         ):
             guild = message.guild
@@ -95,8 +103,8 @@ async def on_message(message: Message):
             # await message.channel.send(content=f"Your id: {message.author.id}\nChannel id: {message.channel.id}")
             return
 
-    if (CHANNEL_ID and message.channel.id == CHANNEL_ID) or (
-        LEADERBOARD_CHANNEL and message.channel.id == LEADERBOARD_CHANNEL
+    if (config.CHANNEL_ID and message.channel.id == config.CHANNEL_ID) or (
+        config.LEADERBOARD_CHANNEL and message.channel.id == config.LEADERBOARD_CHANNEL
     ):
         session = Session()
         player: Player | None = (
@@ -119,7 +127,7 @@ async def on_message(message: Message):
         await bot.process_commands(message)
 
         # Custom commands below
-        if not message.content.startswith(COMMAND_PREFIX):
+        if not message.content.startswith(config.COMMAND_PREFIX):
             return
 
         bot_commands = {command.name for command in bot.commands}
