@@ -26,7 +26,7 @@ from .tasks import (
 )
 
 
-def create_seed_admins():
+async def create_seed_admins():
     with Session() as session:
         for seed_admin_id in config.SEED_ADMIN_IDS:
             player = session.query(Player).filter(Player.id == seed_admin_id).first()
@@ -202,6 +202,7 @@ async def setup():
 
 async def main():
     # TODO: setup logging
+    await create_seed_admins()
     await setup()
     API_KEY = os.getenv("DISCORD_API_KEY")
     if API_KEY:
