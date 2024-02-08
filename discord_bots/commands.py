@@ -4022,6 +4022,15 @@ async def _rebalance_game(game: InProgressGame, session: Session, message: Messa
     )
     session.commit()
 
+    if config.ENABLE_VOICE_MOVE:
+        if queue.move_enabled:
+            await _movegameplayers(short_game_id, None, message.guild)
+            await send_message(
+                message.channel,
+                embed_description=f"Players moved to new team voice channels for game {short_game_id}",
+                colour=Colour.green()
+            )
+
     pass
 
 
