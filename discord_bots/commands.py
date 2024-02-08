@@ -2502,7 +2502,7 @@ async def mockqueue(ctx: Context, queue_name: str, count: int):
             session.add(player)
             session.commit()
 
-async def _movegameplayers (game_id: str, ctx: Context | None, guild: Guild | None):
+async def _movegameplayers (game_id: str, ctx: Context = None, guild: Guild = None):
     if ctx:
         message = ctx.message
         session = ctx.session
@@ -2579,7 +2579,7 @@ async def movegameplayers (ctx: Context, game_id: str):
     Move players in a given in-progress game to the correct voice channels
     """
     message = ctx.message
-    
+
     if not config.ENABLE_VOICE_MOVE:
         await send_message(
             message.channel,
