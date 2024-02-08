@@ -3,11 +3,13 @@ import itertools
 import math
 import os
 import statistics
+from typing import Optional
 
 import discord
 import imgkit
-from discord import Colour, DMChannel, Embed, GroupChannel, TextChannel
+from discord import Colour, DMChannel, Embed, GroupChannel, Guild, TextChannel
 from discord.ext.commands.context import Context
+from discord.member import Member
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -231,6 +233,21 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
     session.query(SkipMapVote).filter(SkipMapVote.rotation_id == rotation_id).delete()
     session.commit()
     session.close()
+
+
+async def send_in_guild_message(
+    guild: Guild,
+    user_id: int,
+    message_content: Optional[str] = None,
+    embed: Optional[Embed] = None,
+):
+    if not DISABLE_PRIVATE_MESSAGES:
+        member: Member | None = guild.get_member(user_id)
+        if member:
+            try:
+                await member.send(content=message_content, embed=embed)
+            except Exception as e:
+                print(f"Caught exception sending message: {e}")
 
 
 async def send_message(

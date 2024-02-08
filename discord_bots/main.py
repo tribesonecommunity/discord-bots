@@ -52,6 +52,12 @@ def create_seed_admins():
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    add_player_task.start()
+    afk_timer_task.start()
+    leaderboard_task.start()
+    map_rotation_task.start()
+    queue_waitlist_task.start()
+    vote_passed_waitlist_task.start()
 
 
 @bot.event
@@ -190,21 +196,27 @@ async def after_invoke(context: Context):
     context.session.close()
 
 
-def main():
-    if not config.CONFIG_IS_VALID:
-        print("You must provide a valid config!")
-        return
+async def setup():
+    await bot.add_cog(CategoryCommands(bot))
+    await bot.add_cog(RaffleCommands(bot))
+    await bot.add_cog(RotationCommands(bot))
+    await bot.add_cog(MapCommands(bot))
+    await bot.add_cog(QueueCommands(bot))
+    await bot.add_cog(VoteCommands(bot))
 
-    create_seed_admins()
 
-    bot.add_cog(CategoryCommands(bot))
-    bot.add_cog(RaffleCommands(bot))
-    bot.add_cog(RotationCommands(bot))
-    bot.add_cog(MapCommands(bot))
-    bot.add_cog(QueueCommands(bot))
-    bot.add_cog(VoteCommands(bot))
-    bot.run(config.API_KEY)
+async def main():
+    # TODO: setup logging
+    await setup()
+    API_KEY = os.getenv("DISCORD_API_KEY")
+    if API_KEY:
+        await bot.start(API_KEY)
+    else:
+        print("You must define DISCORD_API_KEY!")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")

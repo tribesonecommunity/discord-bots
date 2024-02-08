@@ -36,6 +36,7 @@ from discord_bots.utils import (
     pretty_format_team,
     pretty_format_team_no_format,
     print_leaderboard,
+    send_in_guild_message,
     send_message,
     short_uuid,
     update_next_map_to_map_after_next,
@@ -382,16 +383,17 @@ async def create_game(
     message_content += pretty_format_team(game.team0_name, win_prob, team0_players)
     message_content += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
     message_content += "\n```"
+    message_content += "Use `!setgamecode` to set the lobby code"
 
+    be_channel, ds_channel = await create_team_voice_channels(session, guild, game)
+    embed = Embed(
+        description=message_content,
+        colour=Colour.blue(),
+    )
     for player in team0_players:
-        if not config.DISABLE_PRIVATE_MESSAGES:
-            member: Member | None = guild.get_member(player.id)
-            if member:
-                try:
-                    await member.send(content=message_content)
-                except Exception as e:
-                    print(f"Caught exception sending message: {e}")
-
+        await send_in_guild_message(
+            guild, player.id, message_content=be_channel.jump_url, embed=embed
+        )
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
@@ -400,14 +402,9 @@ async def create_game(
         session.add(game_player)
 
     for player in team1_players:
-        if not config.DISABLE_PRIVATE_MESSAGES:
-            member: Member | None = guild.get_member(player.id)
-            if member:
-                try:
-                    await member.send(content=message_content)
-                except Exception as e:
-                    print(f"Caught exception sending message: {e}")
-
+        await send_in_guild_message(
+            guild, player.id, message_content=ds_channel.jump_url, embed=embed
+        )
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
@@ -415,8 +412,20 @@ async def create_game(
         )
         session.add(game_player)
 
-    await channel.send(message_content)
+    await channel.send(embed=embed)
 
+    session.query(QueuePlayer).filter(QueuePlayer.player_id.in_(player_ids)).delete()  # type: ignore
+    session.commit()
+
+    if not rolled_random_map:
+        await update_next_map_to_map_after_next(queue.rotation_id, False)
+
+    session.close()
+
+
+async def create_team_voice_channels(
+    session: sqlalchemy.orm.Session, guild: Guild, game: InProgressGame
+) -> tuple[discord.VoiceChannel, discord.VoiceChannel]:
     categories = {category.id: category for category in guild.categories}
     tribes_voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
     if tribes_voice_category:
@@ -432,16 +441,11 @@ async def create_game(
         session.add(
             InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
         )
-
-    session.query(QueuePlayer).filter(
-        QueuePlayer.player_id.in_(player_ids)  # type: ignore
-    ).delete()
-    session.commit()
-
-    if not rolled_random_map:
-        await update_next_map_to_map_after_next(queue.rotation_id, False)
-
-    session.close()
+        return be_channel, ds_channel
+    else:
+        raise ValueError(
+            f"could not find tribes_voice_category with id {TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
+        )
 
     if tribes_voice_category:
         if config.ENABLE_VOICE_MOVE:
@@ -2784,20 +2788,32 @@ async def setgamecode(ctx: Context, code: str):
         )
         return
 
-    if ipg.code:
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Game **{short_uuid(ipg.id)}** already has a code! Code: **{ipg.code}**",
-            colour=Colour.red(),
-        )
-        return
-
     ipg.code = code
+    ipg_players: list[InProgressGamePlayer] = (
+        ctx.session.query(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == ipg.id,
+            InProgressGamePlayer.player_id != ctx.message.author.id,
+        )
+        .all()
+    )
     ctx.session.commit()
+
+    for ipg_player in ipg_players:
+        embed = Embed(
+            title=f"Lobby code for ({short_uuid(ipg.id)})",
+            description=f"`{code}`",
+            colour=Colour.blue(),
+        )
+        embed.set_footer(text=f"set by {ctx.message.author}")
+        await send_in_guild_message(
+            ctx.message.guild, ipg_player.player_id, embed=embed
+        )
+    await ctx.message.delete()
     await send_message(
         ctx.message.channel,
-        embed_description=f"Game **{short_uuid(ipg.id)}** code set to **{code}**",
-        colour=Colour.green(),
+        embed_description="Lobby code sent to each player",
+        colour=Colour.blue(),
     )
 
 
@@ -3033,9 +3049,9 @@ async def showsigma(ctx: Context, member: Member):
     """
     session = ctx.session
     player: Player = session.query(Player).filter(Player.id == member.id).first()
-    output = (
-        embed_title
-    ) = f"**{member.name}'s** sigma: **{round(player.rated_trueskill_sigma, 4)}**"
+    output = embed_title = (
+        f"**{member.name}'s** sigma: **{round(player.rated_trueskill_sigma, 4)}**"
+    )
     await send_message(
         channel=ctx.message.channel,
         embed_description=output,

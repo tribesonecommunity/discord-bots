@@ -12,9 +12,8 @@ charset-normalizer==2.0.12
 click==8.0.3
 cryptography==36.0.1
 cycler==0.11.0
-discord==1.7.3
-discord.py==1.7.3
-discord.py-stubs==1.7.3
+discord==2.3.2
+discord.py==2.3.2
 distlib==0.3.4
 emoji==2.8.0
 filelock==3.4.2
