@@ -15,8 +15,17 @@ from typing import List, Union
 
 import discord
 import imgkit
-
-from discord import Colour, DMChannel, Embed, GroupChannel, Message, TextChannel, VoiceChannel
+from discord import (
+    CategoryChannel,
+    Colour,
+    DMChannel,
+    Embed,
+    GroupChannel,
+    Interaction,
+    Message,
+    TextChannel,
+    VoiceChannel,
+)
 from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
@@ -29,6 +38,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import select
 from trueskill import Rating, rate
 
+import discord_bots.config as config
 from discord_bots.checks import is_admin
 from discord_bots.utils import (
     code_block,
@@ -45,7 +55,6 @@ from discord_bots.utils import (
 )
 
 from .bot import bot
-import discord_bots.config as config
 from .models import (
     AdminRole,
     Category,
@@ -384,16 +393,34 @@ async def create_game(
     message_content += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
     message_content += "\n```"
     message_content += "Use `!setgamecode` to set the lobby code"
-
-    be_channel, ds_channel = await create_team_voice_channels(session, guild, game)
     embed = Embed(
         description=message_content,
         colour=Colour.blue(),
     )
-    for player in team0_players:
-        await send_in_guild_message(
-            guild, player.id, message_content=be_channel.jump_url, embed=embed
+
+    be_channel, ds_channel = None, None
+    categories = {category.id: category for category in guild.categories}
+    voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
+    if voice_category:
+        be_channel, ds_channel = await create_team_voice_channels(
+            session, guild, game, voice_category
         )
+        if config.ENABLE_VOICE_MOVE and queue.move_enabled:
+            await _movegameplayers(short_game_id, None, guild)
+            await send_message(
+                channel,
+                embed_description=f"Players moved to voice channels for game {short_game_id}",
+                colour=Colour.green(),
+            )
+    else:
+        print(
+            f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
+        )
+    for player in team0_players:
+        if be_channel:
+            await send_in_guild_message(
+                guild, player.id, message_content=be_channel.jump_url, embed=embed
+            )
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
@@ -402,9 +429,10 @@ async def create_game(
         session.add(game_player)
 
     for player in team1_players:
-        await send_in_guild_message(
-            guild, player.id, message_content=ds_channel.jump_url, embed=embed
-        )
+        if ds_channel:
+            await send_in_guild_message(
+                guild, player.id, message_content=ds_channel.jump_url, embed=embed
+            )
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
@@ -424,38 +452,24 @@ async def create_game(
 
 
 async def create_team_voice_channels(
-    session: Session, guild: Guild, game: InProgressGame
+    session: Session,
+    guild: Guild,
+    game: InProgressGame,
+    voice_category: CategoryChannel,
 ) -> tuple[discord.VoiceChannel, discord.VoiceChannel]:
-    categories = {category.id: category for category in guild.categories}
-    tribes_voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
-    if tribes_voice_category:
-        be_channel = await guild.create_voice_channel(
-            f"{game.team0_name}", category=tribes_voice_category
-        )
-        ds_channel = await guild.create_voice_channel(
-            f"{game.team1_name}", category=tribes_voice_category
-        )
-        session.add(
-            InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
-        )
-        session.add(
-            InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
-        )
-        return be_channel, ds_channel
-    else:
-        raise ValueError(
-            f"could not find tribes_voice_category with id {TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
-        )
-
-    if tribes_voice_category:
-        if config.ENABLE_VOICE_MOVE:
-            if queue.move_enabled:
-                await _movegameplayers(short_game_id, None, guild)
-                await send_message(
-                    channel,
-                    embed_description=f"Players moved to voice channels for game {short_game_id}",
-                    colour=Colour.green()
-                )
+    be_channel = await guild.create_voice_channel(
+        f"{game.team0_name}", category=voice_category
+    )
+    ds_channel = await guild.create_voice_channel(
+        f"{game.team1_name}", category=voice_category
+    )
+    session.add(
+        InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
+    )
+    session.add(
+        InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
+    )
+    return be_channel, ds_channel
 
 
 async def add_player_to_queue(
