@@ -3312,6 +3312,25 @@ async def status(ctx: Context, *args):
                         output += f"Map: {game.map_full_name} ({short_game_id}):\n"
                         if game.code:
                             output += f"Game code: {game.code}\n"
+
+                    skip_map_votes = (
+                        session.query(SkipMapVote)
+                        .join(
+                            InProgressGamePlayer,
+                            InProgressGamePlayer.player_id == SkipMapVote.player_id,
+                        )
+                        .filter(InProgressGamePlayer.in_progress_game_id == game.id)
+                        .all()
+                    )
+                    if skip_map_votes:
+                        queue_vote_threshold = (
+                            session.query(Queue.vote_threshold)
+                            .join(InProgressGame, InProgressGame.queue_id == Queue.id)
+                            .filter(InProgressGame.id == game.id)
+                            .scalar()
+                        )
+                        output += f"Votes to skip: [{len(skip_map_votes)} / {queue_vote_threshold}]\n"
+
                     if config.SHOW_LEFT_RIGHT_TEAM:
                         output += "(L) "
                     output += pretty_format_team_no_format(
