@@ -13,10 +13,11 @@ from discord.member import Member
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from sqlalchemy import func
 from trueskill import Rating, global_env
 
-from discord_bots.bot import bot
 import discord_bots.config as config
+from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
     Map,
@@ -24,6 +25,7 @@ from discord_bots.models import (
     Player,
     PlayerCategoryTrueskill,
     Queue,
+    Rotation,
     RotationMap,
     Session,
     SkipMapVote,
@@ -168,6 +170,10 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
     """
     session = Session()
 
+    rotation: Rotation | None = (
+        session.query(Rotation).filter(Rotation.id == rotation_id).first()
+    )
+
     next_rotation_map: RotationMap | None = (
         session.query(RotationMap)
         .filter(RotationMap.rotation_id == rotation_id)
@@ -175,28 +181,38 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
         .first()
     )
 
-    rotation_map_length = (
-        session.query(RotationMap)
-        .filter(RotationMap.rotation_id == rotation_id)
-        .count()
-    )
-    rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
-    if rotation_map_after_next_ordinal > rotation_map_length:
-        rotation_map_after_next_ordinal = 1
+    if rotation.is_shuffled:
+        rotation_map_after_next: RotationMap | None = (
+            session.query(RotationMap)
+            .filter(RotationMap.rotation_id == rotation_id)
+            .filter(RotationMap.is_next == False)
+            .order_by(func.random())
+            .first()
+        )
+    else:
+        rotation_map_length = (
+            session.query(RotationMap)
+            .filter(RotationMap.rotation_id == rotation_id)
+            .count()
+        )
+        rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
+        if rotation_map_after_next_ordinal > rotation_map_length:
+            rotation_map_after_next_ordinal = 1
+
+        rotation_map_after_next: RotationMap | None = (
+            session.query(RotationMap)
+            .filter(RotationMap.rotation_id == rotation_id)
+            .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
+            .first()
+        )
 
     next_rotation_map.is_next = False
-    (
-        session.query(RotationMap)
-        .filter(RotationMap.rotation_id == rotation_id)
-        .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
-        .update({"is_next": True})
-    )
+    rotation_map_after_next.is_next = True
 
     map_after_next_name: str | None = (
         session.query(Map.full_name)
         .join(RotationMap, RotationMap.map_id == Map.id)
-        .filter(RotationMap.rotation_id == rotation_id)
-        .filter(RotationMap.is_next == True)
+        .filter(RotationMap.id == rotation_map_after_next.id)
         .scalar()
     )
 
