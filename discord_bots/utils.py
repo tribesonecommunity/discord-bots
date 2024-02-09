@@ -241,7 +241,7 @@ async def send_in_guild_message(
     message_content: Optional[str] = None,
     embed: Optional[Embed] = None,
 ):
-    if not DISABLE_PRIVATE_MESSAGES:
+    if not config.DISABLE_PRIVATE_MESSAGES:
         member: Member | None = guild.get_member(user_id)
         if member:
             try:
