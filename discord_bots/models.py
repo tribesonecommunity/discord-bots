@@ -925,6 +925,12 @@ class Rotation:
     name: str = field(
         default=None, metadata={"sa": Column(String, nullable=False, unique=True)}
     )
+    is_shuffled: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
