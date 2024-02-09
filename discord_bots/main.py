@@ -1,9 +1,12 @@
+import asyncio
+import os
 from datetime import datetime, timezone
 
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
 
+import discord_bots.config as config
 from discord_bots.cogs.categories import CategoryCommands
 from discord_bots.cogs.map import MapCommands
 from discord_bots.cogs.queue import QueueCommands
@@ -11,7 +14,6 @@ from discord_bots.cogs.raffle import RaffleCommands
 from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.vote import VoteCommands
 
-import discord_bots.config as config
 from .bot import bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
 from .tasks import (
@@ -23,15 +25,8 @@ from .tasks import (
     vote_passed_waitlist_task,
 )
 
-add_player_task.start()
-afk_timer_task.start()
-leaderboard_task.start()
-map_rotation_task.start()
-queue_waitlist_task.start()
-vote_passed_waitlist_task.start()
 
-
-def create_seed_admins():
+async def create_seed_admins():
     with Session() as session:
         for seed_admin_id in config.SEED_ADMIN_IDS:
             player = session.query(Player).filter(Player.id == seed_admin_id).first()
@@ -52,6 +47,12 @@ def create_seed_admins():
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    add_player_task.start()
+    afk_timer_task.start()
+    leaderboard_task.start()
+    map_rotation_task.start()
+    queue_waitlist_task.start()
+    vote_passed_waitlist_task.start()
 
 
 @bot.event
@@ -190,21 +191,28 @@ async def after_invoke(context: Context):
     context.session.close()
 
 
-def main():
-    if not config.CONFIG_IS_VALID:
-        print("You must provide a valid config!")
-        return
+async def setup():
+    await bot.add_cog(CategoryCommands(bot))
+    await bot.add_cog(RaffleCommands(bot))
+    await bot.add_cog(RotationCommands(bot))
+    await bot.add_cog(MapCommands(bot))
+    await bot.add_cog(QueueCommands(bot))
+    await bot.add_cog(VoteCommands(bot))
 
-    create_seed_admins()
 
-    bot.add_cog(CategoryCommands(bot))
-    bot.add_cog(RaffleCommands(bot))
-    bot.add_cog(RotationCommands(bot))
-    bot.add_cog(MapCommands(bot))
-    bot.add_cog(QueueCommands(bot))
-    bot.add_cog(VoteCommands(bot))
-    bot.run(config.API_KEY)
+async def main():
+    # TODO: setup logging
+    await create_seed_admins()
+    await setup()
+    API_KEY = os.getenv("DISCORD_API_KEY")
+    if API_KEY:
+        await bot.start(API_KEY)
+    else:
+        print("You must define DISCORD_API_KEY!")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")

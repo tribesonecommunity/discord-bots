@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands
 import discord_bots.config as config
 
-intents = discord.Intents.default()
+intents = discord.Intents.all()  # TODO: should manually specify each intent
 intents.members = True
 
 bot = commands.Bot(
