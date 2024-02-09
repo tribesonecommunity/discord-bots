@@ -453,7 +453,7 @@ class QueueCommands(BaseCog):
     @check(is_admin)
     async def setqueuesize(self, ctx: Context, queue_name: str, queue_size: int):
         """
-        Set the number of players to pop a queue
+        Set the number of players to pop a queue.  Also updates queue vote threshold.
         """
         session = ctx.session
 
@@ -465,6 +465,7 @@ class QueueCommands(BaseCog):
             return
 
         queue.size = queue_size
+        queue.vote_threshold = round(float(queue_size) * 2 / 3)
         session.commit()
         await self.send_success_message(f"Queue size updated to **{queue.size}**")
 
