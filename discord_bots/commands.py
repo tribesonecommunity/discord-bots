@@ -420,6 +420,16 @@ async def create_game(
     if not rolled_random_map:
         await update_next_map_to_map_after_next(queue.rotation_id, False)
 
+    if be_channel and ds_channel:
+        if config.ENABLE_VOICE_MOVE:
+            if queue.move_enabled:
+                await _movegameplayers(short_game_id, None, guild)
+                await send_message(
+                    channel,
+                    embed_description=f"Players moved to voice channels for game {short_game_id}",
+                    colour=Colour.green()
+                )
+
     session.close()
 
 
@@ -444,18 +454,8 @@ async def create_team_voice_channels(
         return be_channel, ds_channel
     else:
         raise ValueError(
-            f"could not find tribes_voice_category with id {TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
+            f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
         )
-
-    if tribes_voice_category:
-        if config.ENABLE_VOICE_MOVE:
-            if queue.move_enabled:
-                await _movegameplayers(short_game_id, None, guild)
-                await send_message(
-                    channel,
-                    embed_description=f"Players moved to voice channels for game {short_game_id}",
-                    colour=Colour.green()
-                )
 
 
 async def add_player_to_queue(
