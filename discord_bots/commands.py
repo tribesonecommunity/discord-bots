@@ -406,7 +406,7 @@ async def create_game(
             session, guild, game, voice_category
         )
         if config.ENABLE_VOICE_MOVE and queue.move_enabled:
-            await _movegameplayers(short_uuid(game.id), None, guild)
+            await _movegameplayers(short_game_id, None, guild)
             await send_message(
                 channel,
                 embed_description=f"Players moved to voice channels for game {short_game_id}",
