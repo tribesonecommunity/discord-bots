@@ -316,3 +316,45 @@ class RotationCommands(BaseCog):
         Set rotation name
         """
         await self.setname(ctx, Rotation, old_rotation_name, new_rotation_name)
+
+    @command()
+    @check(is_admin)
+    async def shufflerotation(self, ctx: Context, rotation_name: str):
+        """
+        Chooses rotation's maps at random
+        """
+        session = ctx.session
+
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).first()
+        )
+        if not rotation:
+            await self.send_error_message(
+                f"Could not find rotation **{rotation_name}**"
+            )
+            return
+
+        rotation.is_shuffled = True
+        session.commit()
+        await self.send_success_message(f"**{rotation.name}** rotation shuffled")
+
+    @command()
+    @check(is_admin)
+    async def unshufflerotation(self, ctx: Context, rotation_name: str):
+        """
+        Chooses rotation's maps by ordinal
+        """
+        session = ctx.session
+
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).first()
+        )
+        if not rotation:
+            await self.send_error_message(
+                f"Could not find rotation **{rotation_name}**"
+            )
+            return
+
+        rotation.is_shuffled = False
+        session.commit()
+        await self.send_success_message(f"**{rotation.name}** rotation unshuffled")
