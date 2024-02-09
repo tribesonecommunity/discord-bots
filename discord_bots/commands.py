@@ -3133,14 +3133,21 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 async def status(ctx: Context, *args):
     session = ctx.session
 
-    all_rotations = session.query(Rotation).order_by(Rotation.created_at.asc()).all()
+    all_rotations: list[Rotation] | None = (
+        session.query(Rotation).order_by(Rotation.created_at.asc()).all()
+    )
 
     output = "```autohotkey\n"
 
     for rotation in all_rotations:
+        output += f"--- {rotation.name} ---\n\n"
         queues: list[Queue] = []
-        rotation_queues = session.query(Queue).filter(Queue.rotation_id == rotation.id).order_by(
-            Queue.ordinal.asc()).all()  # type: ignore
+        rotation_queues: list[Queue] | None = (
+            session.query(Queue)
+            .filter(Queue.rotation_id == rotation.id)
+            .order_by(Queue.ordinal.asc())
+            .all()
+        )
         if not rotation_queues:
             continue
 
