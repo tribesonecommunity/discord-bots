@@ -15,7 +15,6 @@ from typing import List, Union
 
 import discord
 import imgkit
-import sqlalchemy.orm.session
 from discord import (
     CategoryChannel,
     Colour,
