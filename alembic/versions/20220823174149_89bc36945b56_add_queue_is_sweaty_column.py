@@ -23,7 +23,7 @@ def upgrade():
             sa.Column(
                 "is_sweaty",
                 sa.Boolean(),
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 nullable=False,
             )
         )

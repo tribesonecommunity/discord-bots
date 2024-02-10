@@ -23,7 +23,7 @@ def upgrade():
             sa.Column(
                 "stats_enabled",
                 sa.Boolean(),
-                server_default=sa.text("1"),
+                server_default=sa.text("true"),
                 nullable=False,
             )
         )

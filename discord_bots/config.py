@@ -64,6 +64,7 @@ def _convert_to_int(value: str) -> int | None:
 
 
 # Discord setup
+DATABASE_URI: str = _to_str(key="DATABASE_URI", required=False)
 DB_NAME = "tribes"
 API_KEY: str = _to_str(key="DISCORD_API_KEY", required=True)
 CHANNEL_ID: int = _to_int(key="CHANNEL_ID", required=True)

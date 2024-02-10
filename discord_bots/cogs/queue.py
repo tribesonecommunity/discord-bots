@@ -133,7 +133,7 @@ class QueueCommands(BaseCog):
 
         queues: list[Queue] | None = session.query(Queue).all()
         if not queues:
-            self.send_error_message("No queues found")
+            await self.send_error_message("No queues found")
             return
 
         output = ""
@@ -331,7 +331,7 @@ class QueueCommands(BaseCog):
                 f"Removed role {role_name} from queue {queue.name}"
             )
             session.commit()
-            
+
     @command()
     @check(is_admin)
     async def setqueuemoveenabled(self, ctx: Context, queue_name: str, enabled_option: bool):
@@ -343,7 +343,7 @@ class QueueCommands(BaseCog):
         if not ENABLE_VOICE_MOVE:
             await self.send_error_message("Voice movement is disabled")
             return
-        
+
         try:
             queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
         except NoResultFound:
@@ -564,7 +564,7 @@ class QueueCommands(BaseCog):
             await self.send_success_message(f"Queue {queue.name} is now unisolated")
         else:
             await self.send_error_message(f"Queue not found: {queue_name}")
-            
+
     @command()
     @check(is_admin)
     async def unlockqueue(self, ctx: Context, queue_name: str):
