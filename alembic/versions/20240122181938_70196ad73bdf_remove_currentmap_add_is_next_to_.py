@@ -25,7 +25,7 @@ def upgrade():
             sa.Column(
                 "is_next",
                 sa.Boolean(),
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 nullable=False,
             )
         )
@@ -54,7 +54,7 @@ def downgrade():
         sa.Column(
             "is_random",
             sa.BOOLEAN(),
-            server_default=sa.text("0"),
+            server_default=sa.text("false"),
             nullable=False,
         ),
         sa.Column(

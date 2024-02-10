@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
 
-import trueskill
 from sqlalchemy import (
     Boolean,
     Column,
@@ -30,11 +28,11 @@ import discord_bots.config as config
 # It may be tempting, but do not set check_same_thread=False here. Sqlite
 # doesn't handle concurrency well and writing to the db on different threads
 # could cause file corruption. Use tasks to ensure that writes happen on the main thread.
-db_url = (
-    f"sqlite:///{config.DB_NAME}.test.db"
-    if "pytest" in sys.modules
-    else f"sqlite:///{config.DB_NAME}.db"
-)
+if config.DATABASE_URI:
+    db_url = config.DATABASE_URI
+else:
+    db_url = f"sqlite:///{config.DB_NAME}.db"
+
 engine = create_engine(db_url, echo=False)
 naming_convention = {
     "ix": "ix_%(column_0_label)s",

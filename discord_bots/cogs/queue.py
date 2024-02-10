@@ -134,7 +134,7 @@ class QueueCommands(BaseCog):
 
         queues: list[Queue] | None = session.query(Queue).all()
         if not queues:
-            self.send_error_message("No queues found")
+            await self.send_error_message("No queues found")
             return
 
         output = ""

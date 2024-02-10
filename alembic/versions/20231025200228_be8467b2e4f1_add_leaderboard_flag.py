@@ -23,7 +23,7 @@ def upgrade():
             sa.Column(
                 "leaderboard_enabled",
                 sa.Boolean(),
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 nullable=False,
             )
         )

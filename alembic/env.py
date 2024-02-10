@@ -1,13 +1,18 @@
+import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, engine_from_config, pool
 
 from alembic import context
 from discord_bots.models import Base, Player
 
+load_dotenv()
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+DATABASE_URI = os.getenv("DATABASE_URI")
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -35,7 +40,7 @@ def run_migrations_offline():
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = DATABASE_URI or config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -54,11 +59,14 @@ def run_migrations_online():
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    url = DATABASE_URI or config.get_main_option("sqlalchemy.url")
+    connectable = create_engine(url)
+    # Leaving this around in case its useful
+    # connectable = engine_from_config(
+    #     config.get_section(config.config_ini_section),
+    #     prefix="sqlalchemy.",
+    #     poolclass=pool.NullPool,
+    # )
 
     with connectable.connect() as connection:
         context.configure(

@@ -23,7 +23,7 @@ def upgrade():
             sa.Column(
                 "is_random",
                 sa.Boolean(),
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 nullable=False,
             )
         )
@@ -41,7 +41,7 @@ def upgrade():
             sa.Column(
                 "is_random",
                 sa.Boolean(),
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 nullable=False,
             )
         )

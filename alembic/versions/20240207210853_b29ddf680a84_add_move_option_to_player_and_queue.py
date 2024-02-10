@@ -22,17 +22,17 @@ def upgrade():
             sa.Column(
                 "move_enabled",
                 sa.Boolean(),
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 nullable=False,
             )
         )
-    
+
     with op.batch_alter_table("queue", schema=None) as batch_op:
         batch_op.add_column(
             sa.Column(
                 "move_enabled",
                 sa.Boolean(),
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 nullable=False,
             )
         )
