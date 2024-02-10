@@ -98,4 +98,5 @@ MAP_VOTE_THRESHOLD: int = _to_int(key="MAP_VOTE_THRESHOLD", default=7)
 STATS_DIR: str | None = _to_str(key="STATS_DIR")
 STATS_WIDTH = _to_int(key="STATS_WIDTH")
 STATS_HEIGHT=_to_int(key="STATS_HEIGHT")
+LOG_LEVEL: str = _to_str(key="LOG_LEVEL", default="INFO")
 # TODO grouping here and in docs

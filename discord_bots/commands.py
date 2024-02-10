@@ -1,4 +1,5 @@
 import heapq
+import logging  # TODO: need to change to module logging, since doing this will always display "root.INFO,WARN,..."
 import os
 import sys
 from bisect import bisect
@@ -36,11 +37,14 @@ from PIL import Image
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import select
+from table2ascii import PresetStyle, table2ascii
 from trueskill import Rating, rate
 
 import discord_bots.config as config
 from discord_bots.checks import is_admin
 from discord_bots.utils import (
+    MU_UNICODE,
+    SIGMA_UNICODE,
     code_block,
     mean,
     pretty_format_team,
@@ -392,7 +396,6 @@ async def create_game(
     message_content += pretty_format_team(game.team0_name, win_prob, team0_players)
     message_content += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
     message_content += "\n```"
-    message_content += "Use `!setgamecode` to set the lobby code"
     embed = Embed(
         description=message_content,
         colour=Colour.blue(),
@@ -2773,45 +2776,53 @@ async def setcommandprefix(ctx: Context, prefix: str):
     )
 
 
-@bot.command()
-async def setgamecode(ctx: Context, code: str):
-    author = ctx.message.author
+@bot.tree.command(
+    name="setgamecode", description="Sets lobby code for your current game"
+)
+@discord.app_commands.guild_only()
+async def setgamecode(interaction: Interaction, code: str):
+    session = Session()
     ipgp = (
-        ctx.session.query(InProgressGamePlayer)
-        .filter(InProgressGamePlayer.player_id == author.id)
+        session.query(InProgressGamePlayer)
+        .filter(InProgressGamePlayer.player_id == interaction.user.id)
         .first()
     )
     if not ipgp:
-        await send_message(
-            ctx.message.channel,
-            embed_description="You must be in a game to set a game code!",
-            colour=Colour.red(),
+        await interaction.response.send_message(
+            embed=Embed(
+                description="You must be in game to set the game code!",
+                colour=Colour.red(),
+            ),
+            ephemeral=True,
         )
         return
 
     ipg = (
-        ctx.session.query(InProgressGame)
+        session.query(InProgressGame)
         .filter(InProgressGame.id == ipgp.in_progress_game_id)
         .first()
     )
     if not ipg:
-        await send_message(
-            ctx.message.channel,
-            embed_description="You must be in a game to set a game code!",
-            colour=Colour.red(),
+        await interaction.response.send_message(
+            embed=Embed(
+                description="You must be in game to set the game code!",
+                colour=Colour.red(),
+            ),
+            ephemeral=True,
         )
         return
 
     ipg.code = code
     ipg_players: list[InProgressGamePlayer] = (
-        ctx.session.query(InProgressGamePlayer)
+        session.query(InProgressGamePlayer)
         .filter(
             InProgressGamePlayer.in_progress_game_id == ipg.id,
-            InProgressGamePlayer.player_id != ctx.message.author.id,
+            InProgressGamePlayer.player_id
+            != interaction.user.id,  # don't send the code to the one who wants to send it out
         )
         .all()
     )
-    ctx.session.commit()
+    session.commit()
 
     for ipg_player in ipg_players:
         embed = Embed(
@@ -2819,16 +2830,28 @@ async def setgamecode(ctx: Context, code: str):
             description=f"`{code}`",
             colour=Colour.blue(),
         )
-        embed.set_footer(text=f"set by {ctx.message.author}")
-        await send_in_guild_message(
-            ctx.message.guild, ipg_player.player_id, embed=embed
+        embed.set_footer(text=f"set by {interaction.user}")
+        if interaction.guild:
+            await send_in_guild_message(
+                interaction.guild, ipg_player.player_id, embed=embed
+            )
+    if ipg_players:
+        await interaction.response.send_message(
+            embed=Embed(
+                description="Lobby code sent to each player", colour=Colour.blue()
+            ),
+            ephemeral=True,
         )
-    await ctx.message.delete()
-    await send_message(
-        ctx.message.channel,
-        embed_description="Lobby code sent to each player",
-        colour=Colour.blue(),
-    )
+    else:
+        logging.warn("No in_progress_game_players to send a lobby code to")
+        await interaction.response.send_message(
+            embed=Embed(
+                description="There are no in-game players to send this lobby code to!",
+                colour=Colour.red(),
+            ),
+            ephemeral=True,
+        )
+    session.close()
 
 
 @bot.command(usage="<true|false>")
@@ -3343,24 +3366,26 @@ def win_rate(wins, losses, ties):
     return round(100 * (wins + 0.5 * ties) / denominator, 1)
 
 
-@bot.command()
-async def stats(ctx: Context):
-    player_id = ctx.message.author.id
-    session = ctx.session
-    player: Player = session.query(Player).filter(Player.id == player_id).first()
-
-    if not player.stats_enabled and ctx.message.guild:
-        member_: Member | None = ctx.message.guild.get_member(player.id)
-        await send_message(
-            ctx.message.channel,
-            embed_description="You have disabled !stats",
-            colour=Colour.blue(),
+@bot.tree.command(
+    name="stats", description="Privately displays your TrueSkill statistics"
+)
+async def stats(interaction: Interaction):
+    """
+    Replies to the user with their TrueSkill statistics. Can be used both inside and out of a Guild
+    """
+    session = Session()
+    player: Player = (
+        session.query(Player).filter(Player.id == interaction.user.id).first()
+    )
+    if not player.stats_enabled:
+        await interaction.response.send_message(
+            "You have disabled `/stats`", ephemeral=True
         )
         return
 
     fgps = (
         session.query(FinishedGamePlayer)
-        .filter(FinishedGamePlayer.player_id == player_id)
+        .filter(FinishedGamePlayer.player_id == player.id)
         .all()
     )
     finished_game_ids = [fgp.finished_game_id for fgp in fgps]
@@ -3430,12 +3455,6 @@ async def stats(ctx: Context):
     def is_tie(finished_game: FinishedGame) -> bool:
         return finished_game.winning_team == -1
 
-    wins = list(filter(is_win, fgs))
-    losses = list(filter(is_loss, fgs))
-    ties = list(filter(is_tie, fgs))
-    winrate = win_rate(len(wins), len(losses), len(ties))
-    total_games = len(fgs)
-
     def last_month(finished_game: FinishedGame) -> bool:
         return finished_game.finished_at > datetime.now() - timedelta(days=30)
 
@@ -3448,80 +3467,156 @@ async def stats(ctx: Context):
     def last_year(finished_game: FinishedGame) -> bool:
         return finished_game.finished_at > datetime.now() - timedelta(days=365)
 
-    games_last_month = list(filter(last_month, fgs))
-    games_last_three_months = list(filter(last_three_months, fgs))
-    games_last_six_months = list(filter(last_six_months, fgs))
-    games_last_year = list(filter(last_year, fgs))
-    wins_last_month = len(list(filter(is_win, games_last_month)))
-    losses_last_month = len(list(filter(is_loss, games_last_month)))
-    ties_last_month = len(list(filter(is_tie, games_last_month)))
-    winrate_last_month = win_rate(wins_last_month, losses_last_month, ties_last_month)
-    wins_last_three_months = len(list(filter(is_win, games_last_three_months)))
-    losses_last_three_months = len(list(filter(is_loss, games_last_three_months)))
-    ties_last_three_months = len(list(filter(is_tie, games_last_three_months)))
-    winrate_last_three_months = win_rate(
-        wins_last_three_months, losses_last_three_months, ties_last_three_months
-    )
-    wins_last_six_months = len(list(filter(is_win, games_last_six_months)))
-    losses_last_six_months = len(list(filter(is_loss, games_last_six_months)))
-    ties_last_six_months = len(list(filter(is_tie, games_last_six_months)))
-    winrate_last_six_months = win_rate(
-        wins_last_six_months, losses_last_six_months, ties_last_six_months
-    )
-    wins_last_year = len(list(filter(is_win, games_last_year)))
-    losses_last_year = len(list(filter(is_loss, games_last_year)))
-    ties_last_year = len(list(filter(is_tie, games_last_year)))
-    winrate_last_year = win_rate(wins_last_year, losses_last_year, ties_last_year)
-
-    output = ""
+    embeds = []
     if config.SHOW_TRUESKILL:
         player_category_trueskills: list[PlayerCategoryTrueskill] = (
             session.query(PlayerCategoryTrueskill)
-            .filter(PlayerCategoryTrueskill.player_id == player_id)
+            .filter(PlayerCategoryTrueskill.player_id == player.id)
             .all()
         )
         if player_category_trueskills:
-            output += f"Trueskill:"
             for pct in player_category_trueskills:
                 category: Category = (
                     session.query(Category)
                     .filter(Category.id == pct.category_id)
                     .first()
                 )
+                title = f"Stats for {category.name}"
+                description = ""
                 if category.is_rated:
-                    output += f"\n{category.name}: {round(pct.rank, 1)} (mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})"
+                    description = f"Rating: {round(pct.rank, 1)}"
+                    description += f"\n{MU_UNICODE}: {round(pct.mu, 1)}"
+                    description += f"\n{SIGMA_UNICODE}: {round(pct.sigma, 1)}"
 
-        # This assumes that if a community uses categories then they'll use regions exclusively
-        else:
-            output += f"Trueskill: {trueskill_pct}"
-            output += f"\n{round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)} (mu: {round(player.rated_trueskill_mu, 2)}, sigma: {round(player.rated_trueskill_sigma, 2)})"
-    else:
-        output += f"Trueskill: {trueskill_pct}"
-    output += f"\n\nWins / Losses / Ties / Total:"
-    output += f"\nLifetime: {len(wins)} / {len(losses)} / {len(ties)} / {total_games} ({winrate}%)"
-    output += f"\nLast month: {wins_last_month} / {losses_last_month} / {ties_last_month} / {len(games_last_month)} ({winrate_last_month}%)"
-    output += f"\nLast three months: {wins_last_three_months} / {losses_last_three_months} / {ties_last_three_months} / {len(games_last_three_months)} ({winrate_last_three_months}%)"
-    output += f"\nLast six months: {wins_last_six_months} / {losses_last_six_months} / {ties_last_six_months} / {len(games_last_six_months)} ({winrate_last_six_months}%)"
-    output += f"\nLast year: {wins_last_year} / {losses_last_year} / {ties_last_year} / {len(games_last_year)} ({winrate_last_year}%)"
-
-    if ctx.message.guild:
-        member_: Member | None = ctx.message.guild.get_member(player.id)
-        await send_message(
-            ctx.message.channel,
-            embed_description="Stats sent to DM",
-            colour=Colour.blue(),
-        )
-        if member_:
-            try:
-                await member_.send(
-                    code_block(output)
-                    # embed=Embed(
-                    #     description=f"{output}",
-                    #     colour=Colour.blue(),
-                    # ),
+                category_games = [
+                    game
+                    for game in fgs
+                    if game.category_name and category.name == game.category_name
+                ]
+                category_games_last_month = list(filter(last_month, category_games))
+                category_games_last_three_months = list(
+                    filter(last_three_months, category_games)
                 )
-            except Exception:
-                pass
+                category_games_last_six_months = list(
+                    filter(last_six_months, category_games)
+                )
+                category_games_last_year = list(filter(last_year, category_games))
+
+                wins_total = len(list(filter(is_win, category_games)))
+                wins_last_month = len(list(filter(is_win, category_games_last_month)))
+                wins_last_three_months = len(
+                    list(filter(is_win, category_games_last_three_months))
+                )
+                wins_last_six_months = len(
+                    list(filter(is_win, category_games_last_six_months))
+                )
+                wins_last_year = len(list(filter(is_win, category_games_last_year)))
+
+                losses_total = len(list(filter(is_loss, category_games)))
+                losses_last_month = len(
+                    list(filter(is_loss, category_games_last_month))
+                )
+                losses_last_three_months = len(
+                    list(filter(is_loss, category_games_last_three_months))
+                )
+                losses_last_six_months = len(
+                    list(filter(is_loss, category_games_last_six_months))
+                )
+                losses_last_year = len(list(filter(is_loss, category_games_last_year)))
+
+                ties_total = len(list(filter(is_tie, category_games)))
+                ties_last_month = len(list(filter(is_tie, category_games_last_month)))
+                ties_last_three_months = len(
+                    list(filter(is_tie, category_games_last_three_months))
+                )
+                ties_last_six_months = len(
+                    list(filter(is_tie, category_games_last_six_months))
+                )
+                ties_last_year = len(list(filter(is_tie, category_games_last_year)))
+
+                winrate_total = win_rate(wins_total, losses_total, ties_total)
+                winrate_last_month = win_rate(
+                    wins_last_month, losses_last_month, ties_last_month
+                )
+                winrate_last_three_months = win_rate(
+                    wins_last_three_months,
+                    losses_last_three_months,
+                    ties_last_three_months,
+                )
+                winrate_last_six_months = win_rate(
+                    wins_last_six_months, losses_last_six_months, ties_last_six_months
+                )
+                winrate_last_year = win_rate(
+                    wins_last_year, losses_last_year, ties_last_year
+                )
+                table = table2ascii(
+                    header=["", "Wins", "Losses", "Ties", "Total", "Winrate"],
+                    body=[
+                        [
+                            "Last 1 Month ",
+                            wins_last_month,
+                            losses_last_month,
+                            ties_last_month,
+                            len(category_games_last_month),
+                            f"{winrate_last_month}%",
+                        ],
+                        [
+                            "Last 3 Months",
+                            wins_last_three_months,
+                            losses_last_three_months,
+                            ties_last_three_months,
+                            len(category_games_last_three_months),
+                            f"{winrate_last_three_months}%",
+                        ],
+                        [
+                            "Last 6 Months",
+                            wins_last_six_months,
+                            losses_last_three_months,
+                            ties_last_three_months,
+                            len(category_games_last_three_months),
+                            f"{winrate_last_six_months}%",
+                        ],
+                        [
+                            "Last 12 Months",
+                            wins_last_year,
+                            losses_last_year,
+                            ties_last_year,
+                            len(category_games_last_year),
+                            f"{winrate_last_year}%",
+                        ],
+                        [
+                            "Overall",
+                            wins_total,
+                            losses_total,
+                            ties_total,
+                            len(category_games_last_year),
+                            f"{winrate_total}%",
+                        ],
+                    ],
+                    first_col_heading=True,
+                    style=PresetStyle.minimalist,
+                )
+                description += code_block(table)
+                description += "\nhttps://www.microsoft.com/en-us/research/project/trueskill-ranking-system/"
+                embed = Embed(
+                    title=title,
+                    description=description,
+                )
+                embed.set_footer(
+                    text=f"{MU_UNICODE} (mu) = your average Rating\n{SIGMA_UNICODE} (sigma) = the uncertainity of your Rating\nRating = {MU_UNICODE} - 3*{SIGMA_UNICODE}"
+                )
+                embeds.append(embed)
+    else:
+        embed = Embed(
+            title="Combined Stats",
+            description=f"Rating: {trueskill_pct}",
+        )
+        embeds.append(embed)
+    try:
+        await interaction.response.send_message(embeds=embeds, ephemeral=True)
+    except Exception:
+        pass
+    session.close()
 
 
 @bot.command()

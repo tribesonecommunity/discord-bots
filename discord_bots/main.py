@@ -1,7 +1,7 @@
 import asyncio
-import os
 from datetime import datetime, timezone
 
+import discord.utils
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
@@ -201,14 +201,10 @@ async def setup():
 
 
 async def main():
-    # TODO: setup logging
+    discord.utils.setup_logging(level=config.LOG_LEVEL)  # setup basic logging
     await create_seed_admins()
     await setup()
-    API_KEY = os.getenv("DISCORD_API_KEY")
-    if API_KEY:
-        await bot.start(API_KEY)
-    else:
-        print("You must define DISCORD_API_KEY!")
+    await bot.start(config.API_KEY)
 
 
 if __name__ == "__main__":
