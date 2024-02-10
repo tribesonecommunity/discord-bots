@@ -107,11 +107,24 @@ and `alembic` to handle migrations.
 
 ## Installation
 
+Postgres is the new preferred way of doing development. To install `psycopg2` you'll need to install `libpq`.
+
+### Ubuntu
+```
+apt-get install libpq-dev
+```
+
+### Arch linux
+```
+pacman -S postgresql-libs
+```
+
 The steps are the same but use `pip install -e -U .` instead. This allows local changes to be picked up automatically.
 
 ## Database
 
-Postgres is the new preferred way of doing development. Start a local database with:
+After installation, start a local database with:
+
 ```
 docker run --name postgres -e POSTGRES_PASSWORD=password -d -p 5432:5432 postgres
 ```
