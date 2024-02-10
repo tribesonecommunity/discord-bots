@@ -64,6 +64,9 @@ def _convert_to_int(value: str) -> int | None:
 
 
 # Discord setup
+
+# Use "sqlite:///tribes.db" for sqlite
+# Use "postgresql://postgres:password@localhost:5432/postgres" for postgres
 DATABASE_URI: str = _to_str(key="DATABASE_URI", required=False)
 DB_NAME = "tribes"
 API_KEY: str = _to_str(key="DISCORD_API_KEY", required=True)
