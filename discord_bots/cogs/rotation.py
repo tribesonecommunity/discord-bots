@@ -319,7 +319,7 @@ class RotationCommands(BaseCog):
 
     @command()
     @check(is_admin)
-    async def shufflerotation(self, ctx: Context, rotation_name: str):
+    async def setrotationrandom(self, ctx: Context, rotation_name: str):
         """
         Chooses rotation's maps at random
         """
@@ -334,15 +334,15 @@ class RotationCommands(BaseCog):
             )
             return
 
-        rotation.is_shuffled = True
+        rotation.is_random = True
         session.commit()
-        await self.send_success_message(f"**{rotation.name}** rotation shuffled")
+        await self.send_success_message(f"**{rotation.name}** rotation set to random")
 
     @command()
     @check(is_admin)
-    async def unshufflerotation(self, ctx: Context, rotation_name: str):
+    async def unsetrotationrandom(self, ctx: Context, rotation_name: str):
         """
-        Chooses rotation's maps by ordinal
+        Chooses rotation's maps in order
         """
         session = ctx.session
 
@@ -355,6 +355,8 @@ class RotationCommands(BaseCog):
             )
             return
 
-        rotation.is_shuffled = False
+        rotation.is_random = False
         session.commit()
-        await self.send_success_message(f"**{rotation.name}** rotation unshuffled")
+        await self.send_success_message(
+            f"**{rotation.name}** rotation unset from random"
+        )
