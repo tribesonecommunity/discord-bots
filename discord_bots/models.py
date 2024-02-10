@@ -925,7 +925,7 @@ class Rotation:
     name: str = field(
         default=None, metadata={"sa": Column(String, nullable=False, unique=True)}
     )
-    is_shuffled: bool = field(
+    is_random: bool = field(
         default=False,
         metadata={
             "sa": Column(Boolean, nullable=False, server_default=expression.false())

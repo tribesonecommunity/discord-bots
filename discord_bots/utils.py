@@ -181,7 +181,7 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
         .first()
     )
 
-    if rotation.is_shuffled:
+    if rotation.is_random:
         rotation_map_after_next: RotationMap | None = (
             session.query(RotationMap)
             .filter(RotationMap.rotation_id == rotation_id)
