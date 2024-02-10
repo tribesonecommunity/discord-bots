@@ -3,11 +3,12 @@ import itertools
 import math
 import os
 import statistics
-from typing import Optional
+from typing import Literal, Optional
 
 import discord
 import imgkit
 from discord import Colour, DMChannel, Embed, GroupChannel, Guild, TextChannel
+from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.member import Member
 from PIL import Image
@@ -15,8 +16,8 @@ from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from trueskill import Rating, global_env
 
-from discord_bots.bot import bot
 import discord_bots.config as config
+from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
     Map,
@@ -28,6 +29,9 @@ from discord_bots.models import (
     Session,
     SkipMapVote,
 )
+
+MU_UNICODE = "\u03BC"
+SIGMA_UNICODE = "\u03C3"
 
 
 # Convenience mean function that can handle lists of 0 or 1 length
@@ -349,5 +353,46 @@ async def print_leaderboard(channel=None):
                 await send_message(channel, embed_description=output, colour=Colour.blue())
 
 
-def code_block(content: str) -> str:
-    return "\n".join(["```autohotkey", content, "```"])
+def code_block(content: str, language: str = "autohotkey") -> str:
+    return "\n".join(["```" + language, content, "```"])
+
+
+@bot.command()
+@commands.guild_only()
+@commands.is_owner()
+async def sync(
+    ctx: Context,
+    guilds: commands.Greedy[discord.Object],
+    spec: Optional[Literal["~", "*", "^"]] = None,
+) -> None:
+    """
+    https://about.abstractumbra.dev/discord.py/2023/01/29/sync-command-example.html
+    """
+    if not guilds:
+        if spec == "~":
+            synced = await ctx.bot.tree.sync(guild=ctx.guild)
+        elif spec == "*":
+            ctx.bot.tree.copy_global_to(guild=ctx.guild)
+            synced = await ctx.bot.tree.sync(guild=ctx.guild)
+        elif spec == "^":
+            ctx.bot.tree.clear_commands(guild=ctx.guild)
+            await ctx.bot.tree.sync(guild=ctx.guild)
+            synced = []
+        else:
+            synced = await ctx.bot.tree.sync()
+
+        await ctx.send(
+            f"Synced {len(synced)} commands {'globally' if spec is None else 'to the current guild.'}"
+        )
+        return
+
+    ret = 0
+    for guild in guilds:
+        try:
+            await ctx.bot.tree.sync(guild=guild)
+        except discord.HTTPException:
+            pass
+        else:
+            ret += 1
+
+    await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")
