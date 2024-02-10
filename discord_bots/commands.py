@@ -3640,8 +3640,8 @@ async def stats(interaction: Interaction):
         embeds.append(embed)
     try:
         await interaction.response.send_message(embeds=embeds, ephemeral=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warn(f"Caught exception {e} trying to send stats")
     session.close()
 
 
