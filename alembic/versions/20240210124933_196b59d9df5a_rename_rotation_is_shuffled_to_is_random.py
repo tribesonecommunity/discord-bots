@@ -24,7 +24,7 @@ def upgrade():
             sa.Column(
                 "is_random",
                 sa.Boolean(),
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 nullable=False,
             )
         )
@@ -40,7 +40,7 @@ def downgrade():
             sa.Column(
                 "is_shuffled",
                 sa.BOOLEAN(),
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
                 nullable=False,
             )
         )
