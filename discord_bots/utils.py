@@ -1,5 +1,6 @@
 # Misc helper functions
 import itertools
+import logging
 import math
 import os
 import statistics
@@ -406,8 +407,8 @@ async def sync(
     for guild in guilds:
         try:
             await ctx.bot.tree.sync(guild=guild)
-        except discord.HTTPException:
-            pass
+        except discord.HTTPException as e:
+            logging.warn(f"Caught exception trying to sync for guild: ${guild}, e: {e}")
         else:
             ret += 1
 
