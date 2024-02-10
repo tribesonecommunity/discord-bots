@@ -96,7 +96,8 @@ class QueueCommands(BaseCog):
         Create a queue
         """
 
-        queue = Queue(name=queue_name, size=queue_size)
+        vote_threshold: int = round(float(queue_size) * 2 / 3)
+        queue = Queue(name=queue_name, size=queue_size, vote_threshold=vote_threshold)
         session = ctx.session
 
         try:
@@ -452,7 +453,7 @@ class QueueCommands(BaseCog):
     @check(is_admin)
     async def setqueuesize(self, ctx: Context, queue_name: str, queue_size: int):
         """
-        Set the number of players to pop a queue
+        Set the number of players to pop a queue.  Also updates queue vote threshold.
         """
         session = ctx.session
 
@@ -464,6 +465,7 @@ class QueueCommands(BaseCog):
             return
 
         queue.size = queue_size
+        queue.vote_threshold = round(float(queue_size) * 2 / 3)
         session.commit()
         await self.send_success_message(f"Queue size updated to **{queue.size}**")
 
@@ -496,6 +498,28 @@ class QueueCommands(BaseCog):
             await self.send_success_message(f"Queue {queue_name} is now unrated")
         else:
             await self.send_error_message(f"Queue not found: {queue_name}")
+
+    @command()
+    @check(is_admin)
+    async def setqueuevotethreshold(
+        self, ctx: Context, queue_name: str, vote_threshold: int
+    ):
+        """
+        Set the vote threshold for a queue
+        """
+        session = ctx.session
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+        )
+        if not queue:
+            await self.send_error_message(f"Could not find queue: {queue_name}")
+            return
+
+        queue.vote_threshold = vote_threshold
+        session.commit()
+        await self.send_success_message(
+            f"Vote threshold for **{queue.name}** set to **{queue.vote_threshold}**"
+        )
 
     @command()
     async def showqueuerange(self, ctx: Context, queue_name: str):

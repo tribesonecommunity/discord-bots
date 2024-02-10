@@ -1,10 +1,11 @@
+import discord
 from discord.ext.commands import Bot, Context, check, command
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import Map, Rotation, RotationMap
+from discord_bots.models import Map, Queue, Rotation, RotationMap
 from discord_bots.utils import update_next_map_to_map_after_next
 
 
@@ -115,7 +116,7 @@ class RotationCommands(BaseCog):
         output = ""
 
         for rotation in rotations:
-            output += f"- **{rotation.name}**\n"
+            output += f"### {rotation.name}\n"
 
             map_names = [
                 x[0]
@@ -127,11 +128,24 @@ class RotationCommands(BaseCog):
                     .all()
                 )
             ]
-
             if not map_names:
-                output += f" - _Maps: None_\n\n"
+                output += f" - Maps:  None\n"
             else:
-                output += f" - _Maps: {', '.join(map_names)}_\n\n"
+                output += f" - Maps:  {', '.join(map_names)}\n"
+
+            queue_names = [
+                x[0]
+                for x in (
+                    session.query(Queue.name)
+                    .filter(Queue.rotation_id == rotation.id)
+                    .order_by(Queue.ordinal.asc())
+                    .all()
+                )
+            ]
+            if not queue_names:
+                output += f" - Queues:  None\n"
+            else:
+                output += f" - Queues:  {', '.join(queue_names)}\n"
 
         await self.send_info_message(output)
 
@@ -302,3 +316,47 @@ class RotationCommands(BaseCog):
         Set rotation name
         """
         await self.setname(ctx, Rotation, old_rotation_name, new_rotation_name)
+
+    @command()
+    @check(is_admin)
+    async def setrotationrandom(self, ctx: Context, rotation_name: str):
+        """
+        Chooses rotation's maps at random
+        """
+        session = ctx.session
+
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).first()
+        )
+        if not rotation:
+            await self.send_error_message(
+                f"Could not find rotation **{rotation_name}**"
+            )
+            return
+
+        rotation.is_random = True
+        session.commit()
+        await self.send_success_message(f"**{rotation.name}** rotation set to random")
+
+    @command()
+    @check(is_admin)
+    async def unsetrotationrandom(self, ctx: Context, rotation_name: str):
+        """
+        Chooses rotation's maps in order
+        """
+        session = ctx.session
+
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).first()
+        )
+        if not rotation:
+            await self.send_error_message(
+                f"Could not find rotation **{rotation_name}**"
+            )
+            return
+
+        rotation.is_random = False
+        session.commit()
+        await self.send_success_message(
+            f"**{rotation.name}** rotation unset from random"
+        )
