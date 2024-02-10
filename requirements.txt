@@ -20,7 +20,7 @@ distlib==0.3.4
 emoji==2.8.0
 filelock==3.4.2
 fonttools==4.28.5
-greenlet==1.1.2
+greenlet==3.0.3
 h11==0.13.0
 identify==2.4.1
 idna==3.3
