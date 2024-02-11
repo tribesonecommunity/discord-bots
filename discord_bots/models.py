@@ -34,7 +34,8 @@ if config.DATABASE_URI:
 else:
     db_url = f"sqlite:///{config.DB_NAME}.db"
 
-engine = create_engine(db_url, echo=False)
+# RDS free tier has max 81 connections
+engine = create_engine(db_url, echo=False, pool_size=60)
 naming_convention = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -431,6 +432,30 @@ class FinishedGamePlayer:
 
 @mapper_registry.mapped
 @dataclass
+class Guild:
+    """
+    A discord server / guild
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "guild"
+
+    discord_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
+    name: str = field(metadata={"sa": Column(String, nullable=False, unique=True)})
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class InProgressGame:
     """
     :code: A one-time game code - useful for hosting private games in T3
@@ -620,7 +645,7 @@ class SkipMapVote:
         default=None,
         metadata={
             "sa": Column(String, ForeignKey("rotation.id"), nullable=True, index=True)
-        }
+        },
     )
     id: str = field(
         init=False,
@@ -657,16 +682,20 @@ class Player:
         metadata={"sa": Column(DateTime)},
     )
     rated_trueskill_mu: float = field(
-        default=config.DEFAULT_TRUESKILL_MU, metadata={"sa": Column(Float, nullable=False)}
+        default=config.DEFAULT_TRUESKILL_MU,
+        metadata={"sa": Column(Float, nullable=False)},
     )
     rated_trueskill_sigma: float = field(
-        default=config.DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
+        default=config.DEFAULT_TRUESKILL_SIGMA,
+        metadata={"sa": Column(Float, nullable=False)},
     )
     unrated_trueskill_mu: float = field(
-        default=config.DEFAULT_TRUESKILL_MU, metadata={"sa": Column(Float, nullable=False)}
+        default=config.DEFAULT_TRUESKILL_MU,
+        metadata={"sa": Column(Float, nullable=False)},
     )
     unrated_trueskill_sigma: float = field(
-        default=config.DEFAULT_TRUESKILL_SIGMA, metadata={"sa": Column(Float, nullable=False)}
+        default=config.DEFAULT_TRUESKILL_SIGMA,
+        metadata={"sa": Column(Float, nullable=False)},
     )
     raffle_tickets: int = field(
         default=0,
@@ -688,9 +717,7 @@ class Player:
     )
     move_enabled: bool = field(
         default=config.DEFAULT_VOICE_MOVE,
-        metadata={
-            "sa": Column(Boolean, nullable=False)
-        },
+        metadata={"sa": Column(Boolean, nullable=False)},
     )
     currency: int = field(
         default=config.STARTING_CURRENCY,
@@ -881,9 +908,7 @@ class Queue:
     )
     move_enabled: bool = field(
         default=config.DEFAULT_VOICE_MOVE,
-        metadata={
-            "sa": Column(Boolean, nullable=False)
-        },
+        metadata={"sa": Column(Boolean, nullable=False)},
     )
 
     rotation = relationship("Rotation", back_populates="queues")
