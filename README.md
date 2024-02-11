@@ -82,6 +82,7 @@ The following are optional
 - `MAP_VOTE_THRESHOLD` - Defaults to 7. The number of votes needed to succeed a map skip / replacement
 - `STATS_DIR` - Defaults to None. Store screenshots if configured. Doesn't work on Windows.
 - `STATS_WIDTH`, `STATS_HEIGHT`
+- `STARTING_CURRENCY` - Define a customer starting currency value for new players. Default is 100
 
 ## Running the bot
 

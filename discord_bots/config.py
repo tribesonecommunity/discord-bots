@@ -99,4 +99,5 @@ STATS_DIR: str | None = _to_str(key="STATS_DIR")
 STATS_WIDTH = _to_int(key="STATS_WIDTH")
 STATS_HEIGHT=_to_int(key="STATS_HEIGHT")
 LOG_LEVEL: str = _to_str(key="LOG_LEVEL", default="INFO")
+STARTING_CURRENCY: int = _to_int(key="STARTING_CURRENCY", default=100)
 # TODO grouping here and in docs
