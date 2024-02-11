@@ -29,7 +29,7 @@ from discord import (
 )
 from discord.ext import commands
 from discord.ext.commands.context import Context
-from discord.guild import Guild as DiscordGuild
+from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 from numpy import std
@@ -65,11 +65,9 @@ from .models import (
     Category,
     Commend,
     CustomCommand,
+    DiscordGuild,
     FinishedGame,
     FinishedGamePlayer,
-)
-from .models import Guild as ModelGuild
-from .models import (
     InProgressGame,
     InProgressGameChannel,
     InProgressGamePlayer,
@@ -97,7 +95,7 @@ from .twitch import twitch
 
 
 def get_even_teams(
-        player_ids: list[int], team_size: int, is_rated: bool, queue_category_id: str | None
+    player_ids: list[int], team_size: int, is_rated: bool, queue_category_id: str | None
 ) -> tuple[list[Player], float]:
     """
     This is the one used when a new game is created. The other methods are for the showgamedebug command
@@ -130,7 +128,7 @@ def get_even_teams(
 
     all_combinations = list(combinations(players, team_size))
     if config.MAXIMUM_TEAM_COMBINATIONS:
-        all_combinations = all_combinations[:config.MAXIMUM_TEAM_COMBINATIONS]
+        all_combinations = all_combinations[: config.MAXIMUM_TEAM_COMBINATIONS]
     for i, team0 in enumerate(all_combinations):
         team1 = [p for p in players if p not in team0]
         team0_ratings = []
@@ -181,11 +179,11 @@ def get_even_teams(
 # Return n of the most even or least even teams
 # For best teams, use direction = 1, for worst teams use direction = -1
 def get_n_teams(
-        players: list[Player],
-        team_size: int,
-        is_rated: bool,
-        n: int,
-        direction: int = 1,
+    players: list[Player],
+    team_size: int,
+    is_rated: bool,
+    n: int,
+    direction: int = 1,
 ) -> list[tuple[list[Player], float]]:
     teams: list[tuple[float, list[Player]]] = []
 
@@ -218,13 +216,13 @@ def get_n_teams(
 
 
 def get_n_best_teams(
-        players: list[Player], team_size: int, is_rated: bool, n: int
+    players: list[Player], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[Player], float]]:
     return get_n_teams(players, team_size, is_rated, n, 1)
 
 
 def get_n_worst_teams(
-        players: list[Player], team_size: int, is_rated: bool, n: int
+    players: list[Player], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[Player], float]]:
     return get_n_teams(players, team_size, is_rated, n, -1)
 
@@ -232,11 +230,11 @@ def get_n_worst_teams(
 # Return n of the most even or least even teams
 # For best teams, use direction = 1, for worst teams use direction = -1
 def get_n_finished_game_teams(
-        fgps: list[FinishedGamePlayer],
-        team_size: int,
-        is_rated: bool,
-        n: int,
-        direction: int = 1,
+    fgps: list[FinishedGamePlayer],
+    team_size: int,
+    is_rated: bool,
+    n: int,
+    direction: int = 1,
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     teams: list[tuple[float, list[FinishedGamePlayer]]] = []
 
@@ -273,13 +271,13 @@ def get_n_finished_game_teams(
 
 
 def get_n_best_finished_game_teams(
-        fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     return get_n_finished_game_teams(fgps, team_size, is_rated, n, 1)
 
 
 def get_n_worst_finished_game_teams(
-        fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
     return get_n_finished_game_teams(fgps, team_size, is_rated, n, -1)
 
@@ -288,7 +286,7 @@ async def create_game(
     queue_id: str,
     player_ids: list[int],
     channel: TextChannel | DMChannel | GroupChannel,
-    guild: DiscordGuild,
+    guild: Guild,
 ):
     session = Session()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
@@ -354,7 +352,7 @@ async def create_game(
     session.add(game)
 
     team0_players = players[: len(players) // 2]
-    team1_players = players[len(players) // 2:]
+    team1_players = players[len(players) // 2 :]
 
     short_game_id = short_uuid(game.id)
     message_content = "```autohotkey"
@@ -426,7 +424,7 @@ async def create_game(
 
 async def create_team_voice_channels(
     session: SQLAlchemySession,
-    guild: DiscordGuild,
+    guild: Guild,
     game: InProgressGame,
     voice_category: CategoryChannel,
 ) -> tuple[discord.VoiceChannel, discord.VoiceChannel]:
@@ -449,7 +447,7 @@ async def add_player_to_queue(
     queue_id: str,
     player_id: int,
     channel: TextChannel | DMChannel | GroupChannel,
-    guild: DiscordGuild,
+    guild: Guild,
 ) -> tuple[bool, bool]:
     """
     Helper function to add player to a queue and pop if needed.
@@ -552,9 +550,9 @@ async def add_player_to_queue(
 
 
 def mock_teams_str(
-        team0_players: list[Player],
-        team1_players: list[Player],
-        is_rated: bool,
+    team0_players: list[Player],
+    team1_players: list[Player],
+    is_rated: bool,
 ) -> str:
     """
     Helper method to debug print teams if these were the players
@@ -590,9 +588,9 @@ def mock_teams_str(
 
 
 def mock_finished_game_teams_str(
-        team0_fg_players: list[FinishedGamePlayer],
-        team1_fg_players: list[FinishedGamePlayer],
-        is_rated: bool,
+    team0_fg_players: list[FinishedGamePlayer],
+    team1_fg_players: list[FinishedGamePlayer],
+    is_rated: bool,
 ) -> str:
     """
     Helper method to debug print teams if these were the players
@@ -920,11 +918,19 @@ async def add(ctx: Context, *args):
             session.close()
             return
         # Don't auto-add to isolated queues
-        queues_to_add += session.query(Queue).filter(Queue.is_isolated == False, Queue.is_locked == False).order_by(
-            Queue.ordinal.asc()).all()  # type: ignore
+        queues_to_add += (
+            session.query(Queue)
+            .filter(Queue.is_isolated == False, Queue.is_locked == False)
+            .order_by(Queue.ordinal.asc())
+            .all()
+        )  # type: ignore
     else:
-        all_queues = session.query(Queue).filter(Queue.is_locked == False).order_by(
-            Queue.ordinal.asc()).all()  # type: ignore
+        all_queues = (
+            session.query(Queue)
+            .filter(Queue.is_locked == False)
+            .order_by(Queue.ordinal.asc())
+            .all()
+        )  # type: ignore
         for arg in args:
             # Try adding by integer index first, then try string name
             try:
@@ -969,7 +975,7 @@ async def add(ctx: Context, *args):
         # The assumption is the end timestamp is later than now, otherwise it
         # would have been processed
         difference: float = (
-                vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
+            vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
         ).total_seconds()
         if difference < config.RE_ADD_DELAY:
             waitlist_message = f"A vote just passed, you will be randomized into the queue in {floor(difference)} seconds"
@@ -1225,7 +1231,6 @@ async def ban(ctx: Context, member: Member):
             )
 
 
-
 @bot.command()
 @commands.check(is_admin)
 async def cancelgame(ctx: Context, game_id: str):
@@ -1248,7 +1253,7 @@ async def cancelgame(ctx: Context, game_id: str):
         InProgressGamePlayer.in_progress_game_id == game.id
     ).delete()
     for channel in session.query(InProgressGameChannel).filter(
-            InProgressGameChannel.in_progress_game_id == game.id
+        InProgressGameChannel.in_progress_game_id == game.id
     ):
         if message.guild:
             guild_channel = message.guild.get_channel(channel.channel_id)
@@ -1427,8 +1432,8 @@ async def commendstats(ctx: Context):
 async def configure(interaction: Interaction):
     session = Session()
     guild = (
-        session.query(ModelGuild)
-        .filter(ModelGuild.discord_id == interaction.guild_id)
+        session.query(DiscordGuild)
+        .filter(DiscordGuild.discord_id == interaction.guild_id)
         .first()
     )
     if guild:
@@ -1440,7 +1445,7 @@ async def configure(interaction: Interaction):
             ephemeral=True,
         )
     else:
-        guild = ModelGuild(interaction.guild_id, interaction.guild.name)
+        guild = DiscordGuild(interaction.guild_id, interaction.guild.name)
         session.add(guild)
         session.commit()
         await interaction.response.send_message(
@@ -1553,8 +1558,12 @@ async def del_(ctx: Context, *args):
     """
     message = ctx.message
     session = ctx.session
-    queues_to_del_query = session.query(Queue).join(QueuePlayer).filter(
-        QueuePlayer.player_id == message.author.id).order_by(Queue.ordinal.asc())  # type: ignore
+    queues_to_del_query = (
+        session.query(Queue)
+        .join(QueuePlayer)
+        .filter(QueuePlayer.player_id == message.author.id)
+        .order_by(Queue.ordinal.asc())
+    )  # type: ignore
 
     if len(args) > 0:
         queues_to_del_query = queues_to_del_query.filter(
@@ -1586,8 +1595,12 @@ async def del_(ctx: Context, *args):
 
     queue_statuses = []
     queue: Queue
-    for queue in session.query(Queue).filter(Queue.is_locked == False).order_by(
-            Queue.ordinal.asc()).all():  # type: ignore
+    for queue in (
+        session.query(Queue)
+        .filter(Queue.is_locked == False)
+        .order_by(Queue.ordinal.asc())
+        .all()
+    ):  # type: ignore
         queue_players = (
             session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
         )
@@ -1774,7 +1787,7 @@ async def editgamewinner(ctx: Context, game_id: str, outcome: str):
     await send_message(
         message.channel,
         embed_description=f"Game {game_id} outcome changed:\n\n"
-                          + finished_game_str(game),
+        + finished_game_str(game),
         colour=Colour.green(),
     )
 
@@ -2044,7 +2057,7 @@ async def finishgame(ctx: Context, outcome: str):
                 in_progress_game_id=in_progress_game.id,
                 queue_id=queue.id,
                 end_waitlist_at=datetime.now(timezone.utc)
-                                + timedelta(seconds=config.RE_ADD_DELAY),
+                + timedelta(seconds=config.RE_ADD_DELAY),
             )
         )
 
@@ -2222,9 +2235,8 @@ async def trueskill(ctx: Context):
         colour=Colour.blue(),
     )
 
-async def _movegameplayers(
-    game_id: str, ctx: Context = None, guild: DiscordGuild = None
-):
+
+async def _movegameplayers(game_id: str, ctx: Context = None, guild: Guild = None):
     message: Message | None = None
     if ctx:
         message = ctx.message
@@ -2270,18 +2282,18 @@ async def _movegameplayers(
 
     in_progress_game_channels: list[InProgressGameChannel] = session.query(
         InProgressGameChannel
-    ).filter(
-        InProgressGameChannel.in_progress_game_id == in_progress_game.id
-    )
+    ).filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
 
     for player in team0_players:
         if player.move_enabled:
             member: Member | None = guild.get_member(player.id)
             if member:
-                channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[0].channel_id)
+                channel: VoiceChannel | None = guild.get_channel(
+                    in_progress_game_channels[0].channel_id
+                )
                 if channel:
                     try:
-                        await member.move_to(channel, reason = game_id)
+                        await member.move_to(channel, reason=game_id)
                     except Exception as e:
                         print(f"Caught exception sending message: {e}")
 
@@ -2289,17 +2301,19 @@ async def _movegameplayers(
         if player.move_enabled:
             member: Member | None = guild.get_member(player.id)
             if member:
-                channel: VoiceChannel | None = guild.get_channel(in_progress_game_channels[1].channel_id)
+                channel: VoiceChannel | None = guild.get_channel(
+                    in_progress_game_channels[1].channel_id
+                )
                 if channel:
                     try:
-                        await member.move_to(channel, reason = game_id)
+                        await member.move_to(channel, reason=game_id)
                     except Exception as e:
                         print(f"Caught exception sending message: {e}")
 
 
 @bot.command(usage="<game_id>")
 @commands.check(is_admin)
-async def movegameplayers (ctx: Context, game_id: str):
+async def movegameplayers(ctx: Context, game_id: str):
     """
     Move players in a given in-progress game to the correct voice channels
     """
@@ -2309,7 +2323,7 @@ async def movegameplayers (ctx: Context, game_id: str):
         await send_message(
             message.channel,
             embed_description="Voice movement is disabled",
-            colour=Colour.red()
+            colour=Colour.red(),
         )
         return
     else:
@@ -2317,8 +2331,9 @@ async def movegameplayers (ctx: Context, game_id: str):
         await send_message(
             message.channel,
             embed_description=f"Players moved to voice channels for game {game_id}",
-            colour=Colour.green()
-    )
+            colour=Colour.green(),
+        )
+
 
 @bot.command()
 async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
@@ -2744,7 +2759,7 @@ async def setmoveenabled(ctx: Context, enabled_option: bool = True):
         await send_message(
             ctx.message.channel,
             embed_description="Voice movement is disabled",
-            colour=Colour.red()
+            colour=Colour.red(),
         )
         return
 
@@ -2756,13 +2771,13 @@ async def setmoveenabled(ctx: Context, enabled_option: bool = True):
         await send_message(
             ctx.message.channel,
             embed_description="Player moving enabled",
-            colour=Colour.blue()
+            colour=Colour.blue(),
         )
     else:
         await send_message(
             ctx.message.channel,
             embed_description="Player moving disabled",
-            colour=Colour.blue()
+            colour=Colour.blue(),
         )
 
 
@@ -2854,12 +2869,12 @@ async def showgamedebug(ctx: Context, game_id: str):
             if i % 2 == 0:
                 continue
             team0_players = best_team[: len(best_team) // 2]
-            team1_players = best_team[len(best_team) // 2:]
+            team1_players = best_team[len(best_team) // 2 :]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
         game_str += "\n\n**Least even team combination:**"
         for _, worst_team in worst_teams:
             team0_players = worst_team[: len(worst_team) // 2]
-            team1_players = worst_team[len(worst_team) // 2:]
+            team1_players = worst_team[len(worst_team) // 2 :]
             game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
         # await send_message(
         #     message.channel,
@@ -2923,14 +2938,14 @@ async def showgamedebug(ctx: Context, game_id: str):
             game_str += "\n**Most even team combinations:**"
             for _, best_team in best_teams:
                 team0_players = best_team[: len(best_team) // 2]
-                team1_players = best_team[len(best_team) // 2:]
+                team1_players = best_team[len(best_team) // 2 :]
                 game_str += (
                     f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                 )
             game_str += "\n\n**Least even team combination:**"
             for _, worst_team in worst_teams:
                 team0_players = worst_team[: len(worst_team) // 2]
-                team1_players = worst_team[len(worst_team) // 2:]
+                team1_players = worst_team[len(worst_team) // 2 :]
                 game_str += (
                     f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                 )
@@ -3132,7 +3147,7 @@ async def status(ctx: Context, *args):
                 ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
 
                 time_until_rotation = config.MAP_ROTATION_MINUTES - (
-                        time_since_update.seconds // 60
+                    time_since_update.seconds // 60
                 )
                 # output += f"{next_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): "
                 output += f"{next_map_str}\n"
@@ -3254,9 +3269,9 @@ async def status(ctx: Context, *args):
                         game.team1_name, 1 - game.win_probability, team1_players
                     )
                     minutes_ago = (
-                                          datetime.now(timezone.utc)
-                                          - game.created_at.replace(tzinfo=timezone.utc)
-                                  ).seconds // 60
+                        datetime.now(timezone.utc)
+                        - game.created_at.replace(tzinfo=timezone.utc)
+                    ).seconds // 60
                     output += f"@ {minutes_ago} minutes ago\n"
 
         output += "\n"
@@ -3310,10 +3325,14 @@ async def stats(interaction: Interaction):
     # Filter players that haven't played a game
     players = list(
         filter(
-            lambda x:
-            (x.rated_trueskill_mu != default_rating.mu and x.rated_trueskill_sigma != default_rating.sigma)
-            and
-            (x.rated_trueskill_mu != config.DEFAULT_TRUESKILL_MU and x.rated_trueskill_sigma != config.DEFAULT_TRUESKILL_SIGMA),
+            lambda x: (
+                x.rated_trueskill_mu != default_rating.mu
+                and x.rated_trueskill_sigma != default_rating.sigma
+            )
+            and (
+                x.rated_trueskill_mu != config.DEFAULT_TRUESKILL_MU
+                and x.rated_trueskill_sigma != config.DEFAULT_TRUESKILL_SIGMA
+            ),
             players,
         )
     )
@@ -3345,17 +3364,17 @@ async def stats(interaction: Interaction):
 
     def is_win(finished_game: FinishedGame) -> bool:
         if (
-                fgps_by_finished_game_id[finished_game.id].team
-                == finished_game.winning_team
+            fgps_by_finished_game_id[finished_game.id].team
+            == finished_game.winning_team
         ):
             return True
         return False
 
     def is_loss(finished_game: FinishedGame) -> bool:
         if (
-                fgps_by_finished_game_id[finished_game.id].team
-                != finished_game.winning_team
-                and finished_game.winning_team != -1
+            fgps_by_finished_game_id[finished_game.id].team
+            != finished_game.winning_team
+            and finished_game.winning_team != -1
         ):
             return True
         return False
@@ -3584,7 +3603,7 @@ async def _rebalance_game(
         session.delete(game_player)
     game.win_probability = win_prob
     team0_players = players[: len(players) // 2]
-    team1_players = players[len(players) // 2:]
+    team1_players = players[len(players) // 2 :]
 
     short_game_id = short_uuid(game.id)
     channel_message = f"New teams ({short_game_id}):"
@@ -3654,7 +3673,7 @@ async def _rebalance_game(
             await send_message(
                 message.channel,
                 embed_description=f"Players moved to new team voice channels for game {short_game_id}",
-                colour=Colour.green()
+                colour=Colour.green(),
             )
 
     pass
