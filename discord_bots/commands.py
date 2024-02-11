@@ -2368,6 +2368,7 @@ async def _movegameplayers (game_id: str, ctx: Context = None, guild: Guild = No
                 colour=Colour.red(),
             )
             return
+        return
 
     team0_ipg_players: list[InProgressGamePlayer] = session.query(
         InProgressGamePlayer
