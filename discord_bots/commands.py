@@ -2964,7 +2964,7 @@ async def showgamedebug(ctx: Context, game_id: str):
 @commands.check(is_admin)
 async def showsigma(ctx: Context, member: Member):
     """
-    Returns the player's base sigma. Doesn't consider regions
+    Returns the player's base sigma
     """
     session = ctx.session
     player: Player = session.query(Player).filter(Player.id == member.id).first()

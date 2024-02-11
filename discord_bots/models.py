@@ -195,10 +195,6 @@ class FinishedGame:
         default="Diamond Sword",
         metadata={"sa": Column(String, nullable=False, server_default="Diamond Sword")},
     )
-    queue_region_name: str = field(
-        default=None,
-        metadata={"sa": Column(String, index=True, nullable=True)},
-    )
     category_name: str = field(
         default=None,
         metadata={"sa": Column(String, index=True, nullable=True)},
@@ -766,20 +762,6 @@ class QueuePlayer:
         },
     )
     channel_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
-    id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-
-
-@mapper_registry.mapped
-@dataclass
-class QueueRegion:
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "queue_region"
-
-    name: str = field(metadata={"sa": Column(String, nullable=False)})
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
