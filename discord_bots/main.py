@@ -93,7 +93,7 @@ async def on_message(message: Message):
             guild = message.guild
             content = []
             content.append(f"Your id: {message.author.id}")
-            content.append(f"Channel id: {message.channel.id}")
+            content.append(f"Channel id: {message.channel.id}, {message.channel.type}")
             content.append(f"Guild id: {message.guild.id}, {message.guild.name}")
             content.append(f"{[(c.id, c.name) for c in guild.categories]}")
 
