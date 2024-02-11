@@ -1,4 +1,3 @@
-import asyncio
 import heapq
 import logging  # TODO: need to change to module logging, since doing this will always display "root.INFO,WARN,..."
 import os
