@@ -699,7 +699,7 @@ class Player:
     currency: int = field(
         default=config.STARTING_CURRENCY,
         metadata={
-            "sa": Column(Integer, nullable=False, server_default=text("100"))
+            "sa": Column(Integer, nullable=False, server_default=text(config.STARTING_CURRENCY))
         },
     )
 
