@@ -18,6 +18,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
+
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
@@ -198,23 +199,27 @@ class EconomyTransaction:
             )
         },
     )
-    value: int = field(
-        metadata={"sa": Column(Integer, nullable=False)}
-    )
+    value: int = field(metadata={"sa": Column(Integer, nullable=False)})
     transaction_type: str = field(
         metadata={"sa": Column(String, nullable=False)},
     )
     prediction_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("economy_prediction.prediction_id"), nullable=True, index=True
+                String,
+                ForeignKey("economy_prediction.prediction_id"),
+                nullable=True,
+                index=True,
             )
         },
     )
     donation_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("economy_donation.donation_id"), nullable=True, index=True
+                String,
+                ForeignKey("economy_donation.donation_id"),
+                nullable=True,
+                index=True,
             )
         },
     )
@@ -224,11 +229,11 @@ class EconomyTransaction:
         metadata={"sa": Column(DateTime, index=True)},
     )
 
-    player = relationship("Player", back_populates="economy_transaction")
-    finished_game = relationship("FinishedGame", back_populates="economy_transaction")
-    in_progress_game = relationship("InProgressGame", back_populates="economy_transaction")
-    prediction = relationship("EconomyPrediction", back_populates="economy_transaction")
-    donation = relationship("EconomyDonation", back_populates="economy_transaction")
+    player = relationship("Player", backref="economy_transaction")
+    finished_game = relationship("FinishedGame", backref="economy_transaction")
+    in_progress_game = relationship("InProgressGame", backref="economy_transaction")
+    prediction = relationship("EconomyPrediction", backref="economy_transaction")
+    donation = relationship("EconomyDonation", backref="economy_transaction")
 
 
 @mapper_registry.mapped
@@ -271,17 +276,15 @@ class EconomyPrediction:
     team_name: str = field(
         metadata={"sa": Column(String, nullable=False)},
     )
-    prediction_value: int = field(
-        metadata={"sa": Column(Integer, nullable=False)}
-    )
+    prediction_value: int = field(metadata={"sa": Column(Integer, nullable=False)})
     outcome: bool = field(
         metadata={"sa": Column(Boolean, nullable=True)},
     )
 
-    player = relationship("Player", back_populates="economy_prediction")
-    finished_game = relationship("FinishedGame", back_populates="economy_prediction")
-    in_progress_game = relationship("InProgressGame", back_populates="economy_prediction")
-    economy_transaction = relationship("EconomyTransaction", back_populates="economy_prediction")
+    player = relationship("Player", backref="economy_prediction")
+    finished_game = relationship("FinishedGame", backref="economy_prediction")
+    in_progress_game = relationship("InProgressGame", backref="economy_prediction")
+    # economy_transaction = relationship("EconomyTransaction", back_populates="economy_prediction")
 
 
 @mapper_registry.mapped
@@ -316,13 +319,21 @@ class EconomyDonation:
     receiving_player_name: str = field(
         metadata={"sa": Column(String, nullable=False, index=True)},
     )
-    value: int = field(
-        metadata={"sa": Column(Integer, nullable=False)}
-    )
+    value: int = field(metadata={"sa": Column(Integer, nullable=False)})
 
-    sending_player = relationship("Player", back_populates="economy_donation")
-    receiving_player = relationship("Player", back_populates="economy_donation")
-    economy_transaction = relationship("EconomyTransaction", back_populates="economy_donation")
+    sending_player = relationship(
+        "Player",
+        foreign_keys="sending_player_id",
+        primaryjoin="EconomyDonation.sending_player_id == Player.id",
+        backref="economy_donation",
+    )
+    receiving_player = relationship(
+        "Player", 
+        foreign_keys="receiving_player_id", 
+        primaryjoin="EconomyDonation.receiving_player_id == Player.id",
+        backref="economy_donation"
+    )
+    # economy_transaction = relationship("EconomyTransaction", back_populates="economy_donation")
 
 
 @mapper_registry.mapped
@@ -369,9 +380,8 @@ class FinishedGame:
         metadata={"sa": Column(String, primary_key=True)},
     )
 
-    economy_transaction = relationship("EconomyTransaction", back_populates="finished_game")
-    economy_prediction = relationship("EconomyPrediction", back_populates="finished_game")
-    
+    # economy_transaction = relationship("EconomyTransaction", back_populates="finished_game")
+    # economy_prediction = relationship("EconomyPrediction", back_populates="finished_game")
 
 
 @mapper_registry.mapped
@@ -482,8 +492,8 @@ class InProgressGame:
         metadata={"sa": Column(String, primary_key=True)},
     )
 
-    economy_transaction = relationship("EconomyTransaction", back_populates="in_progress_game")
-    economy_prediction = relationship("EconomyPrediction", back_populates="in_progress_game")    
+    # economy_transaction = relationship("EconomyTransaction", back_populates="in_progress_game")
+    # economy_prediction = relationship("EconomyPrediction", back_populates="in_progress_game")
 
 
 @mapper_registry.mapped
@@ -698,16 +708,16 @@ class Player:
     )
     currency: int = field(
         default=config.STARTING_CURRENCY,
-        metadata={
-            "sa": Column(Integer, nullable=False, server_default=text(config.STARTING_CURRENCY))
-        },
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
     )
 
     finished_game_players = relationship("FinishedGamePlayer", back_populates="player")
-    in_progress_game_players = relationship("InProgressGamePlayer", back_populates="player")
-    economy_transaction = relationship("EconomyTransaction", back_populates="player")
-    economy_prediction = relationship("EconomyPrediction", back_populates="player")
-    economy_donation = relationship("EconomyDonation", back_populates="player")
+    in_progress_game_players = relationship(
+        "InProgressGamePlayer", back_populates="player"
+    )
+    # economy_transaction = relationship("EconomyTransaction", back_populates="player")
+    # economy_prediction = relationship("EconomyPrediction", back_populates="player")
+    # economy_donation = relationship("EconomyDonation", back_populates="player")
 
     @hybrid_property
     def leaderboard_trueskill(self):
