@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     DateTime,
@@ -115,13 +116,13 @@ class Commend:
         },
     )
     commender_id: int = field(
-        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), index=True)},
     )
     commender_name: str = field(
         metadata={"sa": Column(String, nullable=False, index=True)},
     )
     commendee_id: int = field(
-        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), index=True)},
     )
     commendee_name: str = field(
         metadata={"sa": Column(String, nullable=False, index=True)},
@@ -219,7 +220,7 @@ class FinishedGamePlayer:
         },
     )
     player_id: int = field(
-        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), index=True)},
     )
     player = relationship("Player", back_populates="finished_game_players")
     player_name: str = field(
@@ -321,7 +322,9 @@ class InProgressGamePlayer:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
         },
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
@@ -350,7 +353,7 @@ class InProgressGameChannel:
         },
     )
     channel_id: int = field(
-        metadata={"sa": Column(Integer, nullable=False)},
+        metadata={"sa": Column(BigInteger, nullable=False)},
     )
     id: str = field(
         init=False,
@@ -396,10 +399,12 @@ class MapVote:
     __tablename__ = "map_vote"
     __table_args__ = (UniqueConstraint("player_id", "rotation_map_id"),)
 
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    channel_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
         }
     )
     rotation_map_id: str = field(
@@ -427,11 +432,11 @@ class SkipMapVote:
     __tablename__ = "skip_map_vote"
     __table_args__ = (UniqueConstraint("player_id"),)
 
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    channel_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
     player_id: int = field(
         metadata={
             "sa": Column(
-                Integer,
+                BigInteger,
                 ForeignKey("player.id"),
                 nullable=False,
                 index=True,
@@ -466,7 +471,7 @@ class Player:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "player"
 
-    id: int = field(metadata={"sa": Column(Integer, primary_key=True)})
+    id: int = field(metadata={"sa": Column(BigInteger, primary_key=True)})
     name: str = field(metadata={"sa": Column(String, nullable=False)})
     is_admin: bool = field(
         default=False, metadata={"sa": Column(Boolean, nullable=False)}
@@ -536,7 +541,9 @@ class PlayerDecay:
 
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
         },
     )
     decay_percentage: float = field(metadata={"sa": Column(Float, nullable=False)})
@@ -576,7 +583,9 @@ class PlayerCategoryTrueskill:
 
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
         },
     )
     category_id: str = field(
@@ -713,7 +722,9 @@ class QueueNotification:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
         },
     )
     size: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
@@ -749,10 +760,12 @@ class QueuePlayer:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
         },
     )
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    channel_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -812,7 +825,7 @@ class QueueWaitlist:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "queue_waitlist"
 
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    channel_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
     finished_game_id: str = field(
         metadata={
             "sa": Column(
@@ -820,7 +833,7 @@ class QueueWaitlist:
             )
         },
     )
-    guild_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    guild_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
     in_progress_game_id: str = field(
         metadata={
             "sa": Column(
@@ -866,7 +879,7 @@ class QueueWaitlistPlayer:
         },
     )
     player_id: int = field(
-        metadata={"sa": Column(Integer, ForeignKey("player.id"), nullable=False)},
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), nullable=False)},
     )
     id: str = field(
         init=False,
@@ -890,7 +903,7 @@ class Raffle:
     code: str = field(default=None, metadata={"sa": Column(String)})
     winning_player_id: int = field(
         default=None,
-        metadata={"sa": Column(Integer, ForeignKey("player.id"), index=True)},
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), index=True)},
     )
     total_tickets: int = field(
         default=0, metadata={"sa": Column(Integer, index=True, nullable=False)}
@@ -1030,8 +1043,8 @@ class VotePassedWaitlist:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "vote_passed_waitlist"
 
-    channel_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
-    guild_id: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    channel_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
+    guild_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
     end_waitlist_at: datetime = field(
         metadata={"sa": Column(DateTime, index=True, nullable=False)},
     )
@@ -1060,7 +1073,7 @@ class VotePassedWaitlistPlayer:
         }
     )
     player_id: int = field(
-        metadata={"sa": Column(Integer, ForeignKey("player.id"), nullable=False)},
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), nullable=False)},
     )
     queue_id: str = field(metadata={"sa": Column(String, ForeignKey("queue.id"))})
     id: str = field(
