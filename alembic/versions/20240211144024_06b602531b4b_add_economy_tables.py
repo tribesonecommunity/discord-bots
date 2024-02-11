@@ -1,8 +1,8 @@
 """Add Economy Tables
 
-Revision ID: 699eaccdbe40
+Revision ID: 06b602531b4b
 Revises: fc1d3e3c8384
-Create Date: 2024-02-11 23:19:04.470893
+Create Date: 2024-02-11 14:40:24.724059
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "699eaccdbe40"
+revision = "06b602531b4b"
 down_revision = "fc1d3e3c8384"
 branch_labels = None
 depends_on = None
@@ -21,9 +21,9 @@ def upgrade():
     op.create_table(
         "economy_donation",
         sa.Column("donation_id", sa.String(), nullable=False),
-        sa.Column("sending_player_id", sa.Integer(), nullable=False),
+        sa.Column("sending_player_id", sa.BigInteger(), nullable=False),
         sa.Column("sending_player_name", sa.String(), nullable=False),
-        sa.Column("receiving_player_id", sa.Integer(), nullable=False),
+        sa.Column("receiving_player_id", sa.BigInteger(), nullable=False),
         sa.Column("receiving_player_name", sa.String(), nullable=False),
         sa.Column("value", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(
@@ -65,12 +65,12 @@ def upgrade():
     op.create_table(
         "economy_prediction",
         sa.Column("prediction_id", sa.String(), nullable=False),
-        sa.Column("player_id", sa.Integer(), nullable=False),
+        sa.Column("player_id", sa.BigInteger(), nullable=False),
         sa.Column("player_name", sa.String(), nullable=False),
         sa.Column("finished_game_id", sa.String(), nullable=True),
         sa.Column("in_progress_game_id", sa.String(), nullable=True),
         sa.Column("team_name", sa.String(), nullable=False),
-        sa.Column("prediction_value", sa.Integer(), nullable=False),
+        sa.Column("prediction_value", sa.BigInteger(), nullable=False),
         sa.Column("outcome", sa.Boolean(), nullable=True),
         sa.ForeignKeyConstraint(
             ["finished_game_id"],
@@ -118,11 +118,22 @@ def upgrade():
     op.create_table(
         "economy_transaction",
         sa.Column("transaction_id", sa.String(), nullable=False),
-        sa.Column("player_id", sa.Integer(), nullable=False),
+        sa.Column("player_id", sa.BigInteger(), nullable=False),
         sa.Column("player_name", sa.String(), nullable=False),
         sa.Column("finished_game_id", sa.String(), nullable=True),
         sa.Column("in_progress_game_id", sa.String(), nullable=True),
-        sa.Column("value", sa.Integer(), nullable=False),
+        sa.Column(
+            "debit",
+            sa.BigInteger(),
+            server_default=sa.text("0"),
+            nullable=False,
+        ),
+        sa.Column(
+            "credit",
+            sa.BigInteger(),
+            server_default=sa.text("0"),
+            nullable=False,
+        ),
         sa.Column("transaction_type", sa.String(), nullable=False),
         sa.Column("prediction_id", sa.String(), nullable=True),
         sa.Column("donation_id", sa.String(), nullable=True),
@@ -196,7 +207,7 @@ def upgrade():
         batch_op.add_column(
             sa.Column(
                 "currency",
-                sa.Integer(),
+                sa.BigInteger(),
                 server_default=sa.text("0"),
                 nullable=False,
             )

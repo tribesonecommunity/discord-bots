@@ -164,6 +164,104 @@ class CustomCommand:
 
 @mapper_registry.mapped
 @dataclass
+class EconomyDonation:
+    """
+    Stores economic donation information
+    - Transfers of currency between players
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "economy_donation"
+
+    donation_id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+    sending_player_id: int = field(
+        metadata={
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    sending_player_name: str = field(
+        metadata={"sa": Column(String, nullable=False, index=True)},
+    )
+    receiving_player_id: int = field(
+        metadata={
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    receiving_player_name: str = field(
+        metadata={"sa": Column(String, nullable=False, index=True)},
+    )
+    value: int = field(metadata={"sa": Column(Integer, nullable=False)})
+
+    sending_player = relationship(
+        "Player",
+        foreign_keys=[sending_player_id.metadata['sa']],
+        back_populates="donation_senders",
+    )
+    receiving_player = relationship(
+        "Player", 
+        foreign_keys=[receiving_player_id.metadata['sa']],
+        back_populates="donation_receivers"
+    )
+    transactions = relationship("EconomyTransaction", back_populates="donation")
+
+
+@mapper_registry.mapped
+@dataclass
+class EconomyPrediction:
+    """
+    Stores prediction data on a game per player
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "economy_prediction"
+
+    prediction_id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+    player_id: int = field(
+        metadata={
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    player_name: str = field(
+        metadata={"sa": Column(String, nullable=False, index=True)},
+    )
+    finished_game_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("finished_game.id"), nullable=True, index=True
+            )
+        },
+    )
+    in_progress_game_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("in_progress_game.id"), nullable=True, index=True
+            )
+        },
+    )
+    team_name: str = field(
+        metadata={"sa": Column(String, nullable=False)},
+    )
+    prediction_value: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
+    outcome: bool = field(
+        metadata={"sa": Column(Boolean, nullable=True)},
+    )
+
+    player = relationship("Player", back_populates="prediction")
+    finished_game = relationship("FinishedGame", back_populates="prediction")
+    in_progress_game = relationship("InProgressGame", back_populates="prediction")
+    transactions = relationship("EconomyTransaction", back_populates="prediction")
+
+
+@mapper_registry.mapped
+@dataclass
 class EconomyTransaction:
     """
     Economic transaction ledger
@@ -179,7 +277,7 @@ class EconomyTransaction:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
     player_name: str = field(
@@ -199,7 +297,8 @@ class EconomyTransaction:
             )
         },
     )
-    value: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    debit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
+    credit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
     transaction_type: str = field(
         metadata={"sa": Column(String, nullable=False)},
     )
@@ -229,111 +328,11 @@ class EconomyTransaction:
         metadata={"sa": Column(DateTime, index=True)},
     )
 
-    player = relationship("Player", backref="economy_transaction")
-    finished_game = relationship("FinishedGame", backref="economy_transaction")
-    in_progress_game = relationship("InProgressGame", backref="economy_transaction")
-    prediction = relationship("EconomyPrediction", backref="economy_transaction")
-    donation = relationship("EconomyDonation", backref="economy_transaction")
-
-
-@mapper_registry.mapped
-@dataclass
-class EconomyPrediction:
-    """
-    Stores prediction data on a game per player
-    """
-
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "economy_prediction"
-
-    prediction_id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-    player_id: int = field(
-        metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
-        },
-    )
-    player_name: str = field(
-        metadata={"sa": Column(String, nullable=False, index=True)},
-    )
-    finished_game_id: str = field(
-        metadata={
-            "sa": Column(
-                String, ForeignKey("finished_game.id"), nullable=True, index=True
-            )
-        },
-    )
-    in_progress_game_id: str = field(
-        metadata={
-            "sa": Column(
-                String, ForeignKey("in_progress_game.id"), nullable=True, index=True
-            )
-        },
-    )
-    team_name: str = field(
-        metadata={"sa": Column(String, nullable=False)},
-    )
-    prediction_value: int = field(metadata={"sa": Column(Integer, nullable=False)})
-    outcome: bool = field(
-        metadata={"sa": Column(Boolean, nullable=True)},
-    )
-
-    player = relationship("Player", backref="economy_prediction")
-    finished_game = relationship("FinishedGame", backref="economy_prediction")
-    in_progress_game = relationship("InProgressGame", backref="economy_prediction")
-    # economy_transaction = relationship("EconomyTransaction", back_populates="economy_prediction")
-
-
-@mapper_registry.mapped
-@dataclass
-class EconomyDonation:
-    """
-    Stores economic donation information
-    - Transfers of currency between players
-    """
-
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "economy_donation"
-
-    donation_id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-    sending_player_id: int = field(
-        metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
-        },
-    )
-    sending_player_name: str = field(
-        metadata={"sa": Column(String, nullable=False, index=True)},
-    )
-    receiving_player_id: int = field(
-        metadata={
-            "sa": Column(Integer, ForeignKey("player.id"), nullable=False, index=True)
-        },
-    )
-    receiving_player_name: str = field(
-        metadata={"sa": Column(String, nullable=False, index=True)},
-    )
-    value: int = field(metadata={"sa": Column(Integer, nullable=False)})
-
-    sending_player = relationship(
-        "Player",
-        foreign_keys="sending_player_id",
-        primaryjoin="EconomyDonation.sending_player_id == Player.id",
-        backref="economy_donation",
-    )
-    receiving_player = relationship(
-        "Player", 
-        foreign_keys="receiving_player_id", 
-        primaryjoin="EconomyDonation.receiving_player_id == Player.id",
-        backref="economy_donation"
-    )
-    # economy_transaction = relationship("EconomyTransaction", back_populates="economy_donation")
+    player = relationship("Player", back_populates="transactions")
+    finished_game = relationship("FinishedGame", back_populates="transactions")
+    in_progress_game = relationship("InProgressGame", back_populates="transactions")
+    prediction = relationship("EconomyPrediction", back_populates="transactions")
+    donation = relationship("EconomyDonation", back_populates="transactions")
 
 
 @mapper_registry.mapped
@@ -380,8 +379,8 @@ class FinishedGame:
         metadata={"sa": Column(String, primary_key=True)},
     )
 
-    # economy_transaction = relationship("EconomyTransaction", back_populates="finished_game")
-    # economy_prediction = relationship("EconomyPrediction", back_populates="finished_game")
+    transactions = relationship("EconomyTransaction", back_populates="finished_game")
+    prediction = relationship("EconomyPrediction", back_populates="finished_game")
 
 
 @mapper_registry.mapped
@@ -492,8 +491,8 @@ class InProgressGame:
         metadata={"sa": Column(String, primary_key=True)},
     )
 
-    # economy_transaction = relationship("EconomyTransaction", back_populates="in_progress_game")
-    # economy_prediction = relationship("EconomyPrediction", back_populates="in_progress_game")
+    transactions = relationship("EconomyTransaction", back_populates="in_progress_game")
+    prediction = relationship("EconomyPrediction", back_populates="in_progress_game")
 
 
 @mapper_registry.mapped
@@ -527,7 +526,7 @@ class InProgressGamePlayer:
         metadata={"sa": Column(String, primary_key=True)},
     )
 
-    player = relationship("Player", back_populates="in_progress_game_player")
+    player = relationship("Player", back_populates="in_progress_game_players")
 
 
 @mapper_registry.mapped
@@ -708,16 +707,25 @@ class Player:
     )
     currency: int = field(
         default=config.STARTING_CURRENCY,
-        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+        metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))},
     )
 
     finished_game_players = relationship("FinishedGamePlayer", back_populates="player")
     in_progress_game_players = relationship(
         "InProgressGamePlayer", back_populates="player"
     )
-    # economy_transaction = relationship("EconomyTransaction", back_populates="player")
-    # economy_prediction = relationship("EconomyPrediction", back_populates="player")
-    # economy_donation = relationship("EconomyDonation", back_populates="player")
+    transactions = relationship("EconomyTransaction", back_populates="player")
+    prediction = relationship("EconomyPrediction", back_populates="player")
+    donation_senders = relationship(
+        "EconomyDonation",
+        back_populates="sending_player",
+        primaryjoin='Player.id == EconomyDonation.sending_player_id'
+    )
+    donation_receivers = relationship(
+        "EconomyDonation",
+        back_populates="receiving_player",
+        primaryjoin='Player.id == EconomyDonation.receiving_player_id'
+    )
 
     @hybrid_property
     def leaderboard_trueskill(self):
