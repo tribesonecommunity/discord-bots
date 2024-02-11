@@ -35,7 +35,7 @@ else:
     db_url = f"sqlite:///{config.DB_NAME}.db"
 
 # RDS free tier has max 81 connections
-engine = create_engine(db_url, echo=False, max_connections=60)
+engine = create_engine(db_url, echo=False, pool_size=60)
 naming_convention = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
