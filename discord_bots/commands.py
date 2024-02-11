@@ -2344,6 +2344,7 @@ async def trueskill(ctx: Context):
     )
 
 async def _movegameplayers (game_id: str, ctx: Context = None, guild: Guild = None):
+    message: Message | None = None
     if ctx:
         message = ctx.message
         session = ctx.session
@@ -2360,11 +2361,13 @@ async def _movegameplayers (game_id: str, ctx: Context = None, guild: Guild = No
         .first()
     )
     if not in_progress_game:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find game: {game_id}",
-            colour=Colour.red()
-        )
+        if message:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find game: {game_id}",
+                colour=Colour.red(),
+            )
+            return
         return
 
     team0_ipg_players: list[InProgressGamePlayer] = session.query(
