@@ -317,9 +317,7 @@ VoteCommands:
   setgamecode
   setqueueordinal
   setqueuerange
-  setqueuerated
   setqueuesweaty
-  setqueueunrated
   setsigma
   showgame
   showgamedebug

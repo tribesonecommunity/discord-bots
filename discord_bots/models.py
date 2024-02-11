@@ -243,18 +243,6 @@ class FinishedGamePlayer:
     rated_trueskill_sigma_before: float = field(
         metadata={"sa": Column(Float, nullable=False)}
     )
-    unrated_trueskill_mu_after: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_mu_before: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_sigma_after: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_sigma_before: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -491,8 +479,6 @@ class Player:
     :id: We use the user id from discord
     :rated_trueskill_mu: A player's trueskill rating accounting for only rated
     games.
-    :unrated_trueskill_mu: A player's trueskill rating account for rated and
-    unrated games.
     :raffle_tickets: The number of raffle tickets a player has
     """
 
@@ -516,14 +502,6 @@ class Player:
         metadata={"sa": Column(Float, nullable=False)},
     )
     rated_trueskill_sigma: float = field(
-        default=config.DEFAULT_TRUESKILL_SIGMA,
-        metadata={"sa": Column(Float, nullable=False)},
-    )
-    unrated_trueskill_mu: float = field(
-        default=config.DEFAULT_TRUESKILL_MU,
-        metadata={"sa": Column(Float, nullable=False)},
-    )
-    unrated_trueskill_sigma: float = field(
         default=config.DEFAULT_TRUESKILL_SIGMA,
         metadata={"sa": Column(Float, nullable=False)},
     )
@@ -581,12 +559,6 @@ class PlayerDecay:
         metadata={"sa": Column(Float, nullable=False)}
     )
     rated_trueskill_mu_after: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_mu_before: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_mu_after: float = field(
         metadata={"sa": Column(Float, nullable=False)}
     )
     decayed_at: datetime = field(

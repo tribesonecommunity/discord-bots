@@ -112,7 +112,7 @@ class QueueCommands(BaseCog):
     @check(is_admin)
     async def isolatequeue(self, ctx: Context, queue_name: str):
         """
-        Isolate a queue (unrated, no map rotation, no auto-adds)
+        Isolate a queue (no auto-adds)
         """
         session = ctx.session
         queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
@@ -406,21 +406,6 @@ class QueueCommands(BaseCog):
 
     @command()
     @check(is_admin)
-    async def setqueuerated(self, ctx: Context, queue_name: str):
-        """
-        Make a queue rated (count towards trueskill)
-        """
-        session = ctx.session
-        queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-        if queue:
-            queue.is_rated = True
-            session.commit()
-            await self.send_success_message(f"Queue {queue.name} is now rated")
-        else:
-            await self.send_error_message(f"Queue not found: {queue_name}")
-
-    @command()
-    @check(is_admin)
     async def setqueuerotation(self, ctx: Context, queue_name: str, rotation_name: str):
         """
         Assign a map rotation to a queue
@@ -481,21 +466,6 @@ class QueueCommands(BaseCog):
             queue.is_sweaty = True
             session.commit()
             await self.send_success_message(f"Queue {queue.name} is now sweaty")
-        else:
-            await self.send_error_message(f"Queue not found: {queue_name}")
-
-    @command()
-    @check(is_admin)
-    async def setqueueunrated(self, ctx: Context, queue_name: str):
-        """
-        Make a queue unrated (not count towards trueskill)
-        """
-        session = ctx.session
-        queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-        if queue:
-            queue.is_rated = False
-            session.commit()
-            await self.send_success_message(f"Queue {queue_name} is now unrated")
         else:
             await self.send_error_message(f"Queue not found: {queue_name}")
 
