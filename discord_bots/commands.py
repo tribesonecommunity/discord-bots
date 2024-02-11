@@ -29,19 +29,21 @@ from discord import (
 )
 from discord.ext import commands
 from discord.ext.commands.context import Context
-from discord.guild import Guild
+from discord.guild import Guild as DiscordGuild
 from discord.member import Member
 from discord.utils import escape_markdown
 from numpy import std
 from PIL import Image
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import select
 from table2ascii import PresetStyle, table2ascii
 from trueskill import Rating, rate
 
 import discord_bots.config as config
 from discord_bots.checks import is_admin
+from discord_bots.decorators import with_session
 from discord_bots.utils import (
     MU_UNICODE,
     SIGMA_UNICODE,
@@ -66,6 +68,9 @@ from .models import (
     CustomCommand,
     FinishedGame,
     FinishedGamePlayer,
+)
+from .models import Guild as ModelGuild
+from .models import (
     InProgressGame,
     InProgressGameChannel,
     InProgressGamePlayer,
@@ -315,10 +320,10 @@ def get_n_worst_finished_game_teams(
 
 
 async def create_game(
-        queue_id: str,
-        player_ids: list[int],
-        channel: TextChannel | DMChannel | GroupChannel,
-        guild: Guild,
+    queue_id: str,
+    player_ids: list[int],
+    channel: TextChannel | DMChannel | GroupChannel,
+    guild: DiscordGuild,
 ):
     session = Session()
     queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
@@ -455,8 +460,8 @@ async def create_game(
 
 
 async def create_team_voice_channels(
-    session: Session,
-    guild: Guild,
+    session: SQLAlchemySession,
+    guild: DiscordGuild,
     game: InProgressGame,
     voice_category: CategoryChannel,
 ) -> tuple[discord.VoiceChannel, discord.VoiceChannel]:
@@ -476,10 +481,10 @@ async def create_team_voice_channels(
 
 
 async def add_player_to_queue(
-        queue_id: str,
-        player_id: int,
-        channel: TextChannel | DMChannel | GroupChannel,
-        guild: Guild,
+    queue_id: str,
+    player_id: int,
+    channel: TextChannel | DMChannel | GroupChannel,
+    guild: DiscordGuild,
 ) -> tuple[bool, bool]:
     """
     Helper function to add player to a queue and pop if needed.
@@ -1344,12 +1349,6 @@ async def ban(ctx: Context, member: Member):
             )
 
 
-@bot.command()
-async def coinflip(ctx: Context):
-    message = ctx.message
-    result = "HEADS" if floor(random() * 2) == 0 else "TAILS"
-    await send_message(message.channel, embed_description=result, colour=Colour.blue())
-
 
 @bot.command()
 @commands.check(is_admin)
@@ -1388,6 +1387,13 @@ async def cancelgame(ctx: Context, game_id: str):
         embed_description=f"Game {game_id} cancelled",
         colour=Colour.blue(),
     )
+
+
+@bot.command()
+async def coinflip(ctx: Context):
+    message = ctx.message
+    result = "HEADS" if floor(random() * 2) == 0 else "TAILS"
+    await send_message(message.channel, embed_description=result, colour=Colour.blue())
 
 
 @bot.command()
@@ -1541,11 +1547,41 @@ async def commendstats(ctx: Context):
                 pass
 
 
+@bot.tree.command(description="Initially configure the bot for this server")
+async def configure(interaction: Interaction):
+    session = Session()
+    guild = (
+        session.query(ModelGuild)
+        .filter(ModelGuild.discord_id == interaction.guild_id)
+        .first()
+    )
+    if guild:
+        await interaction.response.send_message(
+            embed=Embed(
+                description="Server already configured",
+                colour=Colour.red(),
+            ),
+            ephemeral=True,
+        )
+    else:
+        guild = ModelGuild(interaction.guild_id, interaction.guild.name)
+        session.add(guild)
+        session.commit()
+        await interaction.response.send_message(
+            embed=Embed(
+                description="Server configured successfully!",
+                colour=Colour.green(),
+            ),
+            ephemeral=True,
+        )
+    session.close()
+
+
 @bot.command()
 @commands.check(is_admin)
 async def createcommand(ctx: Context, name: str, *, output: str):
     message = ctx.message
-    session = ctx.session
+    session: str = ctx.session
     exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
     if exists is not None:
         await send_message(
@@ -1709,8 +1745,13 @@ async def delplayer(ctx: Context, member: Member, *args):
     """
     message = ctx.message
     session = ctx.session
-    queues: list(Queue) = session.query(Queue).join(QueuePlayer).filter(QueuePlayer.player_id == member.id).order_by(
-        Queue.created_at.asc()).all()  # type: ignore
+    queues: List[Queue] = (
+        session.query(Queue)
+        .join(QueuePlayer)
+        .filter(QueuePlayer.player_id == member.id)
+        .order_by(Queue.created_at.asc())
+        .all()
+    )  # type: ignore
     for queue in queues:
         session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id
@@ -2343,7 +2384,10 @@ async def trueskill(ctx: Context):
         colour=Colour.blue(),
     )
 
-async def _movegameplayers (game_id: str, ctx: Context = None, guild: Guild = None):
+
+async def _movegameplayers(
+    game_id: str, ctx: Context = None, guild: DiscordGuild = None
+):
     if ctx:
         message = ctx.message
         session = ctx.session
@@ -2823,6 +2867,18 @@ async def setgamecode(interaction: Interaction, code: str):
         .all()
     )
     session.commit()
+
+    for ipg_player in ipg_players:
+        embed = Embed(
+            title=f"Lobby code for ({short_uuid(ipg.id)})",
+            description=f"`{code}`",
+            colour=Colour.blue(),
+        )
+        embed.set_footer(text=f"set by {interaction.user}")
+        if interaction.guild:
+            await send_in_guild_message(
+                interaction.guild, ipg_player.player_id, embed=embed
+            )
     if ipg_players:
         await interaction.response.send_message(
             embed=Embed(
@@ -2839,18 +2895,6 @@ async def setgamecode(interaction: Interaction, code: str):
             ),
             ephemeral=True,
         )
-
-    for ipg_player in ipg_players:
-        embed = Embed(
-            title=f"Lobby code for ({short_uuid(ipg.id)})",
-            description=f"`{code}`",
-            colour=Colour.blue(),
-        )
-        embed.set_footer(text=f"set by {interaction.user}")
-        if interaction.guild:
-            await send_in_guild_message(
-                interaction.guild, ipg_player.player_id, embed=embed
-            )
     session.close()
 
 
@@ -3641,7 +3685,7 @@ async def stats(interaction: Interaction):
     try:
         await interaction.response.send_message(embeds=embeds, ephemeral=True)
     except Exception as e:
-        logging.warn(f"Caught exception {e} trying to send stats")
+        logging.warn(f"Caught exception {e} trying to")
     session.close()
 
 
@@ -3678,7 +3722,9 @@ async def streams(ctx: Context):
     )
 
 
-async def _rebalance_game(game: InProgressGame, session: Session, message: Message):
+async def _rebalance_game(
+    game: InProgressGame, session: SQLAlchemySession, message: Message
+):
     """
     Recreate the players on each team - use this after subbing a player
     """
