@@ -91,11 +91,13 @@ async def on_message(message: Message):
             and "configurebot" in message.content
         ):
             guild = message.guild
-            print(f"Your id: {message.author.id}")
-            print(f"Channel id: {message.channel.id}")
-            print(f"{[(c.id, c.name) for c in guild.categories]}")
+            content = []
+            content.append(f"Your id: {message.author.id}")
+            content.append(f"Channel id: {message.channel.id}")
+            content.append(f"Guild id: {message.guild.id}, {message.guild.name}")
+            content.append(f"{[(c.id, c.name) for c in guild.categories]}")
 
-            # await message.channel.send(content=f"Your id: {message.author.id}\nChannel id: {message.channel.id}")
+            await message.channel.send(content="\n".join(content))
             return
 
     if (config.CHANNEL_ID and message.channel.id == config.CHANNEL_ID) or (
