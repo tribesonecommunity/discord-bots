@@ -35,7 +35,10 @@ else:
     db_url = f"sqlite:///{config.DB_NAME}.db"
 
 # RDS free tier has max 81 connections
-engine = create_engine(db_url, echo=False, pool_size=60)
+if db_url.startswith("postgresql://"):
+    engine = create_engine(db_url, echo=False, pool_size=60)
+else:
+    engine = create_engine(db_url, echo=False)
 naming_convention = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -356,10 +359,6 @@ class FinishedGame:
         default="Diamond Sword",
         metadata={"sa": Column(String, nullable=False, server_default="Diamond Sword")},
     )
-    queue_region_name: str = field(
-        default=None,
-        metadata={"sa": Column(String, index=True, nullable=True)},
-    )
     category_name: str = field(
         default=None,
         metadata={"sa": Column(String, index=True, nullable=True)},
@@ -406,18 +405,6 @@ class FinishedGamePlayer:
         metadata={"sa": Column(Float, nullable=False)}
     )
     rated_trueskill_sigma_before: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_mu_after: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_mu_before: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_sigma_after: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_sigma_before: float = field(
         metadata={"sa": Column(Float, nullable=False)}
     )
     id: str = field(
@@ -661,8 +648,6 @@ class Player:
     :id: We use the user id from discord
     :rated_trueskill_mu: A player's trueskill rating accounting for only rated
     games.
-    :unrated_trueskill_mu: A player's trueskill rating account for rated and
-    unrated games.
     :raffle_tickets: The number of raffle tickets a player has
     """
 
@@ -686,14 +671,6 @@ class Player:
         metadata={"sa": Column(Float, nullable=False)},
     )
     rated_trueskill_sigma: float = field(
-        default=config.DEFAULT_TRUESKILL_SIGMA,
-        metadata={"sa": Column(Float, nullable=False)},
-    )
-    unrated_trueskill_mu: float = field(
-        default=config.DEFAULT_TRUESKILL_MU,
-        metadata={"sa": Column(Float, nullable=False)},
-    )
-    unrated_trueskill_sigma: float = field(
         default=config.DEFAULT_TRUESKILL_SIGMA,
         metadata={"sa": Column(Float, nullable=False)},
     )
@@ -762,12 +739,6 @@ class PlayerDecay:
         metadata={"sa": Column(Float, nullable=False)}
     )
     rated_trueskill_mu_after: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_mu_before: float = field(
-        metadata={"sa": Column(Float, nullable=False)}
-    )
-    unrated_trueskill_mu_after: float = field(
         metadata={"sa": Column(Float, nullable=False)}
     )
     decayed_at: datetime = field(
@@ -975,20 +946,6 @@ class QueuePlayer:
         },
     )
     channel_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
-    id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-
-
-@mapper_registry.mapped
-@dataclass
-class QueueRegion:
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "queue_region"
-
-    name: str = field(metadata={"sa": Column(String, nullable=False)})
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),

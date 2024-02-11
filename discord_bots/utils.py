@@ -56,10 +56,6 @@ def pretty_format_team(
             ]
         )
     )
-    # TODO: This isn't right for games with regions
-    # team_mu = round(mean(list(player.rated_trueskill_mu for player in players)), 2)
-    # if SHOW_TRUESKILL:
-    #     return f"**{team_name}** ({round(100 * win_probability, 1)}%, mu: {team_mu}): {player_names}\n"
     return f"{team_name} ({round(100 * win_probability, 1)}%): {player_names}\n"
 
 
@@ -74,10 +70,6 @@ def pretty_format_team_no_format(
             ]
         )
     )
-    # TODO: This isn't right for games with regions
-    # team_mu = round(mean(list(player.rated_trueskill_mu for player in players)), 2)
-    # if SHOW_TRUESKILL:
-    #     return f"**{team_name}** ({round(100 * win_probability, 1)}%, mu: {team_mu}): {player_names}\n"
     return f"{team_name} ({round(100 * win_probability, 1)}%): {player_names}\n"
 
 

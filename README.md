@@ -112,7 +112,7 @@ Postgres is the new preferred way of doing development. To install `psycopg2` yo
 
 ### Ubuntu
 ```
-apt-get install libpq-dev
+sudo apt-get install libpq-dev
 ```
 
 ### Arch linux
@@ -120,14 +120,23 @@ apt-get install libpq-dev
 pacman -S postgresql-libs
 ```
 
-The steps are the same but use `pip install -e -U .` instead. This allows local changes to be picked up automatically.
+The steps are the same but use `pip install -e .` instead. This allows local changes to be picked up automatically.
 
 ## Database
 
-After installation, start a local database with:
-
+Install Docker
 ```
-docker run --name postgres -e POSTGRES_PASSWORD=password -d -p 5432:5432 postgres
+sudo snap install docker
+```
+
+After installation, start a local database with:
+```
+sudo docker run --name postgres -e POSTGRES_PASSWORD=password -d -p 5432:5432 postgres
+```
+
+Install postgresql-client
+```
+sudo apt-get install postgresql-client
 ```
 
 To connect with PSQL:
@@ -309,9 +318,7 @@ VoteCommands:
   setgamecode
   setqueueordinal
   setqueuerange
-  setqueuerated
   setqueuesweaty
-  setqueueunrated
   setsigma
   showgame
   showgamedebug

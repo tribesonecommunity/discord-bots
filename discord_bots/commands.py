@@ -192,33 +192,18 @@ def get_n_teams(
     all_combinations = list(combinations(players, team_size))
     for team0 in all_combinations:
         team1 = [p for p in players if p not in team0]
-        if is_rated:
-            team0_ratings = list(
-                map(
-                    lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
-                    team0,
-                )
+        team0_ratings = list(
+            map(
+                lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+                team0,
             )
-            team1_ratings = list(
-                map(
-                    lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
-                    team1,
-                )
+        )
+        team1_ratings = list(
+            map(
+                lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+                team1,
             )
-        else:
-            team0_ratings = list(
-                map(
-                    lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
-                    team0,
-                )
-            )
-            team1_ratings = list(
-                map(
-                    lambda x: Rating(x.unrated_trueskill_mu, x.unrated_trueskill_sigma),
-                    team1,
-                )
-            )
-
+        )
         win_prob = win_probability(team0_ratings, team1_ratings)
         current_team_evenness = abs(0.50 - win_prob)
         heapq.heappush(
@@ -258,41 +243,22 @@ def get_n_finished_game_teams(
     all_combinations = list(combinations(fgps, team_size))
     for team0 in all_combinations:
         team1 = [p for p in fgps if p not in team0]
-        if is_rated:
-            team0_ratings = list(
-                map(
-                    lambda x: Rating(
-                        x.rated_trueskill_mu_before, x.rated_trueskill_sigma_before
-                    ),
-                    team0,
-                )
+        team0_ratings = list(
+            map(
+                lambda x: Rating(
+                    x.rated_trueskill_mu_before, x.rated_trueskill_sigma_before
+                ),
+                team0,
             )
-            team1_ratings = list(
-                map(
-                    lambda x: Rating(
-                        x.rated_trueskill_mu_before, x.rated_trueskill_sigma_before
-                    ),
-                    team1,
-                )
+        )
+        team1_ratings = list(
+            map(
+                lambda x: Rating(
+                    x.rated_trueskill_mu_before, x.rated_trueskill_sigma_before
+                ),
+                team1,
             )
-        else:
-            team0_ratings = list(
-                map(
-                    lambda x: Rating(
-                        x.unrated_trueskill_mu_before, x.unrated_trueskill_sigma_before
-                    ),
-                    team0,
-                )
-            )
-            team1_ratings = list(
-                map(
-                    lambda x: Rating(
-                        x.unrated_trueskill_mu_before, x.unrated_trueskill_sigma_before
-                    ),
-                    team1,
-                )
-            )
-
+        )
         win_prob = win_probability(team0_ratings, team1_ratings)
         current_team_evenness = abs(0.50 - win_prob)
         heapq.heappush(
@@ -594,23 +560,12 @@ def mock_teams_str(
     Helper method to debug print teams if these were the players
     """
     output = ""
-    if is_rated:
-        team0_rating = [
-            Rating(p.rated_trueskill_mu, p.rated_trueskill_sigma) for p in team0_players
-        ]
-        team1_rating = [
-            Rating(p.rated_trueskill_mu, p.rated_trueskill_sigma) for p in team1_players
-        ]
-    else:
-        team0_rating = [
-            Rating(p.unrated_trueskill_mu, p.unrated_trueskill_sigma)
-            for p in team0_players
-        ]
-        team1_rating = [
-            Rating(p.unrated_trueskill_mu, p.unrated_trueskill_sigma)
-            for p in team1_players
-        ]
-
+    team0_rating = [
+        Rating(p.rated_trueskill_mu, p.rated_trueskill_sigma) for p in team0_players
+    ]
+    team1_rating = [
+        Rating(p.rated_trueskill_mu, p.rated_trueskill_sigma) for p in team1_players
+    ]
     team0_names = ", ".join(
         sorted([escape_markdown(player.name) for player in team0_players])
     )
@@ -619,36 +574,16 @@ def mock_teams_str(
     )
     team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
-    if is_rated:
-        team0_mu = round(
-            mean([player.rated_trueskill_mu for player in team0_players]), 2
-        )
-        team1_mu = round(
-            mean([player.rated_trueskill_mu for player in team1_players]), 2
-        )
-        team0_sigma = round(
-            mean([player.rated_trueskill_sigma for player in team0_players]),
-            2,
-        )
-        team1_sigma = round(
-            mean([player.rated_trueskill_sigma for player in team1_players]),
-            2,
-        )
-    else:
-        team0_mu = round(
-            mean([player.unrated_trueskill_mu for player in team0_players]), 2
-        )
-        team1_mu = round(
-            mean([player.unrated_trueskill_mu for player in team1_players]), 2
-        )
-        team0_sigma = round(
-            mean([player.unrated_trueskill_sigma for player in team0_players]),
-            2,
-        )
-        team1_sigma = round(
-            mean([player.unrated_trueskill_sigma for player in team1_players]),
-            2,
-        )
+    team0_mu = round(mean([player.rated_trueskill_mu for player in team0_players]), 2)
+    team1_mu = round(mean([player.rated_trueskill_mu for player in team1_players]), 2)
+    team0_sigma = round(
+        mean([player.rated_trueskill_sigma for player in team0_players]),
+        2,
+    )
+    team1_sigma = round(
+        mean([player.rated_trueskill_sigma for player in team1_players]),
+        2,
+    )
     output += f"\n**BE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
     output += f"\n**DS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
     return output
@@ -664,25 +599,14 @@ def mock_finished_game_teams_str(
     """
     output = ""
     session = Session()
-    if is_rated:
-        team0_rating = [
-            Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
-            for fgp in team0_fg_players
-        ]
-        team1_rating = [
-            Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
-            for fgp in team1_fg_players
-        ]
-    else:
-        team0_rating = [
-            Rating(fgp.unrated_trueskill_mu_before, fgp.unrated_trueskill_sigma_before)
-            for fgp in team0_fg_players
-        ]
-        team1_rating = [
-            Rating(fgp.unrated_trueskill_mu_before, fgp.unrated_trueskill_sigma_before)
-            for fgp in team1_fg_players
-        ]
-
+    team0_rating = [
+        Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
+        for fgp in team0_fg_players
+    ]
+    team1_rating = [
+        Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
+        for fgp in team1_fg_players
+    ]
     team0_player_ids_map = {x.player_id: x for x in team0_fg_players}
     team1_player_ids_map = {x.player_id: x for x in team1_fg_players}
     team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
@@ -711,40 +635,20 @@ def mock_finished_game_teams_str(
     )
     team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
-    if is_rated:
-        team0_mu = round(
-            mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
-        )
-        team1_mu = round(
-            mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
-        )
-        team0_sigma = round(
-            mean([player.rated_trueskill_sigma_before for player in team0_fg_players]),
-            2,
-        )
-        team1_sigma = round(
-            mean([player.rated_trueskill_sigma_before for player in team1_fg_players]),
-            2,
-        )
-    else:
-        team0_mu = round(
-            mean([player.unrated_trueskill_mu_before for player in team0_fg_players]), 2
-        )
-        team1_mu = round(
-            mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
-        )
-        team0_sigma = round(
-            mean(
-                [player.unrated_trueskill_sigma_before for player in team0_fg_players]
-            ),
-            2,
-        )
-        team1_sigma = round(
-            mean(
-                [player.unrated_trueskill_sigma_before for player in team1_fg_players]
-            ),
-            2,
-        )
+    team0_mu = round(
+        mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
+    )
+    team1_mu = round(
+        mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
+    )
+    team0_sigma = round(
+        mean([player.rated_trueskill_sigma_before for player in team0_fg_players]),
+        2,
+    )
+    team1_sigma = round(
+        mean([player.rated_trueskill_sigma_before for player in team1_fg_players]),
+        2,
+    )
     output += f"\n**BE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
     output += f"\n**DS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
     return output
@@ -811,21 +715,6 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
         )
     team0_win_prob = round(100 * finished_game.win_probability, 1)
     team1_win_prob = round(100 - team0_win_prob, 1)
-    # TODO: This is wrong when the game has a region
-    # if finished_game.is_rated:
-    #     team0_mu = round(
-    #         mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
-    #     )
-    #     team1_mu = round(
-    #         mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
-    #     )
-    # else:
-    #     team0_mu = round(
-    #         mean([player.unrated_trueskill_mu_before for player in team0_fg_players]), 2
-    #     )
-    #     team1_mu = round(
-    #         mean([player.unrated_trueskill_mu_before for player in team1_fg_players]), 2
-    #     )
     team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
     team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
 
@@ -912,20 +801,8 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
     # TODO: Include win prob
     # team0_win_prob = round(100 * finished_game.win_probability, 1)
     # team1_win_prob = round(100 - team0_win_prob, 1)
-    if queue.is_rated:
-        team0_tsr = round(
-            mean([player.rated_trueskill_mu for player in team0_players]), 1
-        )
-        team1_tsr = round(
-            mean([player.rated_trueskill_mu for player in team1_players]), 1
-        )
-    else:
-        team0_tsr = round(
-            mean([player.unrated_trueskill_mu for player in team0_players]), 1
-        )
-        team1_tsr = round(
-            mean([player.unrated_trueskill_mu for player in team1_players]), 1
-        )
+    team0_tsr = round(mean([player.rated_trueskill_mu for player in team0_players]), 1)
+    team1_tsr = round(mean([player.rated_trueskill_mu for player in team1_players]), 1)
     # TODO: Include win prob
     if debug:
         team0_str = f"{in_progress_game.team0_name} ({team0_tsr}): {team0_names}"
@@ -1650,12 +1527,7 @@ async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
     )
     rated_trueskill_mu_before = player.rated_trueskill_mu
     rated_trueskill_mu_after = player.rated_trueskill_mu * (100 - decay_amount) / 100
-    unrated_trueskill_mu_before = player.unrated_trueskill_mu
-    unrated_trueskill_mu_after = (
-            player.unrated_trueskill_mu * (100 - decay_amount) / 100
-    )
     player.rated_trueskill_mu = rated_trueskill_mu_after
-    player.unrated_trueskill_mu = unrated_trueskill_mu_after
     await send_message(
         message.channel,
         embed_description=f"{escape_markdown(member.name)} decayed by {decay_amount}%",
@@ -1667,8 +1539,6 @@ async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
             decay_amount,
             rated_trueskill_mu_before=rated_trueskill_mu_before,
             rated_trueskill_mu_after=rated_trueskill_mu_after,
-            unrated_trueskill_mu_before=unrated_trueskill_mu_before,
-            unrated_trueskill_mu_after=unrated_trueskill_mu_after,
         )
     )
     session.commit()
@@ -2003,8 +1873,6 @@ async def finishgame(ctx: Context, outcome: str):
     )
     team0_rated_ratings_before = []
     team1_rated_ratings_before = []
-    team0_unrated_ratings_before = []
-    team1_unrated_ratings_before = []
     team0_players: list[InProgressGamePlayer] = []
     team1_players: list[InProgressGamePlayer] = []
     for in_progress_game_player in in_progress_game_players:
@@ -2014,26 +1882,18 @@ async def finishgame(ctx: Context, outcome: str):
             if player.id in player_category_trueskills_by_id:
                 pct = player_category_trueskills_by_id[player.id]
                 team0_rated_ratings_before.append(Rating(pct.mu, pct.sigma))
-                team0_unrated_ratings_before.append(Rating(pct.mu, pct.sigma))
             else:
                 team0_rated_ratings_before.append(
                     Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-                )
-                team0_unrated_ratings_before.append(
-                    Rating(player.unrated_trueskill_mu, player.unrated_trueskill_sigma)
                 )
         else:
             team1_players.append(in_progress_game_player)
             if player.id in player_category_trueskills_by_id:
                 pct = player_category_trueskills_by_id[player.id]
                 team1_rated_ratings_before.append(Rating(pct.mu, pct.sigma))
-                team1_unrated_ratings_before.append(Rating(pct.mu, pct.sigma))
             else:
                 team1_rated_ratings_before.append(
                     Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-                )
-                team1_unrated_ratings_before.append(
-                    Rating(player.unrated_trueskill_mu, player.unrated_trueskill_sigma)
                 )
 
     if queue.category_id:
@@ -2073,14 +1933,9 @@ async def finishgame(ctx: Context, outcome: str):
 
     team0_rated_ratings_after: list[Rating]
     team1_rated_ratings_after: list[Rating]
-    team0_unrated_ratings_after: list[Rating]
-    team1_unrated_ratings_after: list[Rating]
     if len(players) > 1:
         team0_rated_ratings_after, team1_rated_ratings_after = rate(
             [team0_rated_ratings_before, team1_rated_ratings_before], result
-        )
-        team0_unrated_ratings_after, team1_unrated_ratings_after = rate(
-            [team0_unrated_ratings_before, team1_unrated_ratings_before], result
         )
     else:
         # Mostly useful for creating solo queues for testing, no real world
@@ -2088,10 +1943,6 @@ async def finishgame(ctx: Context, outcome: str):
         team0_rated_ratings_after, team1_rated_ratings_after = (
             team0_rated_ratings_before,
             team1_rated_ratings_before,
-        )
-        team0_unrated_ratings_after, team1_unrated_ratings_after = (
-            team0_unrated_ratings_before,
-            team1_unrated_ratings_before,
         )
 
     for i, team0_gip in enumerate(team0_players):
@@ -2105,10 +1956,6 @@ async def finishgame(ctx: Context, outcome: str):
             rated_trueskill_sigma_before=team0_rated_ratings_before[i].sigma,
             rated_trueskill_mu_after=team0_rated_ratings_after[i].mu,
             rated_trueskill_sigma_after=team0_rated_ratings_after[i].sigma,
-            unrated_trueskill_mu_before=team0_unrated_ratings_before[i].mu,
-            unrated_trueskill_sigma_before=team0_unrated_ratings_before[i].sigma,
-            unrated_trueskill_mu_after=team0_unrated_ratings_after[i].mu,
-            unrated_trueskill_sigma_after=team0_unrated_ratings_after[i].sigma,
         )
         trueskill_rating = team0_rated_ratings_after[i]
         # Regardless of category, always update the master trueskill. That way
@@ -2116,8 +1963,6 @@ async def finishgame(ctx: Context, outcome: str):
         # stale
         player.rated_trueskill_mu = trueskill_rating.mu
         player.rated_trueskill_sigma = trueskill_rating.sigma
-        player.unrated_trueskill_mu = team0_unrated_ratings_after[i].mu
-        player.unrated_trueskill_sigma = team0_unrated_ratings_after[i].sigma
         if player.id in player_category_trueskills_by_id:
             pct = player_category_trueskills_by_id[player.id]
             pct.mu = trueskill_rating.mu
@@ -2145,10 +1990,6 @@ async def finishgame(ctx: Context, outcome: str):
             rated_trueskill_sigma_before=team1_rated_ratings_before[i].sigma,
             rated_trueskill_mu_after=team1_rated_ratings_after[i].mu,
             rated_trueskill_sigma_after=team1_rated_ratings_after[i].sigma,
-            unrated_trueskill_mu_before=team1_unrated_ratings_before[i].mu,
-            unrated_trueskill_sigma_before=team1_unrated_ratings_before[i].sigma,
-            unrated_trueskill_mu_after=team1_unrated_ratings_after[i].mu,
-            unrated_trueskill_sigma_after=team1_unrated_ratings_after[i].sigma,
         )
         trueskill_rating = team1_rated_ratings_after[i]
         # Regardless of category, always update the master trueskill. That way
@@ -2156,8 +1997,6 @@ async def finishgame(ctx: Context, outcome: str):
         # stale
         player.rated_trueskill_mu = trueskill_rating.mu
         player.rated_trueskill_sigma = trueskill_rating.sigma
-        player.unrated_trueskill_mu = team1_unrated_ratings_after[i].mu
-        player.unrated_trueskill_sigma = team1_unrated_ratings_after[i].sigma
         if player.id in player_category_trueskills_by_id:
             pct = player_category_trueskills_by_id[player.id]
             pct.mu = trueskill_rating.mu
@@ -2748,8 +2587,6 @@ async def resetplayertrueskill(ctx: Context, member: Member):
     player: Player = session.query(Player).filter(Player.id == member.id).first()
     player.rated_trueskill_mu = config.DEFAULT_TRUESKILL_MU
     player.rated_trueskill_sigma = config.DEFAULT_TRUESKILL_SIGMA
-    player.unrated_trueskill_mu = config.DEFAULT_TRUESKILL_MU
-    player.unrated_trueskill_sigma = config.DEFAULT_TRUESKILL_SIGMA
     session.commit()
     session.close()
     await send_message(
@@ -3127,7 +2964,7 @@ async def showgamedebug(ctx: Context, game_id: str):
 @commands.check(is_admin)
 async def showsigma(ctx: Context, member: Member):
     """
-    Returns the player's base sigma. Doesn't consider regions
+    Returns the player's base sigma
     """
     session = ctx.session
     player: Player = session.query(Player).filter(Player.id == member.id).first()
