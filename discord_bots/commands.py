@@ -43,7 +43,6 @@ from trueskill import Rating, rate
 
 import discord_bots.config as config
 from discord_bots.checks import is_admin
-from discord_bots.decorators import with_session
 from discord_bots.utils import (
     MU_UNICODE,
     SIGMA_UNICODE,
