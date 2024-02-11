@@ -82,7 +82,9 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
     if not config.STATS_DIR:
         return
 
-    html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(config.STATS_DIR)))
+    html_files = list(
+        filter(lambda x: x.endswith(".html"), os.listdir(config.STATS_DIR))
+    )
     html_files.sort(
         key=lambda x: os.path.getmtime(os.path.join(config.STATS_DIR, x)), reverse=True
     )
@@ -115,7 +117,9 @@ async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
     if not config.STATS_DIR:
         return
 
-    html_files = list(filter(lambda x: x.endswith(".html"), os.listdir(config.STATS_DIR)))
+    html_files = list(
+        filter(lambda x: x.endswith(".html"), os.listdir(config.STATS_DIR))
+    )
     html_files.sort(
         key=lambda x: os.path.getmtime(os.path.join(config.STATS_DIR, x)), reverse=True
     )
@@ -131,9 +135,7 @@ async def upload_stats_screenshot_imgkit(ctx: Context, cleanup=True):
     )
     if config.STATS_WIDTH and config.STATS_HEIGHT:
         image = Image.open(image_path)
-        cropped = image.crop(
-            (0, 0, config.STATS_WIDTH, config.STATS_HEIGHT)
-        )
+        cropped = image.crop((0, 0, config.STATS_WIDTH, config.STATS_HEIGHT))
         cropped.save(image_path)
 
     await ctx.message.channel.send(file=discord.File(image_path))
@@ -265,7 +267,7 @@ async def send_in_guild_message(
 
 
 async def send_message(
-    channel: (DMChannel | GroupChannel | TextChannel),
+    channel: DMChannel | GroupChannel | TextChannel,
     content: str | None = None,
     embed_description: str | None = None,
     colour: Colour | None = None,
@@ -360,7 +362,9 @@ async def print_leaderboard(channel=None):
             return
         else:
             if channel:
-                await send_message(channel, embed_description=output, colour=Colour.blue())
+                await send_message(
+                    channel, embed_description=output, colour=Colour.blue()
+                )
 
 
 def code_block(content: str, language: str = "autohotkey") -> str:

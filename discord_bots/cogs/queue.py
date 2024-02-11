@@ -26,7 +26,6 @@ from discord_bots.queues import AddPlayerQueueMessage, add_player_queue
 from discord_bots.config import ENABLE_VOICE_MOVE
 
 
-
 class QueueCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
@@ -335,7 +334,9 @@ class QueueCommands(BaseCog):
 
     @command()
     @check(is_admin)
-    async def setqueuemoveenabled(self, ctx: Context, queue_name: str, enabled_option: bool):
+    async def setqueuemoveenabled(
+        self, ctx: Context, queue_name: str, enabled_option: bool
+    ):
         """
         Enables automatic moving of people in game when queue pops
         """
