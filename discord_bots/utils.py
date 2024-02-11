@@ -262,6 +262,7 @@ async def send_in_guild_message(
     message_content: Optional[str] = None,
     embed: Optional[Embed] = None,
 ):
+    # TODO: implement mechanism to avoid being rate limited or some way to send DMs in bulk
     if not config.DISABLE_PRIVATE_MESSAGES:
         member: Member | None = guild.get_member(user_id)
         if member:
