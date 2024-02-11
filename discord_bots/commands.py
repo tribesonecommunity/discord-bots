@@ -1,3 +1,4 @@
+import asyncio
 import heapq
 import logging  # TODO: need to change to module logging, since doing this will always display "root.INFO,WARN,..."
 import os
@@ -2823,18 +2824,6 @@ async def setgamecode(interaction: Interaction, code: str):
         .all()
     )
     session.commit()
-
-    for ipg_player in ipg_players:
-        embed = Embed(
-            title=f"Lobby code for ({short_uuid(ipg.id)})",
-            description=f"`{code}`",
-            colour=Colour.blue(),
-        )
-        embed.set_footer(text=f"set by {interaction.user}")
-        if interaction.guild:
-            await send_in_guild_message(
-                interaction.guild, ipg_player.player_id, embed=embed
-            )
     if ipg_players:
         await interaction.response.send_message(
             embed=Embed(
@@ -2851,6 +2840,18 @@ async def setgamecode(interaction: Interaction, code: str):
             ),
             ephemeral=True,
         )
+
+    for ipg_player in ipg_players:
+        embed = Embed(
+            title=f"Lobby code for ({short_uuid(ipg.id)})",
+            description=f"`{code}`",
+            colour=Colour.blue(),
+        )
+        embed.set_footer(text=f"set by {interaction.user}")
+        if interaction.guild:
+            await send_in_guild_message(
+                interaction.guild, ipg_player.player_id, embed=embed
+            )
     session.close()
 
 
