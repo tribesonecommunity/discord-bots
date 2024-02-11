@@ -54,9 +54,13 @@ The following are required
 
 - `DISCORD_API_KEY`
 - `CHANNEL_ID` - The discord id of the channel the bot will live in
+- `DATABASE_URI` -
 - `TRIBES_VOICE_CATEGORY_CHANNEL_ID` - The id of the voice channel category (so the bot can make voice channels)
 - `SEED_ADMIN_IDS` - Discord ids of players that will start off as admin. You'll need at least one in order to create
   more
+- `DATABASE_URI` - URL to the database
+
+To find some of these values, set `ENABLE_DEBUG=True` in `.env`, then in any channel type `!configure`. This will print to console your ID, the channel ID, and voice channel category IDs.
 
 The following are optional
 
@@ -104,7 +108,37 @@ and `alembic` to handle migrations.
 
 ## Installation
 
-The steps are the same but use `pip install -e .` instead. This allows local changes to be picked up automatically.
+Postgres is the new preferred way of doing development. To install `psycopg2` you'll need to install `libpq`.
+
+### Ubuntu
+```
+apt-get install libpq-dev
+```
+
+### Arch linux
+```
+pacman -S postgresql-libs
+```
+
+The steps are the same but use `pip install -e -U .` instead. This allows local changes to be picked up automatically.
+
+## Database
+
+After installation, start a local database with:
+
+```
+docker run --name postgres -e POSTGRES_PASSWORD=password -d -p 5432:5432 postgres
+```
+
+To connect with PSQL:
+```
+PGPASSWORD=password psql -h localhost -U postgres -d postgres -p 5432
+```
+
+In `.env`:
+```
+DATABASE_URI=postgresql://postgres:password@localhost:5432/postgres
+```
 
 ## Editor
 
@@ -178,14 +212,14 @@ Common issues:
 
 ```
 CategoryCommands:
-  clearqueuecategory      
-  createcategory          
-  listcategories          
-  removecategory          
-  setcategoryname         
-  setcategoryrated        
-  setcategoryunrated      
-  setqueuecategory        
+  clearqueuecategory
+  createcategory
+  listcategories
+  removecategory
+  setcategoryname
+  setcategoryrated
+  setcategoryunrated
+  setqueuecategory
 MapCommands:
   addmap                  Add a map to the map pool
   changegamemap           Change the map for a game
@@ -216,82 +250,82 @@ VoteCommands:
   unvoteskip              Remove all of a player's votes to skip the next map
 ​No Category:
   add                     Players adds self to queue(s). If no args to all existing queues
-  addadmin                
-  addadminrole            
-  addqueuerole            
+  addadmin
+  addadminrole
+  addqueuerole
   autosub                 Picks a person to sub at random
   ban                     TODO: remove player from queues
-  cancelgame              
-  clearqueue              
-  clearqueuerange         
-  coinflip                
-  commend                 
-  commendstats            
-  createcommand           
-  createdbbackup          
-  createqueue             
-  decayplayer             
+  cancelgame
+  clearqueue
+  clearqueuerange
+  coinflip
+  commend
+  commendstats
+  createcommand
+  createdbbackup
+  createqueue
+  decayplayer
   del                     Players deletes self from queue(s)
-  deletegame              
+  deletegame
   delplayer               Admin command to delete player from all queues
-  disableleaderboard      
-  disablestats            
-  editcommand             
-  editgamewinner          
-  enableleaderboard       
-  enablestats             
-  finishgame              
-  gamehistory             
+  disableleaderboard
+  disablestats
+  editcommand
+  editgamewinner
+  enableleaderboard
+  enablestats
+  finishgame
+  gamehistory
   help                    Shows this message
-  isolatequeue            
-  listadminroles          
-  listadmins              
-  listbans                
-  listchannels            
-  listdbbackups           
-  listnotifications       
-  listplayerdecays        
-  listqueueroles          
-  lockqueue               
-  lt                      
+  isolatequeue
+  listadminroles
+  listadmins
+  listbans
+  listchannels
+  listdbbackups
+  listnotifications
+  listplayerdecays
+  listqueueroles
+  lockqueue
+  lt
   mockqueue
-  movegameplayers               
-  notify                  
-  pug                     
-  removeadmin             
-  removeadminrole         
-  removecommand           
-  removedbbackup          
-  removenotifications     
-  removequeue             
-  removequeuerole         
-  resetleaderboardchannel 
-  resetplayertrueskill    
-  restart                 
-  roll                    
-  setbias                 
-  setcaptainbias          
-  setcommandprefix        
-  setgamecode             
-  setqueueordinal         
-  setqueuerange           
-  setqueuerated           
-  setqueuesweaty          
-  setqueueunrated         
-  setsigma                
-  showgame                
-  showgamedebug           
-  showqueuerange          
+  movegameplayers
+  notify
+  pug
+  removeadmin
+  removeadminrole
+  removecommand
+  removedbbackup
+  removenotifications
+  removequeue
+  removequeuerole
+  resetleaderboardchannel
+  resetplayertrueskill
+  restart
+  roll
+  setbias
+  setcaptainbias
+  setcommandprefix
+  setgamecode
+  setqueueordinal
+  setqueuerange
+  setqueuerated
+  setqueuesweaty
+  setqueueunrated
+  setsigma
+  showgame
+  showgamedebug
+  showqueuerange
   showsigma               Returns the player's base sigma. Doesn't consider regions
   showtrueskillnormdist   Print the normal distribution of the trueskill in a given queue.
-  stats                   
-  status                  
-  streams                 
-  sub                     
-  testleaderboard         
-  trueskill               
-  unban                   
-  unisolatequeue          
-  unlockqueue             
-  unsetqueuesweaty        
+  stats
+  status
+  streams
+  sub
+  testleaderboard
+  trueskill
+  unban
+  unisolatequeue
+  unlockqueue
+  unsetqueuesweaty
 ```

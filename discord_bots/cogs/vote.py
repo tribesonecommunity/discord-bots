@@ -3,11 +3,13 @@ from datetime import datetime, timedelta, timezone
 from discord.ext.commands import Bot, Context, check, command
 from sqlalchemy.exc import IntegrityError
 
+import discord_bots.config as config
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-import discord_bots.config as config
 from discord_bots.config import MAP_VOTE_THRESHOLD
 from discord_bots.models import (
+    InProgressGame,
+    InProgressGamePlayer,
     Map,
     MapVote,
     Player,
@@ -42,6 +44,84 @@ class VoteCommands(BaseCog):
         await self.send_success_message(
             f"Map vote threshold set to {MAP_VOTE_THRESHOLD}"
         )
+
+    @command()
+    async def skipgamemap(self, ctx: Context):
+        """
+        Vote to skip to the next map for an in-progress game
+        """
+        message = ctx.message
+        session = ctx.session
+
+        ipgp: InProgressGamePlayer | None = (
+            session.query(InProgressGamePlayer)
+            .filter(InProgressGamePlayer.player_id == message.author.id)
+            .first()
+        )
+        if not ipgp:
+            await self.send_error_message("You must be in a game to use this")
+            return
+
+        session.add(SkipMapVote(message.channel.id, message.author.id))
+        try:
+            session.commit()
+        except IntegrityError:
+            await self.send_error_message("You have already voted")
+            session.rollback()
+            return
+
+        ipg: InProgressGame | None = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == ipgp.in_progress_game_id)
+            .first()
+        )
+
+        skip_map_votes = (
+            session.query(SkipMapVote)
+            .join(
+                InProgressGamePlayer,
+                InProgressGamePlayer.player_id == SkipMapVote.player_id,
+            )
+            .filter(InProgressGamePlayer.in_progress_game_id == ipg.id)
+            .all()
+        )
+
+        queue_vote_threshold = (
+            session.query(Queue.vote_threshold)
+            .join(InProgressGame, InProgressGame.queue_id == Queue.id)
+            .filter(InProgressGame.id == ipg.id)
+            .scalar()
+        )
+
+        if len(skip_map_votes) >= queue_vote_threshold:
+            rotation: Rotation | None = (
+                session.query(Rotation)
+                .join(Queue, Queue.rotation_id == Rotation.id)
+                .join(InProgressGame, InProgressGame.queue_id == Queue.id)
+                .filter(InProgressGame.id == ipg.id)
+                .first()
+            )
+            new_map: Map | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .join(Rotation, Rotation.id == RotationMap.rotation_id)
+                .filter(Rotation.id == rotation.id)
+                .filter(RotationMap.is_next == True)
+                .first()
+            )
+
+            ipg.map_full_name = new_map.full_name
+            ipg.map_short_name = new_map.short_name
+            for skip_map_vote in skip_map_votes:
+                session.delete(skip_map_vote)
+            session.commit()
+
+            await self.send_success_message(
+                f"Vote to skip the current map passed!  All votes removed.\n\nNew map: **{ipg.map_full_name} ({ipg.map_short_name})**"
+            )
+            await update_next_map_to_map_after_next(rotation.id, True)
+        else:
+            await self.send_success_message("Your vote has been cast!")
 
     @command()
     async def unvote(self, ctx: Context):
@@ -122,7 +202,7 @@ class VoteCommands(BaseCog):
 
     @command(usage="<map|skip>")
     @check(is_admin)
-    async def mockvotes(self, ctx: Context, type: str):
+    async def mockvotes(self, ctx: Context, type: str, count: int):
         """
         Generates 6 mock votes for testing
         Testing must be done quick because afk_timer_task clears the votes every minute
@@ -143,15 +223,15 @@ class VoteCommands(BaseCog):
         if type == "map":
             rotation_map: RotationMap | None = session.query(RotationMap).first()
 
-            first_six_player_ids = [
+            player_ids = [
                 x[0]
                 for x in session.query(Player.id)
                 .filter(Player.id.not_in(lesser_gods))
-                .limit(6)
+                .limit(count)
                 .all()
             ]
 
-            for player_id in first_six_player_ids:
+            for player_id in player_ids:
                 session.add(
                     MapVote(
                         message.channel.id,
@@ -175,15 +255,15 @@ class VoteCommands(BaseCog):
         elif type == "skip":
             rotation: Rotation | None = session.query(Rotation).first()
 
-            first_six_player_ids = [
+            player_ids = [
                 x[0]
                 for x in session.query(Player.id)
                 .filter(Player.id.not_in(lesser_gods))
-                .limit(6)
+                .limit(count)
                 .all()
             ]
 
-            for player_id in first_six_player_ids:
+            for player_id in player_ids:
                 session.add(
                     SkipMapVote(
                         message.channel.id,
@@ -199,14 +279,25 @@ class VoteCommands(BaseCog):
                 .first()[0]
             )
             final_vote_command = f"!voteskip {queue_name}"
+        elif type == "skipgame":
+            player_ids = [
+                x[0]
+                for x in session.query(InProgressGamePlayer.player_id)
+                .filter(InProgressGamePlayer.player_id.not_in(lesser_gods))
+                .limit(count)
+                .all()
+            ]
+            for player_id in player_ids:
+                session.add(SkipMapVote(message.channel.id, player_id))
+            final_vote_command = "!skipgamemap"
         else:
-            await self.send_error_message("Usage: !mockvotes <map|skip>")
+            await self.send_error_message("Usage: !mockvotes <map|skip|skipgame>")
             return
 
         session.commit()
 
         await self.send_success_message(
-            f"Mock votes added!\nTo make this vote pass use `{final_vote_command}`"
+            f"Mock votes added!\nTo add your vote use `{final_vote_command}`"
         )
 
     # @command()
