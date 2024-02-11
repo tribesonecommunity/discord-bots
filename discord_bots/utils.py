@@ -267,7 +267,7 @@ async def send_in_guild_message(
 
 
 async def send_message(
-    channel: (DMChannel | GroupChannel | TextChannel),
+    channel: DMChannel | GroupChannel | TextChannel,
     content: str | None = None,
     embed_description: str | None = None,
     colour: Colour | None = None,
