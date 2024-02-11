@@ -37,7 +37,7 @@ async def create_seed_admins():
                     Player(
                         id=seed_admin_id,
                         is_admin=True,
-                        name='AUTO_GENERATED_ADMIN',
+                        name="AUTO_GENERATED_ADMIN",
                         last_activity_at=datetime.now(timezone.utc),
                     )
                 )

@@ -51,7 +51,9 @@ from .queues import AddPlayerQueueMessage, add_player_queue
 @tasks.loop(minutes=1)
 async def afk_timer_task():
     session = Session()
-    timeout: datetime = datetime.now(timezone.utc) - timedelta(minutes=config.AFK_TIME_MINUTES)
+    timeout: datetime = datetime.now(timezone.utc) - timedelta(
+        minutes=config.AFK_TIME_MINUTES
+    )
 
     player: Player
     for player in (
@@ -360,11 +362,17 @@ async def add_player_task():
                 )
 
                 if len(in_progress_games) > 0:
-                    queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*\n")
+                    queue_statuses.append(
+                        f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*\n"
+                    )
                 else:
-                    queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]\n")
+                    queue_statuses.append(
+                        f"{queue.name} [{len(queue_players)}/{queue.size}]\n"
+                    )
 
-            content = f"{message.player_name} added to: {', '.join(queues_added_to)}\n\n"
+            content = (
+                f"{message.player_name} added to: {', '.join(queues_added_to)}\n\n"
+            )
             content += "".join(queue_statuses)
             await message.channel.send(code_block(content))
             session.close()

@@ -403,7 +403,6 @@ class VoteCommands(BaseCog):
             #     ]
             # )
 
-
     # @command()
     async def voteskip(self, ctx: Context, queue_name: str):
         """
