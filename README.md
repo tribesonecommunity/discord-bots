@@ -134,6 +134,11 @@ After installation, start a local database with:
 sudo docker run --name postgres -e POSTGRES_PASSWORD=password -d -p 5432:5432 postgres
 ```
 
+To restart an existing docker container, use:
+```
+sudo docker restart postgres
+```
+
 Install postgresql-client
 ```
 sudo apt-get install postgresql-client
