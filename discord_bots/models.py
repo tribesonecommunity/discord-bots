@@ -379,6 +379,50 @@ class EconomyTransaction:
 
 @mapper_registry.mapped
 @dataclass
+class DiscordGuild:
+    """
+    A discord server / guild
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "discord_guild"
+
+    discord_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
+    name: str = field(metadata={"sa": Column(String, nullable=False, unique=True)})
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class DiscordMember:
+    """
+    A discord Member
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "discord_member"
+
+    discord_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
+    display_name: str = field(metadata={"sa": Column(String, nullable=False)})
+    global_name: str = field(metadata={"sa": Column(String, nullable=False)})
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class FinishedGame:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "finished_game"
