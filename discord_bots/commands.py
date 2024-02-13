@@ -1265,7 +1265,6 @@ async def cancelgame(ctx: Context, game_id: str):
 
     session.delete(game)
     session.commit()
-    session.close()
     await send_message(
         message.channel,
         embed_description=f"Game {game_id} cancelled",
