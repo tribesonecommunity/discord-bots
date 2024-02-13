@@ -44,8 +44,8 @@ from trueskill import Rating, rate
 import discord_bots.config as config
 from discord_bots.checks import is_admin
 from discord_bots.utils import (
-    MU_UNICODE,
-    SIGMA_UNICODE,
+    MU_LOWER_UNICODE,
+    SIGMA_LOWER_UNICODE,
     code_block,
     mean,
     pretty_format_team,
@@ -3296,25 +3296,50 @@ async def stats(interaction: Interaction):
     """
     Replies to the user with their TrueSkill statistics. Can be used both inside and out of a Guild
     """
-    session = Session()
-    player: Player = (
+    session: SQLAlchemySession = Session()
+    player: Player | None = (
         session.query(Player).filter(Player.id == interaction.user.id).first()
     )
+    if not player:
+        # Edge case where user has no record in the Players table
+        await interaction.response.send_message(
+            "You have not played any games", ephemeral=True
+        )
+        session.close()
+        return
     if not player.stats_enabled:
         await interaction.response.send_message(
-            "You have disabled `/stats`", ephemeral=True
+            "You have disabled `/stats`",
+            ephemeral=True,
         )
+        session.close()
         return
 
-    fgps = (
+    fgps: List[FinishedGamePlayer] | None = (
         session.query(FinishedGamePlayer)
         .filter(FinishedGamePlayer.player_id == player.id)
         .all()
     )
-    finished_game_ids = [fgp.finished_game_id for fgp in fgps]
-    fgs = (
+    if not fgps:
+        await interaction.response.send_message(
+            "You have not played any games",
+            ephemeral=True,
+        )
+        session.close()
+        return
+
+    finished_game_ids: List[str] | None = [fgp.finished_game_id for fgp in fgps]
+    fgs: List[FinishedGame] | None = (
         session.query(FinishedGame).filter(FinishedGame.id.in_(finished_game_ids)).all()
     )
+    if not fgs:
+        await interaction.response.send_message(
+            "You have not played any games",
+            ephemeral=True,
+        )
+        session.close()
+        return
+
     fgps_by_finished_game_id: dict[str, FinishedGamePlayer] = {
         fgp.finished_game_id: fgp for fgp in fgps
     }
@@ -3362,187 +3387,139 @@ async def stats(interaction: Interaction):
     else:
         trueskill_pct = "Top 100%"
 
-    def is_win(finished_game: FinishedGame) -> bool:
-        if (
-            fgps_by_finished_game_id[finished_game.id].team
-            == finished_game.winning_team
-        ):
-            return True
-        return False
+    # all of this below can probably be done more gracefull with a pandas dataframe
+    def wins_losses_ties_last_ndays(
+        finished_games: List[FinishedGame], n: int = -1
+    ) -> tuple[list[FinishedGame], list[FinishedGame], list[FinishedGame]]:
+        if n == -1:
+            # all finished games
+            last_nfgs = finished_games
+        else:
+            # last n
+            last_nfgs = [
+                fg
+                for fg in finished_games
+                if fg.finished_at > datetime.now() - timedelta(days=n)
+            ]
+        wins = [
+            fg
+            for fg in last_nfgs
+            if fg.winning_team == fgps_by_finished_game_id[fg.id].team
+        ]
+        losses = [
+            fg
+            for fg in last_nfgs
+            if fg.winning_team != fgps_by_finished_game_id[fg.id].team
+            and fg.winning_team != -1
+        ]
+        ties = [fg for fg in last_nfgs if fg.winning_team == -1]
+        return wins, losses, ties
 
-    def is_loss(finished_game: FinishedGame) -> bool:
-        if (
-            fgps_by_finished_game_id[finished_game.id].team
-            != finished_game.winning_team
-            and finished_game.winning_team != -1
-        ):
-            return True
-        return False
+    def get_table_col(games: List[FinishedGame]):
+        cols = []
+        for num_days in [7, 30, 90, 365, -1]:
+            wins, losses, ties = wins_losses_ties_last_ndays(games, num_days)
+            num_wins, num_losses, num_ties = len(wins), len(losses), len(ties)
+            winrate = win_rate(num_wins, num_losses, num_ties)
+            col = [
+                "Overall" if num_days == -1 else f"Last {num_days} days",
+                len(wins),
+                len(losses),
+                len(ties),
+                num_wins + num_losses + num_ties,
+                f"{winrate}%",
+            ]
+            cols.append(col)
+        return cols
 
-    def is_tie(finished_game: FinishedGame) -> bool:
-        return finished_game.winning_team == -1
+    embeds: list[Embed] = []
+    trueskill_url = (
+        "https://www.microsoft.com/en-us/research/project/trueskill-ranking-system/"
+    )
+    footer_text = "{}\n{}\n{}".format(
+        f"Rating = {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}",
+        f"{MU_LOWER_UNICODE} (mu) = your average Rating",
+        f"{SIGMA_LOWER_UNICODE} (sigma) = the uncertainity of your Rating",
+    )
+    cols = []
+    player_category_trueskills: list[PlayerCategoryTrueskill] | None = (
+        session.query(PlayerCategoryTrueskill)
+        .filter(PlayerCategoryTrueskill.player_id == player.id)
+        .all()
+    )
+    # assume that if a guild uses categories, they will use them exclusively, i.e., no mixing categorized and uncategorized queues
+    if player_category_trueskills:
+        for pct in player_category_trueskills:
+            category: Category | None = (
+                session.query(Category).filter(Category.id == pct.category_id).first()
+            )
+            if not category:
+                # should never happen
+                logging.error(
+                    f"No Category found for player_category_trueskill with id {pct.id}"
+                )
+                await interaction.response.send_message(
+                    embed=Embed(description="Could not find your stats")
+                )
+                session.close()
+                return
+            title = f"Stats for {category.name}"
+            description = ""
+            if category.is_rated and config.SHOW_TRUESKILL:
+                description = f"Rating: {round(pct.rank, 1)}"
+                description += f"\n{MU_LOWER_UNICODE}: {round(pct.mu, 1)}"
+                description += f"\n{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}"
+            else:
+                description = f"Rating: {trueskill_pct}"
 
-    def last_month(finished_game: FinishedGame) -> bool:
-        return finished_game.finished_at > datetime.now() - timedelta(days=30)
-
-    def last_three_months(finished_game: FinishedGame) -> bool:
-        return finished_game.finished_at > datetime.now() - timedelta(days=90)
-
-    def last_six_months(finished_game: FinishedGame) -> bool:
-        return finished_game.finished_at > datetime.now() - timedelta(days=180)
-
-    def last_year(finished_game: FinishedGame) -> bool:
-        return finished_game.finished_at > datetime.now() - timedelta(days=365)
-
-    embeds = []
-    if config.SHOW_TRUESKILL:
-        player_category_trueskills: list[PlayerCategoryTrueskill] = (
-            session.query(PlayerCategoryTrueskill)
-            .filter(PlayerCategoryTrueskill.player_id == player.id)
-            .all()
+            category_games = [
+                game
+                for game in fgs
+                if game.category_name and category.name == game.category_name
+            ]
+            cols = get_table_col(category_games)
+            table = table2ascii(
+                header=["", f"Wins", "Losses", "Ties", "Total", "Winrate"],
+                body=cols,
+                first_col_heading=True,
+                style=PresetStyle.minimalist,
+            )
+            description += code_block(table)
+            description += f"\n{trueskill_url}"
+            embed = Embed(title=title, description=description)
+            embed.set_footer(text=footer_text)
+            embeds.append(embed)
+    if not player_category_trueskills:
+        # no categories defined, display their global trueskill stats
+        description = ""
+        if config.SHOW_TRUESKILL:
+            description = f"Rating: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)}"
+            description += (
+                f"\n{MU_LOWER_UNICODE}: {round(player.rated_trueskill_mu, 1)}"
+            )
+            description += (
+                f"\n{SIGMA_LOWER_UNICODE}: {round(player.rated_trueskill_sigma, 1)}"
+            )
+        else:
+            description = f"Rating: {trueskill_pct}"
+        cols = get_table_col(fgs)
+        table = table2ascii(
+            header=["", f"Wins", "Losses", "Ties", "Total", "Winrate"],
+            body=cols,
+            first_col_heading=True,
+            style=PresetStyle.minimalist,
         )
-        if player_category_trueskills:
-            for pct in player_category_trueskills:
-                category: Category = (
-                    session.query(Category)
-                    .filter(Category.id == pct.category_id)
-                    .first()
-                )
-                title = f"Stats for {category.name}"
-                description = ""
-                if category.is_rated:
-                    description = f"Rating: {round(pct.rank, 1)}"
-                    description += f"\n{MU_UNICODE}: {round(pct.mu, 1)}"
-                    description += f"\n{SIGMA_UNICODE}: {round(pct.sigma, 1)}"
-
-                category_games = [
-                    game
-                    for game in fgs
-                    if game.category_name and category.name == game.category_name
-                ]
-                category_games_last_month = list(filter(last_month, category_games))
-                category_games_last_three_months = list(
-                    filter(last_three_months, category_games)
-                )
-                category_games_last_six_months = list(
-                    filter(last_six_months, category_games)
-                )
-                category_games_last_year = list(filter(last_year, category_games))
-
-                wins_total = len(list(filter(is_win, category_games)))
-                wins_last_month = len(list(filter(is_win, category_games_last_month)))
-                wins_last_three_months = len(
-                    list(filter(is_win, category_games_last_three_months))
-                )
-                wins_last_six_months = len(
-                    list(filter(is_win, category_games_last_six_months))
-                )
-                wins_last_year = len(list(filter(is_win, category_games_last_year)))
-
-                losses_total = len(list(filter(is_loss, category_games)))
-                losses_last_month = len(
-                    list(filter(is_loss, category_games_last_month))
-                )
-                losses_last_three_months = len(
-                    list(filter(is_loss, category_games_last_three_months))
-                )
-                losses_last_six_months = len(
-                    list(filter(is_loss, category_games_last_six_months))
-                )
-                losses_last_year = len(list(filter(is_loss, category_games_last_year)))
-
-                ties_total = len(list(filter(is_tie, category_games)))
-                ties_last_month = len(list(filter(is_tie, category_games_last_month)))
-                ties_last_three_months = len(
-                    list(filter(is_tie, category_games_last_three_months))
-                )
-                ties_last_six_months = len(
-                    list(filter(is_tie, category_games_last_six_months))
-                )
-                ties_last_year = len(list(filter(is_tie, category_games_last_year)))
-
-                winrate_total = win_rate(wins_total, losses_total, ties_total)
-                winrate_last_month = win_rate(
-                    wins_last_month, losses_last_month, ties_last_month
-                )
-                winrate_last_three_months = win_rate(
-                    wins_last_three_months,
-                    losses_last_three_months,
-                    ties_last_three_months,
-                )
-                winrate_last_six_months = win_rate(
-                    wins_last_six_months, losses_last_six_months, ties_last_six_months
-                )
-                winrate_last_year = win_rate(
-                    wins_last_year, losses_last_year, ties_last_year
-                )
-                table = table2ascii(
-                    header=["", "Wins", "Losses", "Ties", "Total", "Winrate"],
-                    body=[
-                        [
-                            "Last 1 Month ",
-                            wins_last_month,
-                            losses_last_month,
-                            ties_last_month,
-                            len(category_games_last_month),
-                            f"{winrate_last_month}%",
-                        ],
-                        [
-                            "Last 3 Months",
-                            wins_last_three_months,
-                            losses_last_three_months,
-                            ties_last_three_months,
-                            len(category_games_last_three_months),
-                            f"{winrate_last_three_months}%",
-                        ],
-                        [
-                            "Last 6 Months",
-                            wins_last_six_months,
-                            losses_last_three_months,
-                            ties_last_three_months,
-                            len(category_games_last_three_months),
-                            f"{winrate_last_six_months}%",
-                        ],
-                        [
-                            "Last 12 Months",
-                            wins_last_year,
-                            losses_last_year,
-                            ties_last_year,
-                            len(category_games_last_year),
-                            f"{winrate_last_year}%",
-                        ],
-                        [
-                            "Overall",
-                            wins_total,
-                            losses_total,
-                            ties_total,
-                            len(category_games_last_year),
-                            f"{winrate_total}%",
-                        ],
-                    ],
-                    first_col_heading=True,
-                    style=PresetStyle.minimalist,
-                )
-                description += code_block(table)
-                description += "\nhttps://www.microsoft.com/en-us/research/project/trueskill-ranking-system/"
-                embed = Embed(
-                    title=title,
-                    description=description,
-                )
-                embed.set_footer(
-                    text=f"{MU_UNICODE} (mu) = your average Rating\n{SIGMA_UNICODE} (sigma) = the uncertainity of your Rating\nRating = {MU_UNICODE} - 3*{SIGMA_UNICODE}"
-                )
-                embeds.append(embed)
-    else:
+        description += code_block(table)
         embed = Embed(
-            title="Combined Stats",
-            description=f"Rating: {trueskill_pct}",
+            title="Overall Stats",
+            description=description,
         )
+        embed.set_footer(text=footer_text)
         embeds.append(embed)
     try:
         await interaction.response.send_message(embeds=embeds, ephemeral=True)
     except Exception as e:
-        logging.warn(f"Caught exception {e} trying to")
+        logging.warn(f"Caught exception {e} trying to send stats message")
     session.close()
 
 
