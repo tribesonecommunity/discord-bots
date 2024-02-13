@@ -41,6 +41,7 @@ from sqlalchemy.sql import select
 from table2ascii import PresetStyle, table2ascii
 from trueskill import Rating, rate
 
+from discord_bots.cogs.economy import EconomyCommands
 import discord_bots.config as config
 from discord_bots.checks import is_admin
 from discord_bots.utils import (
@@ -376,13 +377,6 @@ async def create_game(
         be_channel, ds_channel = await create_team_voice_channels(
             session, guild, game, voice_category
         )
-        if config.ENABLE_VOICE_MOVE and queue.move_enabled:
-            await _movegameplayers(short_game_id, None, guild)
-            await send_message(
-                channel,
-                embed_description=f"Players moved to voice channels for game {short_game_id}",
-                colour=Colour.green(),
-            )
     else:
         print(
             f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
@@ -418,6 +412,14 @@ async def create_game(
 
     if not rolled_random_map:
         await update_next_map_to_map_after_next(queue.rotation_id, False)
+
+    if config.ENABLE_VOICE_MOVE and queue.move_enabled:
+        await _movegameplayers(short_game_id, None, guild)
+        await send_message(
+            channel,
+            embed_description=f"Players moved to voice channels for game {short_game_id}",
+            colour=Colour.green(),
+                )
 
     session.close()
 

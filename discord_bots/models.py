@@ -222,11 +222,11 @@ class EconomyDonation:
     )
     sending_player_id: int = field(
         metadata={
-            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=True, index=True)
         },
     )
     sending_player_name: str = field(
-        metadata={"sa": Column(String, nullable=False, index=True)},
+        metadata={"sa": Column(String, nullable=True, index=True)},
     )
     receiving_player_id: int = field(
         metadata={
@@ -319,7 +319,7 @@ class EconomyTransaction:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=True, index=True)
         },
     )
     player_name: str = field(
