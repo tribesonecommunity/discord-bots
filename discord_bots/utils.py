@@ -33,8 +33,9 @@ from discord_bots.models import (
     SkipMapVote,
 )
 
-MU_UNICODE = "\u03BC"
-SIGMA_UNICODE = "\u03C3"
+MU_LOWER_UNICODE = "\u03BC"
+SIGMA_LOWER_UNICODE = "\u03C3"
+DELTA_UPPER_UNICODE = "\u03B4"
 
 
 # Convenience mean function that can handle lists of 0 or 1 length
