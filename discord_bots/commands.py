@@ -12,10 +12,11 @@ from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from typing import List, Union
+from typing import List, Literal, Union
 
 import discord
 import imgkit
+import sqlalchemy.orm.session
 from discord import (
     CategoryChannel,
     Colour,
@@ -46,7 +47,9 @@ from discord_bots.checks import is_admin
 from discord_bots.utils import (
     MU_LOWER_UNICODE,
     SIGMA_LOWER_UNICODE,
+    cancel_in_progress_game,
     code_block,
+    finish_in_progress_game,
     mean,
     pretty_format_team,
     pretty_format_team_no_format,
@@ -92,6 +95,7 @@ from .models import (
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
+from .views.in_progress_game import InProgressGameView
 
 
 def get_even_teams(
@@ -308,9 +312,18 @@ async def create_game(
             PlayerCategoryTrueskill.category_id == category.id
         )
     if player_category_trueskills:
-        average_trueskill = mean(list(map(lambda x: x.mu, player_category_trueskills)))
+        average_trueskill = mean(
+            list(map(lambda x: x.rank, player_category_trueskills))
+        )
     else:
-        average_trueskill = mean(list(map(lambda x: x.rated_trueskill_mu, players)))
+        average_trueskill = mean(
+            list(
+                map(
+                    lambda x: x.rated_trueskill_mu - 3 * x.rated_trueskill_sigma,
+                    players,
+                )
+            )
+        )
 
     next_rotation_map: RotationMap | None = (
         session.query(RotationMap)
@@ -355,17 +368,9 @@ async def create_game(
     team1_players = players[len(players) // 2 :]
 
     short_game_id = short_uuid(game.id)
-    message_content = "```autohotkey"
-    message_content += f"\nGame '{queue.name}' ({short_game_id}) has begun!\n"
-    if config.SHOW_TRUESKILL:
-        message_content += f"\nMap: {game.map_full_name} ({game.map_short_name}) (mu: {round(average_trueskill, 2)})\n"
-    else:
-        message_content += f"\nMap: {game.map_full_name} ({game.map_short_name})\n"
-    message_content += pretty_format_team(game.team0_name, win_prob, team0_players)
-    message_content += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
-    message_content += "\n```"
+    title = f"\nGame '{queue.name}' ({short_game_id}) has begun!\n"
     embed = Embed(
-        description=message_content,
+        title=title,
         colour=Colour.blue(),
     )
 
@@ -380,6 +385,36 @@ async def create_game(
         print(
             f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
         )
+    match_channel: discord.TextChannel = await guild.create_text_channel(
+        f"{queue.name}-({short_game_id})", category=voice_category
+    )
+    session.add(
+        InProgressGameChannel(in_progress_game_id=game.id, channel_id=match_channel.id)
+    )
+    embed.add_field(
+        name="Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=False
+    )
+    embed.add_field(
+        name=f"{game.team0_name} ({round(100*win_prob)}%)",
+        value="\n".join([f"<@{player.id}>" for player in team0_players]),
+        inline=True,
+    )
+    embed.add_field(
+        name=f"{game.team1_name} ({round(100*(1- win_prob))}%)",
+        value="\n".join([f"<@{player.id}>" for player in team1_players]),
+        inline=True,
+    )
+    if match_channel:
+        embed.add_field(
+            name="Match Channel", value=match_channel.jump_url, inline=False
+        )
+    if config.SHOW_TRUESKILL:
+        embed.add_field(
+            name="Average Rank", value=round(average_trueskill, 2), inline=False
+        )
+    embed.add_field(
+        name="Match Commands", value="\n".join(["`/setgamecode`"]), inline=True
+    )
     for player in team0_players:
         if be_channel:
             await send_in_guild_message(
@@ -404,7 +439,7 @@ async def create_game(
         )
         session.add(game_player)
 
-    await channel.send(embed=embed)
+    await match_channel.send(embed=embed, view=InProgressGameView(game.id))
 
     session.query(QueuePlayer).filter(QueuePlayer.player_id.in_(player_ids)).delete()  # type: ignore
     session.commit()
@@ -427,13 +462,13 @@ async def create_team_voice_channels(
     session: SQLAlchemySession,
     guild: Guild,
     game: InProgressGame,
-    voice_category: CategoryChannel,
+    category: CategoryChannel,
 ) -> tuple[discord.VoiceChannel, discord.VoiceChannel]:
     be_channel = await guild.create_voice_channel(
-        f"{game.team0_name}", category=voice_category
+        f"{game.team0_name}", category=category
     )
     ds_channel = await guild.create_voice_channel(
-        f"{game.team1_name}", category=voice_category
+        f"{game.team1_name}", category=category
     )
     session.add(
         InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
@@ -1232,45 +1267,10 @@ async def ban(ctx: Context, member: Member):
             )
 
 
-@bot.command()
+@bot.tree.command(name="cancelgame", description="Given a game ID, cancels that game")
 @commands.check(is_admin)
-async def cancelgame(ctx: Context, game_id: str):
-    message = ctx.message
-    session = ctx.session
-    game = (
-        session.query(InProgressGame)
-        .filter(InProgressGame.id.startswith(game_id))
-        .first()
-    )
-    if not game:
-        await send_message(
-            message.channel,
-            embed_description=f"Could not find game: {game_id}",
-            colour=Colour.red(),
-        )
-        return
-
-    session.query(InProgressGamePlayer).filter(
-        InProgressGamePlayer.in_progress_game_id == game.id
-    ).delete()
-    for channel in session.query(InProgressGameChannel).filter(
-        InProgressGameChannel.in_progress_game_id == game.id
-    ):
-        if message.guild:
-            guild_channel = message.guild.get_channel(channel.channel_id)
-            if guild_channel:
-                await guild_channel.delete()
-        session.delete(channel)
-    session.commit()
-
-    session.delete(game)
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"Game {game_id} cancelled",
-        colour=Colour.blue(),
-    )
-
+async def cancelgame(interaction: Interaction, game_id: str):
+    await cancel_in_progress_game(interaction, game_id)
 
 @bot.command()
 async def coinflip(ctx: Context):
@@ -1818,279 +1818,12 @@ async def enablestats(ctx: Context):
     )
 
 
-@bot.command(usage="<win|loss|tie>")
-async def finishgame(ctx: Context, outcome: str):
-    message = ctx.message
-    session = ctx.session
-    game_player = (
-        session.query(InProgressGamePlayer)
-        .filter(InProgressGamePlayer.player_id == message.author.id)
-        .first()
-    )
-    if not game_player:
-        await send_message(
-            message.channel,
-            embed_description="You must be in a game to use that command",
-            colour=Colour.red(),
-        )
-        return
+@bot.tree.command(name="finishgame", description="Ends the current game you are in")
+@discord.app_commands.describe(outcome="win, loss, or tie")
+@discord.app_commands.guild_only()
+async def finishgame(interaction: Interaction, outcome: Literal["win", "loss", "tie"]):
+    await finish_in_progress_game(interaction, outcome)
 
-    in_progress_game: InProgressGame = (
-        session.query(InProgressGame)
-        .filter(InProgressGame.id == game_player.in_progress_game_id)
-        .first()
-    )
-    queue: Queue = (
-        session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
-    )
-    winning_team = -1
-    if outcome.lower() == "win":
-        winning_team = game_player.team
-    elif outcome.lower() == "loss":
-        winning_team = (game_player.team + 1) % 2
-    elif outcome.lower() == "tie":
-        winning_team = -1
-    else:
-        await send_message(
-            message.channel,
-            embed_description="Usage: !finishgame <win|loss|tie>",
-            colour=Colour.red(),
-        )
-        return
-
-    players = (
-        session.query(Player)
-        .join(InProgressGamePlayer)
-        .filter(
-            InProgressGamePlayer.player_id == Player.id,
-            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
-        )
-    ).all()
-    player_ids: list[str] = [player.id for player in players]
-    players_by_id: dict[int, Player] = {player.id: player for player in players}
-    player_category_trueskills_by_id: dict[str, PlayerCategoryTrueskill] = {}
-    if queue.category_id:
-        player_category_trueskills: list[PlayerCategoryTrueskill] = (
-            session.query(PlayerCategoryTrueskill)
-            .filter(
-                PlayerCategoryTrueskill.player_id.in_(player_ids),
-                PlayerCategoryTrueskill.category_id == queue.category_id,
-            )
-            .all()
-        )
-        player_category_trueskills_by_id = {
-            pct.player_id: pct for pct in player_category_trueskills
-        }
-    in_progress_game_players = (
-        session.query(InProgressGamePlayer)
-        .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
-        .all()
-    )
-    team0_rated_ratings_before = []
-    team1_rated_ratings_before = []
-    team0_players: list[InProgressGamePlayer] = []
-    team1_players: list[InProgressGamePlayer] = []
-    for in_progress_game_player in in_progress_game_players:
-        player = players_by_id[in_progress_game_player.player_id]
-        if in_progress_game_player.team == 0:
-            team0_players.append(in_progress_game_player)
-            if player.id in player_category_trueskills_by_id:
-                pct = player_category_trueskills_by_id[player.id]
-                team0_rated_ratings_before.append(Rating(pct.mu, pct.sigma))
-            else:
-                team0_rated_ratings_before.append(
-                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-                )
-        else:
-            team1_players.append(in_progress_game_player)
-            if player.id in player_category_trueskills_by_id:
-                pct = player_category_trueskills_by_id[player.id]
-                team1_rated_ratings_before.append(Rating(pct.mu, pct.sigma))
-            else:
-                team1_rated_ratings_before.append(
-                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-                )
-
-    if queue.category_id:
-        category_name = (
-            session.query(Category)
-            .filter(Category.id == queue.category_id)
-            .first()
-            .name
-        )
-    else:
-        category_name = None
-
-    finished_game = FinishedGame(
-        average_trueskill=in_progress_game.average_trueskill,
-        finished_at=datetime.now(timezone.utc),
-        game_id=in_progress_game.id,
-        is_rated=queue.is_rated,
-        map_full_name=in_progress_game.map_full_name,
-        map_short_name=in_progress_game.map_short_name,
-        queue_name=queue.name,
-        category_name=category_name,
-        started_at=in_progress_game.created_at,
-        team0_name=in_progress_game.team0_name,
-        team1_name=in_progress_game.team1_name,
-        win_probability=in_progress_game.win_probability,
-        winning_team=winning_team,
-    )
-    session.add(finished_game)
-
-    result = None
-    if winning_team == -1:
-        result = [0, 0]
-    elif winning_team == 0:
-        result = [0, 1]
-    elif winning_team == 1:
-        result = [1, 0]
-
-    team0_rated_ratings_after: list[Rating]
-    team1_rated_ratings_after: list[Rating]
-    if len(players) > 1:
-        team0_rated_ratings_after, team1_rated_ratings_after = rate(
-            [team0_rated_ratings_before, team1_rated_ratings_before], result
-        )
-    else:
-        # Mostly useful for creating solo queues for testing, no real world
-        # application
-        team0_rated_ratings_after, team1_rated_ratings_after = (
-            team0_rated_ratings_before,
-            team1_rated_ratings_before,
-        )
-
-    for i, team0_gip in enumerate(team0_players):
-        player = players_by_id[team0_gip.player_id]
-        finished_game_player = FinishedGamePlayer(
-            finished_game_id=finished_game.id,
-            player_id=player.id,
-            player_name=player.name,
-            team=team0_gip.team,
-            rated_trueskill_mu_before=team0_rated_ratings_before[i].mu,
-            rated_trueskill_sigma_before=team0_rated_ratings_before[i].sigma,
-            rated_trueskill_mu_after=team0_rated_ratings_after[i].mu,
-            rated_trueskill_sigma_after=team0_rated_ratings_after[i].sigma,
-        )
-        trueskill_rating = team0_rated_ratings_after[i]
-        # Regardless of category, always update the master trueskill. That way
-        # when we create new categories off of it the data isn't completely
-        # stale
-        player.rated_trueskill_mu = trueskill_rating.mu
-        player.rated_trueskill_sigma = trueskill_rating.sigma
-        if player.id in player_category_trueskills_by_id:
-            pct = player_category_trueskills_by_id[player.id]
-            pct.mu = trueskill_rating.mu
-            pct.sigma = trueskill_rating.sigma
-            pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
-        else:
-            session.add(
-                PlayerCategoryTrueskill(
-                    player_id=player.id,
-                    category_id=queue.category_id,
-                    mu=trueskill_rating.mu,
-                    sigma=trueskill_rating.sigma,
-                    rank=trueskill_rating.mu - 3 * trueskill_rating.sigma,
-                )
-            )
-        session.add(finished_game_player)
-    for i, team1_gip in enumerate(team1_players):
-        player = players_by_id[team1_gip.player_id]
-        finished_game_player = FinishedGamePlayer(
-            finished_game_id=finished_game.id,
-            player_id=player.id,
-            player_name=player.name,
-            team=team1_gip.team,
-            rated_trueskill_mu_before=team1_rated_ratings_before[i].mu,
-            rated_trueskill_sigma_before=team1_rated_ratings_before[i].sigma,
-            rated_trueskill_mu_after=team1_rated_ratings_after[i].mu,
-            rated_trueskill_sigma_after=team1_rated_ratings_after[i].sigma,
-        )
-        trueskill_rating = team1_rated_ratings_after[i]
-        # Regardless of category, always update the master trueskill. That way
-        # when we create new categories off of it the data isn't completely
-        # stale
-        player.rated_trueskill_mu = trueskill_rating.mu
-        player.rated_trueskill_sigma = trueskill_rating.sigma
-        if player.id in player_category_trueskills_by_id:
-            pct = player_category_trueskills_by_id[player.id]
-            pct.mu = trueskill_rating.mu
-            pct.sigma = trueskill_rating.sigma
-            pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
-        else:
-            session.add(
-                PlayerCategoryTrueskill(
-                    player_id=player.id,
-                    category_id=queue.category_id,
-                    mu=trueskill_rating.mu,
-                    sigma=trueskill_rating.sigma,
-                    rank=trueskill_rating.mu - 3 * trueskill_rating.sigma,
-                )
-            )
-        session.add(finished_game_player)
-
-    session.query(InProgressGamePlayer).filter(
-        InProgressGamePlayer.in_progress_game_id == in_progress_game.id
-    ).delete()
-    session.query(InProgressGame).filter(
-        InProgressGame.id == in_progress_game.id
-    ).delete()
-
-    embed_description = ""
-    duration: timedelta = finished_game.finished_at.replace(
-        tzinfo=timezone.utc
-    ) - in_progress_game.created_at.replace(tzinfo=timezone.utc)
-    if winning_team == 0:
-        embed_description = f"**Winner:** {in_progress_game.team0_name}\n**Duration:** {duration.seconds // 60} minutes"
-    elif winning_team == 1:
-        embed_description = f"**Winner:** {in_progress_game.team1_name}\n**Duration:** {duration.seconds // 60} minutes"
-    else:
-        embed_description = (
-            f"**Tie game**\n**Duration:** {duration.seconds // 60} minutes"
-        )
-
-    queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
-    if message.guild:
-        session.add(
-            QueueWaitlist(
-                channel_id=message.channel.id,
-                finished_game_id=finished_game.id,
-                guild_id=message.guild.id,
-                in_progress_game_id=in_progress_game.id,
-                queue_id=queue.id,
-                end_waitlist_at=datetime.now(timezone.utc)
-                + timedelta(seconds=config.RE_ADD_DELAY),
-            )
-        )
-
-    # Reward raffle tickets
-    reward = (
-        session.query(RotationMap.raffle_ticket_reward)
-        .join(Map, Map.id == RotationMap.map_id)
-        .join(Rotation, Rotation.id == RotationMap.rotation_id)
-        .join(Queue, Queue.rotation_id == Rotation.id)
-        .filter(Map.short_name == in_progress_game.map_short_name)
-        .filter(Queue.id == in_progress_game.queue_id)
-        .scalar()
-    )
-    if reward == 0:
-        reward = config.DEFAULT_RAFFLE_VALUE
-
-    for player in players:
-        player.raffle_tickets += reward
-        session.add(player)
-
-    session.commit()
-    queue_name = queue.name
-    session.close()
-    short_in_progress_game_id = in_progress_game.id.split("-")[0]
-    await send_message(
-        message.channel,
-        content=f"Game '{queue_name}' ({short_in_progress_game_id}) finished",
-        embed_description=embed_description,
-        colour=Colour.green(),
-    )
-    await upload_stats_screenshot_imgkit(ctx)
 
 
 # @bot.command()
