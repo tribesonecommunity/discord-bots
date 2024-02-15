@@ -144,7 +144,6 @@ async def upload_stats_screenshot_imgkit(
     html_files.sort(
         key=lambda x: os.path.getmtime(os.path.join(config.STATS_DIR, x)), reverse=True
     )
-    logging.info(html_files)
 
     if len(html_files) == 0:
         return

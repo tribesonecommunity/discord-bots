@@ -56,6 +56,7 @@ class InProgressGameView(discord.ui.View):
         for child in self.children:
             if type(child) == discord.ui.Button:
                 child.disabled = True
-                await interaction.edit_original_response(
-                    embed=interaction.message.embeds[0], view=self
-                )
+                if interaction.message and interaction.message.embeds:
+                    await interaction.edit_original_response(
+                        embed=interaction.message.embeds[0], view=self
+                    )
