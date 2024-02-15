@@ -410,7 +410,7 @@ async def create_game(
         )
     if config.SHOW_TRUESKILL:
         embed.add_field(
-            name="Average Rank", value=round(average_trueskill, 2), inline=False
+            name="Average Rating", value=round(average_trueskill, 2), inline=False
         )
     embed.add_field(
         name="Match Commands", value="\n".join(["`/setgamecode`"]), inline=True
