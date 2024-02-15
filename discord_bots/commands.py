@@ -12,7 +12,7 @@ from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from typing import List, Literal, Union
+from typing import List, Literal, Optional, Union
 
 import discord
 import imgkit
@@ -1821,8 +1821,12 @@ async def enablestats(ctx: Context):
 @bot.tree.command(name="finishgame", description="Ends the current game you are in")
 @discord.app_commands.describe(outcome="win, loss, or tie")
 @discord.app_commands.guild_only()
-async def finishgame(interaction: Interaction, outcome: Literal["win", "loss", "tie"]):
-    await finish_in_progress_game(interaction, outcome)
+async def finishgame(
+    interaction: Interaction,
+    outcome: Literal["win", "loss", "tie"],
+    game_id: Optional[str],
+):
+    await finish_in_progress_game(interaction, outcome, game_id)
 
 
 

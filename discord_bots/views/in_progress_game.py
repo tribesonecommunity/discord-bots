@@ -6,7 +6,7 @@ import discord_bots.utils
 class InProgressGameView(discord.ui.View):
     def __init__(self, game_id: str):
         super().__init__(timeout=None)
-        self.game_id: str = ""
+        self.game_id: str = game_id
         self.is_game_finished: bool = False
         self.cancel_votes: int = 0
 
@@ -20,7 +20,7 @@ class InProgressGameView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
         self.is_game_finished = await discord_bots.utils.finish_in_progress_game(
-            interaction, "win"
+            interaction, "win", self.game_id
         )
         if self.is_game_finished:
             await self.disable_buttons(interaction)
@@ -33,7 +33,7 @@ class InProgressGameView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
         self.is_game_finished = await discord_bots.utils.finish_in_progress_game(
-            interaction, "loss"
+            interaction, "loss", self.game_id
         )
         if self.is_game_finished:
             await self.disable_buttons(interaction)
@@ -46,7 +46,7 @@ class InProgressGameView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
         self.is_game_finished = await discord_bots.utils.finish_in_progress_game(
-            interaction, "tie"
+            interaction, "tie", self.game_id
         )
         if self.is_game_finished:
             await self.disable_buttons(interaction)

@@ -436,12 +436,6 @@ async def sync(
 
 
 async def cancel_in_progress_game(interaction: Interaction, game_id: str):
-    message: Message | None = interaction.message
-    if not message:
-        await interaction.response.send_message(
-            embed=Embed(description="Something went wrong", color=Colour.red())
-        )
-        return
     session: SQLAlchemySession = Session()
     game = (
         session.query(InProgressGame)
@@ -463,8 +457,8 @@ async def cancel_in_progress_game(interaction: Interaction, game_id: str):
     for channel in session.query(InProgressGameChannel).filter(
         InProgressGameChannel.in_progress_game_id == game.id
     ):
-        if message.guild:
-            guild_channel = message.guild.get_channel(channel.channel_id)
+        if interaction.guild:
+            guild_channel = interaction.guild.get_channel(channel.channel_id)
             if guild_channel:
                 await guild_channel.delete()
         session.delete(channel)
@@ -482,7 +476,9 @@ async def cancel_in_progress_game(interaction: Interaction, game_id: str):
 
 
 async def finish_in_progress_game(
-    interaction: Interaction, outcome: Literal["win", "loss", "tie"]
+    interaction: Interaction,
+    outcome: Literal["win", "loss", "tie"],
+    game_id: Optional[str] = None,
 ) -> bool:
     session: sqlalchemy.orm.session.Session = Session()
     game_player = (
@@ -501,23 +497,40 @@ async def finish_in_progress_game(
         session.close()
         return False
 
-    in_progress_game: InProgressGame | None = (
-        session.query(InProgressGame)
-        .filter(InProgressGame.id == game_player.in_progress_game_id)
-        .first()
-    )
-    if not in_progress_game:
-        logging.warn(
-            f"No in_progress_game found with id={game_player.in_progress_game_id} for game_player with id={game_player.id}"
+    if game_id:
+        in_progress_game: InProgressGame | None = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == game_player.in_progress_game_id)
+            .filter(InProgressGame.id == game_id)
+            .first()
         )
-        await interaction.response.send_message(
-            embed=discord.Embed(
-                description="You are not in a game!", color=discord.Colour.red()
-            ),
-            ephemeral=True,
+        if not in_progress_game:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="You are not in this game!", color=discord.Colour.red()
+                ),
+                ephemeral=True,
+            )
+            session.close()
+            return False
+    else:
+        in_progress_game: InProgressGame | None = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == game_player.in_progress_game_id)
+            .first()
         )
-        session.close()
-        return False
+        if not in_progress_game:
+            logging.warn(
+                f"No in_progress_game found with id={game_player.in_progress_game_id} for game_player with id={game_player.id}"
+            )
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="You are not in a game!", color=discord.Colour.red()
+                ),
+                ephemeral=True,
+            )
+            session.close()
+            return False
     queue: Queue | None = (
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )
