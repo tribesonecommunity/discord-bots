@@ -1,15 +1,21 @@
-from discord import app_commands, Interaction, Embed, Colour, ButtonStyle, ActionRow
+from discord import (
+    app_commands,
+    Interaction,
+    Embed,
+    Colour,
+    ButtonStyle,
+    ActionRow,
+    TextChannel,
+)
 from discord.member import Member
-from discord.ext.commands import Bot, Context, check, command
-from discord.ui import View, Button, button
+from discord.ext.commands import Bot, check
 
-# from discord.ButtonStyle import green
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm.exc import NoResultFound
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.config import CURRENCY_NAME
+from discord_bots.views.economy import EconomyPredictionView
+from discord_bots.config import ECONOMY_ENABLED, CURRENCY_NAME
 from discord_bots.models import (
     Player,
     FinishedGame,
@@ -36,7 +42,16 @@ class EconomyCommands(BaseCog):
         sender = Player(id=None, name="Admin")
         receiver: Player = session.query(Player).filter(Player.id == member.id).first()
 
-        if not receiver:
+        if not ECONOMY_ENABLED:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Player economy is disabled",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return 
+        elif not receiver:
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"Player {member.display_name} does not exist",
@@ -119,6 +134,8 @@ class EconomyCommands(BaseCog):
     ):
         session = Session()
 
+        if not ECONOMY_ENABLED:
+            raise Exception("Player economy is disabled")
         if not account:
             raise TypeError("Transaction account not a player or game")
         elif not destination_account:
@@ -213,7 +230,16 @@ class EconomyCommands(BaseCog):
         receiver: Player = session.query(Player).filter(Player.id == member.id).first()
 
         # Check sender & receiver
-        if not sender:
+        if not ECONOMY_ENABLED:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Player economy is disabled",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        elif not sender:
             await interaction.response.send_message(
                 embed=Embed(
                     description="Sending player does not exist",
@@ -325,44 +351,53 @@ class EconomyCommands(BaseCog):
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
 
-        if player:
+        if not ECONOMY_ENABLED:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Player economy is disabled",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+        elif player:
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"{player.name} has {player.currency} {CURRENCY_NAME}",
                     colour=Colour.blue(),
                 ),
             )
-
-    @app_commands.command(name="predict", description="Test predictions")
-    async def predict(self, interaction: Interaction) -> None:
-        try:
+        else:
             await interaction.response.send_message(
                 embed=Embed(
-                    description="Prediction embed test",
-                    colour=Colour.green(),
+                    description="Player not found",
+                    colour=Colour.red(),
                 ),
-                view=EconomyButtons(),
-            )
-        except Exception as e:
-            await interaction.response.send_message(
-                embed=Embed(description=f"Exception: {e}", colour=Colour.red()),
                 ephemeral=True,
             )
 
-
-class EconomyButtons(View):
-    def __init__(self):
-        super().__init__()
-        self.value = None
-
-    @button(label="Team 0", style=ButtonStyle.green)
-    async def Team0(self, interaction: Interaction, button: Button):
-        await interaction.response.send_message("Predicted team 0", ephemeral=True)
-        self.value = True
-        self.stop()
-
-    @button(label="Team 1", style=ButtonStyle.green)
-    async def Team0(self, interaction: Interaction, button: Button):
-        await interaction.response.send_message("Predicted team 1", ephemeral=True)
-        self.value = True
-        self.stop()
+    @app_commands.command(name="predict", description="Test predictions")
+    # async def predict(channel: TextChannel, in_progress_game: InProgressGame) -> None:
+    async def predict(self, interaction: Interaction) -> None:
+        
+        if not ECONOMY_ENABLED:
+            return
+        
+        try:
+            # await channel.send(
+            await interaction.channel.send(
+                embed=Embed(
+                    description="Prediction embed test",
+                    colour=Colour.blue(),
+                ),
+                # view=EconomyPredictionView(in_progress_game),
+                view=EconomyPredictionView(),
+            )
+        except Exception as e:
+            # await channel.send(
+            await interaction.response.send_message(
+                embed=Embed(description=f"Exception: {e}", colour=Colour.red()),
+                # ephemeral=True,
+            )
+            raise
+        # else:
+        #     await interaction.response.defer()

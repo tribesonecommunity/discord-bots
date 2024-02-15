@@ -25,6 +25,7 @@ from .tasks import (
     queue_waitlist_task,
     vote_passed_waitlist_task,
 )
+from .views.economy import EconomyPredictionView
 
 
 async def create_seed_admins():
@@ -206,6 +207,7 @@ async def setup():
     await bot.add_cog(QueueCommands(bot))
     await bot.add_cog(VoteCommands(bot))
     await bot.add_cog(EconomyCommands(bot))
+    bot.add_view(EconomyPredictionView())
 
 
 async def main():

@@ -86,8 +86,12 @@ The following are optional
 - `MAP_VOTE_THRESHOLD` - Defaults to 7. The number of votes needed to succeed a map skip / replacement
 - `STATS_DIR` - Defaults to None. Store screenshots if configured. Doesn't work on Windows.
 - `STATS_WIDTH`, `STATS_HEIGHT`
+
+ *Economy Values*
+- `ECONOMY_ENABLED` - Enabled/Disables the economy module, for match predictions & betting. Default is True
 - `CURRENCY_NAME` - Set's the currency name for player economy. Default is Shazbucks
-- `STARTING_CURRENCY` - Define a customer starting currency value for new players. Default is 100
+- `STARTING_CURRENCY` - Define a custom starting currency value for new players. Default is 100
+- `PREDICTION_TIMEOUT` - Define how long (in seconds) a prediction should be open after a game is created. Default is 300 (5 minutes)
 
 ## Running the bot
 

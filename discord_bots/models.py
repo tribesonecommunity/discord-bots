@@ -503,6 +503,10 @@ class InProgressGame:
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
+    prediction_open: bool = field(
+        default=config.ECONOMY_ENABLED,
+        metadata={"sa": Column(Boolean, nullable=False)},
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
