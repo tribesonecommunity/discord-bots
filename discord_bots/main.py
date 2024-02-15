@@ -5,6 +5,7 @@ import discord.utils
 from discord import Colour, Embed, Member, Message, Reaction
 from discord.abc import User
 from discord.ext.commands import CommandError, Context, UserInputError
+from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
 from discord_bots.cogs.categories import CategoryCommands
@@ -24,6 +25,7 @@ from .tasks import (
     queue_waitlist_task,
     vote_passed_waitlist_task,
 )
+from .views.in_progress_game import InProgressGameView
 
 
 async def create_seed_admins():
@@ -103,7 +105,7 @@ async def on_message(message: Message):
     if (config.CHANNEL_ID and message.channel.id == config.CHANNEL_ID) or (
         config.LEADERBOARD_CHANNEL and message.channel.id == config.LEADERBOARD_CHANNEL
     ):
-        session = Session()
+        session: SQLAlchemySession = Session()
         player: Player | None = (
             session.query(Player).filter(Player.id == message.author.id).first()
         )
@@ -139,6 +141,10 @@ async def on_message(message: Message):
             if custom_command:
                 await message.channel.send(content=custom_command.output)
         session.close()
+    elif message.content.startswith(config.COMMAND_PREFIX):
+        await message.channel.send(
+            f"Please use `{config.COMMAND_PREFIX}` commands in <#{config.CHANNEL_ID}>"
+        )
 
 
 @bot.event
@@ -200,6 +206,7 @@ async def setup():
     await bot.add_cog(MapCommands(bot))
     await bot.add_cog(QueueCommands(bot))
     await bot.add_cog(VoteCommands(bot))
+    bot.add_view(InProgressGameView(""))
 
 
 async def main():
