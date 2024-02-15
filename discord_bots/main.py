@@ -141,6 +141,10 @@ async def on_message(message: Message):
             if custom_command:
                 await message.channel.send(content=custom_command.output)
         session.close()
+    else:
+        await message.channel.send(
+            f"Please use message commands in <#{config.CHANNEL_ID}>"
+        )
 
 
 @bot.event
