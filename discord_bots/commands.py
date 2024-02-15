@@ -42,6 +42,7 @@ from sqlalchemy.sql import select
 from table2ascii import PresetStyle, table2ascii
 from trueskill import Rating, rate
 
+from discord_bots.cogs.economy import EconomyCommands
 import discord_bots.config as config
 from discord_bots.checks import is_admin
 from discord_bots.utils import (
@@ -446,14 +447,17 @@ async def create_game(
 
     if not rolled_random_map:
         await update_next_map_to_map_after_next(queue.rotation_id, False)
-
+    
     if config.ENABLE_VOICE_MOVE and queue.move_enabled and be_channel and ds_channel:
         await _movegameplayers(short_game_id, None, guild)
         await send_message(
             channel,
             embed_description=f"Players moved to voice channels for game {short_game_id}",
-            colour=Colour.green(),
+            colour=Colour.blue(),
         )
+    
+    # if config.ECONOMY_ENABLED:
+    #     await EconomyCommands.predict(channel, game)
 
     session.close()
 

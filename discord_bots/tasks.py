@@ -430,3 +430,20 @@ async def leaderboard_task():
     Periodically print the leaderboard
     """
     await print_leaderboard()
+
+# @tasks.loop(seconds=10)
+# async def prediction_task():
+#     """
+#     Closes prediction after submission period
+#     """
+#     session = Session()
+
+#     in_progress_games: list[InProgressGame] = (
+#         session.query(InProgressGame).filter(InProgressGame.prediction_open).all()
+#     )
+
+#     for game in in_progress_games:
+#         if datetime.now(timezone.utc) > game.created_at + timedelta(seconds=config.PREDICTION_TIMEOUT):
+#             game.prediction_open = False
+#     session.commit()
+#     session.close()
