@@ -17,7 +17,6 @@ from discord import (
     GroupChannel,
     Guild,
     Interaction,
-    Message,
     TextChannel,
 )
 from discord.ext import commands
@@ -27,7 +26,6 @@ from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from trueskill import Rating, global_env, rate
 
@@ -35,9 +33,6 @@ import discord_bots.config as config
 from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
-    EconomyDonation,
-    EconomyPrediction,
-    EconomyTransaction,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -440,7 +435,7 @@ async def sync(
     await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")
 
 
-async def cancel_in_progress_game(interaction: Interaction, game_id: str):
+async def cancel_in_progress_game(interaction: Interaction, game_id: str) -> bool:
     session: SQLAlchemySession = Session()
     game = (
         session.query(InProgressGame)
@@ -454,7 +449,7 @@ async def cancel_in_progress_game(interaction: Interaction, game_id: str):
                 colour=Colour.red(),
             )
         )
-        return
+        return False
 
     session.query(InProgressGamePlayer).filter(
         InProgressGamePlayer.in_progress_game_id == game.id
@@ -478,6 +473,7 @@ async def cancel_in_progress_game(interaction: Interaction, game_id: str):
             colour=Colour.blue(),
         )
     )
+    return True
 
 
 async def finish_in_progress_game(

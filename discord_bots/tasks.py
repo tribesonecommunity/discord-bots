@@ -4,13 +4,10 @@
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from pytz import utc
 from random import shuffle
 from re import I
 
-from discord import Message, Embed
-from discord.abc import Messageable
-from discord.channel import TextChannel, VoiceChannel
+from discord.channel import TextChannel
 from discord.colour import Colour
 from discord.ext import tasks
 from discord.guild import Guild
@@ -32,7 +29,6 @@ from .commands import (
 )
 import discord_bots.config as config
 from .models import (
-    EconomyPrediction,
     InProgressGame,
     InProgressGameChannel,
     MapVote,
@@ -50,6 +46,7 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
+from .cogs.economy import EconomyCommands
 
 
 @tasks.loop(minutes=1)
@@ -444,75 +441,17 @@ async def prediction_task():
     TO DO: Update embed from InProgressGame.prediction_message_id
     """
     session = Session()
-
     in_progress_games: list[InProgressGame] = (
-        session.query(InProgressGame)
-        .filter(InProgressGame.prediction_open == True)
-        .all()
-    )
-
-    # Update prediction messages
-    for game in in_progress_games:
-        igp_channels: list[InProgressGameChannel] = (
-            session.query(InProgressGameChannel)
-            .filter(InProgressGameChannel.in_progress_game_id == game.id)
+            session.query(InProgressGame)
+            .filter(InProgressGame.prediction_open == True)
             .all()
         )
-        for igp_channel in igp_channels:
-            channel = bot.get_channel(igp_channel.channel_id)
-            if type(channel) == TextChannel:
-                message: Message = channel.get_partial_message(
-                    game.prediction_message_id
-                )
-                if message:
-                    message = await message.fetch()
-                else:
-                    channel.fetch_message(game.prediction_message_id)
-
-                predictions: list[EconomyPrediction] = (
-                    session.query(EconomyPrediction)
-                    .filter(EconomyPrediction.in_progress_game_id == game.id)
-                    .all()
-                )
-                team0_total: int = 0
-                team0_predictors: list[str] = []
-                team1_total: int = 0
-                team1_predictors: list[str] = []
-                for prediction in predictions:
-                    if prediction.team == 0:
-                        team0_total += prediction.prediction_value
-                        if not prediction.player_id in team0_predictors:
-                            team0_predictors.append(prediction.player_id)
-                    else:
-                        team1_total += prediction.prediction_value
-                        if not prediction.player_id in team1_predictors:
-                            team1_predictors.append(prediction.player_id)
-
-                embed: Embed = message.embeds[0]
-                embed.set_field_at(
-                    index=0,
-                    name=embed.fields[0].name,
-                    value=f"> Total: {team0_total}\n> Ratio: \n> Predictors: {len(team0_predictors)}",
-                )
-                embed.set_field_at(
-                    index=1,
-                    name=embed.fields[1].name,
-                    value=f"> Total: {team1_total}\n> Ratio: \n> Predictors: {len(team1_predictors)}",
-                )
-
-                # embed_dict: dict = embed.to_dict()
-                # for field in embed_dict["fields"]:
-                #     field["value"]
-
-                # new_embed = Embed.from_dict(embed_dict)
-                await message.edit(embed=embed)
-        
-        #Close games after submission period
-        time_compare: datetime = game.created_at + timedelta(
-            seconds=config.PREDICTION_TIMEOUT
-        )
-        time_compare = utc.localize(time_compare)
-        if datetime.now(timezone.utc) > time_compare:
-            game.prediction_open = False
-            session.commit()
     session.close()
+    try:
+        await EconomyCommands.update_embeds(in_progress_games)
+    except Exception as e:
+        # print(f"Prediction task failed during game creation, restarting task...")
+        prediction_task.cancel()
+        prediction_task.restart()
+    
+    await EconomyCommands.close_predictions(in_progress_games)

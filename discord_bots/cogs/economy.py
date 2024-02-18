@@ -1,19 +1,22 @@
 from typing import Any
-import asyncio
+from datetime import datetime, timedelta, timezone
+from pytz import utc
 
 from discord import (
     app_commands,
+    ButtonStyle,
     Client,
-    Interaction,
-    Embed,
     Colour,
-    Guild,
-    SelectOption,
+    Embed,
+    Interaction,
+    Message,
     TextChannel,
     TextStyle,
-    ButtonStyle,
+    VoiceChannel,
 )
 from discord.member import Member
+
+# from discord.ext import commands
 from discord.ext.commands import Bot, check
 from discord.ui import Modal, Select, TextInput, View, Button
 
@@ -22,11 +25,12 @@ from sqlalchemy.exc import IntegrityError
 from discord_bots.bot import bot
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.config import ECONOMY_ENABLED, CURRENCY_NAME
+from discord_bots.config import ECONOMY_ENABLED, CURRENCY_NAME, PREDICTION_TIMEOUT
 from discord_bots.models import (
     Player,
     FinishedGame,
     InProgressGame,
+    InProgressGameChannel,
     InProgressGamePlayer,
     Session,
     EconomyDonation,
@@ -38,6 +42,8 @@ from discord_bots.models import (
 class EconomyCommands(BaseCog):
     def __init__(self, bot: Bot) -> None:
         super().__init__(bot)
+        self.bot = bot
+
 
     @app_commands.command(
         name="addcurrency", description=f"Admin; Add {CURRENCY_NAME} to a player"
@@ -80,7 +86,9 @@ class EconomyCommands(BaseCog):
         session.commit()
 
         try:
-            await self.create_transaction(sender, receiver, donation.value, donation)
+            await EconomyCommands.create_transaction(
+                sender, receiver, donation.value, donation
+            )
         except TypeError as te:
             await interaction.response.send_message(
                 embed=Embed(
@@ -132,6 +140,46 @@ class EconomyCommands(BaseCog):
         finally:
             session.commit()
             session.close()
+
+    async def cancel_predictions(interaction: Interaction, game_id: str):
+        session = Session()
+
+        predictions: list[EconomyPrediction] = (
+            session.query(EconomyPrediction)
+            .filter(EconomyPrediction.in_progress_game_id.startswith(game_id))
+            .all()
+        )
+        # Is not returning any predictions for some reason
+        print(f"{len(predictions)} predictions found for game {game_id}")
+
+        for prediction in predictions:
+            try:
+                print(f"Prediction Player: {prediction.player_id}")
+                EconomyCommands.create_transaction(
+                    prediction.in_progress_game, prediction.player,
+                    prediction.prediction_value, prediction
+                )
+            except Exception as e:
+                raise
+            else:
+                player: Player = session.query(Player).filter(Player.id == prediction.player_id).first()
+                print(f"Player: {player.name}")
+                player.currency += prediction.prediction_value
+                session.commit()
+            finally:
+                session.close()
+
+    async def close_predictions(in_progress_games: list[InProgressGame]):
+        session = Session()
+        for game in in_progress_games:
+            time_compare: datetime = game.created_at + timedelta(
+                seconds=PREDICTION_TIMEOUT
+            )
+            time_compare = utc.localize(time_compare)
+            if datetime.now(timezone.utc) > time_compare:
+                game.prediction_open = False
+                session.commit()
+        session.close()
 
     @classmethod
     async def create_transaction(
@@ -351,7 +399,7 @@ class EconomyCommands(BaseCog):
             session.close()
         interaction.response.send_message()
 
-    async def create_prediction(
+    async def _create_prediction(
         member: Member, game: InProgressGame, selection: int, prediction_value: int
     ) -> EconomyPrediction:
         session = Session()
@@ -360,15 +408,12 @@ class EconomyCommands(BaseCog):
         if not ECONOMY_ENABLED:
             raise Exception("Player economy is disabled")
         elif not sender:
-            print(f"Not sender")
             raise Exception("Player does not exist")
         elif not game:
-            print(f"Not game")
             raise Exception("Game does not exist")
         elif not sender.currency >= prediction_value:
-            print(f"Not enough currency")
             raise ValueError(
-                f"You do not have enough {CURRENCY_NAME}. Curreny Balance: {sender.currency}"
+                f"You do not have enough {CURRENCY_NAME}. Current Balance: {sender.currency}"
             )
 
         prediction = EconomyPrediction(
@@ -416,6 +461,71 @@ class EconomyCommands(BaseCog):
                 ephemeral=True,
             )
 
+    async def update_embeds(in_progress_games: list[InProgressGame]):
+        session = Session()
+
+        for game in in_progress_games:
+            igp_channels: list[InProgressGameChannel] = (
+                session.query(InProgressGameChannel)
+                .filter(InProgressGameChannel.in_progress_game_id == game.id)
+                .all()
+            )
+            for igp_channel in igp_channels:
+                channel: TextChannel | VoiceChannel = bot.get_channel(
+                    igp_channel.channel_id
+                )
+                if type(channel) == TextChannel:
+                    # message: Message = channel.fetch_message(game.prediction_message_id)
+                    message: Message = channel.get_partial_message(
+                        game.prediction_message_id
+                    )
+                    if message:
+                        message = await message.fetch()
+                    else:
+                        message = channel.fetch_message(game.prediction_message_id)
+
+                    predictions: list[EconomyPrediction] = (
+                        session.query(EconomyPrediction)
+                        .filter(EconomyPrediction.in_progress_game_id == game.id)
+                        .all()
+                    )
+                    team0_total: int = 0
+                    team0_predictors: list[str] = []
+                    team1_total: int = 0
+                    team1_predictors: list[str] = []
+                    for prediction in predictions:
+                        if prediction.team == 0:
+                            team0_total += prediction.prediction_value
+                            if not prediction.player_id in team0_predictors:
+                                team0_predictors.append(prediction.player_id)
+                        else:
+                            team1_total += prediction.prediction_value
+                            if not prediction.player_id in team1_predictors:
+                                team1_predictors.append(prediction.player_id)
+
+                    team0_ratio = "1.0"
+                    team1_ratio = "1.0"
+                    if not team0_total + team1_total == 0:
+                        if not team0_total == 0:
+                            team0_ratio = f"{round(1/(team0_total / (team0_total + team1_total)), 1)}"
+                        if not team1_total == 0:
+                            team1_ratio = f"{round(1/(team1_total / (team1_total + team0_total)), 1)}"
+
+                    embed: Embed = message.embeds[0]
+                    embed.set_field_at(
+                        index=0,
+                        name=embed.fields[0].name,
+                        value=f"> Total: {team0_total}\n> Win Ratio: 1 : {team0_ratio}\n> Predictors: {len(team0_predictors)}",
+                    )
+                    embed.set_field_at(
+                        index=1,
+                        name=embed.fields[1].name,
+                        value=f"> Total: {team1_total}\n> Win Ratio: 1 : {team1_ratio}\n> Predictors: {len(team1_predictors)}",
+                    )
+
+                    await message.edit(embed=embed)
+        session.close()
+
 
 class EconomyPredictionView(View):
     def __init__(self, game_id: str):
@@ -458,19 +568,17 @@ class EconomyPredictionView(View):
                 ephemeral=True,
             )
             return prediction_open
-        
-    def add_items(self, interaction: Interaction, game_id: str):
-        if self.game_id == "":
-            self.interaction_check(self)
 
+    def add_items(self, interaction: Interaction, game_id: str):
+        team0_name: str = ""
+        team1_name: str = ""
+
+        # if not self.game_id == "":
         game: InProgressGame = (
             self.session.query(InProgressGame)
             .filter(InProgressGame.id.startswith(self.game_id))
             .first()
         )
-        team0_name: str = ""
-        team1_name: str = ""
-
         if game:
             team0_name = game.team0_name
             team1_name = game.team1_name
@@ -503,10 +611,24 @@ class EconomyPredictionButton(Button):
         self.team_value: int = team_value
 
     async def callback(self, interaction: Interaction[Client]) -> Any:
-        if await self.prediction_check(interaction):
-            await interaction.response.send_modal(
-                EconomyPredictionModal(self.label, self.team_value, self.game)
-            )
+        session = Session()
+        game: InProgressGame = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id.startswith(interaction.channel.name[-8:]))
+            .first()
+        )
+        player: Player = (
+            session.query(Player).filter(Player.id == interaction.user.id).first()
+        )
+        session.close()
+        self.game = game
+        if game and player:
+            if await self.prediction_check(interaction):
+                await interaction.response.send_modal(
+                    EconomyPredictionModal(
+                        self.label, self.team_value, self.game, player
+                    )
+                )
 
     async def prediction_check(self, interaction: Interaction[Client]) -> bool:
         session = Session()
@@ -550,13 +672,17 @@ class EconomyPredictionModal(Modal):
         team_name: str,
         team_value: int,
         in_progress_game: InProgressGame,
+        player: Player,
     ):
         super().__init__(title=team_name, timeout=30)
         self.game: InProgressGame = in_progress_game
         self.team_name: str = team_name
         self.team_value: int = team_value
         self.input: TextChannel = TextInput(
-            label="Prediction Value", style=TextStyle.short, required=True
+            label="Prediction Value",
+            style=TextStyle.short,
+            required=True,
+            placeholder=f"Current Balance: {player.currency} {CURRENCY_NAME}",
         )
         self.add_item(self.input)
 
@@ -570,7 +696,7 @@ class EconomyPredictionModal(Modal):
             return
 
         try:
-            prediction: EconomyPrediction = await EconomyCommands.create_prediction(
+            prediction: EconomyPrediction = await EconomyCommands._create_prediction(
                 interaction.user, self.game, self.team_value, self.value
             )
             session = Session()
@@ -580,7 +706,9 @@ class EconomyPredictionModal(Modal):
             session.add(prediction)
             session.commit()
         except Exception as e:
-            await interaction.response.send_message(f"Error creating predicton: {e}")
+            await interaction.response.send_message(
+                f"Error creating predicton: {e}", ephemeral=True
+            )
             return
 
         try:
@@ -619,99 +747,3 @@ class EconomyPredictionModal(Modal):
         finally:
             session.commit()
             session.close()
-
-
-# class EconomyPredictionSelect(Select):
-#     def __init__(self, teams: list[SelectOption], in_progress_game: InProgressGame):
-#         super().__init__(
-#             placeholder="Select a team",
-#             options=teams,
-#             custom_id="persistent_view:Teams",
-#             row=0,
-#         )
-#         self.game: InProgressGame = in_progress_game
-
-#     async def callback(self, interaction: Interaction[Client]) -> Any:
-#         # return await super().callback(interaction)
-#         await interaction.response.send_modal(
-#             EconomyPredictionModal(self.values[0], self.options, self.game)
-#         )
-
-
-# class EconomyPredictionModal(Modal, title="Prediction Value"):
-#     def __init__(
-#         self,
-#         selection: str,
-#         options: list[SelectOption],
-#         in_progress_game: InProgressGame,
-#     ):
-#         super().__init__(title="Prediction", timeout=30)
-#         self.game: InProgressGame = in_progress_game
-#         self.selection: str = selection
-#         self.options: list[SelectOption] = options
-#         self.value: int
-#         self.input: TextChannel = TextInput(
-#             label="Value", style=TextStyle.short, required=True
-#         )
-#         self.add_item(self.input)
-
-#     async def on_submit(self, interaction: Interaction[Client]) -> None:
-#         try:
-#             self.value = int(str(self.input))
-#         except Exception as e:
-#             await interaction.response.send_message(
-#                 "Prediction value must be an integer", ephemeral=True
-#             )
-#             return
-
-#         try:
-#             prediction: EconomyPrediction = await EconomyCommands.create_prediction(
-#                 interaction.user, self.game, self.selection, self.value
-#             )
-#             session = Session()
-#             sender: Player = (
-#                 session.query(Player).filter(Player.id == prediction.player_id).first()
-#             )
-#             session.add(prediction)
-#             session.commit()
-#         except Exception as e:
-#             await interaction.response.send_message(f"Error creating predicton: {e}")
-#             return
-
-#         try:
-#             await EconomyCommands.create_transaction(
-#                 sender, self.game, self.value, prediction
-#             )
-#         except TypeError as te:
-#             await interaction.response.send_message(
-#                 f"Prediction Type Error: {te}", ephemeral=True
-#             )
-#             session.delete(prediction)
-#             return
-#         except ValueError as ve:
-#             await interaction.response.send_message(
-#                 f"Prediction Value Error: {ve}", ephemeral=True
-#             )
-#             session.delete(prediction)
-#             return
-#         except IntegrityError as exc:
-#             await interaction.response.send_message(
-#                 f"Prediction Integrity Error: {exc}", ephemeral=True
-#             )
-#             session.delete(prediction)
-#             return
-#         except Exception as e:
-#             await interaction.response.send_message(
-#                 f"Prediction Exception: {e}", ephemeral=True
-#             )
-#             session.delete(prediction)
-#             return
-#         else:
-#             sender.currency -= self.value
-#             team_name: str = self.options[int(self.selection)].label
-#             await interaction.response.send_message(
-#                 f"{sender.name} predicted {team_name} for {self.value}"
-#             )
-#         finally:
-#             session.commit()
-#             session.close()

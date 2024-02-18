@@ -2,6 +2,8 @@ import discord
 
 import discord_bots.utils
 
+from discord_bots.cogs.economy import EconomyCommands
+
 
 class InProgressGameView(discord.ui.View):
     def __init__(self, game_id: str):

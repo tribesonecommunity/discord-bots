@@ -96,7 +96,7 @@ from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
 from .views.in_progress_game import InProgressGameView
-from .cogs.economy import EconomyPredictionView
+from .cogs.economy import EconomyPredictionView, EconomyCommands
 
 
 def get_even_teams(
@@ -459,13 +459,13 @@ async def create_game(
         )
 
     if config.ECONOMY_ENABLED:
-        await create_prediction(game, guild, match_channel)
+        await create_prediction(game, match_channel)
 
     session.close()
 
 
 async def create_prediction(
-    in_progress_game: InProgressGame, guild: Guild, match_channel: TextChannel
+    in_progress_game: InProgressGame, match_channel: TextChannel
 ) -> None:
     # async def predict(self, interaction: Interaction) -> None:
 
@@ -478,13 +478,13 @@ async def create_prediction(
     )
     embed.add_field(
         name=f"{in_progress_game.team0_name}",
-        value="> Total: 0\n> Ratio: \n> Predictors: 0",
-        inline=True
+        value="> Total: 0\n> Win Ratio: 1:1.0\n> Predictors: 0",
+        inline=True,
     )
     embed.add_field(
         name=f"{in_progress_game.team1_name}",
-        value="> Total: 0\n> Ratio: \n> Predictors: 0",
-        inline=True
+        value="> Total: 0\n> Win Ratio: 1:1.0\n> Predictors: 0",
+        inline=True,
     )
 
     try:
@@ -1317,7 +1317,24 @@ async def ban(ctx: Context, member: Member):
 @bot.tree.command(name="cancelgame", description="Given a game ID, cancels that game")
 @commands.check(is_admin)
 async def cancelgame(interaction: Interaction, game_id: str):
-    await cancel_in_progress_game(interaction, game_id)
+    cancelled: bool = await cancel_in_progress_game(interaction, game_id)
+    if cancelled and config.ECONOMY_ENABLED:
+        try:
+            await EconomyCommands.cancel_predictions(interaction, game_id)
+        except Exception as e:
+            await interaction.channel.send(
+                embed=Embed(
+                    description="Predictions failed to refund",
+                    colour=Colour.red()
+                )           
+            )
+        else:
+            await interaction.channel.send(
+                embed=Embed(
+                    description="Predictions refunded",
+                    colour=Colour.blue()
+                )           
+            )
 
 
 @bot.command()
