@@ -18,6 +18,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
+
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
@@ -329,17 +330,15 @@ class InProgressGame:
         metadata={"sa": Column(DateTime, index=True)},
     )
     game_view_id: str = field(
+        default=None,
         metadata={
-            "sa": Column(
-                String, ForeignKey("persistent_view.view_id"), nullable=True
-            )
+            "sa": Column(String, ForeignKey("persistent_view.view_id"), nullable=True)
         },
     )
     prediction_view_id: str = field(
+        default=None,
         metadata={
-            "sa": Column(
-                String, ForeignKey("persistent_view.view_id"), nullable=True
-            )
+            "sa": Column(String, ForeignKey("persistent_view.view_id"), nullable=True)
         },
     )
     id: str = field(
@@ -499,6 +498,28 @@ class SkipMapVote:
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class PersistentView:
+    """
+    Stores persistent view information.
+    To be used when re-initializing views in cogs.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "persistent_view"
+
+    view_id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+    message_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
+    view_type: str = field(
+        metadata={"sa": Column(String, nullable=False)},
     )
 
 
@@ -1045,29 +1066,6 @@ class RotationMap:
     )
 
     map_votes = relationship("MapVote", cascade="all, delete-orphan")
-
-
-@mapper_registry.mapped
-@dataclass
-class PersistentView:
-    """
-    Stores persistent view information.
-    To be used when re-initializing views in cogs.
-    """
-
-    __sa_dataclass_metadata_key__ = "sa"
-    __tablename__ = "persistent_view"
-
-    view_id: str = field(
-        init=False,
-        default_factory=lambda: str(uuid4()),
-        metadata={"sa": Column(String, primary_key=True)},
-    )
-    message_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
-    view_type: str = field(
-        metadata={"sa": Column(String, nullable=False)},
-    )
-
 
 
 @mapper_registry.mapped
