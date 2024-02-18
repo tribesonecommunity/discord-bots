@@ -332,13 +332,13 @@ class InProgressGame:
     game_view_id: str = field(
         default=None,
         metadata={
-            "sa": Column(String, ForeignKey("persistent_view.view_id"), nullable=True)
+            "sa": Column(String, ForeignKey("persistent_view.id"), nullable=True)
         },
     )
     prediction_view_id: str = field(
         default=None,
         metadata={
-            "sa": Column(String, ForeignKey("persistent_view.view_id"), nullable=True)
+            "sa": Column(String, ForeignKey("persistent_view.id"), nullable=True)
         },
     )
     id: str = field(
