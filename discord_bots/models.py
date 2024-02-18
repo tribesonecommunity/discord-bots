@@ -512,7 +512,7 @@ class PersistentView:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "persistent_view"
 
-    view_id: str = field(
+    id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
