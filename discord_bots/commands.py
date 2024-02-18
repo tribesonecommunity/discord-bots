@@ -42,7 +42,6 @@ from sqlalchemy.sql import select
 from table2ascii import PresetStyle, table2ascii
 from trueskill import Rating, rate
 
-from discord_bots.cogs.economy import EconomyCommands
 import discord_bots.config as config
 from discord_bots.checks import is_admin
 from discord_bots.utils import (
@@ -97,6 +96,7 @@ from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
 from .views.in_progress_game import InProgressGameView
+from .cogs.economy import EconomyPredictionView
 
 
 def get_even_teams(
@@ -363,6 +363,8 @@ async def create_game(
         team1_name=generate_ds_name(),
         win_probability=win_prob,
     )
+    if config.ECONOMY_ENABLED:
+        game.prediction_open = True
     session.add(game)
 
     team0_players = players[: len(players) // 2]
@@ -447,7 +449,7 @@ async def create_game(
 
     if not rolled_random_map:
         await update_next_map_to_map_after_next(queue.rotation_id, False)
-    
+
     if config.ENABLE_VOICE_MOVE and queue.move_enabled and be_channel and ds_channel:
         await _movegameplayers(short_game_id, None, guild)
         await send_message(
@@ -455,11 +457,52 @@ async def create_game(
             embed_description=f"Players moved to voice channels for game {short_game_id}",
             colour=Colour.blue(),
         )
-    
-    # if config.ECONOMY_ENABLED:
-    #     await EconomyCommands.predict(channel, game)
+
+    if config.ECONOMY_ENABLED:
+        await create_prediction(game, guild, match_channel)
 
     session.close()
+
+
+async def create_prediction(
+    in_progress_game: InProgressGame, guild: Guild, match_channel: TextChannel
+) -> None:
+    # async def predict(self, interaction: Interaction) -> None:
+
+    if not config.ECONOMY_ENABLED:
+        return
+
+    embed = Embed(
+        title=f"Game {short_uuid(in_progress_game.id)} Prediction",
+        colour=Colour.blue(),
+    )
+    embed.add_field(
+        name=f"{in_progress_game.team0_name}",
+        value="> Total: 0\n> Ratio: \n> Predictors: 0",
+        inline=True
+    )
+    embed.add_field(
+        name=f"{in_progress_game.team1_name}",
+        value="> Total: 0\n> Ratio: \n> Predictors: 0",
+        inline=True
+    )
+
+    try:
+        prediction_message: Message = await match_channel.send(
+            embed=embed, view=EconomyPredictionView(in_progress_game.id)
+        )
+        session = Session()
+        igp: InProgressGame = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == in_progress_game.id)
+            .first()
+        )
+        igp.prediction_message_id = prediction_message.id
+        session.commit()
+        session.close()
+    except Exception as e:
+        print(f"prediction failed for game: {in_progress_game.id}")
+        raise
 
 
 async def create_team_voice_channels(
@@ -1276,6 +1319,7 @@ async def ban(ctx: Context, member: Member):
 async def cancelgame(interaction: Interaction, game_id: str):
     await cancel_in_progress_game(interaction, game_id)
 
+
 @bot.command()
 async def coinflip(ctx: Context):
     message = ctx.message
@@ -1831,7 +1875,6 @@ async def finishgame(
     game_id: Optional[str],
 ):
     await finish_in_progress_game(interaction, outcome, game_id)
-
 
 
 # @bot.command()

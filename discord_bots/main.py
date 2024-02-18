@@ -16,7 +16,7 @@ from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.vote import VoteCommands
 from discord_bots.cogs.economy import EconomyCommands
 from .views.in_progress_game import InProgressGameView
-from .views.economy import EconomyPredictionView
+from .cogs.economy import EconomyPredictionView
 
 from .bot import bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
@@ -27,6 +27,7 @@ from .tasks import (
     map_rotation_task,
     queue_waitlist_task,
     vote_passed_waitlist_task,
+    prediction_task,
 )
 
 
@@ -58,6 +59,8 @@ async def on_ready():
     map_rotation_task.start()
     queue_waitlist_task.start()
     vote_passed_waitlist_task.start()
+    if config.ECONOMY_ENABLED:
+        prediction_task.start()
 
 
 @bot.event
@@ -213,7 +216,7 @@ async def setup():
     await bot.add_cog(QueueCommands(bot))
     await bot.add_cog(VoteCommands(bot))
     await bot.add_cog(EconomyCommands(bot))
-    bot.add_view(EconomyPredictionView())
+    bot.add_view(EconomyPredictionView(""))
     bot.add_view(InProgressGameView(""))
 
 

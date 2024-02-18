@@ -27,6 +27,7 @@ from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from trueskill import Rating, global_env, rate
 
@@ -34,6 +35,9 @@ import discord_bots.config as config
 from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
+    EconomyDonation,
+    EconomyPrediction,
+    EconomyTransaction,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -50,6 +54,7 @@ from discord_bots.models import (
     Session,
     SkipMapVote,
 )
+
 
 MU_LOWER_UNICODE = "\u03BC"
 SIGMA_LOWER_UNICODE = "\u03C3"

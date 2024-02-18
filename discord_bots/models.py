@@ -288,9 +288,7 @@ class EconomyPrediction:
             )
         },
     )
-    team_name: str = field(
-        metadata={"sa": Column(String, nullable=False)},
-    )
+    team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
     prediction_value: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
     outcome: bool = field(
         metadata={"sa": Column(Boolean, nullable=True)},
@@ -323,7 +321,7 @@ class EconomyTransaction:
         },
     )
     player_name: str = field(
-        metadata={"sa": Column(String, nullable=False)},
+        metadata={"sa": Column(String, nullable=True)},
     )
     finished_game_id: str = field(
         metadata={
@@ -504,8 +502,11 @@ class InProgressGame:
         metadata={"sa": Column(DateTime, index=True)},
     )
     prediction_open: bool = field(
-        default=config.ECONOMY_ENABLED,
-        metadata={"sa": Column(Boolean, nullable=False)},
+        default=False,
+        metadata={"sa": Column(Boolean, nullable=False, server_default="0")},
+    )
+    prediction_message_id: str = field(
+        default=None, metadata={"sa": Column(String, nullable=True)}
     )
     id: str = field(
         init=False,
