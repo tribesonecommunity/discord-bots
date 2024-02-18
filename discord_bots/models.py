@@ -518,9 +518,6 @@ class PersistentView:
         metadata={"sa": Column(String, primary_key=True)},
     )
     message_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
-    view_type: str = field(
-        metadata={"sa": Column(String, nullable=False)},
-    )
 
 
 @mapper_registry.mapped
