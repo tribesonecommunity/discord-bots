@@ -162,6 +162,8 @@ class CustomCommand:
     )
 
 
+@mapper_registry.mapped
+@dataclass
 class DiscordGuild:
     """
     A discord server / guild
