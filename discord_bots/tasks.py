@@ -436,9 +436,8 @@ async def leaderboard_task():
 @tasks.loop(seconds=5)
 async def prediction_task():
     """
+    Updates prediction embeds.
     Closes prediction after submission period
-
-    TO DO: Update embed from InProgressGame.prediction_message_id
     """
     session = Session()
     in_progress_games: list[InProgressGame] = (
@@ -450,7 +449,9 @@ async def prediction_task():
     try:
         await EconomyCommands.update_embeds(in_progress_games)
     except Exception as e:
-        # print(f"Prediction task failed during game creation, restarting task...")
+        # Task fails if attemping to update an embed that hasn't been posted yet 
+        # Occurs during game channel creation depending on when task runs.
+        # Cleanly cancel & restart task to resolve
         prediction_task.cancel()
         prediction_task.restart()
     

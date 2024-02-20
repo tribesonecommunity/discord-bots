@@ -215,7 +215,7 @@ class EconomyDonation:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "economy_donation"
 
-    donation_id: str = field(
+    id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
@@ -261,7 +261,7 @@ class EconomyPrediction:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "economy_prediction"
 
-    prediction_id: str = field(
+    id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
@@ -310,7 +310,7 @@ class EconomyTransaction:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "economy_transaction"
 
-    transaction_id: str = field(
+    id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
@@ -346,7 +346,7 @@ class EconomyTransaction:
         metadata={
             "sa": Column(
                 String,
-                ForeignKey("economy_prediction.prediction_id"),
+                ForeignKey("economy_prediction.id"),
                 nullable=True,
                 index=True,
             )
@@ -356,7 +356,7 @@ class EconomyTransaction:
         metadata={
             "sa": Column(
                 String,
-                ForeignKey("economy_donation.donation_id"),
+                ForeignKey("economy_donation.id"),
                 nullable=True,
                 index=True,
             )
@@ -505,8 +505,8 @@ class InProgressGame:
         default=False,
         metadata={"sa": Column(Boolean, nullable=False, server_default="0")},
     )
-    prediction_message_id: str = field(
-        default=None, metadata={"sa": Column(String, nullable=True)}
+    prediction_message_id: int = field(
+        default=None, metadata={"sa": Column(BigInteger, nullable=True)}
     )
     id: str = field(
         init=False,

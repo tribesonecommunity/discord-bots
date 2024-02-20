@@ -435,7 +435,7 @@ async def sync(
     await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")
 
 
-async def cancel_in_progress_game(interaction: Interaction, game_id: str) -> bool:
+async def cancel_in_progress_game(interaction: Interaction, game_id: str):
     session: SQLAlchemySession = Session()
     game = (
         session.query(InProgressGame)
@@ -449,7 +449,7 @@ async def cancel_in_progress_game(interaction: Interaction, game_id: str) -> boo
                 colour=Colour.red(),
             )
         )
-        return False
+        return
 
     session.query(InProgressGamePlayer).filter(
         InProgressGamePlayer.in_progress_game_id == game.id
@@ -473,7 +473,7 @@ async def cancel_in_progress_game(interaction: Interaction, game_id: str) -> boo
             colour=Colour.blue(),
         )
     )
-    return True
+    return
 
 
 async def finish_in_progress_game(
@@ -482,7 +482,7 @@ async def finish_in_progress_game(
     game_id: Optional[str] = None,
 ) -> bool:
     session: sqlalchemy.orm.session.Session = Session()
-    game_player = (
+    game_player: InProgressGamePlayer | None = (
         session.query(InProgressGamePlayer)
         .filter(InProgressGamePlayer.player_id == interaction.user.id)
         .first()

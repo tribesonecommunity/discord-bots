@@ -16,7 +16,6 @@ from typing import List, Literal, Optional, Union
 
 import discord
 import imgkit
-import sqlalchemy.orm.session
 from discord import (
     CategoryChannel,
     Colour,
@@ -96,7 +95,7 @@ from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
 from .views.in_progress_game import InProgressGameView
-from .cogs.economy import EconomyPredictionView, EconomyCommands
+from .cogs.economy import EconomyCommands
 
 
 def get_even_teams(
@@ -450,6 +449,12 @@ async def create_game(
     if not rolled_random_map:
         await update_next_map_to_map_after_next(queue.rotation_id, False)
 
+    if config.ECONOMY_ENABLED:
+        prediction_message_id: int = await EconomyCommands.create_prediction_message(game, match_channel)
+        if prediction_message_id:
+            game.prediction_message_id = prediction_message_id
+            session.commit()
+
     if config.ENABLE_VOICE_MOVE and queue.move_enabled and be_channel and ds_channel:
         await _movegameplayers(short_game_id, None, guild)
         await send_message(
@@ -458,51 +463,7 @@ async def create_game(
             colour=Colour.blue(),
         )
 
-    if config.ECONOMY_ENABLED:
-        await create_prediction(game, match_channel)
-
     session.close()
-
-
-async def create_prediction(
-    in_progress_game: InProgressGame, match_channel: TextChannel
-) -> None:
-    # async def predict(self, interaction: Interaction) -> None:
-
-    if not config.ECONOMY_ENABLED:
-        return
-
-    embed = Embed(
-        title=f"Game {short_uuid(in_progress_game.id)} Prediction",
-        colour=Colour.blue(),
-    )
-    embed.add_field(
-        name=f"{in_progress_game.team0_name}",
-        value="> Total: 0\n> Win Ratio: 1:1.0\n> Predictors: 0",
-        inline=True,
-    )
-    embed.add_field(
-        name=f"{in_progress_game.team1_name}",
-        value="> Total: 0\n> Win Ratio: 1:1.0\n> Predictors: 0",
-        inline=True,
-    )
-
-    try:
-        prediction_message: Message = await match_channel.send(
-            embed=embed, view=EconomyPredictionView(in_progress_game.id)
-        )
-        session = Session()
-        igp: InProgressGame = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.id == in_progress_game.id)
-            .first()
-        )
-        igp.prediction_message_id = prediction_message.id
-        session.commit()
-        session.close()
-    except Exception as e:
-        print(f"prediction failed for game: {in_progress_game.id}")
-        raise
 
 
 async def create_team_voice_channels(
@@ -1317,10 +1278,17 @@ async def ban(ctx: Context, member: Member):
 @bot.tree.command(name="cancelgame", description="Given a game ID, cancels that game")
 @commands.check(is_admin)
 async def cancelgame(interaction: Interaction, game_id: str):
-    cancelled: bool = await cancel_in_progress_game(interaction, game_id)
-    if cancelled and config.ECONOMY_ENABLED:
+    if config.ECONOMY_ENABLED:
         try:
             await EconomyCommands.cancel_predictions(interaction, game_id)
+        except ValueError as ve:
+            #Raised if there are no predictions on this game
+            await interaction.channel.send(
+                embed=Embed(
+                    description="No predictions to be refunded",
+                    colour=Colour.blue()
+                )           
+            )
         except Exception as e:
             await interaction.channel.send(
                 embed=Embed(
@@ -1335,6 +1303,9 @@ async def cancelgame(interaction: Interaction, game_id: str):
                     colour=Colour.blue()
                 )           
             )
+    
+    await cancel_in_progress_game(interaction, game_id)
+    
 
 
 @bot.command()
@@ -1891,6 +1862,8 @@ async def finishgame(
     outcome: Literal["win", "loss", "tie"],
     game_id: Optional[str],
 ):
+    if config.ECONOMY_ENABLED:
+        await EconomyCommands.resolve_predictions(interaction, outcome, game_id)
     await finish_in_progress_game(interaction, outcome, game_id)
 
 
