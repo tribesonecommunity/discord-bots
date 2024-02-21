@@ -42,9 +42,9 @@ class EconomyCommands(BaseCog):
     def __init__(self, bot: Bot) -> None:
         super().__init__(bot)
         self.bot = bot
+        self.views: list[EconomyPredictionView] = []
 
-    @Cog.listener()
-    async def on_ready(self):
+    async def cog_load(self) -> None:
         """
         Called every time the bot restarts
         Recreates view and re-links to existing message id
@@ -56,11 +56,16 @@ class EconomyCommands(BaseCog):
         in_progress_games: list[InProgressGame] = session.query(InProgressGame).all()
         for game in in_progress_games:
             if game.prediction_message_id:
+                self.views.append(EconomyPredictionView(game.id))
                 self.bot.add_view(
                     EconomyPredictionView(game.id),
                     message_id=game.prediction_message_id,
                 )
         session.close()
+    
+    async def cog_unload(self) -> None:
+        for view in self.views:
+            view.stop()
 
     @app_commands.command(
         name="addcurrency", description=f"Admin; Add {CURRENCY_NAME} to a player"
@@ -150,7 +155,7 @@ class EconomyCommands(BaseCog):
             receiver.currency += add_value
             await interaction.response.send_message(
                 embed=Embed(
-                    description=f"{interaction.user.display_name} added {add_value} {CURRENCY_NAME} to {receiver.name}",
+                    description=f"<@{interaction.user.id}> added {add_value} {CURRENCY_NAME} to <@{receiver.id}>",
                     colour=Colour.green(),
                 )
             )
@@ -470,14 +475,13 @@ class EconomyCommands(BaseCog):
             receiver.currency += donation_value
             await interaction.response.send_message(
                 embed=Embed(
-                    description=f"{sender.name} donated {donation_value} {CURRENCY_NAME} to {receiver.name}",
+                    description=f"<@{sender.name}> donated {donation_value} {CURRENCY_NAME} to {receiver.name}",
                     colour=Colour.green(),
                 )
             )
         finally:
             session.commit()
             session.close()
-        interaction.response.send_message()
 
     async def resolve_predictions(
         interaction: Interaction,
@@ -694,7 +698,7 @@ class EconomyCommands(BaseCog):
         elif player:
             await interaction.response.send_message(
                 embed=Embed(
-                    description=f"{player.name} has {player.currency} {CURRENCY_NAME}",
+                    description=f"<@{player.id}> has {player.currency} {CURRENCY_NAME}",
                     colour=Colour.blue(),
                 ),
                 ephemeral=True,
@@ -974,7 +978,10 @@ class EconomyPredictionModal(Modal):
         else:
             sender.currency -= self.value
             await interaction.followup.send(
-                f"{sender.name} predicted {self.team_name} for {self.value} {CURRENCY_NAME}"
+                embed=Embed(
+                    description=f"<@{sender.id}> predicted {self.team_name} for {self.value} {CURRENCY_NAME}",
+                    colour=Colour.blue(),
+                )
             )
         finally:
             session.commit()
