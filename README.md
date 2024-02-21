@@ -92,6 +92,7 @@ The following are optional
 - `CURRENCY_NAME` - Set's the currency name for player economy. Default is Shazbucks
 - `STARTING_CURRENCY` - Define a custom starting currency value for new players. Default is 100
 - `PREDICTION_TIMEOUT` - Define how long (in seconds) a prediction should be open after a game is created. Default is 300 (5 minutes)
+- `CURRENCY_AWARD` - Define how much currency is awarded for players when finishing a game. This can be overridden per queue if desired. Default is 25
 
 ## Running the bot
 

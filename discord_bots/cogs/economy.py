@@ -1,6 +1,7 @@
-from typing import Any, Literal, Optional
 from datetime import datetime, timedelta, timezone
+from operator import itemgetter
 from pytz import utc
+from typing import Any, Literal, Optional
 
 from discord import (
     app_commands,
@@ -14,9 +15,10 @@ from discord import (
     TextStyle,
     VoiceChannel,
 )
+from discord.ext.commands import Bot, check
 from discord.member import Member
-from discord.ext.commands import Bot, check, Cog
-from discord.ui import Modal, TextInput, View, Button
+from discord.ui import Button, Modal, TextInput, View
+from discord.utils import get
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
@@ -24,17 +26,24 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from discord_bots.bot import bot
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.config import ECONOMY_ENABLED, CURRENCY_NAME, PREDICTION_TIMEOUT
+from discord_bots.config import (
+    CHANNEL_ID,
+    CURRENCY_AWARD,
+    CURRENCY_NAME,
+    ECONOMY_ENABLED,
+    PREDICTION_TIMEOUT,    
+)
 from discord_bots.models import (
-    Player,
+    EconomyDonation,
+    EconomyPrediction,
+    EconomyTransaction,
     FinishedGame,
     InProgressGame,
     InProgressGameChannel,
     InProgressGamePlayer,
-    Session,
-    EconomyDonation,
-    EconomyPrediction,
-    EconomyTransaction,
+    Player,
+    Queue,
+    Session   
 )
 
 
@@ -52,7 +61,7 @@ class EconomyCommands(BaseCog):
         if not ECONOMY_ENABLED:
             return
 
-        session = Session()
+        session: SQLAlchemySession = Session()
         in_progress_games: list[InProgressGame] = session.query(InProgressGame).all()
         for game in in_progress_games:
             if game.prediction_message_id:
@@ -62,7 +71,7 @@ class EconomyCommands(BaseCog):
                     message_id=game.prediction_message_id,
                 )
         session.close()
-    
+
     async def cog_unload(self) -> None:
         for view in self.views:
             view.stop()
@@ -74,7 +83,7 @@ class EconomyCommands(BaseCog):
     async def addcurrency(
         self, interaction: Interaction, member: Member, add_value: int
     ) -> None:
-        session = Session()
+        session: SQLAlchemySession = Session()
         sender = Player(id=None, name="Admin")
         receiver: Player = session.query(Player).filter(Player.id == member.id).first()
 
@@ -163,8 +172,67 @@ class EconomyCommands(BaseCog):
             session.commit()
             session.close()
 
+    async def award_currency(interaction: Interaction, in_progress_game: InProgressGame):
+        session: SQLAlchemySession = Session()
+
+        queue: Queue = (
+            session.query(Queue)
+            .filter(Queue.id == in_progress_game.queue_id)
+            .first()
+        )
+        if queue.currency_award:
+            award_value = queue.currency_award
+        else:
+            award_value = CURRENCY_AWARD
+        
+        game_players: list[InProgressGamePlayer] = (
+            session.query(InProgressGamePlayer)
+            .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
+            .all()
+        )
+
+        for game_player in game_players:
+            try:
+                await EconomyCommands.create_transaction(
+                    in_progress_game,
+                    game_player.player,
+                    award_value,
+                    "Award",
+                )
+            except Exception as e:
+                await interaction.channel.send(
+                    embed=Embed(
+                        description=f"Currency award failed for <@{game_player.player_id}> | Award Value = {award_value} | Exception: {e}",
+                        colour=Colour.blue(),
+                    )
+                )
+            else:            
+                player: Player = (
+                    session.query(Player)
+                    .filter(Player.id == game_player.player_id)
+                    .first()
+                )
+                player.currency += award_value
+                session.commit()
+        
+        short_game_id: str = in_progress_game.id.split("-")[0]
+        embed=Embed(
+            description=f"{award_value} {CURRENCY_NAME} awarded to players in game {short_game_id}",
+            colour=Colour.blue()
+        )
+        await interaction.channel.send(embed=embed)
+
+        if CHANNEL_ID and CHANNEL_ID != interaction.channel_id:
+            channel: TextChannel | None = get(
+                interaction.guild.text_channels, id=CHANNEL_ID
+            )
+            if channel:
+                await channel.send(embed=embed)
+        
+        session.close()
+        
     async def cancel_predictions(interaction: Interaction, game_id: str):
-        session = Session()
+        session: SQLAlchemySession = Session()
 
         predictions: list[EconomyPrediction] = (
             session.query(EconomyPrediction)
@@ -197,7 +265,7 @@ class EconomyCommands(BaseCog):
         session.close()
 
     async def close_predictions(in_progress_games: list[InProgressGame]):
-        session = Session()
+        session: SQLAlchemySession = Session()
         for game in in_progress_games:
             time_compare: datetime = game.created_at + timedelta(
                 seconds=PREDICTION_TIMEOUT
@@ -242,10 +310,10 @@ class EconomyCommands(BaseCog):
         else:
             return prediction_message.id
 
-    async def _create_prediction(
+    async def create_prediction(
         member: Member, game: InProgressGame, selection: int, prediction_value: int
     ) -> EconomyPrediction:
-        session = Session()
+        session: SQLAlchemySession = Session()
         sender: Player = session.query(Player).filter(Player.id == member.id).first()
 
         if not ECONOMY_ENABLED:
@@ -276,9 +344,9 @@ class EconomyCommands(BaseCog):
         account: Player | FinishedGame | InProgressGame,
         destination_account: Player | FinishedGame | InProgressGame | None,
         transaction_value: int,
-        source: EconomyDonation | EconomyPrediction,
+        source: EconomyDonation | EconomyPrediction | str,
     ):
-        session = Session()
+        session: SQLAlchemySession = Session()
 
         if not ECONOMY_ENABLED:
             raise Exception("Player economy is disabled")
@@ -289,6 +357,8 @@ class EconomyCommands(BaseCog):
 
         if not source:
             source_str = "Manual"
+        elif type(source) == str:
+            source_str = source
         else:
             source_str = source.__class__.__name__
 
@@ -365,7 +435,7 @@ class EconomyCommands(BaseCog):
     async def donate(
         self, interaction: Interaction, member: Member, donation_value: int
     ) -> None:
-        session = Session()
+        session: SQLAlchemySession = Session()
         sender: Player = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
@@ -519,6 +589,8 @@ class EconomyCommands(BaseCog):
                 session.close()
                 return
 
+        await EconomyCommands.award_currency(interaction, in_progress_game)
+
         predictions: list[EconomyPrediction] = (
             session.query(EconomyPrediction)
             .filter(EconomyPrediction.in_progress_game_id == in_progress_game.id)
@@ -542,8 +614,8 @@ class EconomyCommands(BaseCog):
             winning_team = (game_player.team + 1) % 2
         else:  # tie
             winning_team = -1
-        print(f"Wining Team: {winning_team}")
-        
+        # print(f"Wining Team: {winning_team}")
+
         # Cancel prediction on tie
         if winning_team == -1:
             try:
@@ -581,9 +653,9 @@ class EconomyCommands(BaseCog):
                 winning_predictions.append(prediction)
             else:
                 losing_predictions.append(prediction)
-        print(f"Winning prediction count: {len(winning_predictions)}")
-        print(f"Losing prediction count: {len(losing_predictions)}")
-        
+        # print(f"Winning prediction count: {len(winning_predictions)}")
+        # print(f"Losing prediction count: {len(losing_predictions)}")
+
         # Cancel if either team has no predicitons
         if len(winning_predictions) == 0 or len(losing_predictions) == 0:
             short_game_id: str = in_progress_game.id.split("-")[0]
@@ -622,9 +694,9 @@ class EconomyCommands(BaseCog):
 
         winning_total: int = sum(wt.prediction_value for wt in winning_predictions)
         losing_total: int = sum(lt.prediction_value for lt in losing_predictions)
-        print(f"Winning total: {winning_total}")
-        print(f"Losing total: {losing_total}")
-        
+        # print(f"Winning total: {winning_total}")
+        # print(f"Losing total: {losing_total}")
+
         # Initialize dictionary for summing return messages
         summed_winners: dict = dict()
 
@@ -634,7 +706,7 @@ class EconomyCommands(BaseCog):
                 * (winning_prediction.prediction_value / winning_total),
                 None,
             )
-            print(f"Win Value: {win_value}")
+            # print(f"Win Value: {win_value}")
 
             try:
                 await EconomyCommands.create_transaction(
@@ -646,7 +718,7 @@ class EconomyCommands(BaseCog):
             except Exception as e:
                 await interaction.channel.send(
                     embed=Embed(
-                        description="No predictions to be refunded",
+                        description=f"Prediction resolution failed for <@{winning_prediction.player_id}> | Win Value = {win_value} | Exception: {e}",
                         colour=Colour.blue(),
                     )
                 )
@@ -659,30 +731,42 @@ class EconomyCommands(BaseCog):
                 player.currency += win_value
                 winning_prediction.outcome = True
                 session.commit()
-                
+
                 # Adds win_value to player in dictionary, or creates new dict item
                 # Combines multiple predictions into one win value to be returned
                 # Mutliple transactions are still created (one per prediction)
-                if any(x == winning_prediction.player_name for x in iter(summed_winners.keys())):
-                    summed_winners[winning_prediction.player_name] += win_value
+                if any(
+                    x == winning_prediction.player_name
+                    for x in iter(summed_winners.keys())
+                ):
+                    summed_winners[winning_prediction.player_id] += win_value
                 else:
-                    summed_winners[winning_prediction.player_name] = win_value
-        
-        for key, value in summed_winners.items():
-            await interaction.channel.send(
-                embed=Embed(
-                    description=f"{key} won {round(value, None)} {CURRENCY_NAME}!",
-                    colour=Colour.blue(),
-                )
-            )
+                    summed_winners[winning_prediction.player_id] = win_value
 
+        sorted_winners: dict = dict(sorted(summed_winners.items(), key=itemgetter(1)))
+        short_game_id: str = in_progress_game.id.split("-")[0]
+        embed = Embed(
+            title=f"Game {short_game_id} Prediction Winners:",
+            description="",
+            color=Colour.blue(),
+        )
+        for key, value in sorted_winners.items():
+            embed.description += f"<@{key}>: {round(value, None)} {CURRENCY_NAME}\n"
+
+        await interaction.channel.send(embed=embed)
+        if CHANNEL_ID and CHANNEL_ID != interaction.channel_id:
+            channel: TextChannel | None = get(
+                interaction.guild.text_channels, id=CHANNEL_ID
+            )
+            if channel:
+                await channel.send(embed=embed)
         session.close()
 
     @app_commands.command(
         name="showcurrency", description=f"Show how many {CURRENCY_NAME} you have"
     )
     async def showcurrency(self, interaction: Interaction):
-        session = Session()
+        session: SQLAlchemySession = Session()
         player: Player = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
@@ -713,7 +797,7 @@ class EconomyCommands(BaseCog):
             )
 
     async def update_embeds(in_progress_games: list[InProgressGame]):
-        session = Session()
+        session: SQLAlchemySession = Session()
 
         for game in in_progress_games:
             igp_channels: list[InProgressGameChannel] = (
@@ -784,7 +868,7 @@ class EconomyPredictionView(View):
         super().__init__(timeout=None)
         self.game_id: str = game_id
         self.game: InProgressGame
-        self.session = Session()
+        self.session: SQLAlchemySession = Session()
         self.add_items()
 
     async def interaction_check(self, interaction: Interaction[Client]):
@@ -852,7 +936,7 @@ class EconomyPredictionButton(Button):
         self.team_value: int = team_value
 
     async def callback(self, interaction: Interaction[Client]) -> Any:
-        session = Session()
+        session: SQLAlchemySession = Session()
         player: Player = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
@@ -866,7 +950,7 @@ class EconomyPredictionButton(Button):
                 )
 
     async def prediction_check(self, interaction: Interaction[Client]) -> bool:
-        session = Session()
+        session: SQLAlchemySession = Session()
         ipg_player: InProgressGamePlayer = (
             session.query(InProgressGamePlayer)
             .filter(
@@ -932,10 +1016,10 @@ class EconomyPredictionModal(Modal):
 
         await interaction.response.defer(thinking=True)
         try:
-            prediction: EconomyPrediction = await EconomyCommands._create_prediction(
+            prediction: EconomyPrediction = await EconomyCommands.create_prediction(
                 interaction.user, self.game, self.team_value, self.value
             )
-            session = Session()
+            session: SQLAlchemySession = Session()
             sender: Player = (
                 session.query(Player).filter(Player.id == prediction.player_id).first()
             )

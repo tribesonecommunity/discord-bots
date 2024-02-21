@@ -21,7 +21,7 @@ class InProgressGameView(discord.ui.View):
     )
     async def win_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
+    ):       
         if ECONOMY_ENABLED:
             await EconomyCommands.resolve_predictions(interaction, "win", self.game_id)
 

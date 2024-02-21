@@ -23,7 +23,12 @@ from discord_bots.models import (
     RotationMap,
 )
 from discord_bots.queues import AddPlayerQueueMessage, add_player_queue
-from discord_bots.config import ENABLE_VOICE_MOVE
+from discord_bots.config import (
+    ENABLE_VOICE_MOVE,
+    ECONOMY_ENABLED,
+    CURRENCY_AWARD,
+    CURRENCY_NAME,
+)
 
 
 class QueueCommands(BaseCog):
@@ -331,6 +336,34 @@ class QueueCommands(BaseCog):
                 f"Removed role {role_name} from queue {queue.name}"
             )
             session.commit()
+
+    @command()
+    @check(is_admin)
+    async def setqueueaward(
+        self, ctx: Context, queue_name: str, currency_award: int = CURRENCY_AWARD
+    ):
+        """
+        Set how much currency is awarded for games in queue.\nSet to default if no value provided.
+        """
+        session = ctx.session
+
+        if not ECONOMY_ENABLED:
+            await self.send_error_message("Player economy is disabled")
+            return
+
+        try:
+            queue: Queue = (
+                session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
+            )
+        except NoResultFound:
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
+            return
+
+        queue.currency_award = currency_award
+        session.commit()
+        await self.send_success_message(
+            f"**{queue_name}** award set to {currency_award} {CURRENCY_NAME}"
+        )
 
     @command()
     @check(is_admin)

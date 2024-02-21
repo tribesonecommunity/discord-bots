@@ -924,6 +924,10 @@ class Queue:
         default=config.DEFAULT_VOICE_MOVE,
         metadata={"sa": Column(Boolean, nullable=False)},
     )
+    currency_award: int = field(
+        default=None,
+        metadata={"sa": Column(Integer, nullable=True)}
+    )
 
     rotation = relationship("Rotation", back_populates="queues")
 
