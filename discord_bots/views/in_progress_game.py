@@ -22,6 +22,7 @@ class InProgressGameView(discord.ui.View):
     async def win_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):       
+        await interaction.response.defer()
         if ECONOMY_ENABLED:
             await EconomyCommands.resolve_predictions(interaction, "win", self.game_id)
 
@@ -38,6 +39,7 @@ class InProgressGameView(discord.ui.View):
     async def loss_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
+        await interaction.response.defer()
         if ECONOMY_ENABLED:
             await EconomyCommands.resolve_predictions(interaction, "loss", self.game_id)
                                                       
@@ -54,6 +56,7 @@ class InProgressGameView(discord.ui.View):
     async def tie_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
+        await interaction.response.defer()
         if ECONOMY_ENABLED:
             await EconomyCommands.resolve_predictions(interaction, "tie", self.game_id)
 

@@ -1862,6 +1862,7 @@ async def finishgame(
     outcome: Literal["win", "loss", "tie"],
     game_id: Optional[str],
 ):
+    await interaction.response.defer()
     if config.ECONOMY_ENABLED:
         await EconomyCommands.resolve_predictions(interaction, outcome, game_id)
     await finish_in_progress_game(interaction, outcome, game_id)

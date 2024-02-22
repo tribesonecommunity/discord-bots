@@ -228,7 +228,7 @@ class EconomyCommands(BaseCog):
         short_game_id: str = in_progress_game.id.split("-")[0]
         embed.add_field(
             name="",
-            value=f"{award_value} {CURRENCY_NAME} awarded to players in game {short_game_id}",
+            value=f"{award_value} {CURRENCY_NAME} awarded to players",
             inline=False
         )
         
@@ -636,6 +636,7 @@ class EconomyCommands(BaseCog):
 
             # Cancel prediction on tie
             if winning_team == -1:
+                short_game_id: str = in_progress_game.id.split("-")[0]
                 try:
                     await EconomyCommands.cancel_predictions(interaction, game_id)
                 except ValueError as ve:
@@ -643,7 +644,7 @@ class EconomyCommands(BaseCog):
                     embed.insert_field_at(
                         index=0,
                         name="",
-                        value=f"No predictions to be refunded",
+                        value=f"No predictions to be refunded on game {short_game_id}",
                         inline=False
                     )
                     pass
@@ -651,7 +652,7 @@ class EconomyCommands(BaseCog):
                     embed.insert_field_at(
                         index=0,
                         name="",
-                        value=f"Predictions failed to refund: {e}",
+                        value=f"Predictions failed to refund for game {short_game_id}: {e}",
                         inline=False
                     )
                     pass
@@ -659,7 +660,7 @@ class EconomyCommands(BaseCog):
                     embed.insert_field_at(
                         index=0,
                         name="",
-                        value="Predictions refunded",
+                        value=f"Predictions refunded for game {short_game_id}",
                         inline=False
                     )
                     pass
@@ -805,12 +806,6 @@ class EconomyCommands(BaseCog):
                         name="📉 Losers",
                         value=prediction_losers,
                         inline=True
-                    )
-                    embed.set_field_at(
-                        index=2,
-                        name="",
-                        value=embed.fields[2].value[:-9],
-                        inline=False
                     )
 
         await interaction.channel.send(embed=embed)

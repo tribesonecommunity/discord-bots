@@ -488,7 +488,8 @@ async def finish_in_progress_game(
         .first()
     )
     if not game_player:
-        await interaction.response.send_message(
+        await interaction.followup.send(
+        # await interaction.response.send_message(
             embed=discord.Embed(
                 description="You are not in a game!",
                 color=discord.Colour.red(),
@@ -506,7 +507,8 @@ async def finish_in_progress_game(
             .first()
         )
         if not in_progress_game:
-            await interaction.response.send_message(
+            await interaction.followup.send(
+            # await interaction.response.send_message(
                 embed=discord.Embed(
                     description="You are not in this game!", color=discord.Colour.red()
                 ),
@@ -524,7 +526,8 @@ async def finish_in_progress_game(
             logging.warn(
                 f"No in_progress_game found with id={game_player.in_progress_game_id} for game_player with id={game_player.id}"
             )
-            await interaction.response.send_message(
+            await interaction.followup.send(
+            # await interaction.response.send_message(
                 embed=discord.Embed(
                     description="You are not in a game!", color=discord.Colour.red()
                 ),
@@ -537,7 +540,8 @@ async def finish_in_progress_game(
     )
     if not queue:
         logging.warn(f"No queue found with id={in_progress_game.queue_id}")
-        await interaction.response.send_message(
+        await interaction.followup.send(
+        # await interaction.response.send_message(
             embed=discord.Embed(
                 description="You are not in a game!", color=discord.Colour.red()
             ),
@@ -619,7 +623,8 @@ async def finish_in_progress_game(
             logging.error(
                 f"Could not find category with id {queue.category_id} for queue with id {queue.id}"
             )
-            await interaction.response.send_message(
+            await interaction.followup.send(
+            # await interaction.response.send_message(
                 embed=discord.Embed(
                     description="Something went wrong, please contact the server owner",
                     color=discord.Colour.red(),
@@ -631,7 +636,7 @@ async def finish_in_progress_game(
     else:
         category_name = None
 
-    await interaction.response.defer()  # deferring the response until later just in case this takes some time
+    # await interaction.response.defer()  # deferring the response until later just in case this takes some time
     finished_game = FinishedGame(
         average_trueskill=in_progress_game.average_trueskill,
         finished_at=datetime.now(timezone.utc),
