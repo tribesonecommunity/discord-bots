@@ -643,7 +643,7 @@ class EconomyCommands(BaseCog):
                     # Raised if there are no predictions on this game
                     embed.insert_field_at(
                         index=0,
-                        name="Game tie",
+                        name="Tie game",
                         value=f"No predictions to be refunded",
                         inline=False
                     )
@@ -651,7 +651,7 @@ class EconomyCommands(BaseCog):
                 except Exception as e:
                     embed.insert_field_at(
                         index=0,
-                        name="Game tie",
+                        name="Tie game",
                         value=f"Predictions failed to refund: {e}",
                         inline=False
                     )
@@ -659,7 +659,7 @@ class EconomyCommands(BaseCog):
                 else:
                     embed.insert_field_at(
                         index=0,
-                        name="Game tie",
+                        name="Tie game",
                         value=f"Predictions refunded",
                         inline=False
                     )
