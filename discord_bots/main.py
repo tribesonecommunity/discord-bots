@@ -141,10 +141,6 @@ async def on_message(message: Message):
             if custom_command:
                 await message.channel.send(content=custom_command.output)
         session.close()
-    elif message.content.startswith(config.COMMAND_PREFIX):
-        await message.channel.send(
-            f"Please use `{config.COMMAND_PREFIX}` commands in <#{config.CHANNEL_ID}>"
-        )
 
 
 @bot.event

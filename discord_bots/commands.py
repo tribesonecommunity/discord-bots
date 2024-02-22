@@ -396,12 +396,12 @@ async def create_game(
     )
     embed.add_field(
         name=f"{game.team0_name} ({round(100*win_prob)}%)",
-        value="\n".join([f"<@{player.id}>" for player in team0_players]),
+        value=">>> " + "\n".join([f"<@{player.id}>" for player in team0_players]),
         inline=True,
     )
     embed.add_field(
         name=f"{game.team1_name} ({round(100*(1- win_prob))}%)",
-        value="\n".join([f"<@{player.id}>" for player in team1_players]),
+        value=">>> " + "\n".join([f"<@{player.id}>" for player in team1_players]),
         inline=True,
     )
     if match_channel:
