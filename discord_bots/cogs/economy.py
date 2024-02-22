@@ -780,14 +780,14 @@ class EconomyCommands(BaseCog):
                     sorted_winners: dict = dict(reversed(sorted(summed_winners.items(), key=itemgetter(1))))
                     sorted_losers: dict = dict(reversed(sorted(summed_losers.items(), key=itemgetter(1))))
                     short_game_id: str = in_progress_game.id.split("-")[0]
-                    embed.title=f"Game {short_game_id} Prediction Results:"
+                    embed.title=f"Game {short_game_id} Prediction Results"
                     
                     prediction_winners: str = ">>> "
                     prediction_losers: str = ">>> "
                     for key, value in list(sorted_winners.items())[:10]:
-                        prediction_winners += f"<@{key}>: {round(value, None)} {CURRENCY_NAME}\n"
+                        prediction_winners += f"<@{key}> **+{round(value, None)}** {CURRENCY_NAME}\n"
                     for key, value in list(sorted_losers.items())[:10]:
-                        prediction_losers += f"<@{key}>: {round(value, None)} {CURRENCY_NAME}\n"
+                        prediction_losers += f"<@{key}> **-{round(value, None)}** {CURRENCY_NAME}\n"
 
                     if len(sorted_winners) > 10:
                         prediction_winners += "..."
@@ -796,15 +796,21 @@ class EconomyCommands(BaseCog):
 
                     embed.insert_field_at(
                         index=0,
-                        name="Winners:",
+                        name="📈 Winners",
                         value=prediction_winners,
                         inline=True
                     )
                     embed.insert_field_at(
                         index=1,
-                        name="Losers:",
+                        name="📉 Losers",
                         value=prediction_losers,
                         inline=True
+                    )
+                    embed.set_field_at(
+                        index=2,
+                        name="",
+                        value=embed.fields[2].value[:-9],
+                        inline=False
                     )
 
         await interaction.channel.send(embed=embed)
