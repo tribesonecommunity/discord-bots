@@ -191,9 +191,11 @@ class EconomyCommands(BaseCog):
             .all()
         )
 
+        short_game_id: str = in_progress_game.id.split("-")[0]
         embed: Embed = Embed(
+            title=f"Game '{queue.name}' ({short_game_id}) Prediction Results",
             description="",
-            colour = Colour.blue()
+            colour = Colour.green()
         )
         for game_player in game_players:
             try:
@@ -228,7 +230,7 @@ class EconomyCommands(BaseCog):
         short_game_id: str = in_progress_game.id.split("-")[0]
         embed.add_field(
             name="",
-            value=f"{award_value} {CURRENCY_NAME} awarded to players",
+            value=f"{award_value} {CURRENCY_NAME} awarded to participants",
             inline=False
         )
         
@@ -621,7 +623,7 @@ class EconomyCommands(BaseCog):
             embed.insert_field_at(
                 index=0,
                 name="",
-                value=f"No predictions on game {short_game_id}",
+                value=f"No predictions on game",
                 inline=False
             )
         else:
@@ -643,24 +645,24 @@ class EconomyCommands(BaseCog):
                     # Raised if there are no predictions on this game
                     embed.insert_field_at(
                         index=0,
-                        name="",
-                        value=f"No predictions to be refunded on game {short_game_id}",
+                        name="Game tie",
+                        value=f"No predictions to be refunded",
                         inline=False
                     )
                     pass
                 except Exception as e:
                     embed.insert_field_at(
                         index=0,
-                        name="",
-                        value=f"Predictions failed to refund for game {short_game_id}: {e}",
+                        name="Game tie",
+                        value=f"Predictions failed to refund: {e}",
                         inline=False
                     )
                     pass
                 else:
                     embed.insert_field_at(
                         index=0,
-                        name="",
-                        value=f"Predictions refunded for game {short_game_id}",
+                        name="Game tie",
+                        value=f"Predictions refunded",
                         inline=False
                     )
                     pass
@@ -679,37 +681,30 @@ class EconomyCommands(BaseCog):
                 # print(f"Losing prediction count: {len(losing_predictions)}")
 
                 # Cancel if either team has no predicitons
-                if len(winning_predictions) == 0 or len(losing_predictions) == 0:
-                    short_game_id: str = in_progress_game.id.split("-")[0]
-                    embed.insert_field_at(
-                        index=0,
-                        name="",
-                        value=f"Not enough predictions on game {short_game_id}",
-                        inline=False
-                    )                    
+                if len(winning_predictions) == 0 or len(losing_predictions) == 0:               
                     try:
                         await EconomyCommands.cancel_predictions(interaction, game_id)
                     except ValueError as ve:
                         # Raised if there are no predictions on this game
                         embed.insert_field_at(
-                            index=1,
-                            name="",
+                            index=0,
+                            name=f"Not enough predictions on game",
                             value="No predictions to be refunded",
                             inline=False
                         )
                         pass   
                     except Exception as e:
                         embed.insert_field_at(
-                            index=1,
-                            name="",
+                            index=0,
+                            name=f"Not enough predictions on game",
                             value=f"Predictions failed to refund: {e}",
                             inline=False
                         )
                         pass
                     else:
                         embed.insert_field_at(
-                            index=1,
-                            name="",
+                            index=0,
+                            name=f"Not enough predictions on game",
                             value="Predictions refunded",
                             inline=False
                         )
@@ -780,8 +775,6 @@ class EconomyCommands(BaseCog):
 
                     sorted_winners: dict = dict(reversed(sorted(summed_winners.items(), key=itemgetter(1))))
                     sorted_losers: dict = dict(reversed(sorted(summed_losers.items(), key=itemgetter(1))))
-                    short_game_id: str = in_progress_game.id.split("-")[0]
-                    embed.title=f"Game {short_game_id} Prediction Results"
                     
                     prediction_winners: str = ">>> "
                     prediction_losers: str = ">>> "
