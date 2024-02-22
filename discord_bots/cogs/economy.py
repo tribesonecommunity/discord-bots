@@ -723,14 +723,23 @@ class EconomyCommands(BaseCog):
 
                     # Initialize dictionary for summing return messages
                     summed_winners: dict = dict()
-
+                    summed_losers: dict = dict()
+                    
+                    for losing_prediction in losing_predictions:
+                        if any(
+                            x == losing_prediction.player_id
+                            for x in iter(summed_losers.keys())
+                        ):
+                            summed_losers[losing_prediction.player_id] += losing_prediction.prediction_value
+                        else:
+                            summed_losers[losing_prediction.player_id] = losing_prediction.prediction_value
+                    
                     for winning_prediction in winning_predictions:
                         win_value: int = round(
                             (winning_total + losing_total)
                             * (winning_prediction.prediction_value / winning_total),
                             None,
                         )
-                        # print(f"Win Value: {win_value}")
 
                         try:
                             await EconomyCommands.create_transaction(
@@ -761,25 +770,41 @@ class EconomyCommands(BaseCog):
                             # Combines multiple predictions into one win value to be returned
                             # Mutliple transactions are still created (one per prediction)
                             if any(
-                                x == winning_prediction.player_name
+                                x == winning_prediction.player_id
                                 for x in iter(summed_winners.keys())
                             ):
                                 summed_winners[winning_prediction.player_id] += win_value
                             else:
                                 summed_winners[winning_prediction.player_id] = win_value
 
-                    sorted_winners: dict = dict(sorted(summed_winners.items(), key=itemgetter(1)))
+                    sorted_winners: dict = dict(reversed(sorted(summed_winners.items(), key=itemgetter(1))))
+                    sorted_losers: dict = dict(reversed(sorted(summed_losers.items(), key=itemgetter(1))))
                     short_game_id: str = in_progress_game.id.split("-")[0]
-                    embed.title=f"Game {short_game_id} Prediction Winners:"
+                    embed.title=f"Game {short_game_id} Prediction Results:"
                     
-                    prediction_winners: str = ""
-                    for key, value in sorted_winners.items():
-                        embed.description += f"<@{key}>: {round(value, None)} {CURRENCY_NAME}\n"
+                    prediction_winners: str = ">>> "
+                    prediction_losers: str = ">>> "
+                    for key, value in list(sorted_winners.items())[:10]:
+                        prediction_winners += f"<@{key}>: {round(value, None)} {CURRENCY_NAME}\n"
+                    for key, value in list(sorted_losers.items())[:10]:
+                        prediction_losers += f"<@{key}>: {round(value, None)} {CURRENCY_NAME}\n"
+
+                    if len(sorted_winners) > 10:
+                        prediction_winners += "..."
+                    if len(sorted_losers) > 10:
+                        prediction_losers += "..."
+
                     embed.insert_field_at(
                         index=0,
-                        name="",
+                        name="Winners:",
                         value=prediction_winners,
-                        inline=False
+                        inline=True
+                    )
+                    embed.insert_field_at(
+                        index=1,
+                        name="Losers:",
+                        value=prediction_losers,
+                        inline=True
                     )
 
         await interaction.channel.send(embed=embed)
@@ -975,7 +1000,7 @@ class EconomyPredictionButton(Button):
                 await interaction.response.send_modal(
                     EconomyPredictionModal(
                         self.label, self.team_value, self.game, player
-                    )
+                    ),
                 )
 
     async def prediction_check(self, interaction: Interaction[Client]) -> bool:
@@ -1043,7 +1068,7 @@ class EconomyPredictionModal(Modal):
             )
             return
 
-        await interaction.response.defer(thinking=True)
+        await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             prediction: EconomyPrediction = await EconomyCommands.create_prediction(
                 interaction.user, self.game, self.team_value, self.value
@@ -1094,7 +1119,8 @@ class EconomyPredictionModal(Modal):
                 embed=Embed(
                     description=f"<@{sender.id}> predicted {self.team_name} for {self.value} {CURRENCY_NAME}",
                     colour=Colour.blue(),
-                )
+                ),
+                ephemeral=True
             )
         finally:
             session.commit()
