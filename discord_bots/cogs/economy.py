@@ -619,7 +619,6 @@ class EconomyCommands(BaseCog):
         )
         # Stop processing if no predictions
         if len(predictions) == 0:
-            short_game_id: str = in_progress_game.id.split("-")[0]
             embed.insert_field_at(
                 index=0,
                 name="",
@@ -638,7 +637,6 @@ class EconomyCommands(BaseCog):
 
             # Cancel prediction on tie
             if winning_team == -1:
-                short_game_id: str = in_progress_game.id.split("-")[0]
                 try:
                     await EconomyCommands.cancel_predictions(interaction, game_id)
                 except ValueError as ve:
