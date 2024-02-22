@@ -31,7 +31,7 @@ from discord_bots.config import (
     CURRENCY_AWARD,
     CURRENCY_NAME,
     ECONOMY_ENABLED,
-    PREDICTION_TIMEOUT,    
+    PREDICTION_TIMEOUT,
 )
 from discord_bots.models import (
     EconomyDonation,
@@ -43,7 +43,7 @@ from discord_bots.models import (
     InProgressGamePlayer,
     Player,
     Queue,
-    Session   
+    Session,
 )
 
 
@@ -172,25 +172,29 @@ class EconomyCommands(BaseCog):
             session.commit()
             session.close()
 
-    async def award_currency(interaction: Interaction, in_progress_game: InProgressGame):
+    async def award_currency(
+        interaction: Interaction, in_progress_game: InProgressGame
+    ) -> Embed:
         session: SQLAlchemySession = Session()
 
         queue: Queue = (
-            session.query(Queue)
-            .filter(Queue.id == in_progress_game.queue_id)
-            .first()
+            session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
         )
         if queue.currency_award:
             award_value = queue.currency_award
         else:
             award_value = CURRENCY_AWARD
-        
+
         game_players: list[InProgressGamePlayer] = (
             session.query(InProgressGamePlayer)
             .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
             .all()
         )
 
+        embed: Embed = Embed(
+            description="",
+            colour = Colour.blue()
+        )
         for game_player in game_players:
             try:
                 await EconomyCommands.create_transaction(
@@ -200,13 +204,19 @@ class EconomyCommands(BaseCog):
                     "Award",
                 )
             except Exception as e:
-                await interaction.channel.send(
-                    embed=Embed(
-                        description=f"Currency award failed for <@{game_player.player_id}> | Award Value = {award_value} | Exception: {e}",
-                        colour=Colour.blue(),
-                    )
+                embed.add_field(
+                    name="",
+                    value=f"Currency award failed for <@{game_player.player_id}> | Award Value = {award_value} | Exception: {e}",
+                    inline=False
                 )
-            else:            
+                pass
+                # await interaction.channel.send(
+                #     embed=Embed(
+                #         description=f"Currency award failed for <@{game_player.player_id}> | Award Value = {award_value} | Exception: {e}",
+                #         colour=Colour.blue(),
+                #     )
+                # )
+            else:
                 player: Player = (
                     session.query(Player)
                     .filter(Player.id == game_player.player_id)
@@ -214,23 +224,31 @@ class EconomyCommands(BaseCog):
                 )
                 player.currency += award_value
                 session.commit()
-        
-        short_game_id: str = in_progress_game.id.split("-")[0]
-        embed=Embed(
-            description=f"{award_value} {CURRENCY_NAME} awarded to players in game {short_game_id}",
-            colour=Colour.blue()
-        )
-        await interaction.channel.send(embed=embed)
 
-        if CHANNEL_ID and CHANNEL_ID != interaction.channel_id:
-            channel: TextChannel | None = get(
-                interaction.guild.text_channels, id=CHANNEL_ID
-            )
-            if channel:
-                await channel.send(embed=embed)
+        short_game_id: str = in_progress_game.id.split("-")[0]
+        embed.add_field(
+            name="",
+            value=f"{award_value} {CURRENCY_NAME} awarded to players in game {short_game_id}",
+            inline=False
+        )
         
         session.close()
+        return embed
+        # embed = Embed(
+        #     description=f"{award_value} {CURRENCY_NAME} awarded to players in game {short_game_id}",
+        #     colour=Colour.blue(),
+        # )
+        # await interaction.channel.send(embed=embed)
+
+        # if CHANNEL_ID and CHANNEL_ID != interaction.channel_id:
+        #     channel: TextChannel | None = get(
+        #         interaction.guild.text_channels, id=CHANNEL_ID
+        #     )
+        #     if channel:
+        #         await channel.send(embed=embed)
+
         
+
     async def cancel_predictions(interaction: Interaction, game_id: str):
         session: SQLAlchemySession = Session()
 
@@ -589,7 +607,8 @@ class EconomyCommands(BaseCog):
                 session.close()
                 return
 
-        await EconomyCommands.award_currency(interaction, in_progress_game)
+        # Embed created with player award at index 0
+        embed: Embed = await EconomyCommands.award_currency(interaction, in_progress_game)
 
         predictions: list[EconomyPrediction] = (
             session.query(EconomyPrediction)
@@ -599,159 +618,169 @@ class EconomyCommands(BaseCog):
         # Stop processing if no predictions
         if len(predictions) == 0:
             short_game_id: str = in_progress_game.id.split("-")[0]
-            await interaction.channel.send(
-                embed=Embed(
-                    description=f"No predictions on game {short_game_id}",
-                    colour=Colour.blue(),
-                )
+            embed.insert_field_at(
+                index=0,
+                name="",
+                value=f"No predictions on game {short_game_id}",
+                inline=False
             )
-            return
-
-        winning_team = -1
-        if outcome == "win":
-            winning_team = game_player.team
-        elif outcome == "loss":
-            winning_team = (game_player.team + 1) % 2
-        else:  # tie
+        else:
             winning_team = -1
-        # print(f"Wining Team: {winning_team}")
+            if outcome == "win":
+                winning_team = game_player.team
+            elif outcome == "loss":
+                winning_team = (game_player.team + 1) % 2
+            else:  # tie
+                winning_team = -1
+            # print(f"Wining Team: {winning_team}")
 
-        # Cancel prediction on tie
-        if winning_team == -1:
-            try:
-                await EconomyCommands.cancel_predictions(interaction, game_id)
-            except ValueError as ve:
-                # Raised if there are no predictions on this game
-                await interaction.channel.send(
-                    embed=Embed(
-                        description="No predictions to be refunded",
-                        colour=Colour.blue(),
+            # Cancel prediction on tie
+            if winning_team == -1:
+                try:
+                    await EconomyCommands.cancel_predictions(interaction, game_id)
+                except ValueError as ve:
+                    # Raised if there are no predictions on this game
+                    embed.insert_field_at(
+                        index=0,
+                        name="",
+                        value=f"No predictions to be refunded",
+                        inline=False
                     )
-                )
-            except Exception as e:
-                await interaction.channel.send(
-                    embed=Embed(
-                        description=f"Predictions failed to refund: {e}",
-                        colour=Colour.red(),
+                    pass
+                except Exception as e:
+                    embed.insert_field_at(
+                        index=0,
+                        name="",
+                        value=f"Predictions failed to refund: {e}",
+                        inline=False
                     )
-                )
-            else:
-                await interaction.channel.send(
-                    embed=Embed(
-                        description="Predictions refunded", colour=Colour.blue()
-                    )
-                )
-            finally:
-                session.close()
-                return
-
-        # Set up winners & losers
-        winning_predictions: list[EconomyPrediction] = []
-        losing_predictions: list[EconomyPrediction] = []
-        for prediction in predictions:
-            if prediction.team == winning_team:
-                winning_predictions.append(prediction)
-            else:
-                losing_predictions.append(prediction)
-        # print(f"Winning prediction count: {len(winning_predictions)}")
-        # print(f"Losing prediction count: {len(losing_predictions)}")
-
-        # Cancel if either team has no predicitons
-        if len(winning_predictions) == 0 or len(losing_predictions) == 0:
-            short_game_id: str = in_progress_game.id.split("-")[0]
-            await interaction.channel.send(
-                embed=Embed(
-                    description=f"Not enough predictions on game {short_game_id}",
-                    colour=Colour.blue(),
-                )
-            )
-            try:
-                await EconomyCommands.cancel_predictions(interaction, game_id)
-            except ValueError as ve:
-                # Raised if there are no predictions on this game
-                await interaction.channel.send(
-                    embed=Embed(
-                        description="No predictions to be refunded",
-                        colour=Colour.blue(),
-                    )
-                )
-            except Exception as e:
-                await interaction.channel.send(
-                    embed=Embed(
-                        description=f"Predictions failed to refund: {e}",
-                        colour=Colour.red(),
-                    )
-                )
-            else:
-                await interaction.channel.send(
-                    embed=Embed(
-                        description="Predictions refunded", colour=Colour.blue()
-                    )
-                )
-            finally:
-                session.close()
-                return
-
-        winning_total: int = sum(wt.prediction_value for wt in winning_predictions)
-        losing_total: int = sum(lt.prediction_value for lt in losing_predictions)
-        # print(f"Winning total: {winning_total}")
-        # print(f"Losing total: {losing_total}")
-
-        # Initialize dictionary for summing return messages
-        summed_winners: dict = dict()
-
-        for winning_prediction in winning_predictions:
-            win_value: int = round(
-                (winning_total + losing_total)
-                * (winning_prediction.prediction_value / winning_total),
-                None,
-            )
-            # print(f"Win Value: {win_value}")
-
-            try:
-                await EconomyCommands.create_transaction(
-                    winning_prediction.in_progress_game,
-                    winning_prediction.player,
-                    win_value,
-                    winning_prediction,
-                )
-            except Exception as e:
-                await interaction.channel.send(
-                    embed=Embed(
-                        description=f"Prediction resolution failed for <@{winning_prediction.player_id}> | Win Value = {win_value} | Exception: {e}",
-                        colour=Colour.blue(),
-                    )
-                )
-            else:
-                player: Player = (
-                    session.query(Player)
-                    .filter(Player.id == winning_prediction.player_id)
-                    .first()
-                )
-                player.currency += win_value
-                winning_prediction.outcome = True
-                session.commit()
-
-                # Adds win_value to player in dictionary, or creates new dict item
-                # Combines multiple predictions into one win value to be returned
-                # Mutliple transactions are still created (one per prediction)
-                if any(
-                    x == winning_prediction.player_name
-                    for x in iter(summed_winners.keys())
-                ):
-                    summed_winners[winning_prediction.player_id] += win_value
+                    pass
                 else:
-                    summed_winners[winning_prediction.player_id] = win_value
+                    embed.insert_field_at(
+                        index=0,
+                        name="",
+                        value="Predictions refunded",
+                        inline=False
+                    )
+                    pass
+                finally:
+                    session.close()
+            else:
+                # Set up winners & losers
+                winning_predictions: list[EconomyPrediction] = []
+                losing_predictions: list[EconomyPrediction] = []
+                for prediction in predictions:
+                    if prediction.team == winning_team:
+                        winning_predictions.append(prediction)
+                    else:
+                        losing_predictions.append(prediction)
+                # print(f"Winning prediction count: {len(winning_predictions)}")
+                # print(f"Losing prediction count: {len(losing_predictions)}")
 
-        sorted_winners: dict = dict(sorted(summed_winners.items(), key=itemgetter(1)))
-        short_game_id: str = in_progress_game.id.split("-")[0]
-        embed = Embed(
-            title=f"Game {short_game_id} Prediction Winners:",
-            description="",
-            color=Colour.blue(),
-        )
-        for key, value in sorted_winners.items():
-            embed.description += f"<@{key}>: {round(value, None)} {CURRENCY_NAME}\n"
+                # Cancel if either team has no predicitons
+                if len(winning_predictions) == 0 or len(losing_predictions) == 0:
+                    short_game_id: str = in_progress_game.id.split("-")[0]
+                    embed.insert_field_at(
+                        index=0,
+                        name="",
+                        value=f"Not enough predictions on game {short_game_id}",
+                        inline=False
+                    )                    
+                    try:
+                        await EconomyCommands.cancel_predictions(interaction, game_id)
+                    except ValueError as ve:
+                        # Raised if there are no predictions on this game
+                        embed.insert_field_at(
+                            index=1,
+                            name="",
+                            value="No predictions to be refunded",
+                            inline=False
+                        )
+                        pass   
+                    except Exception as e:
+                        embed.insert_field_at(
+                            index=1,
+                            name="",
+                            value=f"Predictions failed to refund: {e}",
+                            inline=False
+                        )
+                        pass
+                    else:
+                        embed.insert_field_at(
+                            index=1,
+                            name="",
+                            value="Predictions refunded",
+                            inline=False
+                        )
+                        pass
+                    finally:
+                        session.close()
+                else:
+                    winning_total: int = sum(wt.prediction_value for wt in winning_predictions)
+                    losing_total: int = sum(lt.prediction_value for lt in losing_predictions)
+                    # print(f"Winning total: {winning_total}")
+                    # print(f"Losing total: {losing_total}")
+
+                    # Initialize dictionary for summing return messages
+                    summed_winners: dict = dict()
+
+                    for winning_prediction in winning_predictions:
+                        win_value: int = round(
+                            (winning_total + losing_total)
+                            * (winning_prediction.prediction_value / winning_total),
+                            None,
+                        )
+                        # print(f"Win Value: {win_value}")
+
+                        try:
+                            await EconomyCommands.create_transaction(
+                                winning_prediction.in_progress_game,
+                                winning_prediction.player,
+                                win_value,
+                                winning_prediction,
+                            )
+                        except Exception as e:
+                            embed.insert_field_at(
+                                index=0,
+                                name="",
+                                value=f"Prediction resolution failed for <@{winning_prediction.player_id}> | Win Value = {win_value} | Exception: {e}",
+                                inline=False
+                            )    
+                            pass
+                        else:
+                            player: Player = (
+                                session.query(Player)
+                                .filter(Player.id == winning_prediction.player_id)
+                                .first()
+                            )
+                            player.currency += win_value
+                            winning_prediction.outcome = True
+                            session.commit()
+
+                            # Adds win_value to player in dictionary, or creates new dict item
+                            # Combines multiple predictions into one win value to be returned
+                            # Mutliple transactions are still created (one per prediction)
+                            if any(
+                                x == winning_prediction.player_name
+                                for x in iter(summed_winners.keys())
+                            ):
+                                summed_winners[winning_prediction.player_id] += win_value
+                            else:
+                                summed_winners[winning_prediction.player_id] = win_value
+
+                    sorted_winners: dict = dict(sorted(summed_winners.items(), key=itemgetter(1)))
+                    short_game_id: str = in_progress_game.id.split("-")[0]
+                    embed.title=f"Game {short_game_id} Prediction Winners:"
+                    
+                    prediction_winners: str = ""
+                    for key, value in sorted_winners.items():
+                        embed.description += f"<@{key}>: {round(value, None)} {CURRENCY_NAME}\n"
+                    embed.insert_field_at(
+                        index=0,
+                        name="",
+                        value=prediction_winners,
+                        inline=False
+                    )
 
         await interaction.channel.send(embed=embed)
         if CHANNEL_ID and CHANNEL_ID != interaction.channel_id:
