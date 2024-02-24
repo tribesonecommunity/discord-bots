@@ -26,6 +26,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from discord_bots.bot import bot
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
+from discord_bots.utils import short_uuid
 from discord_bots.config import (
     CHANNEL_ID,
     CURRENCY_AWARD,
@@ -191,7 +192,7 @@ class EconomyCommands(BaseCog):
             .all()
         )
 
-        short_game_id: str = in_progress_game.id.split("-")[0]
+        short_game_id: str = short_uuid(in_progress_game.id)
         embed: Embed = Embed(
             title=f"Game '{queue.name}' ({short_game_id}) Prediction Results",
             description="",
@@ -212,12 +213,6 @@ class EconomyCommands(BaseCog):
                     inline=False
                 )
                 pass
-                # await interaction.channel.send(
-                #     embed=Embed(
-                #         description=f"Currency award failed for <@{game_player.player_id}> | Award Value = {award_value} | Exception: {e}",
-                #         colour=Colour.blue(),
-                #     )
-                # )
             else:
                 player: Player = (
                     session.query(Player)
@@ -227,7 +222,6 @@ class EconomyCommands(BaseCog):
                 player.currency += award_value
                 session.commit()
 
-        short_game_id: str = in_progress_game.id.split("-")[0]
         embed.add_field(
             name="",
             value=f"{award_value} {CURRENCY_NAME} awarded to participants",
@@ -235,21 +229,7 @@ class EconomyCommands(BaseCog):
         )
         
         session.close()
-        return embed
-        # embed = Embed(
-        #     description=f"{award_value} {CURRENCY_NAME} awarded to players in game {short_game_id}",
-        #     colour=Colour.blue(),
-        # )
-        # await interaction.channel.send(embed=embed)
-
-        # if CHANNEL_ID and CHANNEL_ID != interaction.channel_id:
-        #     channel: TextChannel | None = get(
-        #         interaction.guild.text_channels, id=CHANNEL_ID
-        #     )
-        #     if channel:
-        #         await channel.send(embed=embed)
-
-        
+        return embed        
 
     async def cancel_predictions(interaction: Interaction, game_id: str):
         session: SQLAlchemySession = Session()
@@ -304,7 +284,7 @@ class EconomyCommands(BaseCog):
         if not ECONOMY_ENABLED:
             return None
 
-        short_game_id: str = in_progress_game.id.split("-")[0]
+        short_game_id: str = short_uuid(in_progress_game.id)
         embed = Embed(
             title=f"Game {short_game_id} Prediction",
             colour=Colour.blue(),
@@ -931,7 +911,7 @@ class EconomyPredictionView(View):
         if self.game.prediction_open:
             return self.game.prediction_open
         else:
-            short_game_id: str = self.game.id.split("-")[0]
+            short_game_id: str = short_uuid(self.game.id)
             await interaction.response.send_message(
                 f"Prediction is closed for game {short_game_id}",
                 ephemeral=True,
