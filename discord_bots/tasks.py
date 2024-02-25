@@ -2,6 +2,8 @@
 # use queues to be able to execute discord actions from child threads.
 # https://stackoverflow.com/a/67996748
 
+import logging
+
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from random import shuffle
@@ -46,6 +48,7 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
+from .cogs.economy import EconomyCommands
 
 
 @tasks.loop(minutes=1)
@@ -435,3 +438,33 @@ async def leaderboard_task():
     Periodically print the leaderboard
     """
     await print_leaderboard()
+
+
+@tasks.loop(seconds=5)
+async def prediction_task():
+    """
+    Updates prediction embeds.
+    Closes prediction after submission period
+    """
+    session = Session()
+    in_progress_games: list[InProgressGame] | None = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.prediction_open == True,
+                InProgressGame.prediction_message_id != None
+            )
+            .all()
+        )
+    try:
+        await EconomyCommands.update_embeds(None, in_progress_games)
+    except Exception as e:
+        # Task fails if attemping to update an embed that hasn't been posted yet 
+        # Occurs during game channel creation depending on when task runs.
+        # Cleanly cancel & restart task to resolve
+        logging.warn(e)
+        logging.info("prediction_task restarting...")
+        session.close()
+        prediction_task.cancel()
+        prediction_task.restart()
+    
+    await EconomyCommands.close_predictions(None, in_progress_games=in_progress_games)
+    session.close()

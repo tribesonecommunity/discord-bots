@@ -17,7 +17,6 @@ from discord import (
     GroupChannel,
     Guild,
     Interaction,
-    Message,
     TextChannel,
 )
 from discord.ext import commands
@@ -50,6 +49,7 @@ from discord_bots.models import (
     Session,
     SkipMapVote,
 )
+
 
 MU_LOWER_UNICODE = "\u03BC"
 SIGMA_LOWER_UNICODE = "\u03C3"
@@ -473,6 +473,7 @@ async def cancel_in_progress_game(interaction: Interaction, game_id: str):
             colour=Colour.blue(),
         )
     )
+    return
 
 
 async def finish_in_progress_game(
@@ -481,13 +482,13 @@ async def finish_in_progress_game(
     game_id: Optional[str] = None,
 ) -> bool:
     session: sqlalchemy.orm.session.Session = Session()
-    game_player = (
+    game_player: InProgressGamePlayer | None = (
         session.query(InProgressGamePlayer)
         .filter(InProgressGamePlayer.player_id == interaction.user.id)
         .first()
     )
     if not game_player:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=discord.Embed(
                 description="You are not in a game!",
                 color=discord.Colour.red(),
@@ -497,15 +498,16 @@ async def finish_in_progress_game(
         session.close()
         return False
 
+    in_progress_game: InProgressGame | None
     if game_id:
-        in_progress_game: InProgressGame | None = (
+        in_progress_game = (
             session.query(InProgressGame)
             .filter(InProgressGame.id == game_player.in_progress_game_id)
             .filter(InProgressGame.id == game_id)
             .first()
         )
         if not in_progress_game:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=discord.Embed(
                     description="You are not in this game!", color=discord.Colour.red()
                 ),
@@ -514,7 +516,7 @@ async def finish_in_progress_game(
             session.close()
             return False
     else:
-        in_progress_game: InProgressGame | None = (
+        in_progress_game = (
             session.query(InProgressGame)
             .filter(InProgressGame.id == game_player.in_progress_game_id)
             .first()
@@ -523,7 +525,7 @@ async def finish_in_progress_game(
             logging.warn(
                 f"No in_progress_game found with id={game_player.in_progress_game_id} for game_player with id={game_player.id}"
             )
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=discord.Embed(
                     description="You are not in a game!", color=discord.Colour.red()
                 ),
@@ -531,6 +533,7 @@ async def finish_in_progress_game(
             )
             session.close()
             return False
+
     queue: Queue | None = (
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )
@@ -622,7 +625,7 @@ async def finish_in_progress_game(
             logging.error(
                 f"Could not find category with id {queue.category_id} for queue with id {queue.id}"
             )
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=discord.Embed(
                     description="Something went wrong, please contact the server owner",
                     color=discord.Colour.red(),
@@ -634,7 +637,6 @@ async def finish_in_progress_game(
     else:
         category_name = None
 
-    await interaction.response.defer()  # deferring the response until later just in case this takes some time
     finished_game = FinishedGame(
         average_trueskill=in_progress_game.average_trueskill,
         finished_at=datetime.now(timezone.utc),
