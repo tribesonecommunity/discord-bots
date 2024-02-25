@@ -24,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin, economy_enabled
+from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     CHANNEL_ID,
@@ -85,13 +85,26 @@ class EconomyCommands(BaseCog):
         self, interaction: Interaction, member: Member, add_value: int
     ) -> None:
         session: SQLAlchemySession = Session()
-        sender = Player(id=None, name="Admin")
-        receiver: Player = session.query(Player).filter(Player.id == member.id).first()
+        admin: Player | None = (
+            session.query(Player).filter(Player.id == interaction.user.id).first()
+        )
+        receiver: Player | None = (
+            session.query(Player).filter(Player.id == member.id).first()
+        )
 
         if not ECONOMY_ENABLED:
             await interaction.response.send_message(
                 embed=Embed(
                     description="Player economy is disabled",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        elif not admin:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Admin {interaction.user.display_name} does not exist",
                     colour=Colour.red(),
                 ),
                 ephemeral=True,
@@ -108,10 +121,9 @@ class EconomyCommands(BaseCog):
             return
 
         donation = EconomyDonation(
-            sending_player_id=sender.id,
-            sending_player_name=sender.name,
+            sending_player_id=None,
+            admin_player_id=admin.id,
             receiving_player_id=receiver.id,
-            receiving_player_name=receiver.name,
             value=add_value,
         )
         session.add(donation)
@@ -119,7 +131,7 @@ class EconomyCommands(BaseCog):
 
         try:
             await EconomyCommands.create_transaction(
-                sender, receiver, donation.value, donation
+                admin, receiver, donation.value, donation
             )
         except Exception as e:
             await interaction.response.send_message(
@@ -144,11 +156,11 @@ class EconomyCommands(BaseCog):
             session.close()
 
     async def award_currency(
-        interaction: Interaction, in_progress_game: InProgressGame
+        self, interaction: Interaction, in_progress_game: InProgressGame
     ) -> Embed:
         session: SQLAlchemySession = Session()
 
-        queue: Queue = (
+        queue: Queue | None = (
             session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
         )
         if queue.currency_award:
@@ -184,7 +196,7 @@ class EconomyCommands(BaseCog):
                 )
                 pass
             else:
-                player: Player = (
+                player: Player | None = (
                     session.query(Player)
                     .filter(Player.id == game_player.player_id)
                     .first()
@@ -201,7 +213,7 @@ class EconomyCommands(BaseCog):
         session.close()
         return embed
 
-    async def cancel_predictions(interaction: Interaction, game_id: str):
+    async def cancel_predictions(self, interaction: Interaction, game_id: str):
         session: SQLAlchemySession = Session()
 
         predictions: list[EconomyPrediction] = (
@@ -227,7 +239,7 @@ class EconomyCommands(BaseCog):
                 )
                 raise
             else:
-                player: Player = (
+                player: Player | None = (
                     session.query(Player)
                     .filter(Player.id == prediction.player_id)
                     .first()
@@ -237,7 +249,7 @@ class EconomyCommands(BaseCog):
                 session.commit()
         session.close()
 
-    async def close_predictions(in_progress_games: list[InProgressGame]):
+    async def close_predictions(self, in_progress_games: list[InProgressGame]):
         session: SQLAlchemySession = Session()
         for game in in_progress_games:
             time_compare: datetime = game.created_at + timedelta(
@@ -250,7 +262,7 @@ class EconomyCommands(BaseCog):
         session.close()
 
     async def create_prediction_message(
-        in_progress_game: InProgressGame, match_channel: TextChannel
+        self, in_progress_game: InProgressGame, match_channel: TextChannel
     ) -> int | None:
 
         if not ECONOMY_ENABLED:
@@ -283,10 +295,16 @@ class EconomyCommands(BaseCog):
             return prediction_message.id
 
     async def create_prediction(
-        member: Member, game: InProgressGame, selection: int, prediction_value: int
+        self,
+        member: Member,
+        game: InProgressGame,
+        selection: int,
+        prediction_value: int,
     ) -> EconomyPrediction:
         session: SQLAlchemySession = Session()
-        sender: Player = session.query(Player).filter(Player.id == member.id).first()
+        sender: Player | None = (
+            session.query(Player).filter(Player.id == member.id).first()
+        )
 
         if not ECONOMY_ENABLED:
             raise Exception("Player economy is disabled")
@@ -341,9 +359,6 @@ class EconomyCommands(BaseCog):
                 player_id=(
                     source_account.id if isinstance(source_account, Player) else None
                 ),
-                player_name=(
-                    source_account.name if isinstance(source_account, Player) else None
-                ),
                 finished_game_id=(
                     source_account.game_id
                     if isinstance(source_account, FinishedGame)
@@ -376,11 +391,6 @@ class EconomyCommands(BaseCog):
             EconomyTransaction(
                 player_id=(
                     destination_account.id
-                    if isinstance(destination_account, Player)
-                    else None
-                ),
-                player_name=(
-                    destination_account.name
                     if isinstance(destination_account, Player)
                     else None
                 ),
@@ -428,10 +438,12 @@ class EconomyCommands(BaseCog):
         self, interaction: Interaction, member: Member, donation_value: int
     ) -> None:
         session: SQLAlchemySession = Session()
-        sender: Player = (
+        sender: Player | None = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
-        receiver: Player = session.query(Player).filter(Player.id == member.id).first()
+        receiver: Player | None = (
+            session.query(Player).filter(Player.id == member.id).first()
+        )
 
         # Check sender & receiver
         if not ECONOMY_ENABLED:
@@ -482,9 +494,8 @@ class EconomyCommands(BaseCog):
 
         donation = EconomyDonation(
             sending_player_id=sender.id,
-            sending_player_name=sender.name,
+            admin_player_id=None,
             receiving_player_id=receiver.id,
-            receiving_player_name=receiver.name,
             value=donation_value,
         )
         session.add(donation)
@@ -516,9 +527,10 @@ class EconomyCommands(BaseCog):
             session.close()
 
     async def resolve_predictions(
+        self,
         interaction: Interaction,
         outcome: Literal["win", "loss", "tie"],
-        game_id: str,
+        game_id: str | None,
     ):
         session: SQLAlchemySession = Session()
         game_player: InProgressGamePlayer | None = (
@@ -530,19 +542,32 @@ class EconomyCommands(BaseCog):
             session.close()
             return
 
-        in_progress_game: InProgressGame | None = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.id == game_player.in_progress_game_id)
-            .filter(InProgressGame.id == game_id)
-            .first()
-        )
-        if not in_progress_game:
-            session.close()
-            return
+        # Required as /finishgame can be called without a game_id, which infers from game_player
+        in_progress_game: InProgressGame | None
+        if game_id:
+            in_progress_game = (
+                session.query(InProgressGame)
+                .filter(InProgressGame.id == game_player.in_progress_game_id)
+                .filter(InProgressGame.id == game_id)
+                .first()
+            )
+            if not in_progress_game:
+                session.close()
+                return
+        else:
+            in_progress_game = (
+                session.query(InProgressGame)
+                .filter(InProgressGame.id == game_player.in_progress_game_id)
+                .first()
+            )
+            game_id = in_progress_game.id
+            if not in_progress_game:
+                session.close()
+                return
 
         # Embed created with player award at index 0
         embed: Embed = await EconomyCommands.award_currency(
-            interaction, in_progress_game
+            self, interaction, in_progress_game
         )
 
         predictions: list[EconomyPrediction] = (
@@ -567,7 +592,7 @@ class EconomyCommands(BaseCog):
             # Cancel prediction on tie
             if winning_team == -1:
                 try:
-                    await EconomyCommands.cancel_predictions(interaction, game_id)
+                    await EconomyCommands.cancel_predictions(self, interaction, game_id)
                 except ValueError as ve:
                     # Raised if there are no predictions on this game
                     embed.insert_field_at(
@@ -608,7 +633,9 @@ class EconomyCommands(BaseCog):
                 # Cancel if either team has no predicitons
                 if len(winning_predictions) == 0 or len(losing_predictions) == 0:
                     try:
-                        await EconomyCommands.cancel_predictions(interaction, game_id)
+                        await EconomyCommands.cancel_predictions(
+                            self, interaction, game_id
+                        )
                     except ValueError as ve:
                         # Raised if there are no predictions on this game
                         embed.insert_field_at(
@@ -684,7 +711,7 @@ class EconomyCommands(BaseCog):
                             )
                             pass
                         else:
-                            player: Player = (
+                            player: Player | None = (
                                 session.query(Player)
                                 .filter(Player.id == winning_prediction.player_id)
                                 .first()
@@ -782,7 +809,7 @@ class EconomyCommands(BaseCog):
                 ephemeral=True,
             )
 
-    async def update_embeds(in_progress_games: list[InProgressGame]):
+    async def update_embeds(self, in_progress_games: list[InProgressGame]):
         session: SQLAlchemySession = Session()
 
         for game in in_progress_games:
@@ -792,17 +819,19 @@ class EconomyCommands(BaseCog):
                 .all()
             )
             for igp_channel in igp_channels:
-                channel: TextChannel | VoiceChannel = bot.get_channel(
+                channel: TextChannel | VoiceChannel = await bot.get_channel(
                     igp_channel.channel_id
                 )
                 if type(channel) == TextChannel:
-                    message: Message = channel.get_partial_message(
+                    message: Message = await channel.get_partial_message(
                         game.prediction_message_id
                     )
                     if message:
                         message = await message.fetch()
                     else:
-                        message = channel.fetch_message(game.prediction_message_id)
+                        message = await channel.fetch_message(
+                            game.prediction_message_id
+                        )
 
                     predictions: list[EconomyPrediction] = (
                         session.query(EconomyPrediction)
@@ -857,7 +886,7 @@ class EconomyPredictionView(View):
 
     async def interaction_check(self, interaction: Interaction[Client]):
         session: SQLAlchemySession = Session()
-        player: Player = (
+        player: Player | None = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
         session.close()
@@ -880,7 +909,7 @@ class EconomyPredictionView(View):
 
     def add_items(self):
         session: SQLAlchemySession = Session()
-        game: InProgressGame = (
+        game: InProgressGame | None = (
             session.query(InProgressGame)
             .filter(InProgressGame.id.startswith(self.game_id))
             .first()
@@ -922,10 +951,11 @@ class EconomyPredictionButton(Button):
         )
         self.game: InProgressGame = in_progress_game
         self.team_value: int = team_value
+        self.team_name: str = team_name
 
     async def callback(self, interaction: Interaction[Client]) -> Any:
         session: SQLAlchemySession = Session()
-        player: Player = (
+        player: Player | None = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
         session.close()
@@ -933,13 +963,13 @@ class EconomyPredictionButton(Button):
             if await self.prediction_check(interaction):
                 await interaction.response.send_modal(
                     EconomyPredictionModal(
-                        self.label, self.team_value, self.game, player
+                        self.team_name, self.team_value, self.game, player
                     ),
                 )
 
     async def prediction_check(self, interaction: Interaction[Client]) -> bool:
         session: SQLAlchemySession = Session()
-        ipg_player: InProgressGamePlayer = (
+        ipg_player: InProgressGamePlayer | None = (
             session.query(InProgressGamePlayer)
             .filter(
                 InProgressGamePlayer.player_id == interaction.user.id,
@@ -1005,10 +1035,10 @@ class EconomyPredictionModal(Modal):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             prediction: EconomyPrediction = await EconomyCommands.create_prediction(
-                interaction.user, self.game, self.team_value, self.value
+                self, interaction.user, self.game, self.team_value, self.value
             )
             session: SQLAlchemySession = Session()
-            sender: Player = (
+            sender: Player | None = (
                 session.query(Player).filter(Player.id == prediction.player_id).first()
             )
             session.add(prediction)
@@ -1020,6 +1050,8 @@ class EconomyPredictionModal(Modal):
             return
 
         try:
+            if not sender:
+                raise Exception("Player not found for transaction")
             await EconomyCommands.create_transaction(
                 sender, self.game, self.value, prediction
             )

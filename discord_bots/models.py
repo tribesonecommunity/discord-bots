@@ -222,21 +222,20 @@ class EconomyDonation:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
-    sending_player_id: int = field(
+    sending_player_id: int | None = field(
         metadata={
             "sa": Column(BigInteger, ForeignKey("player.id"), nullable=True, index=True)
         },
     )
-    sending_player_name: str = field(
-        metadata={"sa": Column(String, nullable=True, index=True)},
+    admin_player_id: int | None = field(
+        metadata={
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=True, index=True)
+        },
     )
     receiving_player_id: int = field(
         metadata={
             "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
         },
-    )
-    receiving_player_name: str = field(
-        metadata={"sa": Column(String, nullable=False, index=True)},
     )
     value: int = field(metadata={"sa": Column(Integer, nullable=False)})
 
@@ -273,17 +272,14 @@ class EconomyPrediction:
             "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
         },
     )
-    player_name: str = field(
-        metadata={"sa": Column(String, nullable=False, index=True)},
-    )
-    finished_game_id: str = field(
+    finished_game_id: str | None = field(
         metadata={
             "sa": Column(
                 String, ForeignKey("finished_game.id"), nullable=True, index=True
             )
         },
     )
-    in_progress_game_id: str = field(
+    in_progress_game_id: str | None = field(
         metadata={
             "sa": Column(
                 String, ForeignKey("in_progress_game.id"), nullable=True, index=True
@@ -292,10 +288,10 @@ class EconomyPrediction:
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
     prediction_value: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
-    is_correct: bool = field(
+    is_correct: bool | None = field(
         metadata={"sa": Column(Boolean, nullable=True)},
     )
-    cancelled: bool = field(
+    cancelled: bool | None = field(
         metadata={"sa": Column(Boolean, nullable=True)},
     )
 
@@ -320,22 +316,19 @@ class EconomyTransaction:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
-    player_id: int = field(
+    player_id: int | None = field(
         metadata={
             "sa": Column(BigInteger, ForeignKey("player.id"), nullable=True, index=True)
         },
     )
-    player_name: str = field(
-        metadata={"sa": Column(String, nullable=True)},
-    )
-    finished_game_id: str = field(
+    finished_game_id: str | None = field(
         metadata={
             "sa": Column(
                 String, ForeignKey("finished_game.id"), nullable=True, index=True
             )
         },
     )
-    in_progress_game_id: str = field(
+    in_progress_game_id: str | None = field(
         metadata={
             "sa": Column(
                 String, ForeignKey("in_progress_game.id"), nullable=True, index=True
@@ -344,11 +337,11 @@ class EconomyTransaction:
     )
     debit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
     credit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
-    new_balance: int = field(metadata={"sa": Column(BigInteger, nullable=True)})
+    new_balance: int | None = field(metadata={"sa": Column(BigInteger, nullable=True)})
     transaction_type: str = field(
         metadata={"sa": Column(String, nullable=False)},
     )
-    economy_prediction_id: str = field(
+    economy_prediction_id: str | None = field(
         metadata={
             "sa": Column(
                 String,
@@ -358,7 +351,7 @@ class EconomyTransaction:
             )
         },
     )
-    economy_donation_id: str = field(
+    economy_donation_id: str | None = field(
         metadata={
             "sa": Column(
                 String,
@@ -512,7 +505,7 @@ class InProgressGame:
         metadata={"sa": Column(Boolean, nullable=False, server_default="0")},
     )
     # Stores the discord message ID of the EconomyPredictionView linked to this InProgressGame
-    prediction_message_id: int = field(
+    prediction_message_id: int | None = field(
         default=None, metadata={"sa": Column(BigInteger, nullable=True)}
     )
     id: str = field(

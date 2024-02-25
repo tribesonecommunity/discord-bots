@@ -5,6 +5,7 @@ from discord import TextChannel
 from discord.ext.commands import Bot, Context, check, command
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
@@ -345,7 +346,7 @@ class QueueCommands(BaseCog):
         """
         Set how much currency is awarded for games in queue.\nSet to default if no value provided.
         """
-        session = ctx.session
+        session: SQLAlchemySession = ctx.session
 
         if not ECONOMY_ENABLED:
             await self.send_error_message("Player economy is disabled")

@@ -498,8 +498,9 @@ async def finish_in_progress_game(
         session.close()
         return False
 
+    in_progress_game: InProgressGame | None
     if game_id:
-        in_progress_game: InProgressGame | None = (
+        in_progress_game = (
             session.query(InProgressGame)
             .filter(InProgressGame.id == game_player.in_progress_game_id)
             .filter(InProgressGame.id == game_id)
@@ -515,7 +516,7 @@ async def finish_in_progress_game(
             session.close()
             return False
     else:
-        in_progress_game: InProgressGame | None = (
+        in_progress_game = (
             session.query(InProgressGame)
             .filter(InProgressGame.id == game_player.in_progress_game_id)
             .first()
@@ -532,6 +533,7 @@ async def finish_in_progress_game(
             )
             session.close()
             return False
+
     queue: Queue | None = (
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )
