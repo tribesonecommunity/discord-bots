@@ -464,7 +464,7 @@ async def cancel_in_progress_game(interaction: Interaction, game_id: str):
         session.delete(channel)
     session.commit()
 
-    session.delete(game)
+    session.query(InProgressGame).filter(InProgressGame.id == game.id).delete()
     session.commit()
     session.close()
     await interaction.response.send_message(
@@ -538,10 +538,14 @@ async def finish_in_progress_game(
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )
     if not queue:
-        logging.warn(f"No queue found with id={in_progress_game.queue_id}")
+        # should never happen
+        logging.error(
+            f"Could not find queue with id {in_progress_game.queue_id} for in_progress_game with id {in_progress_game.id}"
+        )
         await interaction.followup.send(
             embed=discord.Embed(
-                description="You are not in a game!", color=discord.Colour.red()
+                description="Something went wrong, please contact the server owner",
+                color=discord.Colour.red(),
             ),
             ephemeral=True,
         )
@@ -744,10 +748,6 @@ async def finish_in_progress_game(
     session.query(InProgressGamePlayer).filter(
         InProgressGamePlayer.in_progress_game_id == in_progress_game.id
     ).delete()
-    session.query(InProgressGame).filter(
-        InProgressGame.id == in_progress_game.id
-    ).delete()
-
     embed_description = ""
     duration: timedelta = finished_game.finished_at.replace(
         tzinfo=timezone.utc
@@ -760,22 +760,6 @@ async def finish_in_progress_game(
         embed_description = (
             f"**Tie game**\n**Duration:** {duration.seconds // 60} minutes"
         )
-
-    queue = session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
-    if not queue:
-        # should never happen
-        logging.error(
-            f"Could not find queue with id {in_progress_game.queue_id} for in_progress_game with id {in_progress_game.id}"
-        )
-        await interaction.followup.send(
-            embed=discord.Embed(
-                description="Something went wrong, please contact the server owner",
-                color=discord.Colour.red(),
-            ),
-            ephemeral=True,
-        )
-        session.close()
-        return False
     session.add(
         QueueWaitlist(
             channel_id=interaction.channel_id,  # not sure about this column and what it's used for
@@ -805,9 +789,7 @@ async def finish_in_progress_game(
         player.raffle_tickets += reward
         session.add(player)
 
-    session.commit()
     queue_name = queue.name
-    session.close()
     short_in_progress_game_id = in_progress_game.id.split("-")[0]
     await interaction.followup.send(
         embed=discord.Embed(
@@ -830,4 +812,6 @@ async def finish_in_progress_game(
             )
 
     await upload_stats_screenshot_imgkit(interaction)
+    session.commit()
+    session.close()
     return True

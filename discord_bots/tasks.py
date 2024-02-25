@@ -216,6 +216,11 @@ async def queue_waitlist_task():
             QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
         ).delete()
         session.delete(queue_waitlist)
+        # ideally this should be done the instant an IPG is finished => IPG ID in IPGChannels needs to be nullable
+        # Would also have to be moved to a separate task so you don't delete the channels too early
+        session.query(InProgressGame).filter(
+            InProgressGame.id == queue_waitlist.in_progress_game_id
+        ).delete()
     session.commit()
 
 
