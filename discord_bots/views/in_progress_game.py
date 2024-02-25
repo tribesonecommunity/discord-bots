@@ -24,7 +24,7 @@ class InProgressGameView(discord.ui.View):
     ):       
         await interaction.response.defer()
         if ECONOMY_ENABLED:
-            await EconomyCommands.resolve_predictions(interaction, "win", self.game_id)
+            await EconomyCommands.resolve_predictions(None, interaction, "win", self.game_id)
 
         self.is_game_finished = await discord_bots.utils.finish_in_progress_game(
             interaction, "win", self.game_id
@@ -41,7 +41,7 @@ class InProgressGameView(discord.ui.View):
     ):
         await interaction.response.defer()
         if ECONOMY_ENABLED:
-            await EconomyCommands.resolve_predictions(interaction, "loss", self.game_id)
+            await EconomyCommands.resolve_predictions(None, interaction, "loss", self.game_id)
                                                       
         self.is_game_finished = await discord_bots.utils.finish_in_progress_game(
             interaction, "loss", self.game_id
@@ -58,7 +58,7 @@ class InProgressGameView(discord.ui.View):
     ):
         await interaction.response.defer()
         if ECONOMY_ENABLED:
-            await EconomyCommands.resolve_predictions(interaction, "tie", self.game_id)
+            await EconomyCommands.resolve_predictions(None, interaction, "tie", self.game_id)
 
         self.is_game_finished = await discord_bots.utils.finish_in_progress_game(
             interaction, "tie", self.game_id

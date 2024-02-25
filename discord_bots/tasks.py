@@ -442,14 +442,14 @@ async def prediction_task():
     Closes prediction after submission period
     """
     session = Session()
-    in_progress_games: list[InProgressGame] = (
+    in_progress_games: list[InProgressGame] | None = (
             session.query(InProgressGame)
             .filter(InProgressGame.prediction_open == True)
             .all()
         )
     session.close()
     try:
-        await EconomyCommands.update_embeds(in_progress_games)
+        await EconomyCommands.update_embeds(None, in_progress_games)
     except Exception as e:
         # Task fails if attemping to update an embed that hasn't been posted yet 
         # Occurs during game channel creation depending on when task runs.
@@ -459,4 +459,4 @@ async def prediction_task():
         prediction_task.cancel()
         prediction_task.restart()
     
-    await EconomyCommands.close_predictions(in_progress_games)
+    await EconomyCommands.close_predictions(None, in_progress_games=in_progress_games)

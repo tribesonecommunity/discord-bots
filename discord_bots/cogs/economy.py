@@ -419,7 +419,7 @@ class EconomyCommands(BaseCog):
             session.close()
 
     @app_commands.command(
-        name="donate", description=f"Donate {CURRENCY_NAME} to another player"
+        name="donatecurrency", description=f"Donate {CURRENCY_NAME} to another player"
     )
     @app_commands.check(economy_enabled)
     async def donatecurrency(
@@ -497,7 +497,7 @@ class EconomyCommands(BaseCog):
             receiver.currency += donation_value
             await interaction.response.send_message(
                 embed=Embed(
-                    description=f"<@{sender.name}> donated {donation_value} {CURRENCY_NAME} to {receiver.name}",
+                    description=f"<@{sender.id}> donated {donation_value} {CURRENCY_NAME} to {receiver.name}",
                     colour=Colour.green(),
                 )
             )
@@ -791,11 +791,11 @@ class EconomyCommands(BaseCog):
                 .all()
             )
             for igp_channel in igp_channels:
-                channel: TextChannel | VoiceChannel = await bot.get_channel(
+                channel: TextChannel | VoiceChannel = bot.get_channel(
                     igp_channel.channel_id
                 )
                 if type(channel) == TextChannel:
-                    message: Message = await channel.get_partial_message(
+                    message: Message = channel.get_partial_message(
                         game.prediction_message_id
                     )
                     if message:
