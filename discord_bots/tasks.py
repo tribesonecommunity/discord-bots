@@ -449,7 +449,6 @@ async def prediction_task():
             )
             .all()
         )
-    session.close()
     try:
         await EconomyCommands.update_embeds(None, in_progress_games)
     except Exception as e:
@@ -458,7 +457,9 @@ async def prediction_task():
         # Cleanly cancel & restart task to resolve
         logging.warn(e)
         logging.info("prediction_task restarting...")
+        session.close()
         prediction_task.cancel()
         prediction_task.restart()
     
     await EconomyCommands.close_predictions(None, in_progress_games=in_progress_games)
+    session.close()
