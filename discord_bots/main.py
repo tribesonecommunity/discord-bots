@@ -2,8 +2,9 @@ import asyncio
 from datetime import datetime, timezone
 
 import discord.utils
-from discord import Colour, Embed, Member, Message, Reaction
+from discord import Colour, Embed, Interaction, Member, Message, Reaction
 from discord.abc import User
+from discord.app_commands import AppCommandError, errors
 from discord.ext.commands import CommandError, Context, UserInputError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
@@ -14,6 +15,8 @@ from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
 from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.vote import VoteCommands
+from discord_bots.cogs.economy import EconomyCommands
+from .views.in_progress_game import InProgressGameView
 
 from .bot import bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
@@ -24,8 +27,8 @@ from .tasks import (
     map_rotation_task,
     queue_waitlist_task,
     vote_passed_waitlist_task,
+    prediction_task,
 )
-from .views.in_progress_game import InProgressGameView
 
 
 async def create_seed_admins():
@@ -41,6 +44,7 @@ async def create_seed_admins():
                         is_admin=True,
                         name="AUTO_GENERATED_ADMIN",
                         last_activity_at=datetime.now(timezone.utc),
+                        currency=config.STARTING_CURRENCY,
                     )
                 )
         session.commit()
@@ -55,6 +59,16 @@ async def on_ready():
     map_rotation_task.start()
     queue_waitlist_task.start()
     vote_passed_waitlist_task.start()
+    if config.ECONOMY_ENABLED:
+        prediction_task.start()
+
+
+@bot.tree.error
+async def on_app_command_error(
+    interaction: Interaction, error: AppCommandError
+) -> None:
+    if isinstance(error, errors.CheckFailure):
+        return
 
 
 @bot.event
@@ -119,6 +133,7 @@ async def on_message(message: Message):
                     id=message.author.id,
                     name=message.author.display_name,
                     last_activity_at=datetime.now(timezone.utc),
+                    currency=config.STARTING_CURRENCY,
                 )
             )
         session.commit()
@@ -149,6 +164,7 @@ async def on_reaction_add(reaction: Reaction, user: User | Member):
     player: Player | None = session.query(Player).filter(Player.id == user.id).first()
     if player:
         player.last_activity_at = datetime.now(timezone.utc)
+        player.name = user.display_name
         session.commit()
     else:
         session.add(
@@ -156,6 +172,7 @@ async def on_reaction_add(reaction: Reaction, user: User | Member):
                 id=reaction.message.author.id,
                 name=reaction.message.author.display_name,
                 last_activity_at=datetime.now(timezone.utc),
+                currency=config.STARTING_CURRENCY,
             )
         )
     session.close()
@@ -169,7 +186,13 @@ async def on_join(member: Member):
         player.name = member.name
         session.commit()
     else:
-        session.add(Player(id=member.id, name=member.name))
+        session.add(
+            Player(
+                id=member.id,
+                name=member.display_name,
+                currency=config.STARTING_CURRENCY,
+            )
+        )
         session.commit()
     session.close()
 
@@ -202,6 +225,7 @@ async def setup():
     await bot.add_cog(MapCommands(bot))
     await bot.add_cog(QueueCommands(bot))
     await bot.add_cog(VoteCommands(bot))
+    await bot.add_cog(EconomyCommands(bot))
     bot.add_view(InProgressGameView(""))
 
 

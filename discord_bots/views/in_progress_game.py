@@ -2,6 +2,9 @@ import discord
 
 import discord_bots.utils
 
+from discord_bots.cogs.economy import EconomyCommands
+from discord_bots.config import ECONOMY_ENABLED
+
 
 class InProgressGameView(discord.ui.View):
     def __init__(self, game_id: str):
@@ -18,7 +21,11 @@ class InProgressGameView(discord.ui.View):
     )
     async def win_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
+    ):       
+        await interaction.response.defer()
+        if ECONOMY_ENABLED:
+            await EconomyCommands.resolve_predictions(None, interaction, "win", self.game_id)
+
         self.is_game_finished = await discord_bots.utils.finish_in_progress_game(
             interaction, "win", self.game_id
         )
@@ -32,6 +39,10 @@ class InProgressGameView(discord.ui.View):
     async def loss_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
+        await interaction.response.defer()
+        if ECONOMY_ENABLED:
+            await EconomyCommands.resolve_predictions(None, interaction, "loss", self.game_id)
+                                                      
         self.is_game_finished = await discord_bots.utils.finish_in_progress_game(
             interaction, "loss", self.game_id
         )
@@ -45,6 +56,10 @@ class InProgressGameView(discord.ui.View):
     async def tie_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
+        await interaction.response.defer()
+        if ECONOMY_ENABLED:
+            await EconomyCommands.resolve_predictions(None, interaction, "tie", self.game_id)
+
         self.is_game_finished = await discord_bots.utils.finish_in_progress_game(
             interaction, "tie", self.game_id
         )

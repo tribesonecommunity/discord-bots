@@ -16,7 +16,6 @@ from typing import List, Literal, Optional, Union
 
 import discord
 import imgkit
-import sqlalchemy.orm.session
 from discord import (
     CategoryChannel,
     Colour,
@@ -96,6 +95,7 @@ from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
 from .views.in_progress_game import InProgressGameView
+from .cogs.economy import EconomyCommands
 
 
 def get_even_teams(
@@ -362,6 +362,8 @@ async def create_game(
         team1_name=generate_ds_name(),
         win_probability=win_prob,
     )
+    if config.ECONOMY_ENABLED:
+        game.prediction_open = True
     session.add(game)
 
     team0_players = players[: len(players) // 2]
@@ -447,12 +449,18 @@ async def create_game(
     if not rolled_random_map:
         await update_next_map_to_map_after_next(queue.rotation_id, False)
 
+    if config.ECONOMY_ENABLED:
+        prediction_message_id: int | None = await EconomyCommands.create_prediction_message(None, game, match_channel)
+        if prediction_message_id:
+            game.prediction_message_id = prediction_message_id
+            session.commit()
+
     if config.ENABLE_VOICE_MOVE and queue.move_enabled and be_channel and ds_channel:
         await _movegameplayers(short_game_id, None, guild)
         await send_message(
             channel,
             embed_description=f"Players moved to voice channels for game {short_game_id}",
-            colour=Colour.green(),
+            colour=Colour.blue(),
         )
 
     session.close()
@@ -1270,7 +1278,35 @@ async def ban(ctx: Context, member: Member):
 @bot.tree.command(name="cancelgame", description="Given a game ID, cancels that game")
 @commands.check(is_admin)
 async def cancelgame(interaction: Interaction, game_id: str):
+    if config.ECONOMY_ENABLED:
+        try:
+            await EconomyCommands.cancel_predictions(interaction, game_id)
+        except ValueError as ve:
+            #Raised if there are no predictions on this game
+            await interaction.channel.send(
+                embed=Embed(
+                    description="No predictions to be refunded",
+                    colour=Colour.blue()
+                )           
+            )
+        except Exception as e:
+            await interaction.channel.send(
+                embed=Embed(
+                    description="Predictions failed to refund",
+                    colour=Colour.red()
+                )           
+            )
+        else:
+            await interaction.channel.send(
+                embed=Embed(
+                    description="Predictions refunded",
+                    colour=Colour.blue()
+                )           
+            )
+    
     await cancel_in_progress_game(interaction, game_id)
+    
+
 
 @bot.command()
 async def coinflip(ctx: Context):
@@ -1826,8 +1862,10 @@ async def finishgame(
     outcome: Literal["win", "loss", "tie"],
     game_id: Optional[str],
 ):
+    await interaction.response.defer()
+    if config.ECONOMY_ENABLED:
+        await EconomyCommands.resolve_predictions(interaction, outcome, game_id)
     await finish_in_progress_game(interaction, outcome, game_id)
-
 
 
 # @bot.command()

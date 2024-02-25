@@ -18,6 +18,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
+
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
@@ -207,6 +208,174 @@ class DiscordMember:
 
 @mapper_registry.mapped
 @dataclass
+class EconomyDonation:
+    """
+    Stores economic donation information
+    - Transfers of currency between players
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "economy_donation"
+
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+    sending_player_id: int | None = field(
+        metadata={
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=True, index=True)
+        },
+    )
+    admin_player_id: int | None = field(
+        metadata={
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=True, index=True)
+        },
+    )
+    receiving_player_id: int = field(
+        metadata={
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    value: int = field(metadata={"sa": Column(Integer, nullable=False)})
+
+    sending_player = relationship(
+        "Player",
+        foreign_keys=[sending_player_id.metadata['sa']],
+        back_populates="donations_sent",
+    )
+    receiving_player = relationship(
+        "Player", 
+        foreign_keys=[receiving_player_id.metadata['sa']],
+        back_populates="donations_received"
+    )
+    transactions = relationship("EconomyTransaction", back_populates="donation")
+
+
+@mapper_registry.mapped
+@dataclass
+class EconomyPrediction:
+    """
+    Stores prediction data on a game per player
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "economy_prediction"
+
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+    player_id: int = field(
+        metadata={
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
+        },
+    )
+    finished_game_id: str | None = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("finished_game.id"), nullable=True, index=True
+            )
+        },
+    )
+    in_progress_game_id: str | None = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("in_progress_game.id"), nullable=True, index=True
+            )
+        },
+    )
+    team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
+    prediction_value: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
+    is_correct: bool | None = field(
+        metadata={"sa": Column(Boolean, nullable=True)},
+    )
+    cancelled: bool | None = field(
+        metadata={"sa": Column(Boolean, nullable=True)},
+    )
+
+    player = relationship("Player", back_populates="prediction")
+    finished_game = relationship("FinishedGame", back_populates="prediction")
+    in_progress_game = relationship("InProgressGame", back_populates="prediction")
+    transactions = relationship("EconomyTransaction", back_populates="prediction")
+
+
+@mapper_registry.mapped
+@dataclass
+class EconomyTransaction:
+    """
+    Economic transaction ledger
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "economy_transaction"
+
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+    player_id: int | None = field(
+        metadata={
+            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=True, index=True)
+        },
+    )
+    finished_game_id: str | None = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("finished_game.id"), nullable=True, index=True
+            )
+        },
+    )
+    in_progress_game_id: str | None = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("in_progress_game.id"), nullable=True, index=True
+            )
+        },
+    )
+    debit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
+    credit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
+    new_balance: int | None = field(metadata={"sa": Column(BigInteger, nullable=True)})
+    transaction_type: str = field(
+        metadata={"sa": Column(String, nullable=False)},
+    )
+    economy_prediction_id: str | None = field(
+        metadata={
+            "sa": Column(
+                String,
+                ForeignKey("economy_prediction.id"),
+                nullable=True,
+                index=True,
+            )
+        },
+    )
+    economy_donation_id: str | None = field(
+        metadata={
+            "sa": Column(
+                String,
+                ForeignKey("economy_donation.id"),
+                nullable=True,
+                index=True,
+            )
+        },
+    )
+    transacted_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+
+    player = relationship("Player", back_populates="transactions")
+    finished_game = relationship("FinishedGame", back_populates="transactions")
+    in_progress_game = relationship("InProgressGame", back_populates="transactions")
+    prediction = relationship("EconomyPrediction", back_populates="transactions")
+    donation = relationship("EconomyDonation", back_populates="transactions")
+
+
+@mapper_registry.mapped
+@dataclass
 class FinishedGame:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "finished_game"
@@ -248,6 +417,9 @@ class FinishedGame:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+
+    transactions = relationship("EconomyTransaction", back_populates="finished_game")
+    prediction = relationship("EconomyPrediction", back_populates="finished_game")
 
 
 @mapper_registry.mapped
@@ -328,11 +500,22 @@ class InProgressGame:
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
+    prediction_open: bool = field(
+        default=False,
+        metadata={"sa": Column(Boolean, nullable=False, server_default="0")},
+    )
+    # Stores the discord message ID of the EconomyPredictionView linked to this InProgressGame
+    prediction_message_id: int | None = field(
+        default=None, metadata={"sa": Column(BigInteger, nullable=True)}
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+
+    transactions = relationship("EconomyTransaction", back_populates="in_progress_game")
+    prediction = relationship("EconomyPrediction", back_populates="in_progress_game")
 
 
 @mapper_registry.mapped
@@ -365,6 +548,8 @@ class InProgressGamePlayer:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+
+    player = relationship("Player", back_populates="in_progress_game_players")
 
 
 @mapper_registry.mapped
@@ -543,7 +728,27 @@ class Player:
         default=config.DEFAULT_VOICE_MOVE,
         metadata={"sa": Column(Boolean, nullable=False)},
     )
+    currency: int = field(
+        default=config.STARTING_CURRENCY,
+        metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))},
+    )
+
     finished_game_players = relationship("FinishedGamePlayer", back_populates="player")
+    in_progress_game_players = relationship(
+        "InProgressGamePlayer", back_populates="player"
+    )
+    transactions = relationship("EconomyTransaction", back_populates="player")
+    prediction = relationship("EconomyPrediction", back_populates="player")
+    donations_sent = relationship(
+        "EconomyDonation",
+        back_populates="sending_player",
+        primaryjoin='Player.id == EconomyDonation.sending_player_id'
+    )
+    donations_received = relationship(
+        "EconomyDonation",
+        back_populates="receiving_player",
+        primaryjoin='Player.id == EconomyDonation.receiving_player_id'
+    )
 
     @hybrid_property
     def leaderboard_trueskill(self):
@@ -716,6 +921,10 @@ class Queue:
     move_enabled: bool = field(
         default=config.DEFAULT_VOICE_MOVE,
         metadata={"sa": Column(Boolean, nullable=False)},
+    )
+    currency_award: int = field(
+        default=None,
+        metadata={"sa": Column(Integer, nullable=True)}
     )
 
     rotation = relationship("Rotation", back_populates="queues")
