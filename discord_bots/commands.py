@@ -1280,7 +1280,7 @@ async def ban(ctx: Context, member: Member):
 async def cancelgame(interaction: Interaction, game_id: str):
     if config.ECONOMY_ENABLED:
         try:
-            await EconomyCommands.cancel_predictions(interaction, game_id)
+            await EconomyCommands.cancel_predictions(None, game_id)
         except ValueError as ve:
             #Raised if there are no predictions on this game
             await interaction.channel.send(
@@ -1292,7 +1292,7 @@ async def cancelgame(interaction: Interaction, game_id: str):
         except Exception as e:
             await interaction.channel.send(
                 embed=Embed(
-                    description="Predictions failed to refund",
+                    description=f"Predictions failed to refund: {e}",
                     colour=Colour.red()
                 )           
             )
@@ -3421,6 +3421,33 @@ async def _rebalance_game(
     )
     session.commit()
 
+    if config.ECONOMY_ENABLED:
+        try:
+            await EconomyCommands.cancel_predictions(None, game.id)
+        except ValueError as ve:
+            #Raised if there are no predictions on this game
+            await send_message(
+                message.channel,
+                content="",
+                embed_description="No predictions to be refunded",
+                colour=Colour.blue()
+            )
+        except Exception as e:
+            print(f"{e}")
+            await send_message(
+                message.channel,
+                content="",
+                embed_description="Predictions failed to refund",
+                colour=Colour.blue()
+            )
+        else:
+            await send_message(
+                message.channel,
+                content="",
+                embed_description="Predictions refunded",
+                colour=Colour.blue()
+            )
+
     if config.ENABLE_VOICE_MOVE:
         if queue.move_enabled:
             await _movegameplayers(short_game_id, None, message.guild)
@@ -3429,7 +3456,7 @@ async def _rebalance_game(
                 embed_description=f"Players moved to new team voice channels for game {short_game_id}",
                 colour=Colour.green(),
             )
-
+    
     pass
 
 

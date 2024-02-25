@@ -203,7 +203,7 @@ class EconomyCommands(BaseCog):
         session.close()
         return embed
 
-    async def cancel_predictions(self, interaction: Interaction, game_id: str):
+    async def cancel_predictions(self, game_id: str):
         session: SQLAlchemySession = Session()
 
         predictions: list[EconomyPrediction] = (
@@ -236,17 +236,21 @@ class EconomyCommands(BaseCog):
                 )
                 player.currency += prediction.prediction_value
                 prediction.cancelled = True
+                session.delete(prediction)
                 session.commit()
         session.close()
 
     async def close_predictions(self, in_progress_games: list[InProgressGame]):
         session: SQLAlchemySession = Session()
         for game in in_progress_games:
+            if not game.prediction_message_id:
+                continue
             time_compare: datetime = game.created_at + timedelta(
                 seconds=PREDICTION_TIMEOUT
             )
             time_compare = utc.localize(time_compare)
             if datetime.now(timezone.utc) > time_compare:
+                game: InProgressGame | None = session.query(InProgressGame).filter(InProgressGame.id == game.id).first()
                 game.prediction_open = False
                 session.commit()
         session.close()
@@ -571,7 +575,7 @@ class EconomyCommands(BaseCog):
             # Cancel prediction on tie
             if winning_team == -1:
                 try:
-                    await EconomyCommands.cancel_predictions(self, interaction, game_id)
+                    await EconomyCommands.cancel_predictions(self, game_id)
                 except ValueError as ve:
                     # Raised if there are no predictions on this game
                     embed.insert_field_at(
@@ -613,7 +617,7 @@ class EconomyCommands(BaseCog):
                 if len(winning_predictions) == 0 or len(losing_predictions) == 0:
                     try:
                         await EconomyCommands.cancel_predictions(
-                            self, interaction, game_id
+                            self, game_id
                         )
                     except ValueError as ve:
                         # Raised if there are no predictions on this game
@@ -785,6 +789,8 @@ class EconomyCommands(BaseCog):
         session: SQLAlchemySession = Session()
 
         for game in in_progress_games:
+            if not game.prediction_message_id:
+                continue
             igp_channels: list[InProgressGameChannel] = (
                 session.query(InProgressGameChannel)
                 .filter(InProgressGameChannel.in_progress_game_id == game.id)
@@ -861,15 +867,17 @@ class EconomyPredictionView(View):
         player: Player | None = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
-        session.close()
+        
         if not player:
             await interaction.response.send_message(
                 "You are not a player, please add to queue once to be created",
                 ephemeral=True,
             )
+            session.close()
             return False
 
         if self.game.prediction_open:
+            session.close()
             return self.game.prediction_open
         else:
             short_game_id: str = short_uuid(self.game.id)
@@ -877,6 +885,7 @@ class EconomyPredictionView(View):
                 f"Prediction is closed for game {short_game_id}",
                 ephemeral=True,
             )
+            session.close()
             return self.game.prediction_open
 
     def add_items(self):
