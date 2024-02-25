@@ -2,6 +2,8 @@
 # use queues to be able to execute discord actions from child threads.
 # https://stackoverflow.com/a/67996748
 
+import logging
+
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from random import shuffle
@@ -452,6 +454,8 @@ async def prediction_task():
         # Task fails if attemping to update an embed that hasn't been posted yet 
         # Occurs during game channel creation depending on when task runs.
         # Cleanly cancel & restart task to resolve
+        logging.warn(e)
+        logging.info("prediction_task restarting...")
         prediction_task.cancel()
         prediction_task.restart()
     

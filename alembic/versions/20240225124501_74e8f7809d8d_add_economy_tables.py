@@ -1,8 +1,8 @@
 """add economy tables
 
-Revision ID: 4e344a0d629b
+Revision ID: 74e8f7809d8d
 Revises: 402ad305b51b
-Create Date: 2024-02-22 07:52:03.875377
+Create Date: 2024-02-25 12:45:01.647378
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "4e344a0d629b"
+revision = "74e8f7809d8d"
 down_revision = "402ad305b51b"
 branch_labels = None
 depends_on = None
@@ -69,7 +69,8 @@ def upgrade():
         sa.Column("in_progress_game_id", sa.String(), nullable=True),
         sa.Column("team", sa.Integer(), nullable=False),
         sa.Column("prediction_value", sa.BigInteger(), nullable=False),
-        sa.Column("outcome", sa.Boolean(), nullable=True),
+        sa.Column("is_correct", sa.Boolean(), nullable=True),
+        sa.Column("cancelled", sa.Boolean(), nullable=True),
         sa.ForeignKeyConstraint(
             ["finished_game_id"],
             ["finished_game.id"],
@@ -133,14 +134,24 @@ def upgrade():
             server_default=sa.text("0"),
             nullable=False,
         ),
+        sa.Column("new_balance", sa.BigInteger(), nullable=True),
         sa.Column("transaction_type", sa.String(), nullable=False),
-        sa.Column("prediction_id", sa.String(), nullable=True),
-        sa.Column("donation_id", sa.String(), nullable=True),
-        sa.Column("transaction_time", sa.DateTime(), nullable=True),
+        sa.Column("economy_prediction_id", sa.String(), nullable=True),
+        sa.Column("economy_donation_id", sa.String(), nullable=True),
+        sa.Column("transacted_at", sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(
-            ["donation_id"],
+            ["economy_donation_id"],
             ["economy_donation.id"],
-            name=op.f("fk_economy_transaction_donation_id_economy_donation"),
+            name=op.f(
+                "fk_economy_transaction_economy_donation_id_economy_donation"
+            ),
+        ),
+        sa.ForeignKeyConstraint(
+            ["economy_prediction_id"],
+            ["economy_prediction.id"],
+            name=op.f(
+                "fk_economy_transaction_economy_prediction_id_economy_prediction"
+            ),
         ),
         sa.ForeignKeyConstraint(
             ["finished_game_id"],
@@ -159,19 +170,17 @@ def upgrade():
             ["player.id"],
             name=op.f("fk_economy_transaction_player_id_player"),
         ),
-        sa.ForeignKeyConstraint(
-            ["prediction_id"],
-            ["economy_prediction.id"],
-            name=op.f(
-                "fk_economy_transaction_prediction_id_economy_prediction"
-            ),
-        ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_economy_transaction")),
     )
     with op.batch_alter_table("economy_transaction", schema=None) as batch_op:
         batch_op.create_index(
-            batch_op.f("ix_economy_transaction_donation_id"),
-            ["donation_id"],
+            batch_op.f("ix_economy_transaction_economy_donation_id"),
+            ["economy_donation_id"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_economy_transaction_economy_prediction_id"),
+            ["economy_prediction_id"],
             unique=False,
         )
         batch_op.create_index(
@@ -190,13 +199,8 @@ def upgrade():
             unique=False,
         )
         batch_op.create_index(
-            batch_op.f("ix_economy_transaction_prediction_id"),
-            ["prediction_id"],
-            unique=False,
-        )
-        batch_op.create_index(
-            batch_op.f("ix_economy_transaction_transaction_time"),
-            ["transaction_time"],
+            batch_op.f("ix_economy_transaction_transacted_at"),
+            ["transacted_at"],
             unique=False,
         )
 
@@ -244,10 +248,7 @@ def downgrade():
         batch_op.drop_column("prediction_open")
 
     with op.batch_alter_table("economy_transaction", schema=None) as batch_op:
-        batch_op.drop_index(
-            batch_op.f("ix_economy_transaction_transaction_time")
-        )
-        batch_op.drop_index(batch_op.f("ix_economy_transaction_prediction_id"))
+        batch_op.drop_index(batch_op.f("ix_economy_transaction_transacted_at"))
         batch_op.drop_index(batch_op.f("ix_economy_transaction_player_id"))
         batch_op.drop_index(
             batch_op.f("ix_economy_transaction_in_progress_game_id")
@@ -255,7 +256,12 @@ def downgrade():
         batch_op.drop_index(
             batch_op.f("ix_economy_transaction_finished_game_id")
         )
-        batch_op.drop_index(batch_op.f("ix_economy_transaction_donation_id"))
+        batch_op.drop_index(
+            batch_op.f("ix_economy_transaction_economy_prediction_id")
+        )
+        batch_op.drop_index(
+            batch_op.f("ix_economy_transaction_economy_donation_id")
+        )
 
     op.drop_table("economy_transaction")
     with op.batch_alter_table("economy_prediction", schema=None) as batch_op:

@@ -243,12 +243,12 @@ class EconomyDonation:
     sending_player = relationship(
         "Player",
         foreign_keys=[sending_player_id.metadata['sa']],
-        back_populates="donation_senders",
+        back_populates="donations_sent",
     )
     receiving_player = relationship(
         "Player", 
         foreign_keys=[receiving_player_id.metadata['sa']],
-        back_populates="donation_receivers"
+        back_populates="donations_received"
     )
     transactions = relationship("EconomyTransaction", back_populates="donation")
 
@@ -292,7 +292,10 @@ class EconomyPrediction:
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
     prediction_value: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
-    outcome: bool = field(
+    is_correct: bool = field(
+        metadata={"sa": Column(Boolean, nullable=True)},
+    )
+    cancelled: bool = field(
         metadata={"sa": Column(Boolean, nullable=True)},
     )
 
@@ -341,10 +344,11 @@ class EconomyTransaction:
     )
     debit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
     credit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
+    new_balance: int = field(metadata={"sa": Column(BigInteger, nullable=True)})
     transaction_type: str = field(
         metadata={"sa": Column(String, nullable=False)},
     )
-    prediction_id: str = field(
+    economy_prediction_id: str = field(
         metadata={
             "sa": Column(
                 String,
@@ -354,7 +358,7 @@ class EconomyTransaction:
             )
         },
     )
-    donation_id: str = field(
+    economy_donation_id: str = field(
         metadata={
             "sa": Column(
                 String,
@@ -364,7 +368,7 @@ class EconomyTransaction:
             )
         },
     )
-    transaction_time: datetime = field(
+    transacted_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
@@ -507,6 +511,7 @@ class InProgressGame:
         default=False,
         metadata={"sa": Column(Boolean, nullable=False, server_default="0")},
     )
+    # Stores the discord message ID of the EconomyPredictionView linked to this InProgressGame
     prediction_message_id: int = field(
         default=None, metadata={"sa": Column(BigInteger, nullable=True)}
     )
@@ -741,12 +746,12 @@ class Player:
     )
     transactions = relationship("EconomyTransaction", back_populates="player")
     prediction = relationship("EconomyPrediction", back_populates="player")
-    donation_senders = relationship(
+    donations_sent = relationship(
         "EconomyDonation",
         back_populates="sending_player",
         primaryjoin='Player.id == EconomyDonation.sending_player_id'
     )
-    donation_receivers = relationship(
+    donations_received = relationship(
         "EconomyDonation",
         back_populates="receiving_player",
         primaryjoin='Player.id == EconomyDonation.receiving_player_id'

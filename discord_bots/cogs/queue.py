@@ -339,7 +339,7 @@ class QueueCommands(BaseCog):
 
     @command()
     @check(is_admin)
-    async def setqueueaward(
+    async def setqueuecurrencyaward(
         self, ctx: Context, queue_name: str, currency_award: int = CURRENCY_AWARD
     ):
         """

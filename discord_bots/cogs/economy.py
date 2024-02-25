@@ -24,9 +24,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin
+from discord_bots.checks import is_admin, economy_enabled
 from discord_bots.cogs.base import BaseCog
-from discord_bots.utils import short_uuid
 from discord_bots.config import (
     CHANNEL_ID,
     CURRENCY_AWARD,
@@ -46,6 +45,7 @@ from discord_bots.models import (
     Queue,
     Session,
 )
+from discord_bots.utils import short_uuid
 
 
 class EconomyCommands(BaseCog):
@@ -121,36 +121,6 @@ class EconomyCommands(BaseCog):
             await EconomyCommands.create_transaction(
                 sender, receiver, donation.value, donation
             )
-        except TypeError as te:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Currency add failed. Type Error",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            print(f"Currency add Type Error: {te}")
-            session.delete(donation)
-        except ValueError as ve:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Currency add failed. Value Error",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            print(f"Currency add Value Error: {ve}")
-            session.delete(donation)
-        except IntegrityError as exc:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Currency add failed. Integrity Error",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            print(f"Currency add Integrity Error: {exc}")
-            session.delete(donation)
         except Exception as e:
             await interaction.response.send_message(
                 embed=Embed(
@@ -196,7 +166,7 @@ class EconomyCommands(BaseCog):
         embed: Embed = Embed(
             title=f"Game '{queue.name}' ({short_game_id}) Prediction Results",
             description="",
-            colour = Colour.green()
+            colour=Colour.green(),
         )
         for game_player in game_players:
             try:
@@ -210,7 +180,7 @@ class EconomyCommands(BaseCog):
                 embed.add_field(
                     name="",
                     value=f"Currency award failed for <@{game_player.player_id}> | Award Value = {award_value} | Exception: {e}",
-                    inline=False
+                    inline=False,
                 )
                 pass
             else:
@@ -225,11 +195,11 @@ class EconomyCommands(BaseCog):
         embed.add_field(
             name="",
             value=f"{award_value} {CURRENCY_NAME} awarded to participants",
-            inline=False
+            inline=False,
         )
-        
+
         session.close()
-        return embed        
+        return embed
 
     async def cancel_predictions(interaction: Interaction, game_id: str):
         session: SQLAlchemySession = Session()
@@ -252,7 +222,9 @@ class EconomyCommands(BaseCog):
                     prediction,
                 )
             except Exception as e:
-                print(f"Exception while refunding predictions for game {game_id}: {e}")
+                print(
+                    f"Exception while refunding prediction {prediction.id} for game {game_id}: {e}"
+                )
                 raise
             else:
                 player: Player = (
@@ -261,6 +233,7 @@ class EconomyCommands(BaseCog):
                     .first()
                 )
                 player.currency += prediction.prediction_value
+                prediction.cancelled = True
                 session.commit()
         session.close()
 
@@ -279,7 +252,6 @@ class EconomyCommands(BaseCog):
     async def create_prediction_message(
         in_progress_game: InProgressGame, match_channel: TextChannel
     ) -> int | None:
-        # async def predict(self, interaction: Interaction) -> None:
 
         if not ECONOMY_ENABLED:
             return None
@@ -334,14 +306,15 @@ class EconomyCommands(BaseCog):
             finished_game_id=None,
             team=int(selection),
             prediction_value=prediction_value,
-            outcome=None,
+            is_correct=None,
+            cancelled=None,
         )
         return prediction
 
     @classmethod
     async def create_transaction(
         self,
-        account: Player | FinishedGame | InProgressGame,
+        source_account: Player | FinishedGame | InProgressGame,
         destination_account: Player | FinishedGame | InProgressGame | None,
         transaction_value: int,
         source: EconomyDonation | EconomyPrediction | str,
@@ -350,7 +323,7 @@ class EconomyCommands(BaseCog):
 
         if not ECONOMY_ENABLED:
             raise Exception("Player economy is disabled")
-        if not account:
+        if not source_account:
             raise TypeError("Transaction account not a player or game")
         elif not destination_account:
             raise TypeError("Destination account not a player or game")
@@ -365,21 +338,34 @@ class EconomyCommands(BaseCog):
         # Outbound Transaction
         session.add(
             EconomyTransaction(
-                player_id=(account.id if isinstance(account, Player) else None),
-                player_name=(account.name if isinstance(account, Player) else None),
+                player_id=(
+                    source_account.id if isinstance(source_account, Player) else None
+                ),
+                player_name=(
+                    source_account.name if isinstance(source_account, Player) else None
+                ),
                 finished_game_id=(
-                    account.game_id if isinstance(account, FinishedGame) else None
+                    source_account.game_id
+                    if isinstance(source_account, FinishedGame)
+                    else None
                 ),
                 in_progress_game_id=(
-                    account.id if isinstance(account, InProgressGame) else None
+                    source_account.id
+                    if isinstance(source_account, InProgressGame)
+                    else None
                 ),
                 debit=0,
                 credit=transaction_value,
+                new_balance=(
+                    source_account.currency - transaction_value
+                    if isinstance(source_account, Player) and source_account.id
+                    else 0
+                ),
                 transaction_type=source_str,
-                prediction_id=(
+                economy_prediction_id=(
                     source.id if isinstance(source, EconomyPrediction) else None
                 ),
-                donation_id=(
+                economy_donation_id=(
                     source.id if isinstance(source, EconomyDonation) else None
                 ),
             )
@@ -410,11 +396,17 @@ class EconomyCommands(BaseCog):
                 ),
                 debit=transaction_value,
                 credit=0,
+                new_balance=(
+                    destination_account.currency + transaction_value
+                    if isinstance(destination_account, Player)
+                    and destination_account.id
+                    else 0
+                ),
                 transaction_type=source_str,
-                prediction_id=(
+                economy_prediction_id=(
                     source.id if isinstance(source, EconomyPrediction) else None
                 ),
-                donation_id=(
+                economy_donation_id=(
                     source.id if isinstance(source, EconomyDonation) else None
                 ),
             )
@@ -432,7 +424,7 @@ class EconomyCommands(BaseCog):
     @app_commands.command(
         name="donate", description=f"Donate {CURRENCY_NAME} to another player"
     )
-    async def donate(
+    async def donatecurrency(
         self, interaction: Interaction, member: Member, donation_value: int
     ) -> None:
         session: SQLAlchemySession = Session()
@@ -500,36 +492,6 @@ class EconomyCommands(BaseCog):
 
         try:
             await self.create_transaction(sender, receiver, donation.value, donation)
-        except TypeError as te:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Donation failed. Type Error",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            print(f"Donation Type Error: {te}")
-            session.delete(donation)
-        except ValueError as ve:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Donation failed. Value Error",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            print(f"Donation Value Error: {ve}")
-            session.delete(donation)
-        except IntegrityError as exc:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Donation failed. Integrity Error",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            print(f"Donation Integrity Error: {exc}")
-            session.delete(donation)
         except Exception as e:
             await interaction.response.send_message(
                 embed=Embed(
@@ -556,10 +518,10 @@ class EconomyCommands(BaseCog):
     async def resolve_predictions(
         interaction: Interaction,
         outcome: Literal["win", "loss", "tie"],
-        game_id: Optional[str],
+        game_id: str,
     ):
         session: SQLAlchemySession = Session()
-        game_player: InProgressGamePlayer = (
+        game_player: InProgressGamePlayer | None = (
             session.query(InProgressGamePlayer)
             .filter(InProgressGamePlayer.player_id == interaction.user.id)
             .first()
@@ -568,29 +530,20 @@ class EconomyCommands(BaseCog):
             session.close()
             return
 
-        if game_id:
-            in_progress_game: InProgressGame | None = (
-                session.query(InProgressGame)
-                .filter(InProgressGame.id == game_player.in_progress_game_id)
-                .filter(InProgressGame.id == game_id)
-                .first()
-            )
-            if not in_progress_game:
-                session.close()
-                return
-        else:
-            in_progress_game: InProgressGame | None = (
-                session.query(InProgressGame)
-                .filter(InProgressGame.id == game_player.in_progress_game_id)
-                .first()
-            )
-            game_id = in_progress_game.id
-            if not in_progress_game:
-                session.close()
-                return
+        in_progress_game: InProgressGame | None = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == game_player.in_progress_game_id)
+            .filter(InProgressGame.id == game_id)
+            .first()
+        )
+        if not in_progress_game:
+            session.close()
+            return
 
         # Embed created with player award at index 0
-        embed: Embed = await EconomyCommands.award_currency(interaction, in_progress_game)
+        embed: Embed = await EconomyCommands.award_currency(
+            interaction, in_progress_game
+        )
 
         predictions: list[EconomyPrediction] = (
             session.query(EconomyPrediction)
@@ -600,10 +553,7 @@ class EconomyCommands(BaseCog):
         # Stop processing if no predictions
         if len(predictions) == 0:
             embed.insert_field_at(
-                index=0,
-                name="",
-                value=f"No predictions on game",
-                inline=False
+                index=0, name="", value=f"No predictions on game", inline=False
             )
         else:
             winning_team = -1
@@ -613,7 +563,6 @@ class EconomyCommands(BaseCog):
                 winning_team = (game_player.team + 1) % 2
             else:  # tie
                 winning_team = -1
-            # print(f"Wining Team: {winning_team}")
 
             # Cancel prediction on tie
             if winning_team == -1:
@@ -625,7 +574,7 @@ class EconomyCommands(BaseCog):
                         index=0,
                         name="Tie game",
                         value=f"No predictions to be refunded",
-                        inline=False
+                        inline=False,
                     )
                     pass
                 except Exception as e:
@@ -633,7 +582,7 @@ class EconomyCommands(BaseCog):
                         index=0,
                         name="Tie game",
                         value=f"Predictions failed to refund: {e}",
-                        inline=False
+                        inline=False,
                     )
                     pass
                 else:
@@ -641,7 +590,7 @@ class EconomyCommands(BaseCog):
                         index=0,
                         name="Tie game",
                         value=f"Predictions refunded",
-                        inline=False
+                        inline=False,
                     )
                     pass
                 finally:
@@ -655,11 +604,9 @@ class EconomyCommands(BaseCog):
                         winning_predictions.append(prediction)
                     else:
                         losing_predictions.append(prediction)
-                # print(f"Winning prediction count: {len(winning_predictions)}")
-                # print(f"Losing prediction count: {len(losing_predictions)}")
 
                 # Cancel if either team has no predicitons
-                if len(winning_predictions) == 0 or len(losing_predictions) == 0:               
+                if len(winning_predictions) == 0 or len(losing_predictions) == 0:
                     try:
                         await EconomyCommands.cancel_predictions(interaction, game_id)
                     except ValueError as ve:
@@ -668,15 +615,15 @@ class EconomyCommands(BaseCog):
                             index=0,
                             name=f"Not enough predictions on game",
                             value="No predictions to be refunded",
-                            inline=False
+                            inline=False,
                         )
-                        pass   
+                        pass
                     except Exception as e:
                         embed.insert_field_at(
                             index=0,
                             name=f"Not enough predictions on game",
                             value=f"Predictions failed to refund: {e}",
-                            inline=False
+                            inline=False,
                         )
                         pass
                     else:
@@ -684,30 +631,36 @@ class EconomyCommands(BaseCog):
                             index=0,
                             name=f"Not enough predictions on game",
                             value="Predictions refunded",
-                            inline=False
+                            inline=False,
                         )
                         pass
                     finally:
                         session.close()
                 else:
-                    winning_total: int = sum(wt.prediction_value for wt in winning_predictions)
-                    losing_total: int = sum(lt.prediction_value for lt in losing_predictions)
-                    # print(f"Winning total: {winning_total}")
-                    # print(f"Losing total: {losing_total}")
+                    winning_total: int = sum(
+                        wt.prediction_value for wt in winning_predictions
+                    )
+                    losing_total: int = sum(
+                        lt.prediction_value for lt in losing_predictions
+                    )
 
                     # Initialize dictionary for summing return messages
                     summed_winners: dict = dict()
                     summed_losers: dict = dict()
-                    
+
                     for losing_prediction in losing_predictions:
                         if any(
                             x == losing_prediction.player_id
                             for x in iter(summed_losers.keys())
                         ):
-                            summed_losers[losing_prediction.player_id] += losing_prediction.prediction_value
+                            summed_losers[
+                                losing_prediction.player_id
+                            ] += losing_prediction.prediction_value
                         else:
-                            summed_losers[losing_prediction.player_id] = losing_prediction.prediction_value
-                    
+                            summed_losers[losing_prediction.player_id] = (
+                                losing_prediction.prediction_value
+                            )
+
                     for winning_prediction in winning_predictions:
                         win_value: int = round(
                             (winning_total + losing_total)
@@ -727,8 +680,8 @@ class EconomyCommands(BaseCog):
                                 index=0,
                                 name="",
                                 value=f"Prediction resolution failed for <@{winning_prediction.player_id}> | Win Value = {win_value} | Exception: {e}",
-                                inline=False
-                            )    
+                                inline=False,
+                            )
                             pass
                         else:
                             player: Player = (
@@ -737,7 +690,7 @@ class EconomyCommands(BaseCog):
                                 .first()
                             )
                             player.currency += win_value
-                            winning_prediction.outcome = True
+                            winning_prediction.is_correct = True
                             session.commit()
 
                             # Adds win_value to player in dictionary, or creates new dict item
@@ -747,19 +700,29 @@ class EconomyCommands(BaseCog):
                                 x == winning_prediction.player_id
                                 for x in iter(summed_winners.keys())
                             ):
-                                summed_winners[winning_prediction.player_id] += win_value
+                                summed_winners[
+                                    winning_prediction.player_id
+                                ] += win_value
                             else:
                                 summed_winners[winning_prediction.player_id] = win_value
 
-                    sorted_winners: dict = dict(reversed(sorted(summed_winners.items(), key=itemgetter(1))))
-                    sorted_losers: dict = dict(reversed(sorted(summed_losers.items(), key=itemgetter(1))))
-                    
+                    sorted_winners: dict = dict(
+                        reversed(sorted(summed_winners.items(), key=itemgetter(1)))
+                    )
+                    sorted_losers: dict = dict(
+                        reversed(sorted(summed_losers.items(), key=itemgetter(1)))
+                    )
+
                     prediction_winners: str = ">>> "
                     prediction_losers: str = ">>> "
                     for key, value in list(sorted_winners.items())[:10]:
-                        prediction_winners += f"<@{key}> **+{round(value, None)}** {CURRENCY_NAME}\n"
+                        prediction_winners += (
+                            f"<@{key}> **+{round(value, None)}** {CURRENCY_NAME}\n"
+                        )
                     for key, value in list(sorted_losers.items())[:10]:
-                        prediction_losers += f"<@{key}> **-{round(value, None)}** {CURRENCY_NAME}\n"
+                        prediction_losers += (
+                            f"<@{key}> **-{round(value, None)}** {CURRENCY_NAME}\n"
+                        )
 
                     if len(sorted_winners) > 10:
                         prediction_winners += "..."
@@ -770,13 +733,10 @@ class EconomyCommands(BaseCog):
                         index=0,
                         name="📈 Winners",
                         value=prediction_winners,
-                        inline=True
+                        inline=True,
                     )
                     embed.insert_field_at(
-                        index=1,
-                        name="📉 Losers",
-                        value=prediction_losers,
-                        inline=True
+                        index=1, name="📉 Losers", value=prediction_losers, inline=True
                     )
 
         await interaction.channel.send(embed=embed)
@@ -836,7 +796,6 @@ class EconomyCommands(BaseCog):
                     igp_channel.channel_id
                 )
                 if type(channel) == TextChannel:
-                    # message: Message = channel.fetch_message(game.prediction_message_id)
                     message: Message = channel.get_partial_message(
                         game.prediction_message_id
                     )
@@ -894,13 +853,14 @@ class EconomyPredictionView(View):
         super().__init__(timeout=None)
         self.game_id: str = game_id
         self.game: InProgressGame
-        self.session: SQLAlchemySession = Session()
         self.add_items()
 
     async def interaction_check(self, interaction: Interaction[Client]):
+        session: SQLAlchemySession = Session()
         player: Player = (
-            self.session.query(Player).filter(Player.id == interaction.user.id).first()
+            session.query(Player).filter(Player.id == interaction.user.id).first()
         )
+        session.close()
         if not player:
             await interaction.response.send_message(
                 "You are not a player, please add to queue once to be created",
@@ -919,12 +879,14 @@ class EconomyPredictionView(View):
             return self.game.prediction_open
 
     def add_items(self):
+        session: SQLAlchemySession = Session()
         game: InProgressGame = (
-            self.session.query(InProgressGame)
+            session.query(InProgressGame)
             .filter(InProgressGame.id.startswith(self.game_id))
             .first()
         )
         self.game = game
+        session.close()
 
         self.add_item(
             EconomyPredictionButton(
@@ -1061,24 +1023,6 @@ class EconomyPredictionModal(Modal):
             await EconomyCommands.create_transaction(
                 sender, self.game, self.value, prediction
             )
-        except TypeError as te:
-            await interaction.followup.send(
-                f"Prediction Type Error: {te}", ephemeral=True
-            )
-            session.delete(prediction)
-            return
-        except ValueError as ve:
-            await interaction.followup.send(
-                f"Prediction Value Error: {ve}", ephemeral=True
-            )
-            session.delete(prediction)
-            return
-        except IntegrityError as exc:
-            await interaction.followup.send(
-                f"Prediction Integrity Error: {exc}", ephemeral=True
-            )
-            session.delete(prediction)
-            return
         except Exception as e:
             await interaction.followup.send(
                 f"Prediction Exception: {e}", ephemeral=True
@@ -1092,7 +1036,7 @@ class EconomyPredictionModal(Modal):
                     description=f"<@{sender.id}> predicted {self.team_name} for {self.value} {CURRENCY_NAME}",
                     colour=Colour.blue(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
         finally:
             session.commit()
