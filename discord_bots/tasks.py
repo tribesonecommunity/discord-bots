@@ -449,9 +449,7 @@ async def prediction_task():
     session = Session()
     in_progress_games: list[InProgressGame] | None = (
             session.query(InProgressGame)
-            .filter(InProgressGame.prediction_open == True,
-                InProgressGame.prediction_message_id != None
-            )
+            .filter(InProgressGame.prediction_open == True)
             .all()
         )
     try:

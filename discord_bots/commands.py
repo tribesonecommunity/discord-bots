@@ -1864,7 +1864,7 @@ async def finishgame(
 ):
     await interaction.response.defer()
     if config.ECONOMY_ENABLED:
-        await EconomyCommands.resolve_predictions(interaction, outcome, game_id)
+        await EconomyCommands.resolve_predictions(None, interaction, outcome, game_id)
     await finish_in_progress_game(interaction, outcome, game_id)
 
 
