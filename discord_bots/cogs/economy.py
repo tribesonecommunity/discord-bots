@@ -24,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin
+from discord_bots.checks import is_admin_app_command, economy_enabled
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     CHANNEL_ID,
@@ -35,7 +35,6 @@ from discord_bots.config import (
 )
 from discord_bots.models import (
     EconomyDonation,
-    EconomyEnum,
     EconomyPrediction,
     EconomyTransaction,
     FinishedGame,
@@ -55,14 +54,12 @@ class EconomyCommands(BaseCog):
         self.bot = bot
         self.views: list[EconomyPredictionView] = []
 
+    @app_commands.check(economy_enabled)
     async def cog_load(self) -> None:
         """
         Called every time the bot restarts
         Recreates view and re-links to existing message id
         """
-        if not ECONOMY_ENABLED:
-            return
-
         session: SQLAlchemySession = Session()
         in_progress_games: list[InProgressGame] = session.query(InProgressGame).all()
         for game in in_progress_games:
@@ -81,10 +78,11 @@ class EconomyCommands(BaseCog):
     @app_commands.command(
         name="addcurrency", description=f"Admin; Add {CURRENCY_NAME} to a player"
     )
-    @check(is_admin)
+    @app_commands.check(economy_enabled)
+    @app_commands.check(is_admin_app_command)
     async def addcurrency(
         self, interaction: Interaction, member: Member, add_value: int
-    ) -> None:
+    ) -> None:        
         session: SQLAlchemySession = Session()
         admin: Player | None = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
@@ -93,16 +91,7 @@ class EconomyCommands(BaseCog):
             session.query(Player).filter(Player.id == member.id).first()
         )
 
-        if not ECONOMY_ENABLED:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Player economy is disabled",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            return
-        elif not admin:
+        if not admin:
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"Admin {interaction.user.display_name} does not exist",
@@ -432,6 +421,7 @@ class EconomyCommands(BaseCog):
     @app_commands.command(
         name="donate", description=f"Donate {CURRENCY_NAME} to another player"
     )
+    @app_commands.check(economy_enabled)
     async def donatecurrency(
         self, interaction: Interaction, member: Member, donation_value: int
     ) -> None:
@@ -444,16 +434,7 @@ class EconomyCommands(BaseCog):
         )
 
         # Check sender & receiver
-        if not ECONOMY_ENABLED:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Player economy is disabled",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            return
-        elif not sender:
+        if not sender:
             await interaction.response.send_message(
                 embed=Embed(
                     description="Sending player does not exist",
@@ -776,21 +757,14 @@ class EconomyCommands(BaseCog):
     @app_commands.command(
         name="showcurrency", description=f"Show how many {CURRENCY_NAME} you have"
     )
+    @app_commands.check(economy_enabled)
     async def showcurrency(self, interaction: Interaction):
         session: SQLAlchemySession = Session()
-        player: Player = (
+        player: Player | None = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
 
-        if not ECONOMY_ENABLED:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Player economy is disabled",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-        elif player:
+        if player:
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"<@{player.id}> has {player.currency} {CURRENCY_NAME}",

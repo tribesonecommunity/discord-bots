@@ -2,8 +2,9 @@ import asyncio
 from datetime import datetime, timezone
 
 import discord.utils
-from discord import Colour, Embed, Member, Message, Reaction
+from discord import Colour, Embed, Interaction, Member, Message, Reaction
 from discord.abc import User
+from discord.app_commands import AppCommandError, errors
 from discord.ext.commands import CommandError, Context, UserInputError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
@@ -16,7 +17,6 @@ from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.vote import VoteCommands
 from discord_bots.cogs.economy import EconomyCommands
 from .views.in_progress_game import InProgressGameView
-from .cogs.economy import EconomyPredictionView
 
 from .bot import bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
@@ -61,6 +61,14 @@ async def on_ready():
     vote_passed_waitlist_task.start()
     if config.ECONOMY_ENABLED:
         prediction_task.start()
+
+
+@bot.tree.error
+async def on_app_command_error(
+    interaction: Interaction, error: AppCommandError
+) -> None:
+    if isinstance(error, errors.CheckFailure):
+        return
 
 
 @bot.event
@@ -160,7 +168,7 @@ async def on_reaction_add(reaction: Reaction, user: User | Member):
     player: Player | None = session.query(Player).filter(Player.id == user.id).first()
     if player:
         player.last_activity_at = datetime.now(timezone.utc)
-        player.name=user.display_name
+        player.name = user.display_name
         session.commit()
     else:
         session.add(
@@ -182,7 +190,13 @@ async def on_join(member: Member):
         player.name = member.name
         session.commit()
     else:
-        session.add(Player(id=member.id, name=member.display_name, currency=config.STARTING_CURRENCY))
+        session.add(
+            Player(
+                id=member.id,
+                name=member.display_name,
+                currency=config.STARTING_CURRENCY,
+            )
+        )
         session.commit()
     session.close()
 

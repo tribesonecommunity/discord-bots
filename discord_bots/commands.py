@@ -450,7 +450,7 @@ async def create_game(
         await update_next_map_to_map_after_next(queue.rotation_id, False)
 
     if config.ECONOMY_ENABLED:
-        prediction_message_id: int = await EconomyCommands.create_prediction_message(game, match_channel)
+        prediction_message_id: int | None = await EconomyCommands.create_prediction_message(game, match_channel)
         if prediction_message_id:
             game.prediction_message_id = prediction_message_id
             session.commit()

@@ -1,8 +1,8 @@
 """add economy tables
 
-Revision ID: 74e8f7809d8d
+Revision ID: b4594ec71cc2
 Revises: 402ad305b51b
-Create Date: 2024-02-25 12:45:01.647378
+Create Date: 2024-02-25 17:29:23.952868
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "74e8f7809d8d"
+revision = "b4594ec71cc2"
 down_revision = "402ad305b51b"
 branch_labels = None
 depends_on = None
@@ -22,10 +22,14 @@ def upgrade():
         "economy_donation",
         sa.Column("id", sa.String(), nullable=False),
         sa.Column("sending_player_id", sa.BigInteger(), nullable=True),
-        sa.Column("sending_player_name", sa.String(), nullable=True),
+        sa.Column("admin_player_id", sa.BigInteger(), nullable=True),
         sa.Column("receiving_player_id", sa.BigInteger(), nullable=False),
-        sa.Column("receiving_player_name", sa.String(), nullable=False),
         sa.Column("value", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["admin_player_id"],
+            ["player.id"],
+            name=op.f("fk_economy_donation_admin_player_id_player"),
+        ),
         sa.ForeignKeyConstraint(
             ["receiving_player_id"],
             ["player.id"],
@@ -40,13 +44,13 @@ def upgrade():
     )
     with op.batch_alter_table("economy_donation", schema=None) as batch_op:
         batch_op.create_index(
-            batch_op.f("ix_economy_donation_receiving_player_id"),
-            ["receiving_player_id"],
+            batch_op.f("ix_economy_donation_admin_player_id"),
+            ["admin_player_id"],
             unique=False,
         )
         batch_op.create_index(
-            batch_op.f("ix_economy_donation_receiving_player_name"),
-            ["receiving_player_name"],
+            batch_op.f("ix_economy_donation_receiving_player_id"),
+            ["receiving_player_id"],
             unique=False,
         )
         batch_op.create_index(
@@ -54,17 +58,11 @@ def upgrade():
             ["sending_player_id"],
             unique=False,
         )
-        batch_op.create_index(
-            batch_op.f("ix_economy_donation_sending_player_name"),
-            ["sending_player_name"],
-            unique=False,
-        )
 
     op.create_table(
         "economy_prediction",
         sa.Column("id", sa.String(), nullable=False),
         sa.Column("player_id", sa.BigInteger(), nullable=False),
-        sa.Column("player_name", sa.String(), nullable=False),
         sa.Column("finished_game_id", sa.String(), nullable=True),
         sa.Column("in_progress_game_id", sa.String(), nullable=True),
         sa.Column("team", sa.Integer(), nullable=False),
@@ -107,11 +105,6 @@ def upgrade():
             unique=False,
         )
         batch_op.create_index(
-            batch_op.f("ix_economy_prediction_player_name"),
-            ["player_name"],
-            unique=False,
-        )
-        batch_op.create_index(
             batch_op.f("ix_economy_prediction_team"), ["team"], unique=False
         )
 
@@ -119,7 +112,6 @@ def upgrade():
         "economy_transaction",
         sa.Column("id", sa.String(), nullable=False),
         sa.Column("player_id", sa.BigInteger(), nullable=True),
-        sa.Column("player_name", sa.String(), nullable=True),
         sa.Column("finished_game_id", sa.String(), nullable=True),
         sa.Column("in_progress_game_id", sa.String(), nullable=True),
         sa.Column(
@@ -266,7 +258,6 @@ def downgrade():
     op.drop_table("economy_transaction")
     with op.batch_alter_table("economy_prediction", schema=None) as batch_op:
         batch_op.drop_index(batch_op.f("ix_economy_prediction_team"))
-        batch_op.drop_index(batch_op.f("ix_economy_prediction_player_name"))
         batch_op.drop_index(batch_op.f("ix_economy_prediction_player_id"))
         batch_op.drop_index(
             batch_op.f("ix_economy_prediction_in_progress_game_id")
@@ -278,17 +269,12 @@ def downgrade():
     op.drop_table("economy_prediction")
     with op.batch_alter_table("economy_donation", schema=None) as batch_op:
         batch_op.drop_index(
-            batch_op.f("ix_economy_donation_sending_player_name")
-        )
-        batch_op.drop_index(
             batch_op.f("ix_economy_donation_sending_player_id")
-        )
-        batch_op.drop_index(
-            batch_op.f("ix_economy_donation_receiving_player_name")
         )
         batch_op.drop_index(
             batch_op.f("ix_economy_donation_receiving_player_id")
         )
+        batch_op.drop_index(batch_op.f("ix_economy_donation_admin_player_id"))
 
     op.drop_table("economy_donation")
     # ### end Alembic commands ###
