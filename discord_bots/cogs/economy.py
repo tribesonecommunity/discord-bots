@@ -35,6 +35,7 @@ from discord_bots.config import (
 )
 from discord_bots.models import (
     EconomyDonation,
+    EconomyEnum,
     EconomyPrediction,
     EconomyTransaction,
     FinishedGame,
@@ -310,8 +311,6 @@ class EconomyCommands(BaseCog):
             raise Exception("Player economy is disabled")
         elif not sender:
             raise Exception("Player does not exist")
-        elif not game:
-            raise Exception("Game does not exist")
         elif not sender.currency >= prediction_value:
             raise ValueError(
                 f"You do not have enough {CURRENCY_NAME}. Current Balance: {sender.currency}"
@@ -319,7 +318,6 @@ class EconomyCommands(BaseCog):
 
         prediction = EconomyPrediction(
             player_id=sender.id,
-            player_name=sender.name,
             in_progress_game_id=game.id,
             finished_game_id=None,
             team=int(selection),
