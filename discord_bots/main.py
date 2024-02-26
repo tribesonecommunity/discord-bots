@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 import discord.utils
@@ -10,13 +11,12 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
 from discord_bots.cogs.categories import CategoryCommands
+from discord_bots.cogs.economy import EconomyCommands
 from discord_bots.cogs.map import MapCommands
 from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
 from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.vote import VoteCommands
-from discord_bots.cogs.economy import EconomyCommands
-from .views.in_progress_game import InProgressGameView
 
 from .bot import bot
 from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
@@ -25,10 +25,11 @@ from .tasks import (
     afk_timer_task,
     leaderboard_task,
     map_rotation_task,
+    prediction_task,
     queue_waitlist_task,
     vote_passed_waitlist_task,
-    prediction_task,
 )
+from .views.in_progress_game import InProgressGameView
 
 
 async def create_seed_admins():
@@ -69,6 +70,13 @@ async def on_app_command_error(
 ) -> None:
     if isinstance(error, errors.CheckFailure):
         return
+    else:
+        if interaction.command:
+            logging.warning(
+                f"[on_app_command_error]: {error}, command: {interaction.command.name}"
+            )
+        else:
+            logging.warning(f"[on_app_command_error]: {error}")
 
 
 @bot.event
@@ -90,9 +98,9 @@ async def on_command_error(ctx: Context, error: CommandError):
             )
     else:
         if ctx.command:
-            print("[on_command_error]:", error, ", command:", ctx.command.name)
+            logging.warning(f"[on_command_error]: {error}, command: {ctx.command.name}")
         else:
-            print("[on_command_error]:", error)
+            logging.warning(f"[on_command_error]: {error}")
 
 
 @bot.event
