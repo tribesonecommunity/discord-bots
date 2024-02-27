@@ -50,6 +50,8 @@ from .models import (
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .cogs.economy import EconomyCommands
 
+_log = logging.getLogger(__name__)
+
 
 @tasks.loop(minutes=1)
 async def afk_timer_task():
@@ -465,8 +467,8 @@ async def prediction_task():
         # Task fails if attemping to update an embed that hasn't been posted yet
         # Occurs during game channel creation depending on when task runs.
         # Cleanly cancel & restart task to resolve
-        logging.warn(e)
-        logging.info("prediction_task restarting...")
+        _log.warning(e)
+        _log.info("prediction_task restarting...")
         session.close()
         prediction_task.cancel()
         prediction_task.restart()

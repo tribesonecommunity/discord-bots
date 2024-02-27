@@ -1,10 +1,9 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from operator import itemgetter
-from pytz import utc
 from typing import Any, Literal, Optional
 
 from discord import (
-    app_commands,
     ButtonStyle,
     Client,
     Colour,
@@ -14,17 +13,18 @@ from discord import (
     TextChannel,
     TextStyle,
     VoiceChannel,
+    app_commands,
 )
 from discord.ext.commands import Bot, check
 from discord.member import Member
 from discord.ui import Button, Modal, TextInput, View
 from discord.utils import get
-
+from pytz import utc
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin_app_command, economy_enabled
+from discord_bots.checks import economy_enabled, is_admin_app_command
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     CHANNEL_ID,
@@ -46,6 +46,8 @@ from discord_bots.models import (
     Session,
 )
 from discord_bots.utils import short_uuid
+
+_log = logging.getLogger(__name__)
 
 
 class EconomyCommands(BaseCog):
@@ -82,7 +84,7 @@ class EconomyCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     async def addcurrency(
         self, interaction: Interaction, member: Member, add_value: int
-    ) -> None:        
+    ) -> None:
         session: SQLAlchemySession = Session()
         admin: Player | None = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
@@ -123,7 +125,7 @@ class EconomyCommands(BaseCog):
             await EconomyCommands.create_transaction(
                 admin, receiver, donation.value, donation
             )
-        except Exception as e:
+        except Exception:
             await interaction.response.send_message(
                 embed=Embed(
                     description="Currency add failed. Exception",
@@ -131,7 +133,7 @@ class EconomyCommands(BaseCog):
                 ),
                 ephemeral=True,
             )
-            print(f"Currency add Exception: {e}")
+            _log.exception("Caught Exception in add_currency")
             session.delete(donation)
         else:
             receiver.currency += add_value
@@ -223,9 +225,9 @@ class EconomyCommands(BaseCog):
                     prediction.prediction_value,
                     prediction,
                 )
-            except Exception as e:
-                print(
-                    f"Exception while refunding prediction {prediction.id} for game {game_id}: {e}"
+            except Exception:
+                _log.exception(
+                    f"Exception while refunding prediction {prediction.id} for game {game_id}"
                 )
                 raise
             else:
@@ -282,8 +284,8 @@ class EconomyCommands(BaseCog):
             prediction_message: Message = await match_channel.send(
                 embed=embed, view=EconomyPredictionView(in_progress_game.id)
             )
-        except Exception as e:
-            print(f"prediction failed for game: {in_progress_game.id}")
+        except Exception:
+            _log.exception(f"prediction failed for game: {in_progress_game.id}")
             return None
         else:
             return prediction_message.id
@@ -415,8 +417,8 @@ class EconomyCommands(BaseCog):
 
         try:
             session.commit()
-        except IntegrityError as exc:
-            print("integrity error?", exc)
+        except IntegrityError:
+            _log.exception("integrity error?")
             session.rollback()
             raise
         finally:
@@ -486,7 +488,7 @@ class EconomyCommands(BaseCog):
 
         try:
             await self.create_transaction(sender, receiver, donation.value, donation)
-        except Exception as e:
+        except Exception:
             await interaction.response.send_message(
                 embed=Embed(
                     description="Donation failed. Exception",
@@ -494,7 +496,7 @@ class EconomyCommands(BaseCog):
                 ),
                 ephemeral=True,
             )
-            print(f"Donation Exception: {e}")
+            _log.exception(f"Donation Exception")
             session.delete(donation)
         else:
             sender.currency -= donation_value
@@ -867,7 +869,7 @@ class EconomyPredictionView(View):
         player: Player | None = (
             session.query(Player).filter(Player.id == interaction.user.id).first()
         )
-        
+
         if not player:
             await interaction.response.send_message(
                 "You are not a player, please add to queue once to be created",

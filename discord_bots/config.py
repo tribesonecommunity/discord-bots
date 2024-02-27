@@ -1,6 +1,9 @@
+import logging
 import os
+
 from dotenv import load_dotenv
 
+_log = logging.getLogger(__name__)
 load_dotenv()
 CONFIG_IS_VALID: bool = True
 
@@ -12,7 +15,7 @@ def _to_str(key: str, required: bool = False, default: str | None = None) -> str
     elif required and not value:
         global CONFIG_IS_VALID
         CONFIG_IS_VALID = False
-        print(f"{key} must be specified correctly, was '{value}'")
+        logging.warning(f"{key} must be specified correctly, was '{value}'")
         return None
     else:
         return value

@@ -46,9 +46,7 @@ from discord_bots.checks import is_admin
 from discord_bots.utils import (
     MU_LOWER_UNICODE,
     SIGMA_LOWER_UNICODE,
-    cancel_in_progress_game,
     code_block,
-    finish_in_progress_game,
     mean,
     pretty_format_team,
     pretty_format_team_no_format,
@@ -62,6 +60,7 @@ from discord_bots.utils import (
 
 from .bot import bot
 from .cogs.economy import EconomyCommands
+from .cogs.in_progress_game import InProgressGameCog, InProgressGameView
 from .models import (
     AdminRole,
     Category,
@@ -94,7 +93,8 @@ from .models import (
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
-from .views.in_progress_game import InProgressGameView
+
+_log = logging.getLogger(__name__)
 
 
 def get_even_teams(
@@ -175,7 +175,9 @@ def get_even_teams(
         if best_team_evenness_so_far < 0.001:
             break
 
-    print("Found team evenness:", best_team_evenness_so_far, "iterations:", i)
+    _log.info(
+        f"Found team evenness: {best_team_evenness_so_far} interations: {i}"
+    )  # DEBUG, TRACE?
     return best_teams_so_far, best_win_prob_so_far
 
 
@@ -383,7 +385,7 @@ async def create_game(
             session, guild, game, voice_category
         )
     else:
-        print(
+        _log.warning(
             f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
         )
     match_channel: discord.TextChannel = await guild.create_text_channel(
@@ -440,7 +442,17 @@ async def create_game(
         )
         session.add(game_player)
 
-    await match_channel.send(embed=embed, view=InProgressGameView(game.id))
+    in_progress_game_cog = bot.get_cog("InProgressGameCog")
+    if in_progress_game_cog is not None and isinstance(
+        in_progress_game_cog, InProgressGameCog
+    ):
+        message = await match_channel.send(
+            embed=embed, view=InProgressGameView(game.id, in_progress_game_cog)
+        )
+        game.message_id = message.id
+        session.commit()
+    else:
+        _log.warning("Could not get InProgressGameCog")
 
     session.query(QueuePlayer).filter(QueuePlayer.player_id.in_(player_ids)).delete()  # type: ignore
     session.commit()
@@ -1013,7 +1025,7 @@ async def add(ctx: Context, *args):
             try:
                 session.commit()
             except IntegrityError as exc:
-                print("integrity error?", exc)
+                _log.error(f"integrity error {exc}")
                 session.rollback()
 
         current_time: datetime = datetime.now(timezone.utc)
@@ -1275,33 +1287,6 @@ async def ban(ctx: Context, member: Member):
                 colour=Colour.green(),
             )
 
-
-@bot.tree.command(name="cancelgame", description="Given a game ID, cancels that game")
-@commands.check(is_admin)
-async def cancelgame(interaction: Interaction, game_id: str):
-    if config.ECONOMY_ENABLED:
-        try:
-            await EconomyCommands.cancel_predictions(None, game_id)
-        except ValueError as ve:
-            # Raised if there are no predictions on this game
-            await interaction.channel.send(
-                embed=Embed(
-                    description="No predictions to be refunded", colour=Colour.blue()
-                )
-            )
-        except Exception as e:
-            await interaction.channel.send(
-                embed=Embed(
-                    description=f"Predictions failed to refund: {e}",
-                    colour=Colour.red(),
-                )
-            )
-        else:
-            await interaction.channel.send(
-                embed=Embed(description="Predictions refunded", colour=Colour.blue())
-            )
-
-    await cancel_in_progress_game(interaction, game_id)
 
 
 @bot.command()
@@ -1850,18 +1835,6 @@ async def enablestats(ctx: Context):
     )
 
 
-@bot.tree.command(name="finishgame", description="Ends the current game you are in")
-@discord.app_commands.describe(outcome="win, loss, or tie")
-@discord.app_commands.guild_only()
-async def finishgame(
-    interaction: Interaction,
-    outcome: Literal["win", "loss", "tie"],
-    game_id: Optional[str],
-):
-    await interaction.response.defer()
-    if config.ECONOMY_ENABLED:
-        await EconomyCommands.resolve_predictions(None, interaction, outcome, game_id)
-    await finish_in_progress_game(interaction, outcome, game_id)
 
 
 # @bot.command()
@@ -1922,11 +1895,11 @@ async def listbans(ctx: Context):
 @commands.check(is_admin)
 async def listchannels(ctx: Context):
     for channel in bot.get_all_channels():
-        print(channel.id, channel)
+        _log.info(channel.id, channel)  # DEBUG, TRACE?
 
     await send_message(
         ctx.message.channel,
-        embed_description="Check stdout",
+        embed_description="Check the logs",
         colour=Colour.blue(),
     )
 
@@ -2067,8 +2040,8 @@ async def _movegameplayers(game_id: str, ctx: Context = None, guild: Guild = Non
                 if channel:
                     try:
                         await member.move_to(channel, reason=game_id)
-                    except Exception as e:
-                        print(f"Caught exception sending message: {e}")
+                    except Exception:
+                        _log.exception(f"Caught exception sending message")
 
     for player in team1_players:
         if player.move_enabled:
@@ -2080,8 +2053,8 @@ async def _movegameplayers(game_id: str, ctx: Context = None, guild: Guild = Non
                 if channel:
                     try:
                         await member.move_to(channel, reason=game_id)
-                    except Exception as e:
-                        print(f"Caught exception sending message: {e}")
+                    except Exception:
+                        _log.exception(f"Caught exception sending message")
 
 
 @bot.command(usage="<game_id>")
@@ -2514,7 +2487,7 @@ async def setgamecode(interaction: Interaction, code: str):
             ephemeral=True,
         )
     else:
-        logging.warn("No in_progress_game_players to send a lobby code to")
+        _log.warn("No in_progress_game_players to send a lobby code to")
         await interaction.followup.send(
             embed=Embed(
                 description="There are no in-game players to send this lobby code to!",
@@ -2606,15 +2579,9 @@ async def showgame(ctx: Context, game_id: str):
 
 
 @bot.command()
+@commands.check(is_admin)
 async def showgamedebug(ctx: Context, game_id: str):
     player_id = ctx.message.author.id
-    if player_id != 115204465589616646:
-        await send_message(
-            ctx.message.channel,
-            embed_description="Ice cream machine under maintenance",
-            colour=Colour.red(),
-        )
-        return
 
     message = ctx.message
     session = ctx.session
@@ -3231,7 +3198,7 @@ async def stats(interaction: Interaction):
             )
             if not category:
                 # should never happen
-                logging.error(
+                _log.error(
                     f"No Category found for player_category_trueskill with id {pct.id}"
                 )
                 await interaction.response.send_message(
@@ -3294,8 +3261,8 @@ async def stats(interaction: Interaction):
         embeds.append(embed)
     try:
         await interaction.response.send_message(embeds=embeds, ephemeral=True)
-    except Exception as e:
-        logging.warn(f"Caught exception {e} trying to send stats message")
+    except Exception:
+        _log.exception(f"Caught exception trying to send stats message")
     session.close()
 
 
@@ -3431,8 +3398,8 @@ async def _rebalance_game(
                 embed_description="No predictions to be refunded",
                 colour=Colour.blue(),
             )
-        except Exception as e:
-            print(f"{e}")
+        except Exception:
+            _log.exception("Caught Exception when canceling predicitons")
             await send_message(
                 message.channel,
                 content="",

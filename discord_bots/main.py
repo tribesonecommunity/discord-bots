@@ -12,6 +12,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 import discord_bots.config as config
 from discord_bots.cogs.categories import CategoryCommands
 from discord_bots.cogs.economy import EconomyCommands
+from discord_bots.cogs.in_progress_game import InProgressGameCog
 from discord_bots.cogs.map import MapCommands
 from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
@@ -29,8 +30,8 @@ from .tasks import (
     queue_waitlist_task,
     vote_passed_waitlist_task,
 )
-from .views.in_progress_game import InProgressGameView
 
+_log = logging.getLogger(__name__)
 
 async def create_seed_admins():
     with Session() as session:
@@ -53,7 +54,7 @@ async def create_seed_admins():
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    _log.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     add_player_task.start()
     afk_timer_task.start()
     leaderboard_task.start()
@@ -68,15 +69,16 @@ async def on_ready():
 async def on_app_command_error(
     interaction: Interaction, error: AppCommandError
 ) -> None:
+    _log.info(">>> on_app_command_error")
     if isinstance(error, errors.CheckFailure):
         return
     else:
         if interaction.command:
-            logging.warning(
+            _log.error(
                 f"[on_app_command_error]: {error}, command: {interaction.command.name}"
             )
         else:
-            logging.warning(f"[on_app_command_error]: {error}")
+            _log.error(f"[on_app_command_error]: {error}")
 
 
 @bot.event
@@ -98,9 +100,9 @@ async def on_command_error(ctx: Context, error: CommandError):
             )
     else:
         if ctx.command:
-            logging.warning(f"[on_command_error]: {error}, command: {ctx.command.name}")
+            _log.error(f"[on_command_error]: {error}, command: {ctx.command.name}")
         else:
-            logging.warning(f"[on_command_error]: {error}")
+            _log.error(f"[on_command_error]: {error}")
 
 
 @bot.event
@@ -234,7 +236,7 @@ async def setup():
     await bot.add_cog(QueueCommands(bot))
     await bot.add_cog(VoteCommands(bot))
     await bot.add_cog(EconomyCommands(bot))
-    bot.add_view(InProgressGameView(""))
+    await bot.add_cog(InProgressGameCog(bot))
 
 
 async def main():
