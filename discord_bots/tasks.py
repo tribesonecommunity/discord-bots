@@ -137,6 +137,7 @@ async def afk_timer_task():
                 SkipMapVote.player_id == player.id
             ).delete()
             session.commit()
+    session.close()
 
 
 @tasks.loop(seconds=1)
@@ -222,6 +223,7 @@ async def queue_waitlist_task():
             InProgressGame.id == queue_waitlist.in_progress_game_id
         ).delete()
     session.commit()
+    session.close()
 
 
 @tasks.loop(seconds=1)
@@ -292,6 +294,7 @@ async def vote_passed_waitlist_task():
     ).delete()
     session.delete(vpw)
     session.commit()
+    session.close()
 
 
 @tasks.loop(minutes=1)
@@ -306,6 +309,7 @@ async def map_rotation_task():
 
     rotations: list[Rotation] | None = session.query(Rotation).all()
     if not rotations:
+        session.close()
         return
 
     for rotation in rotations:
@@ -321,6 +325,7 @@ async def map_rotation_task():
             ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
             if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
                 await update_next_map_to_map_after_next(rotation.id, True)
+    session.close()
 
 
 @tasks.loop(seconds=1)
@@ -331,7 +336,8 @@ async def add_player_task():
     This helps with concurrency issues since players can be added from multiple
     sources (waitlist vs normal add command)
     """
-    queues: list[Queue] = Session().query(Queue).order_by(Queue.ordinal.asc()).all()
+    session = Session()
+    queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc()).all()
     queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
     message: AddPlayerQueueMessage | None = None
     while not add_player_queue.empty():
@@ -387,10 +393,10 @@ async def add_player_task():
 
     # No messages processed, so no way that sweaty queues popped
     if not message:
+        session.close()
         return
 
     # Handle sweaty queues
-    session = Session()
     for queue in queues:
         if not queue.is_sweaty:
             continue
@@ -430,6 +436,7 @@ async def add_player_task():
                 channel=message.channel,
                 guild=message.guild,
             )
+    session.close()
 
 
 @tasks.loop(seconds=1800)
@@ -455,7 +462,7 @@ async def prediction_task():
     try:
         await EconomyCommands.update_embeds(None, in_progress_games)
     except Exception as e:
-        # Task fails if attemping to update an embed that hasn't been posted yet 
+        # Task fails if attemping to update an embed that hasn't been posted yet
         # Occurs during game channel creation depending on when task runs.
         # Cleanly cancel & restart task to resolve
         logging.warn(e)
@@ -463,6 +470,6 @@ async def prediction_task():
         session.close()
         prediction_task.cancel()
         prediction_task.restart()
-    
+
     await EconomyCommands.close_predictions(None, in_progress_games=in_progress_games)
     session.close()
