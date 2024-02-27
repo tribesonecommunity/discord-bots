@@ -1287,25 +1287,21 @@ async def cancelgame(interaction: Interaction, game_id: str):
                 embed=Embed(
                     description="No predictions to be refunded",
                     colour=Colour.blue()
-                )           
+                )
             )
         except Exception as e:
             await interaction.channel.send(
                 embed=Embed(
                     description=f"Predictions failed to refund: {e}",
                     colour=Colour.red()
-                )           
+                )
             )
         else:
             await interaction.channel.send(
-                embed=Embed(
-                    description="Predictions refunded",
-                    colour=Colour.blue()
-                )           
+                embed=Embed(description="Predictions refunded", colour=Colour.blue())
             )
-    
+
     await cancel_in_progress_game(interaction, game_id)
-    
 
 
 @bot.command()
@@ -2498,6 +2494,7 @@ async def setgamecode(interaction: Interaction, code: str):
     )
     session.commit()
 
+    await interaction.response.defer(ephemeral=True)
     for ipg_player in ipg_players:
         embed = Embed(
             title=f"Lobby code for ({short_uuid(ipg.id)})",
@@ -2510,7 +2507,7 @@ async def setgamecode(interaction: Interaction, code: str):
                 interaction.guild, ipg_player.player_id, embed=embed
             )
     if ipg_players:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=Embed(
                 description="Lobby code sent to each player", colour=Colour.blue()
             ),
@@ -2518,7 +2515,7 @@ async def setgamecode(interaction: Interaction, code: str):
         )
     else:
         logging.warn("No in_progress_game_players to send a lobby code to")
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=Embed(
                 description="There are no in-game players to send this lobby code to!",
                 colour=Colour.red(),
@@ -3456,7 +3453,7 @@ async def _rebalance_game(
                 embed_description=f"Players moved to new team voice channels for game {short_game_id}",
                 colour=Colour.green(),
             )
-    
+
     pass
 
 
