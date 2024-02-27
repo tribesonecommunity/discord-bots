@@ -183,7 +183,7 @@ Temporary function until we have a shared match history channel
 
 
 async def upload_stats_screenshot_imgkit_channel(
-    channel: TextChannel | DMChannel | GroupChannel,
+    channel: TextChannel | DMChannel | GroupChannel, cleanup=True
 ):
     # Assume the most recently modified HTML file is the correct stat sheet
     if not config.STATS_DIR:
