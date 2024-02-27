@@ -57,11 +57,11 @@ from discord_bots.utils import (
     send_message,
     short_uuid,
     update_next_map_to_map_after_next,
-    upload_stats_screenshot_imgkit,
     win_probability,
 )
 
 from .bot import bot
+from .cogs.economy import EconomyCommands
 from .models import (
     AdminRole,
     Category,
@@ -95,7 +95,6 @@ from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue
 from .twitch import twitch
 from .views.in_progress_game import InProgressGameView
-from .cogs.economy import EconomyCommands
 
 
 def get_even_teams(
