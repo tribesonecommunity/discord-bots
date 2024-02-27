@@ -245,7 +245,7 @@ class EconomyDonation:
         back_populates="donations_sent",
     )
     receiving_player = relationship(
-        "Player", 
+        "Player",
         foreign_keys=[receiving_player_id.metadata['sa']],
         back_populates="donations_received"
     )
@@ -507,6 +507,10 @@ class InProgressGame:
     # Stores the discord message ID of the EconomyPredictionView linked to this InProgressGame
     prediction_message_id: int | None = field(
         default=None, metadata={"sa": Column(BigInteger, nullable=True)}
+    )
+    is_finished: bool = field(
+        default=False,
+        metadata={"sa": Column(Boolean, nullable=False, server_default="0")},
     )
     id: str = field(
         init=False,

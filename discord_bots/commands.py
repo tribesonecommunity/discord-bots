@@ -449,7 +449,9 @@ async def create_game(
         await update_next_map_to_map_after_next(queue.rotation_id, False)
 
     if config.ECONOMY_ENABLED:
-        prediction_message_id: int | None = await EconomyCommands.create_prediction_message(None, game, match_channel)
+        prediction_message_id: int | None = (
+            await EconomyCommands.create_prediction_message(None, game, match_channel)
+        )
         if prediction_message_id:
             game.prediction_message_id = prediction_message_id
             session.commit()
@@ -1281,18 +1283,17 @@ async def cancelgame(interaction: Interaction, game_id: str):
         try:
             await EconomyCommands.cancel_predictions(None, game_id)
         except ValueError as ve:
-            #Raised if there are no predictions on this game
+            # Raised if there are no predictions on this game
             await interaction.channel.send(
                 embed=Embed(
-                    description="No predictions to be refunded",
-                    colour=Colour.blue()
+                    description="No predictions to be refunded", colour=Colour.blue()
                 )
             )
         except Exception as e:
             await interaction.channel.send(
                 embed=Embed(
                     description=f"Predictions failed to refund: {e}",
-                    colour=Colour.red()
+                    colour=Colour.red(),
                 )
             )
         else:
@@ -2860,7 +2861,9 @@ async def status(ctx: Context, *args):
                     continue
 
         games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
-        for game in session.query(InProgressGame):
+        for game in session.query(InProgressGame).filter(
+            InProgressGame.is_finished == False
+        ):
             if game.queue_id:
                 games_by_queue[game.queue_id].append(game)
 
@@ -3421,12 +3424,12 @@ async def _rebalance_game(
         try:
             await EconomyCommands.cancel_predictions(None, game.id)
         except ValueError as ve:
-            #Raised if there are no predictions on this game
+            # Raised if there are no predictions on this game
             await send_message(
                 message.channel,
                 content="",
                 embed_description="No predictions to be refunded",
-                colour=Colour.blue()
+                colour=Colour.blue(),
             )
         except Exception as e:
             print(f"{e}")
@@ -3434,14 +3437,14 @@ async def _rebalance_game(
                 message.channel,
                 content="",
                 embed_description="Predictions failed to refund",
-                colour=Colour.blue()
+                colour=Colour.blue(),
             )
         else:
             await send_message(
                 message.channel,
                 content="",
                 embed_description="Predictions refunded",
-                colour=Colour.blue()
+                colour=Colour.blue(),
             )
 
     if config.ENABLE_VOICE_MOVE:

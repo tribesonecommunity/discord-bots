@@ -797,6 +797,7 @@ async def finish_in_progress_game(
     session.query(InProgressGamePlayer).filter(
         InProgressGamePlayer.in_progress_game_id == in_progress_game.id
     ).delete()
+    in_progress_game.is_finished = True
     embed_description = ""
     duration: timedelta = finished_game.finished_at.replace(
         tzinfo=timezone.utc
