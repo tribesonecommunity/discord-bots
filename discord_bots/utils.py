@@ -131,7 +131,14 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
                 os.remove(os.path.join(config.STATS_DIR, file_))
 
 
-async def upload_stats_screenshot_imgkit(
+"""
+This version uploads it to an interaction. When we have a shared match history
+channel this will be wanted behavior, but until then players prefer if its
+uploaded to a centralized channel
+"""
+
+
+async def upload_stats_screenshot_imgkit_interaction(
     interaction: discord.Interaction, cleanup=True
 ):
     # Assume the most recently modified HTML file is the correct stat sheet
@@ -162,6 +169,48 @@ async def upload_stats_screenshot_imgkit(
     await interaction.channel.send(
         file=discord.File(image_path)
     )  # ideally edit the original resonse, but sending to the channel is fine
+
+    # Clean up everything
+    if cleanup:
+        for file_ in os.listdir(config.STATS_DIR):
+            if file_.endswith(".png") or file_.endswith(".html"):
+                os.remove(os.path.join(config.STATS_DIR, file_))
+
+
+"""
+Temporary function until we have a shared match history channel
+"""
+
+
+async def upload_stats_screenshot_imgkit_channel(
+    channel: TextChannel | DMChannel | GroupChannel,
+):
+    # Assume the most recently modified HTML file is the correct stat sheet
+    if not config.STATS_DIR:
+        return
+
+    html_files = list(
+        filter(lambda x: x.endswith(".html"), os.listdir(config.STATS_DIR))
+    )
+    html_files.sort(
+        key=lambda x: os.path.getmtime(os.path.join(config.STATS_DIR, x)), reverse=True
+    )
+
+    if len(html_files) == 0:
+        return
+
+    image_path = os.path.join(config.STATS_DIR, html_files[0] + ".png")
+    imgkit.from_file(
+        os.path.join(config.STATS_DIR, html_files[0]),
+        image_path,
+        options={"enable-local-file-access": None},
+    )
+    if config.STATS_WIDTH and config.STATS_HEIGHT:
+        image = Image.open(image_path)
+        cropped = image.crop((0, 0, config.STATS_WIDTH, config.STATS_HEIGHT))
+        cropped.save(image_path)
+
+    await channel.send(file=discord.File(image_path))
 
     # Clean up everything
     if cleanup:
@@ -810,8 +859,10 @@ async def finish_in_progress_game(
                     colour=discord.Colour.green(),
                 )
             )
+            await upload_stats_screenshot_imgkit_channel(channel)
+    else:
+        await upload_stats_screenshot_imgkit_interaction(interaction)
 
-    await upload_stats_screenshot_imgkit(interaction)
     session.commit()
     session.close()
     return True
