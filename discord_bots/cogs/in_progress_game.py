@@ -38,7 +38,6 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-
 class InProgressGameCog(commands.Cog):
     def __init__(self, bot: Bot):
         self.bot: Bot = bot
@@ -71,7 +70,7 @@ class InProgressGameCog(commands.Cog):
         outcome: Literal["win", "loss", "tie"],
         game_id: Optional[str],
     ):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         if config.ECONOMY_ENABLED:
             economy_cog = self.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
@@ -125,6 +124,8 @@ class InProgressGameCog(commands.Cog):
         outcome: Literal["win", "loss", "tie"],
         game_id: Optional[str] = None,
     ) -> bool:
+        assert interaction is not None
+        assert interaction.guild is not None
         session: SQLAlchemySession = Session()
         game_player: InProgressGamePlayer | None = (
             session.query(InProgressGamePlayer)
@@ -372,18 +373,19 @@ class InProgressGameCog(commands.Cog):
             InProgressGamePlayer.in_progress_game_id == in_progress_game.id
         ).delete()
         in_progress_game.is_finished = True
-        embed_description = ""
+        winning_team_str = ""
         duration: timedelta = finished_game.finished_at.replace(
             tzinfo=timezone.utc
         ) - in_progress_game.created_at.replace(tzinfo=timezone.utc)
         if winning_team == 0:
-            embed_description = f"**Winner:** {in_progress_game.team0_name}\n**Duration:** {duration.seconds // 60} minutes"
+            be_str = f"\N{CROWN} {finished_game.team0_name}"
+            ds_str = f"{finished_game.team1_name}"
         elif winning_team == 1:
-            embed_description = f"**Winner:** {in_progress_game.team1_name}\n**Duration:** {duration.seconds // 60} minutes"
+            be_str = f"{finished_game.team0_name}"
+            ds_str = f"\N{CROWN} {finished_game.team1_name}"
         else:
-            embed_description = (
-                f"**Tie game**\n**Duration:** {duration.seconds // 60} minutes"
-            )
+            be_str = f"\N{LARGE BLUE CIRCLE} {finished_game.team0_name}"
+            ds_str = f"\N{LARGE BLUE CIRCLE} {finished_game.team1_name}"
         session.add(
             QueueWaitlist(
                 channel_id=interaction.channel_id,  # not sure about this column and what it's used for
@@ -415,25 +417,52 @@ class InProgressGameCog(commands.Cog):
 
         queue_name = queue.name
         short_in_progress_game_id = in_progress_game.id.split("-")[0]
-        await interaction.followup.send(
-            embed=discord.Embed(
-                title=f"Game '{queue_name}' ({short_in_progress_game_id}) finished",
-                description=embed_description,
-                colour=discord.Colour.green(),
-            )
+        embed = discord.Embed(
+            title=f"Game '{queue_name}' ({short_in_progress_game_id}) finished",
+            colour=discord.Colour.green(),
+            timestamp=discord.utils.utcnow(),
         )
-        if config.CHANNEL_ID and config.CHANNEL_ID != interaction.channel_id:
+        await interaction.followup.send(
+            embed=embed,
+            ephemeral=True,
+        )
+        if config.GAME_HISTORY_CHANNEL:
             channel: discord.channel.TextChannel | None = discord.utils.get(
-                interaction.guild.text_channels, id=config.CHANNEL_ID
+                interaction.guild.text_channels, id=config.GAME_HISTORY_CHANNEL
             )
             if channel:
-                await channel.send(
-                    embed=discord.Embed(
-                        title=f"Game '{queue_name}' ({short_in_progress_game_id}) finished",
-                        description=embed_description,
-                        colour=discord.Colour.green(),
-                    )
+                embed = discord.Embed(
+                    title=f"Game '{queue_name}' ({short_in_progress_game_id}) finished",
+                    colour=discord.Colour.green(),
+                    timestamp=discord.utils.utcnow(),
                 )
+                embed.add_field(
+                    name=f"{be_str} ({round(100 * finished_game.win_probability)}%)",
+                    value="\n".join(
+                        [f"> <@{player.player_id}>" for player in team0_players]
+                    ),
+                    inline=True,
+                )
+                embed.add_field(
+                    name=f"{ds_str} ({round(100*(1 - finished_game.win_probability))}%)",
+                    value="\n".join(
+                        [f"> <@{player.player_id}>" for player in team1_players]
+                    ),
+                    inline=True,
+                )
+                embed.add_field(
+                    name="Map",
+                    value=f"{finished_game.map_full_name} ({finished_game.map_short_name})",
+                    inline=False,
+                )
+                if config.SHOW_TRUESKILL:
+                    embed.add_field(
+                        name="Average Rating",
+                        value=round(finished_game.average_trueskill, 2),
+                        inline=True,
+                    )
+                embed.set_footer(text=f"Finished by {interaction.user.name}")
+                await channel.send(embed=embed)
                 await upload_stats_screenshot_imgkit_channel(channel)
         else:
             await upload_stats_screenshot_imgkit_interaction(interaction)
@@ -508,7 +537,7 @@ class InProgressGameView(discord.ui.View):
     async def win_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         if config.ECONOMY_ENABLED:
             economy_cog = self.cog.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
@@ -531,7 +560,7 @@ class InProgressGameView(discord.ui.View):
     async def loss_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         if config.ECONOMY_ENABLED:
             economy_cog = self.cog.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
@@ -554,7 +583,7 @@ class InProgressGameView(discord.ui.View):
     async def tie_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         if config.ECONOMY_ENABLED:
             economy_cog = self.cog.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):

@@ -38,7 +38,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import select
-from table2ascii import PresetStyle, table2ascii
+from table2ascii import Alignment, PresetStyle, table2ascii
 from trueskill import Rating, rate
 
 import discord_bots.config as config
@@ -398,13 +398,13 @@ async def create_game(
         name="Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=False
     )
     embed.add_field(
-        name=f"{game.team0_name} ({round(100*win_prob)}%)",
-        value=">>> " + "\n".join([f"<@{player.id}>" for player in team0_players]),
+        name=f"{game.team0_name} ({round(100 * win_prob)}%)",
+        value="\n".join([f"> <@{player.id}>" for player in team0_players]),
         inline=True,
     )
     embed.add_field(
-        name=f"{game.team1_name} ({round(100*(1- win_prob))}%)",
-        value=">>> " + "\n".join([f"<@{player.id}>" for player in team1_players]),
+        name=f"{game.team1_name} ({round(100 * (1 - win_prob))}%)",
+        value="\n".join([f"> <@{player.id}>" for player in team1_players]),
         inline=True,
     )
     if match_channel:
@@ -2135,36 +2135,94 @@ async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
     session.commit()
 
 
-@bot.command()
-async def gamehistory(ctx: Context, count: int):
-    message = ctx.message
+@bot.tree.command(
+    name="gamehistory",
+    description="Privately displays your game history or the specified player's",
+)
+async def gamehistory(interaction: Interaction, count: int, user: Optional[Member]):
     """
     Display recent game history
     """
     if count > 10:
-        await send_message(
-            message.channel,
-            embed_description="Count cannot exceed 10",
-            colour=Colour.red(),
+        await interaction.response.send_message(
+            embed=Embed(
+                description="Count cannot exceed 10",
+                color=Colour.red(),
+            ),
+            ephemeral=True,
         )
         return
 
-    session = ctx.session
-    finished_games: list[FinishedGame] = (
-        session.query(FinishedGame).order_by(FinishedGame.finished_at.desc()).limit(count)  # type: ignore
-    )
+    session: SQLAlchemySession = Session()
+    if user is not None:
+        finished_games: list[FinishedGame] = (
+            session.query(FinishedGame).order_by(FinishedGame.finished_at.desc()).limit(count)  # type: ignore
+        )
+    else:
+        finished_games: list[FinishedGame] = (
+            session.query(FinishedGame).order_by(FinishedGame.finished_at.desc()).limit(count)  # type: ignore
+        )
 
     output = ""
+    embeds = []
     for i, finished_game in enumerate(finished_games):
+        embed = Embed(
+            title=f"Game '{finished_game.queue_name}' ({short_uuid(finished_game.id)})",
+            color=Colour.blue(),
+        )
+        team0_fg_players: list[FinishedGamePlayer] = (
+            session.query(FinishedGamePlayer)
+            .filter(
+                FinishedGamePlayer.finished_game_id == finished_game.id,
+                FinishedGamePlayer.team == 0,
+            )
+            .all()
+        )
+        team1_fg_players: list[FinishedGamePlayer] = (
+            session.query(FinishedGamePlayer)
+            .filter(
+                FinishedGamePlayer.finished_game_id == finished_game.id,
+                FinishedGamePlayer.team == 1,
+            )
+            .all()
+        )
+        if finished_game.winning_team == 0:
+            be_str = f"\N{CROWN} {finished_game.team0_name}"
+            ds_str = f"\N{CROSS MARK} {finished_game.team1_name}"
+            winning_team_str = be_str
+        elif finished_game.winning_team == 1:
+            be_str = f"\N{CROSS MARK} {finished_game.team0_name}"
+            ds_str = f"\N{CROWN} {finished_game.team1_name}"
+            winning_team_str = ds_str
+        else:
+            be_str = f"\N{LARGE BLUE CIRCLE} {finished_game.team0_name}"
+            ds_str = f"\N{LARGE BLUE CIRCLE} {finished_game.team1_name}"
+            winning_team_str = "Tie"
+        embed.add_field(name="Outcome", value=winning_team_str, inline=False)
+        embed.add_field(
+            name=be_str,
+            value="\n".join(
+                [f"> <@{player.player_id}>" for player in team0_fg_players]
+            ),
+            inline=True,
+        )
+        embed.add_field(
+            name=ds_str,
+            value="\n".join(
+                [f"> <@{player.player_id}>" for player in team1_fg_players]
+            ),
+            inline=True,
+        )
         if i > 0:
             output += "\n"
         output += finished_game_str(finished_game)
+        embeds.append(embed)
 
-    await send_message(
-        message.channel,
-        embed_description=output,
-        colour=Colour.blue(),
+    await interaction.response.send_message(
+        embeds=embeds,
+        ephemeral=True,
     )
+    session.close()
 
 
 @bot.command()
@@ -2797,11 +2855,17 @@ async def status(ctx: Context, *args):
     all_rotations: list[Rotation] | None = (
         session.query(Rotation).order_by(Rotation.created_at.asc()).all()
     )
+    if not all_rotations:
+        await ctx.channel.send("No Rotations")
+        return
+
 
     output = "```autohotkey\n"
-
+    embeds: list[Embed] = []
     for rotation in all_rotations:
         output += f"--- {rotation.name} ---\n\n"
+        embed = Embed(title=rotation.name, timestamp=discord.utils.utcnow())
+        embed_description = ""
         queues: list[Queue] = []
         rotation_queues: list[Queue] | None = (
             session.query(Queue)
@@ -2879,7 +2943,12 @@ async def status(ctx: Context, *args):
                     else config.DEFAULT_RAFFLE_VALUE
                 )
                 next_map_str += f" ({raffle_reward} tickets)"
-            next_map_str += "\n"
+            # embed.description = next_map_str
+            embed.add_field(
+                name="Next Map",
+                value=f"{next_map.full_name} ({next_map.short_name})",
+                inline=False,
+            )
 
             if config.DISABLE_MAP_ROTATION or next_rotation_map.ordinal == 1:
                 # output += f"{next_map_str}\nMap after next: "
@@ -2932,12 +3001,36 @@ async def status(ctx: Context, *args):
                 session.query(Player)
                 .join(QueuePlayer)
                 .filter(QueuePlayer.queue_id == queue.id)
+                # .filter(Player.name == "chickenNwaffles")
                 .all()
             )
             if queue.is_locked:
                 continue
             else:
-                output += f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
+                queue_title_str = f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
+                output += queue_title_str
+
+            """
+            if players_in_queue:
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+                players_in_queue.append(players_in_queue[0])
+            """
+            embed.add_field(
+                name=queue_title_str,
+                value="\n".join([f"> <@{player.id}>" for player in players_in_queue]),
+                inline=True,
+            )
 
             if len(players_in_queue) > 0:
                 output += f"IN QUEUE: "
@@ -3001,22 +3094,13 @@ async def status(ctx: Context, *args):
                         )
                         output += f"Votes to skip: [{len(skip_map_votes)} / {queue_vote_threshold}]\n"
 
-                    if config.SHOW_LEFT_RIGHT_TEAM:
-                        output += "(L) "
-                    output += pretty_format_team_no_format(
-                        game.team0_name, game.win_probability, team0_players
-                    )
-                    if config.SHOW_LEFT_RIGHT_TEAM:
-                        output += "(R) "
-                    output += pretty_format_team_no_format(
-                        game.team1_name, 1 - game.win_probability, team1_players
-                    )
                     minutes_ago = (
                         datetime.now(timezone.utc)
                         - game.created_at.replace(tzinfo=timezone.utc)
                     ).seconds // 60
                     output += f"@ {minutes_ago} minutes ago\n"
 
+        embeds.append(embed)
         output += "\n"
 
     if len(output) == 0:
@@ -3025,6 +3109,7 @@ async def status(ctx: Context, *args):
     output += "\n```"
 
     await ctx.message.channel.send(content=output)
+    await ctx.channel.send(embeds=embeds)
 
 
 def win_rate(wins, losses, ties):
@@ -3163,9 +3248,9 @@ async def stats(interaction: Interaction):
         for num_days in [7, 30, 90, 365, -1]:
             wins, losses, ties = wins_losses_ties_last_ndays(games, num_days)
             num_wins, num_losses, num_ties = len(wins), len(losses), len(ties)
-            winrate = win_rate(num_wins, num_losses, num_ties)
+            winrate = round(win_rate(num_wins, num_losses, num_ties))
             col = [
-                "Overall" if num_days == -1 else f"Last {num_days} days",
+                "Total" if num_days == -1 else f"{num_days}D",
                 len(wins),
                 len(losses),
                 len(ties),
@@ -3222,10 +3307,18 @@ async def stats(interaction: Interaction):
             ]
             cols = get_table_col(category_games)
             table = table2ascii(
-                header=["", f"Wins", "Losses", "Ties", "Total", "Winrate"],
+                header=["Last", "Win", "Loss", "Tie", "Sum", "%"],
                 body=cols,
                 first_col_heading=True,
                 style=PresetStyle.minimalist,
+                alignments=[
+                    Alignment.LEFT,
+                    Alignment.DECIMAL,
+                    Alignment.DECIMAL,
+                    Alignment.DECIMAL,
+                    Alignment.DECIMAL,
+                    Alignment.DECIMAL,
+                ],
             )
             description += code_block(table)
             description += f"\n{trueskill_url}"
@@ -3247,10 +3340,18 @@ async def stats(interaction: Interaction):
             description = f"Rating: {trueskill_pct}"
         cols = get_table_col(fgs)
         table = table2ascii(
-            header=["", f"Wins", "Losses", "Ties", "Total", "Winrate"],
+            header=["Period", "Wins", "Losses", "Ties", "Total", "Win %"],
             body=cols,
             first_col_heading=True,
             style=PresetStyle.minimalist,
+            alignments=[
+                Alignment.LEFT,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+            ],
         )
         description += code_block(table)
         embed = Embed(
