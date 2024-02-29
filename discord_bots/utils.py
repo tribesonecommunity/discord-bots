@@ -42,6 +42,8 @@ from discord_bots.models import (
     RotationMap,
     Session,
     SkipMapVote,
+    FinishedGame,
+    FinishedGamePlayer,
 )
 
 _log = logging.getLogger(__name__)
@@ -125,6 +127,77 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
         for file_ in os.listdir(config.STATS_DIR):
             if file_.endswith(".png") or file_.endswith(".html"):
                 os.remove(os.path.join(config.STATS_DIR, file_))
+
+def create_finished_game_embed(finished_game: FinishedGame) -> Embed:
+    # assumes that the FinishedGamePlayer have already been comitted
+        with Session() as session:
+            aware_db_datetime: datetime = finished_game.finished_at.replace(tzinfo=timezone.utc) # timezones aren't stored in the DB, so add it ourselves
+            embed = Embed(
+                title=f":white_check_mark: Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)})",
+                color=Colour.blue(),
+                timestamp=aware_db_datetime,
+            )
+            embed.set_footer(text="Finished")
+            team0_fg_players: list[FinishedGamePlayer] = (
+                session.query(FinishedGamePlayer)
+                .filter(
+                    FinishedGamePlayer.finished_game_id == finished_game.id,
+                    FinishedGamePlayer.team == 0,
+                )
+                .all()
+            )
+            team1_fg_players: list[FinishedGamePlayer] = (
+                session.query(FinishedGamePlayer)
+                .filter(
+                    FinishedGamePlayer.finished_game_id == finished_game.id,
+                    FinishedGamePlayer.team == 1,
+                )
+                .all()
+            )
+            if finished_game.winning_team == 0:
+                be_str = f":first_place: {finished_game.team0_name}"
+                ds_str = f":second_place: {finished_game.team1_name}"
+            elif finished_game.winning_team == 1:
+                be_str = f":second_place: {finished_game.team0_name}"
+                ds_str = f":first_place: {finished_game.team1_name}"
+            else:
+                be_str = f":second_place: {finished_game.team0_name}"
+                ds_str = f":second_place: {finished_game.team1_name}"
+            embed.add_field(
+                name=":round_pushpin: Map",
+                value=f"{finished_game.map_full_name} ({finished_game.map_short_name})",
+                inline=False,
+            )
+            duration: timedelta = finished_game.finished_at.replace(
+                tzinfo=timezone.utc
+            ) - finished_game.started_at.replace(tzinfo=timezone.utc)
+            embed.add_field(
+                name=":stopwatch: Duration",
+                value=f"{duration.seconds // 60} minutes",
+                inline=False,
+            )
+            if config.SHOW_TRUESKILL:
+                embed.add_field(
+                    name=":bar_chart: Average Rating",
+                    value=round(finished_game.average_trueskill, 2),
+                    inline=False,
+                )
+            embed.add_field(name="", value="", inline=False)  # newline
+            embed.add_field(
+                name=f"{be_str} ({round(100 * finished_game.win_probability)}%)",
+                value="\n".join(
+                    [f"> <@{player.player_id}>" for player in team0_fg_players]
+                ),
+                inline=True,
+            )
+            embed.add_field(
+                name=f"{ds_str} ({round(100*(1 - finished_game.win_probability))}%)",
+                value="\n".join(
+                    [f"> <@{player.player_id}>" for player in team1_fg_players]
+                ),
+                inline=True,
+            )
+            return embed
 
 
 """

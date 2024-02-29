@@ -69,7 +69,6 @@ async def on_ready():
 async def on_app_command_error(
     interaction: Interaction, error: AppCommandError
 ) -> None:
-    _log.info(">>> on_app_command_error")
     if isinstance(error, errors.CheckFailure):
         return
     else:

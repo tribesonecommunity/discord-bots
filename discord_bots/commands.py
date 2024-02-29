@@ -30,6 +30,7 @@ from discord import (
 from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
+from discord.user import User
 from discord.member import Member
 from discord.utils import escape_markdown
 from numpy import std
@@ -49,13 +50,13 @@ from discord_bots.utils import (
     code_block,
     mean,
     pretty_format_team,
-    pretty_format_team_no_format,
     print_leaderboard,
     send_in_guild_message,
     send_message,
     short_uuid,
     update_next_map_to_map_after_next,
     win_probability,
+    create_finished_game_embed,
 )
 
 from .bot import bot
@@ -2137,12 +2138,9 @@ async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
 
 @bot.tree.command(
     name="gamehistory",
-    description="Privately displays your game history or the specified player's",
+    description="Privately displays your game history",
 )
-async def gamehistory(interaction: Interaction, count: int, user: Optional[Member]):
-    """
-    Display recent game history
-    """
+async def gamehistory(interaction: Interaction, count: int):
     if count > 10:
         await interaction.response.send_message(
             embed=Embed(
@@ -2152,73 +2150,46 @@ async def gamehistory(interaction: Interaction, count: int, user: Optional[Membe
             ephemeral=True,
         )
         return
+    elif count < 1:
+        await interaction.response.send_message(
+            embed=Embed(
+                description="Count cannot be less than 1",
+                color=Colour.red(),
+            ),
+            ephemeral=True,
+        )
+        return
 
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    target_player = interaction.user
     session: SQLAlchemySession = Session()
-    if user is not None:
-        finished_games: list[FinishedGame] = (
-            session.query(FinishedGame).order_by(FinishedGame.finished_at.desc()).limit(count)  # type: ignore
+    finished_games: list[FinishedGame] = None
+    finished_games = (
+        session.query(FinishedGame)
+        .join(FinishedGamePlayer, FinishedGamePlayer.finished_game_id == FinishedGame.id)
+        .filter(FinishedGamePlayer.player_id == target_player.id)
+        .order_by(FinishedGame.finished_at.desc())
+        .limit(count)
+        .all()
+    )
+    if not finished_games:
+        await interaction.followup.send(
+            embed=Embed(
+                description=f"<@{target_player.id}> has not played any games",
+                color=Colour.red(),
+            ),
+            ephemeral=True,
         )
-    else:
-        finished_games: list[FinishedGame] = (
-            session.query(FinishedGame).order_by(FinishedGame.finished_at.desc()).limit(count)  # type: ignore
-        )
+        session.close()
+        return
 
-    output = ""
     embeds = []
-    for i, finished_game in enumerate(finished_games):
-        embed = Embed(
-            title=f"Game '{finished_game.queue_name}' ({short_uuid(finished_game.id)})",
-            color=Colour.blue(),
-        )
-        team0_fg_players: list[FinishedGamePlayer] = (
-            session.query(FinishedGamePlayer)
-            .filter(
-                FinishedGamePlayer.finished_game_id == finished_game.id,
-                FinishedGamePlayer.team == 0,
-            )
-            .all()
-        )
-        team1_fg_players: list[FinishedGamePlayer] = (
-            session.query(FinishedGamePlayer)
-            .filter(
-                FinishedGamePlayer.finished_game_id == finished_game.id,
-                FinishedGamePlayer.team == 1,
-            )
-            .all()
-        )
-        if finished_game.winning_team == 0:
-            be_str = f"\N{CROWN} {finished_game.team0_name}"
-            ds_str = f"\N{CROSS MARK} {finished_game.team1_name}"
-            winning_team_str = be_str
-        elif finished_game.winning_team == 1:
-            be_str = f"\N{CROSS MARK} {finished_game.team0_name}"
-            ds_str = f"\N{CROWN} {finished_game.team1_name}"
-            winning_team_str = ds_str
-        else:
-            be_str = f"\N{LARGE BLUE CIRCLE} {finished_game.team0_name}"
-            ds_str = f"\N{LARGE BLUE CIRCLE} {finished_game.team1_name}"
-            winning_team_str = "Tie"
-        embed.add_field(name="Outcome", value=winning_team_str, inline=False)
-        embed.add_field(
-            name=be_str,
-            value="\n".join(
-                [f"> <@{player.player_id}>" for player in team0_fg_players]
-            ),
-            inline=True,
-        )
-        embed.add_field(
-            name=ds_str,
-            value="\n".join(
-                [f"> <@{player.player_id}>" for player in team1_fg_players]
-            ),
-            inline=True,
-        )
-        if i > 0:
-            output += "\n"
-        output += finished_game_str(finished_game)
-        embeds.append(embed)
+    finished_games.reverse() # show most recent games last
+    for finished_game in finished_games:
+        embeds.append(create_finished_game_embed(finished_game))
 
-    await interaction.response.send_message(
+    await interaction.followup.send(
+        content=f"Last {count} games for <@{target_player.id}>",
         embeds=embeds,
         ephemeral=True,
     )

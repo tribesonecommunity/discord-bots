@@ -30,6 +30,8 @@ from discord_bots.models import (
 from discord_bots.utils import (
     upload_stats_screenshot_imgkit_channel,
     upload_stats_screenshot_imgkit_interaction,
+    create_finished_game_embed,
+    short_uuid,
 )
 
 if TYPE_CHECKING:
@@ -378,14 +380,14 @@ class InProgressGameCog(commands.Cog):
             tzinfo=timezone.utc
         ) - in_progress_game.created_at.replace(tzinfo=timezone.utc)
         if winning_team == 0:
-            be_str = f"\N{CROWN} {finished_game.team0_name}"
+            be_str = f":medal: {finished_game.team0_name}"
             ds_str = f"{finished_game.team1_name}"
         elif winning_team == 1:
             be_str = f"{finished_game.team0_name}"
-            ds_str = f"\N{CROWN} {finished_game.team1_name}"
+            ds_str = f":medal: {finished_game.team1_name}"
         else:
-            be_str = f"\N{LARGE BLUE CIRCLE} {finished_game.team0_name}"
-            ds_str = f"\N{LARGE BLUE CIRCLE} {finished_game.team1_name}"
+            be_str = f":flag_white: {finished_game.team0_name}"
+            ds_str = f":flag_white: {finished_game.team1_name}"
         session.add(
             QueueWaitlist(
                 channel_id=interaction.channel_id,  # not sure about this column and what it's used for
@@ -414,16 +416,15 @@ class InProgressGameCog(commands.Cog):
         for player in players:
             player.raffle_tickets += reward
             session.add(player)
-
         queue_name = queue.name
-        short_in_progress_game_id = in_progress_game.id.split("-")[0]
-        embed = discord.Embed(
-            title=f"Game '{queue_name}' ({short_in_progress_game_id}) finished",
-            colour=discord.Colour.green(),
-            timestamp=discord.utils.utcnow(),
-        )
+        session.commit()
+
         await interaction.followup.send(
-            embed=embed,
+            embed = discord.Embed(
+                title=f":white_check_mark: Game '{queue_name}' ({short_uuid(finished_game.game_id)}) finished",
+                colour=discord.Colour.green(),
+                timestamp=discord.utils.utcnow(),
+            ),
             ephemeral=True,
         )
         if config.GAME_HISTORY_CHANNEL:
@@ -431,43 +432,13 @@ class InProgressGameCog(commands.Cog):
                 interaction.guild.text_channels, id=config.GAME_HISTORY_CHANNEL
             )
             if channel:
-                embed = discord.Embed(
-                    title=f"Game '{queue_name}' ({short_in_progress_game_id}) finished",
-                    colour=discord.Colour.green(),
-                    timestamp=discord.utils.utcnow(),
-                )
-                embed.add_field(
-                    name=f"{be_str} ({round(100 * finished_game.win_probability)}%)",
-                    value="\n".join(
-                        [f"> <@{player.player_id}>" for player in team0_players]
-                    ),
-                    inline=True,
-                )
-                embed.add_field(
-                    name=f"{ds_str} ({round(100*(1 - finished_game.win_probability))}%)",
-                    value="\n".join(
-                        [f"> <@{player.player_id}>" for player in team1_players]
-                    ),
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Map",
-                    value=f"{finished_game.map_full_name} ({finished_game.map_short_name})",
-                    inline=False,
-                )
-                if config.SHOW_TRUESKILL:
-                    embed.add_field(
-                        name="Average Rating",
-                        value=round(finished_game.average_trueskill, 2),
-                        inline=True,
-                    )
+                embed = create_finished_game_embed(finished_game)
                 embed.set_footer(text=f"Finished by {interaction.user.name}")
                 await channel.send(embed=embed)
                 await upload_stats_screenshot_imgkit_channel(channel)
         else:
             await upload_stats_screenshot_imgkit_interaction(interaction)
 
-        session.commit()
         session.close()
         return True
 
