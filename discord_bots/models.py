@@ -504,6 +504,10 @@ class InProgressGame:
         default=False,
         metadata={"sa": Column(Boolean, nullable=False, server_default="0")},
     )
+    # Stores the discord message ID of the InProgressGameView linked to this InProgressGame
+    message_id: int | None = field(
+        default=None, metadata={"sa": Column(BigInteger, nullable=True)}
+    )
     # Stores the discord message ID of the EconomyPredictionView linked to this InProgressGame
     prediction_message_id: int | None = field(
         default=None, metadata={"sa": Column(BigInteger, nullable=True)}
