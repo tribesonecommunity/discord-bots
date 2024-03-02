@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from mailbox import Message
 from typing import TYPE_CHECKING, Literal, Optional
 
 import discord
@@ -28,10 +29,10 @@ from discord_bots.models import (
     Session,
 )
 from discord_bots.utils import (
-    upload_stats_screenshot_imgkit_channel,
-    upload_stats_screenshot_imgkit_interaction,
     create_finished_game_embed,
     short_uuid,
+    upload_stats_screenshot_imgkit_channel,
+    upload_stats_screenshot_imgkit_interaction,
 )
 
 if TYPE_CHECKING:
@@ -70,20 +71,21 @@ class InProgressGameCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         outcome: Literal["win", "loss", "tie"],
-        game_id: Optional[str],
     ):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(
+            ephemeral=False
+        )  # TODO: Might want some followup responses to be ephemeral, but need a beter solution
         if config.ECONOMY_ENABLED:
             economy_cog = self.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
-                await economy_cog.resolve_predictions(interaction, outcome, game_id)
+                await economy_cog.resolve_predictions(interaction, outcome)
             else:
                 _log.warning("Could not get EconomyCommands cog")
 
-        await self.finish_in_progress_game(interaction, outcome, game_id)
+        await self.finish_in_progress_game(interaction, outcome)
 
     @discord.app_commands.command(
-        name="cancelgame", description="Given a game ID, cancels that game"
+        name="cancelgame", description="Cancels the specified game"
     )
     @discord.app_commands.check(is_admin_app_command)
     @discord.app_commands.guild_only()
@@ -375,19 +377,9 @@ class InProgressGameCog(commands.Cog):
             InProgressGamePlayer.in_progress_game_id == in_progress_game.id
         ).delete()
         in_progress_game.is_finished = True
-        winning_team_str = ""
         duration: timedelta = finished_game.finished_at.replace(
             tzinfo=timezone.utc
         ) - in_progress_game.created_at.replace(tzinfo=timezone.utc)
-        if winning_team == 0:
-            be_str = f":medal: {finished_game.team0_name}"
-            ds_str = f"{finished_game.team1_name}"
-        elif winning_team == 1:
-            be_str = f"{finished_game.team0_name}"
-            ds_str = f":medal: {finished_game.team1_name}"
-        else:
-            be_str = f":flag_white: {finished_game.team0_name}"
-            ds_str = f":flag_white: {finished_game.team1_name}"
         session.add(
             QueueWaitlist(
                 channel_id=interaction.channel_id,  # not sure about this column and what it's used for
@@ -419,14 +411,7 @@ class InProgressGameCog(commands.Cog):
         queue_name = queue.name
         session.commit()
 
-        await interaction.followup.send(
-            embed = discord.Embed(
-                title=f":white_check_mark: Game '{queue_name}' ({short_uuid(finished_game.game_id)}) finished",
-                colour=discord.Colour.green(),
-                timestamp=discord.utils.utcnow(),
-            ),
-            ephemeral=True,
-        )
+        game_history_message: discord.Message
         if config.GAME_HISTORY_CHANNEL:
             channel: discord.channel.TextChannel | None = discord.utils.get(
                 interaction.guild.text_channels, id=config.GAME_HISTORY_CHANNEL
@@ -434,10 +419,27 @@ class InProgressGameCog(commands.Cog):
             if channel:
                 embed = create_finished_game_embed(finished_game)
                 embed.set_footer(text=f"Finished by {interaction.user.name}")
-                await channel.send(embed=embed)
+                game_history_message = await channel.send(embed=embed)
                 await upload_stats_screenshot_imgkit_channel(channel)
         else:
             await upload_stats_screenshot_imgkit_interaction(interaction)
+
+        embed_description: str = ""
+        if game_history_message is not None:
+            embed_description = game_history_message.jump_url
+        embed = discord.Embed(
+            title=f":white_check_mark: Game '{queue_name}' ({short_uuid(finished_game.game_id)}) finished",
+            description=embed_description,
+            colour=discord.Colour.green(),
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.set_footer(text=f"Finished by {interaction.user.name}")
+        await interaction.followup.send(embed=embed, ephemeral=False)
+        if config.CHANNEL_ID and interaction.channel_id != config.CHANNEL_ID:
+            # if this interaction was not used in the main channel, post the update message in the main channel
+            main_channel = interaction.guild.get_channel(config.CHANNEL_ID)
+            if isinstance(main_channel, discord.TextChannel):
+                await main_channel.send(embed=embed)
 
         session.close()
         return True
@@ -508,7 +510,7 @@ class InProgressGameView(discord.ui.View):
     async def win_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
         if config.ECONOMY_ENABLED:
             economy_cog = self.cog.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
@@ -531,7 +533,7 @@ class InProgressGameView(discord.ui.View):
     async def loss_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
         if config.ECONOMY_ENABLED:
             economy_cog = self.cog.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
@@ -554,7 +556,7 @@ class InProgressGameView(discord.ui.View):
     async def tie_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
         if config.ECONOMY_ENABLED:
             economy_cog = self.cog.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):

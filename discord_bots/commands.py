@@ -30,8 +30,8 @@ from discord import (
 from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
-from discord.user import User
 from discord.member import Member
+from discord.user import User
 from discord.utils import escape_markdown
 from numpy import std
 from PIL import Image
@@ -48,7 +48,9 @@ from discord_bots.utils import (
     MU_LOWER_UNICODE,
     SIGMA_LOWER_UNICODE,
     code_block,
+    create_finished_game_embed,
     mean,
+    number_to_emote,
     pretty_format_team,
     print_leaderboard,
     send_in_guild_message,
@@ -56,7 +58,6 @@ from discord_bots.utils import (
     short_uuid,
     update_next_map_to_map_after_next,
     win_probability,
-    create_finished_game_embed,
 )
 
 from .bot import bot
@@ -2821,22 +2822,39 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 
 @bot.command()
 async def status(ctx: Context, *args):
-    session = ctx.session
+    session: SQLAlchemySession = ctx.session
 
-    all_rotations: list[Rotation] | None = (
-        session.query(Rotation).order_by(Rotation.created_at.asc()).all()
-    )
+    if len(args) == 0:
+        all_rotations: list[Rotation] | None = (
+            session.query(Rotation).order_by(Rotation.created_at.asc()).all()
+        )
+    else:
+        all_rotations: list[Rotation] | None
+        for arg in args:
+            try:
+                queue_index = int(arg)
+                all_rotations = (
+                    session.query(Rotation)
+                    .join(Queue)
+                    .filter(Queue.ordinal == arg)
+                    .first()
+                )
+            except ValueError:
+                all_rotations = (
+                    session.query(Rotation)
+                    .join(Queue)
+                    .filter(Queue.name.ilike(arg))
+                    .first()
+                )
+            except IndexError:
+                continue
     if not all_rotations:
         await ctx.channel.send("No Rotations")
         return
 
-
-    output = "```autohotkey\n"
     embeds: list[Embed] = []
     for rotation in all_rotations:
-        output += f"--- {rotation.name} ---\n\n"
         embed = Embed(title=rotation.name, timestamp=discord.utils.utcnow())
-        embed_description = ""
         queues: list[Queue] = []
         rotation_queues: list[Queue] | None = (
             session.query(Queue)
@@ -2869,218 +2887,75 @@ async def status(ctx: Context, *args):
             if game.queue_id:
                 games_by_queue[game.queue_id].append(game)
 
-        # Only show map if they didn't request a specific queue
-        if len(args) == 0:
-            next_rotation_map: RotationMap | None = (
-                session.query(RotationMap)
-                .filter(RotationMap.rotation_id == rotation.id)
-                .filter(RotationMap.is_next == True)
-                .first()
+        next_rotation_map: RotationMap | None = (
+            session.query(RotationMap)
+            .filter(RotationMap.rotation_id == rotation.id)
+            .filter(RotationMap.is_next == True)
+            .first()
+        )
+        if not next_rotation_map:
+            continue
+        next_map: Map | None = (
+            session.query(Map)
+            .join(RotationMap, RotationMap.map_id == Map.id)
+            .filter(next_rotation_map.map_id == Map.id)
+            .first()
+        )
+        next_map_str = f"Next map: {next_map.full_name} ({next_map.short_name})"
+        if config.ENABLE_RAFFLE:
+            has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
+            raffle_reward = (
+                next_rotation_map.raffle_ticket_reward
+                if has_raffle_reward
+                else config.DEFAULT_RAFFLE_VALUE
             )
-            if not next_rotation_map:
-                continue
-            next_map: Map | None = (
-                session.query(Map)
-                .join(RotationMap, RotationMap.map_id == Map.id)
-                .filter(next_rotation_map.map_id == Map.id)
-                .first()
-            )
-            rotation_map_after_next = (
-                session.query(RotationMap)
-                .filter(RotationMap.rotation_id == rotation.id)
-                .filter(RotationMap.ordinal == next_rotation_map.ordinal + 1)
-                .first()
-            )
-            if not rotation_map_after_next:
-                rotation_map_after_next = (
-                    session.query(RotationMap)
-                    .filter(RotationMap.rotation_id == rotation.id)
-                    .filter(RotationMap.ordinal == 1)
-                    .first()
-                )
-            map_after_next: Map | None = (
-                session.query(Map)
-                .join(RotationMap, RotationMap.map_id == Map.id)
-                .filter(rotation_map_after_next.map_id == Map.id)
-                .first()
-            )
+            next_map_str += f" ({raffle_reward} tickets)"
 
-            next_map_str = f"Next map: {next_map.full_name} ({next_map.short_name})"
-            if config.ENABLE_RAFFLE:
-                has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
-                raffle_reward = (
-                    next_rotation_map.raffle_ticket_reward
-                    if has_raffle_reward
-                    else config.DEFAULT_RAFFLE_VALUE
-                )
-                next_map_str += f" ({raffle_reward} tickets)"
-            # embed.description = next_map_str
-            embed.add_field(
-                name="Next Map",
-                value=f"{next_map.full_name} ({next_map.short_name})",
-                inline=False,
-            )
+        embed.add_field(
+            name=":round_pushpin:Next Map",
+            value=f"{next_map.full_name} ({next_map.short_name})",
+            inline=False,
+        )
 
-            if config.DISABLE_MAP_ROTATION or next_rotation_map.ordinal == 1:
-                # output += f"{next_map_str}\nMap after next: "
-                output += f"{next_map_str}\n"
-            else:
-                time_since_update: timedelta = datetime.now(
-                    timezone.utc
-                ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
-
-                time_until_rotation = config.MAP_ROTATION_MINUTES - (
-                    time_since_update.seconds // 60
-                )
-                # output += f"{next_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): "
-                output += f"{next_map_str}\n"
-
-            # output += f"{map_after_next.full_name} ({map_after_next.short_name})\n"
-
-            skip_map_votes: list[SkipMapVote] = (
-                session.query(SkipMapVote)
-                .filter(SkipMapVote.rotation_id == rotation.id)
-                .all()
-            )
-            # output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{config.MAP_VOTE_THRESHOLD}]\n"
-
-            # TODO: This is duplicated
-            map_vote_names = (
-                session.query(Map.short_name)
-                .join(RotationMap, RotationMap.map_id == Map.id)
-                .join(MapVote, MapVote.rotation_map_id == RotationMap.id)
-                .filter(RotationMap.rotation_id == rotation.id)
-                .all()
-            )
-
-            vote_counts = {}
-            for map_vote in map_vote_names:
-                map_name = map_vote[0]
-                vote_counts[map_name] = vote_counts.get(map_name, 0) + 1
-
-            voted_maps_str = ""
-            for map, count in vote_counts.items():
-                voted_maps_str += f"{map} [{count}/{config.MAP_VOTE_THRESHOLD}], "
-            voted_maps_str = voted_maps_str[:-2]
-
-            # output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
-
-        for i, queue in enumerate(queues):
-            if i > 0:
-                output += "\n"
+        for queue in queues:
             players_in_queue = (
                 session.query(Player)
                 .join(QueuePlayer)
                 .filter(QueuePlayer.queue_id == queue.id)
-                # .filter(Player.name == "chickenNwaffles")
                 .all()
             )
             if queue.is_locked:
                 continue
             else:
-                queue_title_str = f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
-                output += queue_title_str
+                number_emoji_str = number_to_emote(queue.ordinal)
+                queue_title_str = f"{number_emoji_str} {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
 
-            """
-            if players_in_queue:
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-                players_in_queue.append(players_in_queue[0])
-            """
             embed.add_field(
                 name=queue_title_str,
-                value="\n".join([f"> <@{player.id}>" for player in players_in_queue]),
-                inline=True,
+                value=", ".join([f"<@{player.id}>" for player in players_in_queue]),
+                inline=False,
             )
-
-            if len(players_in_queue) > 0:
-                output += f"IN QUEUE: "
-                output += ", ".join(
-                    sorted(
-                        [escape_markdown(player.name) for player in players_in_queue]
-                    )
-                )
-                output += "\n"
 
             if queue.id in games_by_queue:
                 game: InProgressGame
+                ipg_strs = []
                 for i, game in enumerate(games_by_queue[queue.id]):
-                    team0_players = (
-                        session.query(Player)
-                        .join(InProgressGamePlayer)
-                        .filter(
-                            InProgressGamePlayer.in_progress_game_id == game.id,
-                            InProgressGamePlayer.team == 0,
-                        )
-                        .all()
-                    )
-
-                    team1_players = (
-                        session.query(Player)
-                        .join(InProgressGamePlayer)
-                        .filter(
-                            InProgressGamePlayer.in_progress_game_id == game.id,
-                            InProgressGamePlayer.team == 1,
-                        )
-                        .all()
-                    )
-
                     short_game_id = short_uuid(game.id)
-                    if i > 0:
-                        output += "\n"
-                    if config.SHOW_TRUESKILL:
-                        output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
-                        if game.code:
-                            output += f"Game code: {game.code}\n"
-                    else:
-                        output += f"Map: {game.map_full_name} ({short_game_id}):\n"
-                        if game.code:
-                            output += f"Game code: {game.code}\n"
-
-                    skip_map_votes = (
-                        session.query(SkipMapVote)
-                        .join(
-                            InProgressGamePlayer,
-                            InProgressGamePlayer.player_id == SkipMapVote.player_id,
-                        )
-                        .filter(InProgressGamePlayer.in_progress_game_id == game.id)
-                        .all()
-                    )
-                    if skip_map_votes:
-                        queue_vote_threshold = (
-                            session.query(Queue.vote_threshold)
-                            .join(InProgressGame, InProgressGame.queue_id == Queue.id)
-                            .filter(InProgressGame.id == game.id)
-                            .scalar()
-                        )
-                        output += f"Votes to skip: [{len(skip_map_votes)} / {queue_vote_threshold}]\n"
-
-                    minutes_ago = (
-                        datetime.now(timezone.utc)
-                        - game.created_at.replace(tzinfo=timezone.utc)
-                    ).seconds // 60
-                    output += f"@ {minutes_ago} minutes ago\n"
-
+                    _log.info(game.created_at)
+                    aware_db_datetime: datetime = game.created_at.replace(
+                        tzinfo=timezone.utc
+                    )  # timezones aren't stored in the DB, so add it ourselves
+                    timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+                    ipg_strs.append(f"{short_game_id} {timestamp}")
+                embed.add_field(
+                    name="In Progress Games",
+                    value="\n".join([ipg_str for ipg_str in ipg_strs]),
+                )
         embeds.append(embed)
-        output += "\n"
-
-    if len(output) == 0:
-        output = "No queues or games"
-
-    output += "\n```"
-
-    await ctx.message.channel.send(content=output)
-    await ctx.channel.send(embeds=embeds)
+    await ctx.channel.send(
+        content="Use `!add` to join queues. Ex: `!add 5v5`, `!add 1`,`!add 2 3`",
+        embeds=embeds,
+    )
 
 
 def win_rate(wins, losses, ties):

@@ -54,6 +54,29 @@ SIGMA_LOWER_UNICODE = "\u03C3"
 DELTA_UPPER_UNICODE = "\u03B4"
 
 
+def number_to_emote(num: int) -> str:
+    result: str = ""
+    int_to_emote: dict[int, str] = {
+        0: ":zero:",
+        1: ":one:",
+        2: ":two:",
+        3: ":three:",
+        4: ":four:",
+        5: ":five:",
+        6: ":six:",
+        7: ":seven:",
+        8: ":eight:",
+        9: ":nine:",
+    }
+    if num == 0:
+        return int_to_emote.get(num, "")
+    while num > 0:
+        digit = num % 10
+        if digit in int_to_emote:
+            result = int_to_emote.get(digit, "") + result
+        num = num // 10
+    return result
+
 # Convenience mean function that can handle lists of 0 or 1 length
 def mean(values: list[any]) -> float:
     if len(values) == 0:
