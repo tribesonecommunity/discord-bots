@@ -2866,7 +2866,6 @@ async def status(ctx: Context, *args):
         await ctx.channel.send("No Rotations")
         return
 
-    _log.info(all_rotations)
     embeds: list[Embed] = []
     rotation_queues: list[Queue] | None
     for rotation in all_rotations:
@@ -2879,7 +2878,6 @@ async def status(ctx: Context, *args):
         rotation_queues = (
             session.query(Queue).filter(*conditions).order_by(Queue.ordinal.asc()).all()
         )
-        _log.info(rotation_queues)
         if not rotation_queues:
             continue
 
@@ -2942,9 +2940,8 @@ async def status(ctx: Context, *args):
             if queue.id in games_by_queue:
                 game: InProgressGame
                 ipg_strs = []
-                for i, game in enumerate(games_by_queue[queue.id]):
+                for game in games_by_queue[queue.id]:
                     short_game_id = short_uuid(game.id)
-                    _log.info(game.created_at)
                     aware_db_datetime: datetime = game.created_at.replace(
                         tzinfo=timezone.utc
                     )  # timezones aren't stored in the DB, so add it ourselves
