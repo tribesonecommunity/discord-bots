@@ -2824,61 +2824,64 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 async def status(ctx: Context, *args):
     session: SQLAlchemySession = ctx.session
 
+    queue_indices: list[int] = []
+    queue_names: list[str] = []
+    all_rotations: list[Rotation] = []  # TODO: use sets
     if len(args) == 0:
-        all_rotations: list[Rotation] | None = (
+        all_rotations = (
             session.query(Rotation).order_by(Rotation.created_at.asc()).all()
         )
     else:
-        all_rotations: list[Rotation] | None
+        # get the rotation associated to the specified queue
+        all_rotations = []
         for arg in args:
+            # TODO: avoid looping so you only need one query
             try:
                 queue_index = int(arg)
-                all_rotations = (
+                arg_rotation = (
                     session.query(Rotation)
                     .join(Queue)
-                    .filter(Queue.ordinal == arg)
+                    .filter(Queue.ordinal == queue_index)
                     .first()
                 )
+                if arg_rotation:
+                    queue_indices.append(queue_index)
+                    if arg_rotation not in all_rotations:
+                        all_rotations.append(arg_rotation)
             except ValueError:
-                all_rotations = (
+                arg_rotation = (
                     session.query(Rotation)
                     .join(Queue)
                     .filter(Queue.name.ilike(arg))
                     .first()
                 )
+                if arg_rotation:
+                    queue_names.append(arg)
+                    if arg_rotation not in all_rotations:
+                        all_rotations.append(arg_rotation)
             except IndexError:
-                continue
+                pass
+
     if not all_rotations:
         await ctx.channel.send("No Rotations")
         return
 
+    _log.info(all_rotations)
     embeds: list[Embed] = []
+    rotation_queues: list[Queue] | None
     for rotation in all_rotations:
         embed = Embed(title=rotation.name, timestamp=discord.utils.utcnow())
-        queues: list[Queue] = []
-        rotation_queues: list[Queue] | None = (
-            session.query(Queue)
-            .filter(Queue.rotation_id == rotation.id)
-            .order_by(Queue.ordinal.asc())
-            .all()
+        conditions = [Queue.rotation_id == rotation.id]
+        if queue_indices:
+            conditions.append(Queue.ordinal.in_(queue_indices))
+        if queue_names:
+            conditions.append(Queue.name.in_(queue_names))
+        rotation_queues = (
+            session.query(Queue).filter(*conditions).order_by(Queue.ordinal.asc()).all()
         )
+        _log.info(rotation_queues)
         if not rotation_queues:
             continue
-
-        if len(args) == 0:
-            queues: list[Queue] = rotation_queues
-        else:
-            for arg in args:
-                # Try adding by integer index first, then try string name
-                try:
-                    queue_index = int(arg) - 1
-                    queues.append(rotation_queues[queue_index])
-                except ValueError:
-                    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                    if queue:
-                        queues.append(queue)
-                except IndexError:
-                    continue
 
         games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
         for game in session.query(InProgressGame).filter(
@@ -2917,7 +2920,7 @@ async def status(ctx: Context, *args):
             inline=False,
         )
 
-        for queue in queues:
+        for queue in rotation_queues:
             players_in_queue = (
                 session.query(Player)
                 .join(QueuePlayer)
@@ -2928,7 +2931,7 @@ async def status(ctx: Context, *args):
                 continue
             else:
                 number_emoji_str = number_to_emote(queue.ordinal)
-                queue_title_str = f"{number_emoji_str} {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
+                queue_title_str = f"{number_emoji_str} {queue.name} [{len(players_in_queue)}/{queue.size}]\n"
 
             embed.add_field(
                 name=queue_title_str,
