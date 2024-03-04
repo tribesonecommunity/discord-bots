@@ -2162,13 +2162,12 @@ async def gamehistory(interaction: Interaction, count: int):
         return
 
     await interaction.response.defer(ephemeral=True, thinking=True)
-    target_player = interaction.user
     session: SQLAlchemySession = Session()
     finished_games: list[FinishedGame] = None
     finished_games = (
         session.query(FinishedGame)
         .join(FinishedGamePlayer, FinishedGamePlayer.finished_game_id == FinishedGame.id)
-        .filter(FinishedGamePlayer.player_id == target_player.id)
+        .filter(FinishedGamePlayer.player_id == interaction.user.id)
         .order_by(FinishedGame.finished_at.desc())
         .limit(count)
         .all()
@@ -2176,10 +2175,10 @@ async def gamehistory(interaction: Interaction, count: int):
     if not finished_games:
         await interaction.followup.send(
             embed=Embed(
-                description=f"<@{target_player.id}> has not played any games",
-                color=Colour.red(),
+                description=f"<@{interaction.user.id}> has not played any games",
             ),
             ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
         )
         session.close()
         return
@@ -2190,9 +2189,10 @@ async def gamehistory(interaction: Interaction, count: int):
         embeds.append(create_finished_game_embed(finished_game))
 
     await interaction.followup.send(
-        content=f"Last {count} games for <@{target_player.id}>",
+        content=f"Last {count} games for <@{interaction.user.id}>",
         embeds=embeds,
         ephemeral=True,
+        allowed_mentions=discord.AllowedMentions.none(),
     )
     session.close()
 
@@ -2609,7 +2609,7 @@ async def showgame(ctx: Context, game_id: str):
 
 
 @bot.command()
-@commands.check(is_admin)
+@commands.is_owner()
 async def showgamedebug(ctx: Context, game_id: str):
     player_id = ctx.message.author.id
 
