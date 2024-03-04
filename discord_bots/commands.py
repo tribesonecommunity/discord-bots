@@ -416,7 +416,9 @@ async def create_game(
         )
     if config.SHOW_TRUESKILL:
         embed.add_field(
-            name="Average Rating", value=round(average_trueskill, 2), inline=False
+            name=f"Average {MU_LOWER_UNICODE}",
+            value=round(average_trueskill, 2),
+            inline=False,
         )
     embed.add_field(
         name="Match Commands", value="\n".join(["`/setgamecode`"]), inline=True
@@ -2978,7 +2980,7 @@ async def status(ctx: Context, *args):
                     if i > 0:
                         output += "\n"
                     if config.SHOW_TRUESKILL:
-                        output += f"Map: {game.map_full_name} ({short_game_id}) (mu: {round(game.average_trueskill, 2)}):\n"
+                        output += f"Map: {game.map_full_name} ({short_game_id}) (Average {MU_LOWER_UNICODE}: {round(game.average_trueskill, 2)}):\n"
                         if game.code:
                             output += f"Game code: {game.code}\n"
                     else:
