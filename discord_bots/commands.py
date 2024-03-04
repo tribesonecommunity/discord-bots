@@ -311,18 +311,21 @@ async def create_game(
     category = session.query(Category).filter(Category.id == queue.category_id).first()
     player_category_trueskills = None
     if category:
-        player_category_trueskills = session.query(PlayerCategoryTrueskill).filter(
-            PlayerCategoryTrueskill.category_id == category.id
+        player_category_trueskills: list[PlayerCategoryTrueskill] = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(
+                PlayerCategoryTrueskill.category_id == category.id,
+                PlayerCategoryTrueskill.player_id.in_(player_ids),
+            )
+            .all()
         )
     if player_category_trueskills:
-        average_trueskill = mean(
-            list(map(lambda x: x.rank, player_category_trueskills))
-        )
+        average_trueskill = mean(list(map(lambda x: x.mu, player_category_trueskills)))
     else:
         average_trueskill = mean(
             list(
                 map(
-                    lambda x: x.rated_trueskill_mu - 3 * x.rated_trueskill_sigma,
+                    lambda x: x.rated_trueskill_mu,
                     players,
                 )
             )
