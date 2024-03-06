@@ -34,7 +34,7 @@ from .tasks import (
 _log = logging.getLogger(__name__)
 
 async def create_seed_admins():
-    with Session() as session:
+    with Session.begin() as session:  # type: ignore
         for seed_admin_id in config.SEED_ADMIN_IDS:
             player = session.query(Player).filter(Player.id == seed_admin_id).first()
             if player:
@@ -49,7 +49,6 @@ async def create_seed_admins():
                         currency=config.STARTING_CURRENCY,
                     )
                 )
-        session.commit()
 
 
 @bot.event
