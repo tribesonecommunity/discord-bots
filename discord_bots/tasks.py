@@ -204,10 +204,9 @@ async def queue_waitlist_task():
                             guild,
                         )
                     )
-
+        # cleanup any InProgressGameChannels that are hanging around
         for igp_channel in session.query(InProgressGameChannel).filter(
-            InProgressGameChannel.in_progress_game_id
-            == queue_waitlist.in_progress_game_id
+            InProgressGameChannel.in_progress_game_id == None
         ):
             if guild:
                 guild_channel = guild.get_channel(igp_channel.channel_id)
@@ -219,11 +218,6 @@ async def queue_waitlist_task():
             QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
         ).delete()
         session.delete(queue_waitlist)
-        # ideally this should be done the instant an IPG is finished => IPG ID in IPGChannels needs to be nullable
-        # Would also have to be moved to a separate task so you don't delete the channels too early
-        session.query(InProgressGame).filter(
-            InProgressGame.id == queue_waitlist.in_progress_game_id
-        ).delete()
     session.commit()
     session.close()
 

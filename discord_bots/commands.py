@@ -2167,39 +2167,42 @@ async def gamehistory(interaction: Interaction, count: int):
         return
 
     await interaction.response.defer(ephemeral=True, thinking=True)
-    session: SQLAlchemySession = Session()
-    finished_games: list[FinishedGame] = None
-    finished_games = (
-        session.query(FinishedGame)
-        .join(FinishedGamePlayer, FinishedGamePlayer.finished_game_id == FinishedGame.id)
-        .filter(FinishedGamePlayer.player_id == interaction.user.id)
-        .order_by(FinishedGame.finished_at.desc())
-        .limit(count)
-        .all()
-    )
-    if not finished_games:
+    session: SQLAlchemySession
+    with Session.begin() as session:  # type: ignore
+        finished_games: list[FinishedGame]
+        finished_games = (
+            session.query(FinishedGame)
+            .join(
+                FinishedGamePlayer,
+                FinishedGamePlayer.finished_game_id == FinishedGame.id,
+            )
+            .filter(FinishedGamePlayer.player_id == interaction.user.id)
+            .order_by(FinishedGame.finished_at.desc())
+            .limit(count)
+            .all()
+        )
+        if not finished_games:
+            await interaction.followup.send(
+                embed=Embed(
+                    description=f"{interaction.user.mention} has not played any games",
+                ),
+                ephemeral=True,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            session.close()
+            return
+
+        embeds = []
+        finished_games.reverse()  # show most recent games last
+        for finished_game in finished_games:
+            embeds.append(create_finished_game_embed(session, finished_game))
+
         await interaction.followup.send(
-            embed=Embed(
-                description=f"<@{interaction.user.id}> has not played any games",
-            ),
+            content=f"Last {count} games for {interaction.user.mention}",
+            embeds=embeds,
             ephemeral=True,
             allowed_mentions=discord.AllowedMentions.none(),
         )
-        session.close()
-        return
-
-    embeds = []
-    finished_games.reverse() # show most recent games last
-    for finished_game in finished_games:
-        embeds.append(create_finished_game_embed(finished_game))
-
-    await interaction.followup.send(
-        content=f"Last {count} games for <@{interaction.user.id}>",
-        embeds=embeds,
-        ephemeral=True,
-        allowed_mentions=discord.AllowedMentions.none(),
-    )
-    session.close()
 
 
 @bot.command()

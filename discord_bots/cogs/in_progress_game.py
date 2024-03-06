@@ -11,6 +11,7 @@ from trueskill import Rating, rate
 
 from discord_bots import config
 from discord_bots.checks import is_admin_app_command
+from discord_bots.cogs.confirmation import ConfirmationView
 from discord_bots.cogs.economy import EconomyCommands
 from discord_bots.models import (
     Category,
@@ -29,6 +30,7 @@ from discord_bots.models import (
     Session,
 )
 from discord_bots.utils import (
+    create_cancelled_game_embed,
     create_finished_game_embed,
     short_uuid,
     upload_stats_screenshot_imgkit_channel,
@@ -36,8 +38,9 @@ from discord_bots.utils import (
 )
 
 if TYPE_CHECKING:
+    import sqlalchemy.orm
     from discord.ext.commands import Bot
-    from sqlalchemy.orm.session import Session as SQLAlchemySession
+
 
 _log = logging.getLogger(__name__)
 
@@ -47,20 +50,58 @@ class InProgressGameCog(commands.Cog):
         self.views: list[InProgressGameView] = []
 
     async def cog_load(self) -> None:
-        session: SQLAlchemySession = Session()
-        in_progress_games: list[InProgressGame] = session.query(InProgressGame).all()
-        for game in in_progress_games:
-            if game.message_id:
-                self.views.append(InProgressGameView(game.id, self))
-                self.bot.add_view(
-                    InProgressGameView(game.id, self),
-                    message_id=game.message_id,
-                )
-        session.close()
+        session: sqlalchemy.orm.Session
+        with Session.begin() as session:  # type: ignore
+            in_progress_games: list[InProgressGame] = session.query(
+                InProgressGame
+            ).all()
+            for game in in_progress_games:
+                if game.message_id:
+                    self.views.append(InProgressGameView(game.id, self))
+                    self.bot.add_view(
+                        InProgressGameView(game.id, self),
+                        message_id=game.message_id,
+                    )
 
     async def cog_unload(self) -> None:
         for view in self.views:
             view.stop()
+
+    def get_player_and_in_progress_game(
+        self,
+        session: sqlalchemy.orm.Session,
+        player_id: int,
+        game_id: Optional[str] = None,
+    ) -> tuple[InProgressGamePlayer, InProgressGame] | None:
+        game_player: InProgressGamePlayer | None = (
+            session.query(InProgressGamePlayer)
+            .filter(InProgressGamePlayer.player_id == player_id)
+            .first()
+        )
+        if not game_player:
+            return None
+        in_progress_game: InProgressGame | None
+        if game_id:
+            in_progress_game = (
+                session.query(InProgressGame)
+                .filter(InProgressGame.id == game_player.in_progress_game_id)
+                .filter(InProgressGame.id == game_id)
+                .first()
+            )
+            if not in_progress_game:
+                return None
+        else:
+            in_progress_game = (
+                session.query(InProgressGame)
+                .filter(InProgressGame.id == game_player.in_progress_game_id)
+                .first()
+            )
+            if not in_progress_game:
+                _log.warn(
+                    f"No in_progress_game found with id {game_player.in_progress_game_id} for game_player with id ={game_player.id}"
+                )
+                return None
+        return game_player, in_progress_game
 
     @discord.app_commands.command(
         name="finishgame", description="Ends the current game you are in"
@@ -72,17 +113,23 @@ class InProgressGameCog(commands.Cog):
         interaction: discord.Interaction,
         outcome: Literal["win", "loss", "tie"],
     ):
-        await interaction.response.defer(
-            ephemeral=False
-        )  # TODO: Might want some followup responses to be ephemeral, but need a beter solution
-        if config.ECONOMY_ENABLED:
-            economy_cog = self.bot.get_cog("EconomyCommands")
-            if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
-                await economy_cog.resolve_predictions(interaction, outcome)
-            else:
-                _log.warning("Could not get EconomyCommands cog")
-
-        await self.finish_in_progress_game(interaction, outcome)
+        await interaction.response.defer(ephemeral=False)
+        session: sqlalchemy.orm.Session
+        with Session.begin() as session:  # type: ignore
+            result = self.get_player_and_in_progress_game(session, interaction.user.id)
+            if result is None:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="You are not in this game!",
+                        color=discord.Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            game_player, in_progress_game = result[0], result[1]
+            await self.finish_in_progress_game(
+                session, interaction, outcome, game_player, in_progress_game
+            )
 
     @discord.app_commands.command(
         name="cancelgame", description="Cancels the specified game"
@@ -90,100 +137,19 @@ class InProgressGameCog(commands.Cog):
     @discord.app_commands.check(is_admin_app_command)
     @discord.app_commands.guild_only()
     async def cancelgame(self, interaction: discord.Interaction, game_id: str):
-        assert interaction.channel is not None
-        assert isinstance(interaction.channel, discord.TextChannel)
-        if config.ECONOMY_ENABLED:
-            try:
-                economy_cog = self.bot.get_cog("EconomyCommands")
-                if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
-                    await economy_cog.cancel_predictions(game_id)
-                else:
-                    _log.warning("Could not get EconomyCommands cog")
-            except ValueError as ve:
-                # Raised if there are no predictions on this game
-                await interaction.channel.send(
-                    embed=discord.Embed(
-                        description="No predictions to be refunded",
-                        colour=discord.Colour.blue(),
-                    )
-                )
-            except Exception as e:
-                await interaction.channel.send(
-                    embed=discord.Embed(
-                        description=f"Predictions failed to refund: {e}",
-                        colour=discord.Colour.red(),
-                    )
-                )
-            else:
-                await interaction.channel.send(
-                    embed=discord.Embed(
-                        description="Predictions refunded", colour=discord.Colour.blue()
-                    )
-                )
+        await interaction.response.defer()
         await self.cancel_in_progress_game(interaction, game_id)
 
     async def finish_in_progress_game(
         self,
+        session: sqlalchemy.orm.Session,
         interaction: discord.Interaction,
         outcome: Literal["win", "loss", "tie"],
-        game_id: Optional[str] = None,
+        game_player: InProgressGamePlayer,
+        in_progress_game: InProgressGame,
     ) -> bool:
         assert interaction is not None
         assert interaction.guild is not None
-        session: SQLAlchemySession = Session()
-        game_player: InProgressGamePlayer | None = (
-            session.query(InProgressGamePlayer)
-            .filter(InProgressGamePlayer.player_id == interaction.user.id)
-            .first()
-        )
-        if not game_player:
-            await interaction.followup.send(
-                embed=discord.Embed(
-                    description="You are not in a game!",
-                    color=discord.Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            session.close()
-            return False
-
-        in_progress_game: InProgressGame | None
-        if game_id:
-            in_progress_game = (
-                session.query(InProgressGame)
-                .filter(InProgressGame.id == game_player.in_progress_game_id)
-                .filter(InProgressGame.id == game_id)
-                .first()
-            )
-            if not in_progress_game:
-                await interaction.followup.send(
-                    embed=discord.Embed(
-                        description="You are not in this game!",
-                        color=discord.Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                session.close()
-                return False
-        else:
-            in_progress_game = (
-                session.query(InProgressGame)
-                .filter(InProgressGame.id == game_player.in_progress_game_id)
-                .first()
-            )
-            if not in_progress_game:
-                _log.warn(
-                    f"No in_progress_game found with id={game_player.in_progress_game_id} for game_player with id={game_player.id}"
-                )
-                await interaction.followup.send(
-                    embed=discord.Embed(
-                        description="You are not in a game!", color=discord.Colour.red()
-                    ),
-                    ephemeral=True,
-                )
-                session.close()
-                return False
-
         queue: Queue | None = (
             session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
         )
@@ -199,7 +165,6 @@ class InProgressGameCog(commands.Cog):
                 ),
                 ephemeral=True,
             )
-            session.close()
             return False
 
         winning_team = -1
@@ -282,7 +247,6 @@ class InProgressGameCog(commands.Cog):
                     ),
                     ephemeral=True,
                 )
-                session.close()
                 return False
         else:
             category_name = None
@@ -372,20 +336,27 @@ class InProgressGameCog(commands.Cog):
         update_ratings(
             team1_players, team1_rated_ratings_before, team1_rated_ratings_after
         )
+        if config.ECONOMY_ENABLED:
+            economy_cog = self.bot.get_cog("EconomyCommands")
+            if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
+                await economy_cog.resolve_predictions(
+                    interaction, "tie", in_progress_game.id
+                )
+            else:
+                _log.warning("Could not get EconomyCommands cog")
 
         session.query(InProgressGamePlayer).filter(
             InProgressGamePlayer.in_progress_game_id == in_progress_game.id
         ).delete()
+        session.query(InProgressGame).filter(
+            InProgressGame.id == in_progress_game.id
+        ).delete()
         in_progress_game.is_finished = True
-        duration: timedelta = finished_game.finished_at.replace(
-            tzinfo=timezone.utc
-        ) - in_progress_game.created_at.replace(tzinfo=timezone.utc)
         session.add(
             QueueWaitlist(
                 channel_id=interaction.channel_id,  # not sure about this column and what it's used for
                 finished_game_id=finished_game.id,
                 guild_id=interaction.guild_id,
-                in_progress_game_id=in_progress_game.id,
                 queue_id=queue.id,
                 end_waitlist_at=datetime.now(timezone.utc)
                 + timedelta(seconds=config.RE_ADD_DELAY),
@@ -409,7 +380,7 @@ class InProgressGameCog(commands.Cog):
             player.raffle_tickets += reward
             session.add(player)
         queue_name = queue.name
-        session.commit()
+        # session.commit()
 
         game_history_message: discord.Message
         if config.GAME_HISTORY_CHANNEL:
@@ -417,8 +388,9 @@ class InProgressGameCog(commands.Cog):
                 interaction.guild.text_channels, id=config.GAME_HISTORY_CHANNEL
             )
             if channel:
-                embed = create_finished_game_embed(finished_game)
-                embed.set_footer(text=f"Finished by {interaction.user.name}")
+                embed = create_finished_game_embed(
+                    session, finished_game, interaction.user.name
+                )
                 game_history_message = await channel.send(embed=embed)
                 await upload_stats_screenshot_imgkit_channel(channel)
         else:
@@ -428,63 +400,129 @@ class InProgressGameCog(commands.Cog):
         if game_history_message is not None:
             embed_description = game_history_message.jump_url
         embed = discord.Embed(
-            title=f":white_check_mark: Game '{queue_name}' ({short_uuid(finished_game.game_id)}) finished",
+            title=f"✅ Game '{queue_name}' ({short_uuid(finished_game.game_id)}) finished",
             description=embed_description,
             colour=discord.Colour.green(),
             timestamp=discord.utils.utcnow(),
         )
         embed.set_footer(text=f"Finished by {interaction.user.name}")
-        await interaction.followup.send(embed=embed, ephemeral=False)
+        if interaction.channel:
+            await interaction.followup.send(embed=embed, ephemeral=False)
         if config.CHANNEL_ID and interaction.channel_id != config.CHANNEL_ID:
             # if this interaction was not used in the main channel, post the update message in the main channel
             main_channel = interaction.guild.get_channel(config.CHANNEL_ID)
             if isinstance(main_channel, discord.TextChannel):
                 await main_channel.send(embed=embed)
 
-        session.close()
         return True
 
     async def cancel_in_progress_game(
         self, interaction: discord.Interaction, game_id: str
     ):
-        session: SQLAlchemySession = Session()
-        game = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.id.startswith(game_id))
-            .first()
-        )
-        if not game:
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description=f"Could not find game: {game_id}",
-                    colour=discord.Colour.red(),
+        session: sqlalchemy.orm.Session
+        with Session.begin() as session:  # type: ignore
+            game = (
+                session.query(InProgressGame)
+                .filter(InProgressGame.id.startswith(game_id))
+                .first()
+            )
+            if not game:
+                await interaction.followup.send(
+                    embed=discord.Embed(
+                        description=f"Could not find game with id {game_id}",
+                        colour=discord.Colour.red(),
+                    ),
+                    ephemeral=True,
                 )
-            )
-            return
+                return False
 
-        session.query(InProgressGamePlayer).filter(
-            InProgressGamePlayer.in_progress_game_id == game.id
-        ).delete()
-        for channel in session.query(InProgressGameChannel).filter(
-            InProgressGameChannel.in_progress_game_id == game.id
-        ):
-            if interaction.guild:
-                guild_channel = interaction.guild.get_channel(channel.channel_id)
-                if guild_channel:
-                    await guild_channel.delete()
-            session.delete(channel)
-        session.commit()
-
-        session.query(InProgressGame).filter(InProgressGame.id == game.id).delete()
-        session.commit()
-        session.close()
-        await interaction.response.send_message(
-            embed=discord.Embed(
-                description=f"Game {game_id} cancelled",
-                colour=discord.Colour.blue(),
+            queue: Queue | None = (
+                session.query(Queue).filter(Queue.id == game.queue_id).first()
             )
-        )
-        return
+            queue_name = f"'{queue.name}'" if queue is not None else ""
+            game_history_message: discord.Message
+            if config.GAME_HISTORY_CHANNEL:
+                channel: discord.channel.TextChannel | None = discord.utils.get(
+                    interaction.guild.text_channels, id=config.GAME_HISTORY_CHANNEL
+                )
+                if channel:
+                    embed = create_cancelled_game_embed(
+                        session, game, interaction.user.name
+                    )
+                    game_history_message = await channel.send(embed=embed)
+
+            embed_description: str = ""
+            if game_history_message is not None:
+                embed_description = game_history_message.jump_url
+            embed = discord.Embed(
+                title=f":x: Game {queue_name}g({short_uuid(game.id)}) cancelled",
+                description=embed_description,
+                colour=discord.Colour.red(),
+                timestamp=discord.utils.utcnow(),
+            )
+            embed.set_footer(text=f"Cancelled by {interaction.user.name}")
+
+            # temporary solution for when the command is used in the game channel
+            # since we need to reply to the interaction before the channel is deleted
+            # ideally all messages should be sent at the end of the function
+            await interaction.followup.send(embed=embed, ephemeral=False)
+            if (
+                config.CHANNEL_ID
+                and interaction.channel_id != config.CHANNEL_ID
+                and interaction.guild
+            ):
+                # if this interaction was not used in the main channel, post the update message in the main channel
+                main_channel = interaction.guild.get_channel(config.CHANNEL_ID)
+                if isinstance(main_channel, discord.TextChannel):
+                    await main_channel.send(embed=embed)
+                    if config.ECONOMY_ENABLED:
+                        try:
+                            economy_cog = self.bot.get_cog("EconomyCommands")
+                            if economy_cog is not None and isinstance(
+                                economy_cog, EconomyCommands
+                            ):
+                                await economy_cog.cancel_predictions(game_id)
+                            else:
+                                _log.warning("Could not get EconomyCommands cog")
+                        except ValueError as ve:
+                            # Raised if there are no predictions on this game
+                            await main_channel.send(
+                                embed=discord.Embed(
+                                    description="No predictions to be refunded",
+                                    colour=discord.Colour.blue(),
+                                )
+                            )
+                        except Exception as e:
+                            await main_channel.send(
+                                embed=discord.Embed(
+                                    description=f"Predictions failed to refund: {e}",
+                                    colour=discord.Colour.red(),
+                                )
+                            )
+                        else:
+                            await main_channel.send(
+                                embed=discord.Embed(
+                                    description="Predictions refunded",
+                                    colour=discord.Colour.blue(),
+                                )
+                            )
+
+            session.query(InProgressGamePlayer).filter(
+                InProgressGamePlayer.in_progress_game_id == game.id
+            ).delete()
+
+            for ipg_channel in session.query(InProgressGameChannel).filter(
+                InProgressGameChannel.in_progress_game_id == game.id
+            ):
+                if interaction.guild:
+                    guild_channel = interaction.guild.get_channel(
+                        ipg_channel.channel_id
+                    )
+                    if guild_channel:
+                        await guild_channel.delete()
+                session.delete(ipg_channel)
+            session.query(InProgressGame).filter(InProgressGame.id == game.id).delete()
+            return True
 
 
 class InProgressGameView(discord.ui.View):
@@ -504,78 +542,173 @@ class InProgressGameView(discord.ui.View):
 
     @discord.ui.button(
         label="Win",
-        style=discord.ButtonStyle.green,
+        style=discord.ButtonStyle.primary,
         custom_id="in_progress_game_view:win",
+        emoji="🥇",
     )
     async def win_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer()
-        if config.ECONOMY_ENABLED:
-            economy_cog = self.cog.bot.get_cog("EconomyCommands")
-            if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
-                await economy_cog.resolve_predictions(interaction, "win", self.game_id)
-            else:
-                _log.warning("Could not get EconomyCommands cog")
+        session: sqlalchemy.orm.Session
+        with Session.begin() as session:  # type: ignore
+            result = self.cog.get_player_and_in_progress_game(
+                session, interaction.user.id, self.game_id
+            )
+            if result is None:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="You are not in this game!",
+                        color=discord.Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        self.is_game_finished = await self.cog.finish_in_progress_game(
-            interaction, "win", self.game_id
-        )
+            game_player: InProgressGamePlayer = result[0]
+            in_progress_game: InProgressGame = result[1]
+            confirmation_buttons = ConfirmationView()
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="Are you sure you want to finish this game as a **Win**?",
+                    color=discord.Colour.orange(),
+                ),
+                view=confirmation_buttons,
+                ephemeral=True,
+            )
+            await confirmation_buttons.wait()
+            if not confirmation_buttons.value:
+                return
+            self.is_game_finished = await self.cog.finish_in_progress_game(
+                session, interaction, "win", game_player, in_progress_game
+            )
         if self.is_game_finished:
             await self.disable_buttons(interaction)
             self.stop()
 
     @discord.ui.button(
         label="Loss",
-        style=discord.ButtonStyle.red,
+        style=discord.ButtonStyle.primary,
         custom_id="in_progress_game_view:loss",
+        emoji="🥈",
     )
     async def loss_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer()
-        if config.ECONOMY_ENABLED:
-            economy_cog = self.cog.bot.get_cog("EconomyCommands")
-            if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
-                await economy_cog.resolve_predictions(interaction, "loss", self.game_id)
-            else:
-                _log.warning("Could not get EconomyCommands cog")
+        session: sqlalchemy.orm.Session
+        with Session.begin() as session:  # type: ignore
+            result = self.cog.get_player_and_in_progress_game(
+                session, interaction.user.id, self.game_id
+            )
+            if result is None:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="You are not in this game!",
+                        color=discord.Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        self.is_game_finished = await self.cog.finish_in_progress_game(
-            interaction, "loss", self.game_id
-        )
+            game_player: InProgressGamePlayer = result[0]
+            in_progress_game: InProgressGame = result[1]
+            confirmation_buttons = ConfirmationView()
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="Are you sure you want to finish this game as a **Loss**?",
+                    color=discord.Colour.orange(),
+                ),
+                view=confirmation_buttons,
+                ephemeral=True,
+            )
+            await confirmation_buttons.wait()
+            if not confirmation_buttons.value:
+                return
+            self.is_game_finished = await self.cog.finish_in_progress_game(
+                session, interaction, "loss", game_player, in_progress_game
+            )
         if self.is_game_finished:
             await self.disable_buttons(interaction)
             self.stop()
 
     @discord.ui.button(
         label="Tie",
-        style=discord.ButtonStyle.blurple,
+        style=discord.ButtonStyle.primary,
         custom_id="in_progress_game_view:tie",
+        emoji="🤞",
     )
     async def tie_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer()
-        if config.ECONOMY_ENABLED:
-            economy_cog = self.cog.bot.get_cog("EconomyCommands")
-            if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
-                await economy_cog.resolve_predictions(interaction, "tie", self.game_id)
-            else:
-                _log.warning("Could not get EconomyCommands cog")
+        session: sqlalchemy.orm.Session
+        with Session.begin() as session:  # type: ignore
+            result = self.cog.get_player_and_in_progress_game(
+                session, interaction.user.id, self.game_id
+            )
+            if result is None:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="You are not in this game!",
+                        color=discord.Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        self.is_game_finished = await self.cog.finish_in_progress_game(
-            interaction, "tie", self.game_id
-        )
+            game_player: InProgressGamePlayer = result[0]
+            in_progress_game: InProgressGame = result[1]
+            confirmation_buttons = ConfirmationView()
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="Are you sure you want to finish this game as a **Tie**?",
+                    color=discord.Colour.orange(),
+                ),
+                view=confirmation_buttons,
+                ephemeral=True,
+            )
+            await confirmation_buttons.wait()
+            if not confirmation_buttons.value:
+                return
+            self.is_game_finished = await self.cog.finish_in_progress_game(
+                session, interaction, "tie", game_player, in_progress_game
+            )
         if self.is_game_finished:
             await self.disable_buttons(interaction)
+            self.stop()
+
+    @discord.ui.button(
+        label="Cancel",
+        style=discord.ButtonStyle.red,
+        custom_id="in_progress_game_view:cancel",
+    )
+    async def cancel_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        if not await is_admin_app_command(interaction):
+            return
+
+        confirmation_buttons = ConfirmationView()
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                description="Are you sure you want **Cancel** this game?",
+                color=discord.Colour.orange(),
+            ),
+            view=confirmation_buttons,
+            ephemeral=True,
+        )
+        await confirmation_buttons.wait()
+        if not confirmation_buttons.value:
+            return
+
+        self.is_game_finished = await self.cog.cancel_in_progress_game(
+            interaction, self.game_id
+        )
+        if self.is_game_finished:
+            # no need to disable the buttons, since the channel will be deleted immediately
             self.stop()
 
     async def disable_buttons(self, interaction: discord.Interaction):
         for child in self.children:
             if type(child) == discord.ui.Button and not child.disabled:
                 child.disabled = True
-                if interaction.message and interaction.message.embeds:
-                    await interaction.edit_original_response(
-                        embed=interaction.message.embeds[0], view=self
-                    )
+        if interaction.message is not None:
+            await interaction.message.edit(view=self)

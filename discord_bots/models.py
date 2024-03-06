@@ -331,7 +331,10 @@ class EconomyTransaction:
     in_progress_game_id: str | None = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("in_progress_game.id"), nullable=True, index=True
+                String,
+                ForeignKey("in_progress_game.id", ondelete="SET NULL"),
+                nullable=True,
+                index=True,
             )
         },
     )
@@ -573,7 +576,10 @@ class InProgressGameChannel:
     in_progress_game_id: str = field(
         metadata={
             "sa": Column(
-                String, ForeignKey("in_progress_game.id"), nullable=False, index=True
+                String,
+                ForeignKey("in_progress_game.id", ondelete="SET NULL"),
+                nullable=True,
+                index=True,
             )
         },
     )
@@ -1037,8 +1043,6 @@ class QueueWaitlist:
     """
     A waitlist to buffer players after they finish game. Players are randomly
     added from this waitlist into queues.
-
-    :in_progress_game_id: Needed to close channels after processing waitlist
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -1053,13 +1057,6 @@ class QueueWaitlist:
         },
     )
     guild_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
-    in_progress_game_id: str = field(
-        metadata={
-            "sa": Column(
-                String, ForeignKey("in_progress_game.id"), nullable=False, unique=True
-            )
-        },
-    )
     queue_id: str = field(
         metadata={"sa": Column(String, ForeignKey("queue.id"), nullable=False)},
     )
