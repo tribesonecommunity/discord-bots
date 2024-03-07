@@ -1,5 +1,5 @@
 import heapq
-import logging  # TODO: need to change to module logging, since doing this will always display "root.INFO,WARN,..."
+import logging
 import os
 import sys
 from bisect import bisect
@@ -12,7 +12,7 @@ from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from typing import List, Literal, Optional, Union
+from typing import List, Union
 
 import discord
 import imgkit
@@ -50,7 +50,6 @@ from discord_bots.utils import (
     code_block,
     create_finished_game_embed,
     mean,
-    number_to_emote,
     pretty_format_team,
     print_leaderboard,
     send_in_guild_message,
@@ -2919,11 +2918,8 @@ async def status(ctx: Context, *args):
                 else config.DEFAULT_RAFFLE_VALUE
             )
             next_map_str += f" ({raffle_reward} tickets)"
-
-        embed.add_field(
-            name=":round_pushpin:Next Map",
-            value=f"{next_map.full_name} ({next_map.short_name})",
-            inline=False,
+        embed.description = (
+            f"📍**Next Map**: {next_map.full_name} ({next_map.short_name})"
         )
 
         for queue in rotation_queues:
@@ -2936,8 +2932,7 @@ async def status(ctx: Context, *args):
             if queue.is_locked:
                 continue
             else:
-                number_emoji_str = number_to_emote(queue.ordinal)
-                queue_title_str = f"{number_emoji_str} {queue.name} [{len(players_in_queue)}/{queue.size}]\n"
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]\n"
 
             embed.add_field(
                 name=queue_title_str,
