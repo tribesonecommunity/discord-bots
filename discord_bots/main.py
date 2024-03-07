@@ -34,7 +34,7 @@ from .tasks import (
 _log = logging.getLogger(__name__)
 
 async def create_seed_admins():
-    with Session() as session:
+    with Session.begin() as session:  # type: ignore
         for seed_admin_id in config.SEED_ADMIN_IDS:
             player = session.query(Player).filter(Player.id == seed_admin_id).first()
             if player:
@@ -49,27 +49,22 @@ async def create_seed_admins():
                         currency=config.STARTING_CURRENCY,
                     )
                 )
-        session.commit()
 
 
 @bot.event
 async def on_ready():
+    """
+    https://discordpy.readthedocs.io/en/stable/api.html#discord.on_ready
+    This function is not guaranteed to be the first event called. Likewise, this function is not guaranteed to only be called once.
+    Do not setup anything in here
+    """
     _log.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    add_player_task.start()
-    afk_timer_task.start()
-    leaderboard_task.start()
-    map_rotation_task.start()
-    queue_waitlist_task.start()
-    vote_passed_waitlist_task.start()
-    if config.ECONOMY_ENABLED:
-        prediction_task.start()
 
 
 @bot.tree.error
 async def on_app_command_error(
     interaction: Interaction, error: AppCommandError
 ) -> None:
-    _log.info(">>> on_app_command_error")
     if isinstance(error, errors.CheckFailure):
         return
     else:
@@ -237,6 +232,14 @@ async def setup():
     await bot.add_cog(VoteCommands(bot))
     await bot.add_cog(EconomyCommands(bot))
     await bot.add_cog(InProgressGameCog(bot))
+    add_player_task.start()
+    afk_timer_task.start()
+    leaderboard_task.start()
+    map_rotation_task.start()
+    queue_waitlist_task.start()
+    vote_passed_waitlist_task.start()
+    if config.ECONOMY_ENABLED:
+        prediction_task.start()
 
 
 async def main():

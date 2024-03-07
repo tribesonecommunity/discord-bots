@@ -1,5 +1,5 @@
 import heapq
-import logging  # TODO: need to change to module logging, since doing this will always display "root.INFO,WARN,..."
+import logging
 import os
 import sys
 from bisect import bisect
@@ -12,7 +12,7 @@ from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from typing import List, Literal, Optional, Union
+from typing import List, Union
 
 import discord
 import imgkit
@@ -31,6 +31,7 @@ from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
+from discord.user import User
 from discord.utils import escape_markdown
 from numpy import std
 from PIL import Image
@@ -38,7 +39,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import select
-from table2ascii import PresetStyle, table2ascii
+from table2ascii import Alignment, PresetStyle, table2ascii
 from trueskill import Rating, rate
 
 import discord_bots.config as config
@@ -47,9 +48,9 @@ from discord_bots.utils import (
     MU_LOWER_UNICODE,
     SIGMA_LOWER_UNICODE,
     code_block,
+    create_finished_game_embed,
     mean,
     pretty_format_team,
-    pretty_format_team_no_format,
     print_leaderboard,
     send_in_guild_message,
     send_message,
@@ -401,13 +402,13 @@ async def create_game(
         name="Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=False
     )
     embed.add_field(
-        name=f"{game.team0_name} ({round(100*win_prob)}%)",
-        value=">>> " + "\n".join([f"<@{player.id}>" for player in team0_players]),
+        name=f"{game.team0_name} ({round(100 * win_prob)}%)",
+        value="\n".join([f"> <@{player.id}>" for player in team0_players]),
         inline=True,
     )
     embed.add_field(
-        name=f"{game.team1_name} ({round(100*(1- win_prob))}%)",
-        value=">>> " + "\n".join([f"<@{player.id}>" for player in team1_players]),
+        name=f"{game.team1_name} ({round(100 * (1 - win_prob))}%)",
+        value="\n".join([f"> <@{player.id}>" for player in team1_players]),
         inline=True,
     )
     if match_channel:
@@ -2140,36 +2141,67 @@ async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
     session.commit()
 
 
-@bot.command()
-async def gamehistory(ctx: Context, count: int):
-    message = ctx.message
-    """
-    Display recent game history
-    """
+@bot.tree.command(
+    name="gamehistory",
+    description="Privately displays your game history",
+)
+async def gamehistory(interaction: Interaction, count: int):
     if count > 10:
-        await send_message(
-            message.channel,
-            embed_description="Count cannot exceed 10",
-            colour=Colour.red(),
+        await interaction.response.send_message(
+            embed=Embed(
+                description="Count cannot exceed 10",
+                color=Colour.red(),
+            ),
+            ephemeral=True,
+        )
+        return
+    elif count < 1:
+        await interaction.response.send_message(
+            embed=Embed(
+                description="Count cannot be less than 1",
+                color=Colour.red(),
+            ),
+            ephemeral=True,
         )
         return
 
-    session = ctx.session
-    finished_games: list[FinishedGame] = (
-        session.query(FinishedGame).order_by(FinishedGame.finished_at.desc()).limit(count)  # type: ignore
-    )
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    session: SQLAlchemySession
+    with Session.begin() as session:  # type: ignore
+        finished_games: list[FinishedGame]
+        finished_games = (
+            session.query(FinishedGame)
+            .join(
+                FinishedGamePlayer,
+                FinishedGamePlayer.finished_game_id == FinishedGame.id,
+            )
+            .filter(FinishedGamePlayer.player_id == interaction.user.id)
+            .order_by(FinishedGame.finished_at.desc())
+            .limit(count)
+            .all()
+        )
+        if not finished_games:
+            await interaction.followup.send(
+                embed=Embed(
+                    description=f"{interaction.user.mention} has not played any games",
+                ),
+                ephemeral=True,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            session.close()
+            return
 
-    output = ""
-    for i, finished_game in enumerate(finished_games):
-        if i > 0:
-            output += "\n"
-        output += finished_game_str(finished_game)
+        embeds = []
+        finished_games.reverse()  # show most recent games last
+        for finished_game in finished_games:
+            embeds.append(create_finished_game_embed(session, finished_game))
 
-    await send_message(
-        message.channel,
-        embed_description=output,
-        colour=Colour.blue(),
-    )
+        await interaction.followup.send(
+            content=f"Last {count} games for {interaction.user.mention}",
+            embeds=embeds,
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
 
 @bot.command()
@@ -2584,7 +2616,7 @@ async def showgame(ctx: Context, game_id: str):
 
 
 @bot.command()
-@commands.check(is_admin)
+@commands.is_owner()
 async def showgamedebug(ctx: Context, game_id: str):
     player_id = ctx.message.author.id
 
@@ -2797,40 +2829,66 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 
 @bot.command()
 async def status(ctx: Context, *args):
-    session = ctx.session
+    session: SQLAlchemySession = ctx.session
 
-    all_rotations: list[Rotation] | None = (
-        session.query(Rotation).order_by(Rotation.created_at.asc()).all()
-    )
+    queue_indices: list[int] = []
+    queue_names: list[str] = []
+    all_rotations: list[Rotation] = []  # TODO: use sets
+    if len(args) == 0:
+        all_rotations = (
+            session.query(Rotation).order_by(Rotation.created_at.asc()).all()
+        )
+    else:
+        # get the rotation associated to the specified queue
+        all_rotations = []
+        for arg in args:
+            # TODO: avoid looping so you only need one query
+            try:
+                queue_index = int(arg)
+                arg_rotation = (
+                    session.query(Rotation)
+                    .join(Queue)
+                    .filter(Queue.ordinal == queue_index)
+                    .first()
+                )
+                if arg_rotation:
+                    queue_indices.append(queue_index)
+                    if arg_rotation not in all_rotations:
+                        all_rotations.append(arg_rotation)
+            except ValueError:
+                arg_rotation = (
+                    session.query(Rotation)
+                    .join(Queue)
+                    .filter(Queue.name.ilike(arg))
+                    .first()
+                )
+                if arg_rotation:
+                    queue_names.append(arg)
+                    if arg_rotation not in all_rotations:
+                        all_rotations.append(arg_rotation)
+            except IndexError:
+                pass
 
-    output = "```autohotkey\n"
+    if not all_rotations:
+        await ctx.channel.send("No Rotations")
+        return
 
+    embeds: list[Embed] = []
+    rotation_queues: list[Queue] | None
     for rotation in all_rotations:
-        output += f"--- {rotation.name} ---\n\n"
-        queues: list[Queue] = []
-        rotation_queues: list[Queue] | None = (
-            session.query(Queue)
-            .filter(Queue.rotation_id == rotation.id)
-            .order_by(Queue.ordinal.asc())
-            .all()
+        embed = Embed(
+            title=rotation.name, timestamp=discord.utils.utcnow(), color=Colour.blue()
+        )
+        conditions = [Queue.rotation_id == rotation.id]
+        if queue_indices:
+            conditions.append(Queue.ordinal.in_(queue_indices))
+        if queue_names:
+            conditions.append(Queue.name.in_(queue_names))
+        rotation_queues = (
+            session.query(Queue).filter(*conditions).order_by(Queue.ordinal.asc()).all()
         )
         if not rotation_queues:
             continue
-
-        if len(args) == 0:
-            queues: list[Queue] = rotation_queues
-        else:
-            for arg in args:
-                # Try adding by integer index first, then try string name
-                try:
-                    queue_index = int(arg) - 1
-                    queues.append(rotation_queues[queue_index])
-                except ValueError:
-                    queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
-                    if queue:
-                        queues.append(queue)
-                except IndexError:
-                    continue
 
         games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
         for game in session.query(InProgressGame).filter(
@@ -2839,100 +2897,34 @@ async def status(ctx: Context, *args):
             if game.queue_id:
                 games_by_queue[game.queue_id].append(game)
 
-        # Only show map if they didn't request a specific queue
-        if len(args) == 0:
-            next_rotation_map: RotationMap | None = (
-                session.query(RotationMap)
-                .filter(RotationMap.rotation_id == rotation.id)
-                .filter(RotationMap.is_next == True)
-                .first()
+        next_rotation_map: RotationMap | None = (
+            session.query(RotationMap)
+            .filter(RotationMap.rotation_id == rotation.id)
+            .filter(RotationMap.is_next == True)
+            .first()
+        )
+        if not next_rotation_map:
+            continue
+        next_map: Map | None = (
+            session.query(Map)
+            .join(RotationMap, RotationMap.map_id == Map.id)
+            .filter(next_rotation_map.map_id == Map.id)
+            .first()
+        )
+        next_map_str = f"Next map: {next_map.full_name} ({next_map.short_name})"
+        if config.ENABLE_RAFFLE:
+            has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
+            raffle_reward = (
+                next_rotation_map.raffle_ticket_reward
+                if has_raffle_reward
+                else config.DEFAULT_RAFFLE_VALUE
             )
-            if not next_rotation_map:
-                continue
-            next_map: Map | None = (
-                session.query(Map)
-                .join(RotationMap, RotationMap.map_id == Map.id)
-                .filter(next_rotation_map.map_id == Map.id)
-                .first()
-            )
-            rotation_map_after_next = (
-                session.query(RotationMap)
-                .filter(RotationMap.rotation_id == rotation.id)
-                .filter(RotationMap.ordinal == next_rotation_map.ordinal + 1)
-                .first()
-            )
-            if not rotation_map_after_next:
-                rotation_map_after_next = (
-                    session.query(RotationMap)
-                    .filter(RotationMap.rotation_id == rotation.id)
-                    .filter(RotationMap.ordinal == 1)
-                    .first()
-                )
-            map_after_next: Map | None = (
-                session.query(Map)
-                .join(RotationMap, RotationMap.map_id == Map.id)
-                .filter(rotation_map_after_next.map_id == Map.id)
-                .first()
-            )
+            next_map_str += f" ({raffle_reward} tickets)"
+        embed.description = (
+            f"📍**Next Map**: {next_map.full_name} ({next_map.short_name})"
+        )
 
-            next_map_str = f"Next map: {next_map.full_name} ({next_map.short_name})"
-            if config.ENABLE_RAFFLE:
-                has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
-                raffle_reward = (
-                    next_rotation_map.raffle_ticket_reward
-                    if has_raffle_reward
-                    else config.DEFAULT_RAFFLE_VALUE
-                )
-                next_map_str += f" ({raffle_reward} tickets)"
-            next_map_str += "\n"
-
-            if config.DISABLE_MAP_ROTATION or next_rotation_map.ordinal == 1:
-                # output += f"{next_map_str}\nMap after next: "
-                output += f"{next_map_str}\n"
-            else:
-                time_since_update: timedelta = datetime.now(
-                    timezone.utc
-                ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
-
-                time_until_rotation = config.MAP_ROTATION_MINUTES - (
-                    time_since_update.seconds // 60
-                )
-                # output += f"{next_map_str}\nMap after next (auto-rotates in {time_until_rotation} minutes): "
-                output += f"{next_map_str}\n"
-
-            # output += f"{map_after_next.full_name} ({map_after_next.short_name})\n"
-
-            skip_map_votes: list[SkipMapVote] = (
-                session.query(SkipMapVote)
-                .filter(SkipMapVote.rotation_id == rotation.id)
-                .all()
-            )
-            # output += f"Votes to skip (voteskip): [{len(skip_map_votes)}/{config.MAP_VOTE_THRESHOLD}]\n"
-
-            # TODO: This is duplicated
-            map_vote_names = (
-                session.query(Map.short_name)
-                .join(RotationMap, RotationMap.map_id == Map.id)
-                .join(MapVote, MapVote.rotation_map_id == RotationMap.id)
-                .filter(RotationMap.rotation_id == rotation.id)
-                .all()
-            )
-
-            vote_counts = {}
-            for map_vote in map_vote_names:
-                map_name = map_vote[0]
-                vote_counts[map_name] = vote_counts.get(map_name, 0) + 1
-
-            voted_maps_str = ""
-            for map, count in vote_counts.items():
-                voted_maps_str += f"{map} [{count}/{config.MAP_VOTE_THRESHOLD}], "
-            voted_maps_str = voted_maps_str[:-2]
-
-            # output += f"Votes to change map (votemap): {voted_maps_str}\n\n"
-
-        for i, queue in enumerate(queues):
-            if i > 0:
-                output += "\n"
+        for queue in rotation_queues:
             players_in_queue = (
                 session.query(Player)
                 .join(QueuePlayer)
@@ -2942,94 +2934,32 @@ async def status(ctx: Context, *args):
             if queue.is_locked:
                 continue
             else:
-                output += f"({queue.ordinal}) {queue.name} [{len(players_in_queue)} / {queue.size}]\n"
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]\n"
 
-            if len(players_in_queue) > 0:
-                output += f"IN QUEUE: "
-                output += ", ".join(
-                    sorted(
-                        [escape_markdown(player.name) for player in players_in_queue]
-                    )
-                )
-                output += "\n"
+            embed.add_field(
+                name=queue_title_str,
+                value=", ".join([f"<@{player.id}>" for player in players_in_queue]),
+                inline=False,
+            )
 
             if queue.id in games_by_queue:
                 game: InProgressGame
-                for i, game in enumerate(games_by_queue[queue.id]):
-                    team0_players = (
-                        session.query(Player)
-                        .join(InProgressGamePlayer)
-                        .filter(
-                            InProgressGamePlayer.in_progress_game_id == game.id,
-                            InProgressGamePlayer.team == 0,
-                        )
-                        .all()
-                    )
-
-                    team1_players = (
-                        session.query(Player)
-                        .join(InProgressGamePlayer)
-                        .filter(
-                            InProgressGamePlayer.in_progress_game_id == game.id,
-                            InProgressGamePlayer.team == 1,
-                        )
-                        .all()
-                    )
-
+                ipg_strs = []
+                for game in games_by_queue[queue.id]:
                     short_game_id = short_uuid(game.id)
-                    if i > 0:
-                        output += "\n"
-                    if config.SHOW_TRUESKILL:
-                        output += f"Map: {game.map_full_name} ({short_game_id}) (Average {MU_LOWER_UNICODE}: {round(game.average_trueskill, 2)}):\n"
-                        if game.code:
-                            output += f"Game code: {game.code}\n"
-                    else:
-                        output += f"Map: {game.map_full_name} ({short_game_id}):\n"
-                        if game.code:
-                            output += f"Game code: {game.code}\n"
-
-                    skip_map_votes = (
-                        session.query(SkipMapVote)
-                        .join(
-                            InProgressGamePlayer,
-                            InProgressGamePlayer.player_id == SkipMapVote.player_id,
-                        )
-                        .filter(InProgressGamePlayer.in_progress_game_id == game.id)
-                        .all()
-                    )
-                    if skip_map_votes:
-                        queue_vote_threshold = (
-                            session.query(Queue.vote_threshold)
-                            .join(InProgressGame, InProgressGame.queue_id == Queue.id)
-                            .filter(InProgressGame.id == game.id)
-                            .scalar()
-                        )
-                        output += f"Votes to skip: [{len(skip_map_votes)} / {queue_vote_threshold}]\n"
-
-                    if config.SHOW_LEFT_RIGHT_TEAM:
-                        output += "(L) "
-                    output += pretty_format_team_no_format(
-                        game.team0_name, game.win_probability, team0_players
-                    )
-                    if config.SHOW_LEFT_RIGHT_TEAM:
-                        output += "(R) "
-                    output += pretty_format_team_no_format(
-                        game.team1_name, 1 - game.win_probability, team1_players
-                    )
-                    minutes_ago = (
-                        datetime.now(timezone.utc)
-                        - game.created_at.replace(tzinfo=timezone.utc)
-                    ).seconds // 60
-                    output += f"@ {minutes_ago} minutes ago\n"
-
-        output += "\n"
-
-    if len(output) == 0:
-        output = "No queues or games"
-
-    output += "\n```"
-
-    await ctx.message.channel.send(content=output)
+                    aware_db_datetime: datetime = game.created_at.replace(
+                        tzinfo=timezone.utc
+                    )  # timezones aren't stored in the DB, so add it ourselves
+                    timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+                    ipg_strs.append(f"{short_game_id} {timestamp}")
+                embed.add_field(
+                    name="In Progress Games",
+                    value="\n".join([ipg_str for ipg_str in ipg_strs]),
+                )
+        embeds.append(embed)
+    await ctx.channel.send(
+        embeds=embeds,
+    )
 
 
 def win_rate(wins, losses, ties):
@@ -3168,9 +3098,9 @@ async def stats(interaction: Interaction):
         for num_days in [7, 30, 90, 365, -1]:
             wins, losses, ties = wins_losses_ties_last_ndays(games, num_days)
             num_wins, num_losses, num_ties = len(wins), len(losses), len(ties)
-            winrate = win_rate(num_wins, num_losses, num_ties)
+            winrate = round(win_rate(num_wins, num_losses, num_ties))
             col = [
-                "Overall" if num_days == -1 else f"Last {num_days} days",
+                "Total" if num_days == -1 else f"{num_days}D",
                 len(wins),
                 len(losses),
                 len(ties),
@@ -3227,10 +3157,18 @@ async def stats(interaction: Interaction):
             ]
             cols = get_table_col(category_games)
             table = table2ascii(
-                header=["", f"Wins", "Losses", "Ties", "Total", "Winrate"],
+                header=["Last", "Win", "Loss", "Tie", "Sum", "%"],
                 body=cols,
                 first_col_heading=True,
                 style=PresetStyle.minimalist,
+                alignments=[
+                    Alignment.LEFT,
+                    Alignment.DECIMAL,
+                    Alignment.DECIMAL,
+                    Alignment.DECIMAL,
+                    Alignment.DECIMAL,
+                    Alignment.DECIMAL,
+                ],
             )
             description += code_block(table)
             description += f"\n{trueskill_url}"
@@ -3252,10 +3190,18 @@ async def stats(interaction: Interaction):
             description = f"Rating: {trueskill_pct}"
         cols = get_table_col(fgs)
         table = table2ascii(
-            header=["", f"Wins", "Losses", "Ties", "Total", "Winrate"],
+            header=["Period", "Wins", "Losses", "Ties", "Total", "Win %"],
             body=cols,
             first_col_heading=True,
             style=PresetStyle.minimalist,
+            alignments=[
+                Alignment.LEFT,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+            ],
         )
         description += code_block(table)
         embed = Embed(

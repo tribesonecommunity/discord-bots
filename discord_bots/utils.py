@@ -33,6 +33,10 @@ import discord_bots.config as config
 from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
+    FinishedGame,
+    FinishedGamePlayer,
+    InProgressGame,
+    InProgressGamePlayer,
     Map,
     MapVote,
     Player,
@@ -125,6 +129,150 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
         for file_ in os.listdir(config.STATS_DIR):
             if file_.endswith(".png") or file_.endswith(".html"):
                 os.remove(os.path.join(config.STATS_DIR, file_))
+
+
+def create_finished_game_embed(
+    session: sqlalchemy.orm.Session,
+    finished_game: FinishedGame,
+    user_name: Optional[str] = None,
+) -> Embed:
+    # assumes that the FinishedGamePlayers have already been comitted
+    aware_db_datetime: datetime = finished_game.finished_at.replace(
+        tzinfo=timezone.utc
+    )  # timezones aren't stored in the DB, so add it ourselves
+    embed = Embed(
+        title=f":white_check_mark: Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)})",
+        color=Colour.blue(),
+        timestamp=aware_db_datetime,
+    )
+    if user_name is not None:
+        embed.set_footer(text=f"Finished by {user_name}")
+    else:
+        embed.set_footer(text="Finished")
+    team0_fg_players: list[FinishedGamePlayer] = (
+        session.query(FinishedGamePlayer)
+        .filter(
+            FinishedGamePlayer.finished_game_id == finished_game.id,
+            FinishedGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team1_fg_players: list[FinishedGamePlayer] = (
+        session.query(FinishedGamePlayer)
+        .filter(
+            FinishedGamePlayer.finished_game_id == finished_game.id,
+            FinishedGamePlayer.team == 1,
+        )
+        .all()
+    )
+    if finished_game.winning_team == 0:
+        be_str = f"🥇 {finished_game.team0_name}"
+        ds_str = f"🥈 {finished_game.team1_name}"
+    elif finished_game.winning_team == 1:
+        be_str = f"🥈 {finished_game.team0_name}"
+        ds_str = f"🥇 {finished_game.team1_name}"
+    else:
+        be_str = f"🥈 {finished_game.team0_name}"
+        ds_str = f"🥈 {finished_game.team1_name}"
+    embed.add_field(
+        name="📍 Map",
+        value=f"{finished_game.map_full_name} ({finished_game.map_short_name})",
+        inline=False,
+    )
+    duration: timedelta = finished_game.finished_at.replace(
+        tzinfo=timezone.utc
+    ) - finished_game.started_at.replace(tzinfo=timezone.utc)
+    embed.add_field(
+        name="⏱️ Duration",
+        value=f"{duration.seconds // 60} minutes",
+        inline=False,
+    )
+    if config.SHOW_TRUESKILL:
+        embed.add_field(
+            name=f"📊 Average {MU_LOWER_UNICODE}",
+            value=round(finished_game.average_trueskill, 2),
+            inline=False,
+        )
+    embed.add_field(name="", value="", inline=False)  # newline
+    embed.add_field(
+        name=f"{be_str} ({round(100 * finished_game.win_probability)}%)",
+        value="\n".join([f"> <@{player.player_id}>" for player in team0_fg_players]),
+        inline=True,
+    )
+    embed.add_field(
+        name=f"{ds_str} ({round(100*(1 - finished_game.win_probability))}%)",
+        value="\n".join([f"> <@{player.player_id}>" for player in team1_fg_players]),
+        inline=True,
+    )
+    return embed
+
+
+def create_cancelled_game_embed(
+    session: sqlalchemy.orm.Session,
+    in_progress_game: InProgressGame,
+    user_name: Optional[str] = None,
+) -> Embed:
+    queue: Queue | None = (
+        session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+    )
+    queue_name = f"'{queue.name}'" if queue is not None else ""
+    embed = Embed(
+        title=f"❌ Game {queue_name} ({short_uuid(in_progress_game.id)})",
+        color=Colour.red(),
+        timestamp=discord.utils.utcnow(),
+    )
+    if user_name is not None:
+        embed.set_footer(text=f"Cancelled by {user_name}")
+    else:
+        embed.set_footer(text="Cancelled")
+    team0_fg_players: list[InProgressGamePlayer] = (
+        session.query(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team1_fg_players: list[InProgressGamePlayer] = (
+        session.query(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    embed.add_field(
+        name="📍 Map",
+        value=f"{in_progress_game.map_full_name} ({in_progress_game.map_short_name})",
+        inline=False,
+    )
+    # probably don't need duration for cancelled games, but might as well add it
+    duration: timedelta = discord.utils.utcnow() - in_progress_game.created_at.replace(
+        tzinfo=timezone.utc
+    )
+    embed.add_field(
+        name="⏱️ Duration",
+        value=f"{duration.seconds // 60} minutes",
+        inline=False,
+    )
+    if config.SHOW_TRUESKILL:
+        embed.add_field(
+            name=f"📊 Average {MU_LOWER_UNICODE}",
+            value=round(in_progress_game.average_trueskill, 2),
+            inline=False,
+        )
+    embed.add_field(name="", value="", inline=False)  # newline
+    embed.add_field(
+        name=f"{in_progress_game.team0_name} ({round(100 * in_progress_game.win_probability)}%)",
+        value="\n".join([f"> <@{player.player_id}>" for player in team0_fg_players]),
+        inline=True,
+    )
+    embed.add_field(
+        name=f"{in_progress_game.team1_name} ({round(100*(1 - in_progress_game.win_probability))}%)",
+        value="\n".join([f"> <@{player.player_id}>" for player in team1_fg_players]),
+        inline=True,
+    )
+    return embed
 
 
 """

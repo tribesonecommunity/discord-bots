@@ -515,7 +515,7 @@ class EconomyCommands(BaseCog):
         self,
         interaction: Interaction,
         outcome: Literal["win", "loss", "tie"],
-        game_id: str | None,
+        game_id: Optional[str] = None,
     ):
         session: SQLAlchemySession = Session()
         game_player: InProgressGamePlayer | None = (
