@@ -2876,7 +2876,9 @@ async def status(ctx: Context, *args):
     embeds: list[Embed] = []
     rotation_queues: list[Queue] | None
     for rotation in all_rotations:
-        embed = Embed(title=rotation.name, timestamp=discord.utils.utcnow())
+        embed = Embed(
+            title=rotation.name, timestamp=discord.utils.utcnow(), color=Colour.blue()
+        )
         conditions = [Queue.rotation_id == rotation.id]
         if queue_indices:
             conditions.append(Queue.ordinal.in_(queue_indices))
