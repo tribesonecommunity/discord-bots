@@ -380,7 +380,6 @@ class InProgressGameCog(commands.Cog):
             player.raffle_tickets += reward
             session.add(player)
         queue_name = queue.name
-        # session.commit()
 
         game_history_message: discord.Message
         if config.GAME_HISTORY_CHANNEL:
