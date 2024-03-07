@@ -2958,7 +2958,6 @@ async def status(ctx: Context, *args):
                 )
         embeds.append(embed)
     await ctx.channel.send(
-        content="Use `!add` to join queues. Ex: `!add 5v5`, `!add 1`,`!add 2 3`",
         embeds=embeds,
     )
 
