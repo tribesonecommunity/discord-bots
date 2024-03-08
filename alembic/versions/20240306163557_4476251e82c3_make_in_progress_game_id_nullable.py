@@ -40,7 +40,7 @@ def upgrade():
             "in_progress_game_id", existing_type=sa.VARCHAR(), nullable=True
         )
         batch_op.drop_constraint(
-            "fk_in_progress_game_channel_in_progress_game_id_in_prog_a2fc",
+            "fk_in_progress_game_channel_in_progress_game_id_in_progress_game",
             type_="foreignkey",
         )
         batch_op.create_foreign_key(
@@ -95,7 +95,7 @@ def downgrade():
             type_="foreignkey",
         )
         batch_op.create_foreign_key(
-            "fk_in_progress_game_channel_in_progress_game_id_in_prog_a2fc",
+            "fk_in_progress_game_channel_in_progress_game_id_in_progress_game",
             "in_progress_game",
             ["in_progress_game_id"],
             ["id"],
