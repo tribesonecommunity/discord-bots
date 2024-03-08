@@ -340,7 +340,7 @@ class InProgressGameCog(commands.Cog):
             economy_cog = self.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
                 await economy_cog.resolve_predictions(
-                    interaction, "tie", in_progress_game.id
+                    interaction, outcome, in_progress_game.id
                 )
             else:
                 _log.warning("Could not get EconomyCommands cog")
