@@ -3,12 +3,12 @@
 # https://stackoverflow.com/a/67996748
 
 import logging
-
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from random import shuffle
 from re import I
 
+import sqlalchemy
 from discord.channel import TextChannel
 from discord.colour import Colour
 from discord.ext import tasks
@@ -16,6 +16,7 @@ from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 
+import discord_bots.config as config
 from discord_bots.utils import (
     code_block,
     print_leaderboard,
@@ -24,12 +25,8 @@ from discord_bots.utils import (
 )
 
 from .bot import bot
-from .commands import (
-    add_player_to_queue,
-    create_game,
-    is_in_game,
-)
-import discord_bots.config as config
+from .cogs.economy import EconomyCommands
+from .commands import add_player_to_queue, create_game, is_in_game
 from .models import (
     InProgressGame,
     InProgressGameChannel,
@@ -48,7 +45,6 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .queues import AddPlayerQueueMessage, add_player_queue
-from .cogs.economy import EconomyCommands
 
 _log = logging.getLogger(__name__)
 
@@ -152,74 +148,73 @@ async def queue_waitlist_task():
 
     TODO: Tests for this method
     """
-    session = Session()
-    queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc())  # type: ignore
-    queue_waitlist: QueueWaitlist
-    channel = None
-    guild: Guild | None = None
-    for queue_waitlist in session.query(QueueWaitlist).filter(
-        QueueWaitlist.end_waitlist_at < datetime.now(timezone.utc)
-    ):
-        if not channel:
-            channel = bot.get_channel(queue_waitlist.channel_id)
-        if not guild:
-            guild = bot.get_guild(queue_waitlist.guild_id)
-
-        queue_waitlist_players: list[QueueWaitlistPlayer]
-        queue_waitlist_players = (
-            session.query(QueueWaitlistPlayer)
-            .filter(QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id)
-            .all()
-        )
-        qwp_by_queue_id: dict[str, list[QueueWaitlistPlayer]] = defaultdict(list)
-        for qwp in queue_waitlist_players:
-            if qwp.queue_id:
-                qwp_by_queue_id[qwp.queue_id].append(qwp)
-
-        # Ensure that we process the queues in the order the queues were
-        # created. TODO: Make the last queue that popped the lowest priority
-        for queue in queues:
-            qwps_for_queue = qwp_by_queue_id[queue.id]
-            shuffle(qwps_for_queue)
-            for queue_waitlist_player in qwps_for_queue:
-                if is_in_game(queue_waitlist_player.player_id):
-                    session.delete(queue_waitlist_player)
-                    continue
-
-                if isinstance(channel, TextChannel) and guild:
-                    player = (
-                        session.query(Player)
-                        .filter(Player.id == queue_waitlist_player.player_id)
-                        .first()
-                    )
-
-                    add_player_queue.put(
-                        AddPlayerQueueMessage(
-                            queue_waitlist_player.player_id,
-                            player.name,
-                            # TODO: This is sucky to do it one at a time
-                            [queue.id],
-                            False,
-                            channel,
-                            guild,
-                        )
-                    )
-        # cleanup any InProgressGameChannels that are hanging around
-        for igp_channel in session.query(InProgressGameChannel).filter(
-            InProgressGameChannel.in_progress_game_id == None
+    session: sqlalchemy.orm.Session
+    with Session.begin() as session:  # type: ignore
+        queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc())  # type: ignore
+        queue_waitlist: QueueWaitlist
+        channel = None
+        guild: Guild | None = None
+        for queue_waitlist in session.query(QueueWaitlist).filter(
+            QueueWaitlist.end_waitlist_at < datetime.now(timezone.utc)
         ):
-            if guild:
-                guild_channel = guild.get_channel(igp_channel.channel_id)
-                if guild_channel:
-                    await guild_channel.delete()
-            session.delete(igp_channel)
+            if not channel:
+                channel = bot.get_channel(queue_waitlist.channel_id)
+            if not guild:
+                guild = bot.get_guild(queue_waitlist.guild_id)
 
-        session.query(QueueWaitlistPlayer).filter(
-            QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
-        ).delete()
-        session.delete(queue_waitlist)
-    session.commit()
-    session.close()
+            queue_waitlist_players: list[QueueWaitlistPlayer]
+            queue_waitlist_players = (
+                session.query(QueueWaitlistPlayer)
+                .filter(QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id)
+                .all()
+            )
+            qwp_by_queue_id: dict[str, list[QueueWaitlistPlayer]] = defaultdict(list)
+            for qwp in queue_waitlist_players:
+                if qwp.queue_id:
+                    qwp_by_queue_id[qwp.queue_id].append(qwp)
+
+            # Ensure that we process the queues in the order the queues were
+            # created. TODO: Make the last queue that popped the lowest priority
+            for queue in queues:
+                qwps_for_queue = qwp_by_queue_id[queue.id]
+                shuffle(qwps_for_queue)
+                for queue_waitlist_player in qwps_for_queue:
+                    if is_in_game(queue_waitlist_player.player_id):
+                        session.delete(queue_waitlist_player)
+                        continue
+
+                    if isinstance(channel, TextChannel) and guild:
+                        player = (
+                            session.query(Player)
+                            .filter(Player.id == queue_waitlist_player.player_id)
+                            .first()
+                        )
+
+                        add_player_queue.put(
+                            AddPlayerQueueMessage(
+                                queue_waitlist_player.player_id,
+                                player.name,
+                                # TODO: This is sucky to do it one at a time
+                                [queue.id],
+                                False,
+                                channel,
+                                guild,
+                            )
+                        )
+            # cleanup any InProgressGameChannels that are hanging around
+            for igp_channel in session.query(InProgressGameChannel).filter(
+                InProgressGameChannel.in_progress_game_id == None
+            ):
+                if guild:
+                    guild_channel = guild.get_channel(igp_channel.channel_id)
+                    if guild_channel:
+                        await guild_channel.delete()
+                session.delete(igp_channel)
+
+            session.query(QueueWaitlistPlayer).filter(
+                QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
+            ).delete()
+            session.delete(queue_waitlist)
 
 
 @tasks.loop(seconds=1)
