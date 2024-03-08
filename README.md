@@ -54,6 +54,7 @@ The following are required
 
 - `DISCORD_API_KEY`
 - `CHANNEL_ID` - The discord id of the channel the bot will live in
+- `GAME_HISTORY_CHANNEL` - The discord id of the channel finished games will be reported in
 - `DATABASE_URI` -
 - `TRIBES_VOICE_CATEGORY_CHANNEL_ID` - The id of the voice channel category (so the bot can make voice channels)
 - `SEED_ADMIN_IDS` - Discord ids of players that will start off as admin. You'll need at least one in order to create
