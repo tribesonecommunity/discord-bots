@@ -17,8 +17,8 @@ from sqlalchemy import (
     event,
     text,
 )
+from sqlalchemy.engine import Engine
 from sqlalchemy.ext.hybrid import hybrid_property
-
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
@@ -57,6 +57,16 @@ using the method here:
 https://docs.sqlalchemy.org/en/14/orm/mapping_styles.html#example-two-dataclasses-with-declarative-table
 """
 
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """
+    sqlite does not enable foreign key constraints by default, so we have to enable it ourselves:
+    https://docs.sqlalchemy.org/en/14/dialects/sqlite.html#foreign-key-support
+    """
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 @mapper_registry.mapped
 @dataclass
