@@ -392,7 +392,7 @@ class InProgressGameCog(commands.Cog):
                 )
                 game_history_message = await channel.send(embed=embed)
                 await upload_stats_screenshot_imgkit_channel(channel)
-        else:
+        elif config.STATS_DIR:
             await upload_stats_screenshot_imgkit_interaction(interaction)
 
         embed_description: str = ""
