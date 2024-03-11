@@ -349,9 +349,9 @@ class InProgressGameCog(commands.Cog):
         session.query(InProgressGamePlayer).filter(
             InProgressGamePlayer.in_progress_game_id == in_progress_game.id
         ).delete()
-        session.query(InProgressGame).filter(
-            InProgressGame.id == in_progress_game.id
-        ).delete()
+        # session.query(InProgressGame).filter(
+        #     InProgressGame.id == in_progress_game.id
+        # ).delete()
         in_progress_game.is_finished = True
         session.add(
             QueueWaitlist(
