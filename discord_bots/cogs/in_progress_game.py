@@ -114,22 +114,23 @@ class InProgressGameCog(commands.Cog):
         outcome: Literal["win", "loss", "tie"],
     ):
         await interaction.response.defer(ephemeral=False)
-        session: sqlalchemy.orm.Session
-        with Session.begin() as session:  # type: ignore
-            result = self.get_player_and_in_progress_game(session, interaction.user.id)
-            if result is None:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        description="You are not in this game!",
-                        color=discord.Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-            game_player, in_progress_game = result[0], result[1]
-            await self.finish_in_progress_game(
-                session, interaction, outcome, game_player, in_progress_game
+        session = Session()
+        result = self.get_player_and_in_progress_game(session, interaction.user.id)
+        if result is None:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description="You are not in this game!",
+                    color=discord.Colour.red(),
+                ),
+                ephemeral=True,
             )
+            return
+        game_player, in_progress_game = result[0], result[1]
+        await self.finish_in_progress_game(
+            session, interaction, outcome, game_player, in_progress_game
+        )
+        session.commit()
+        session.close()
 
     @discord.app_commands.command(
         name="cancelgame", description="Cancels the specified game"
