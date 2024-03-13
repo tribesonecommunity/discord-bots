@@ -203,13 +203,17 @@ async def queue_waitlist_task():
                         )
             # cleanup any InProgressGameChannels that are hanging around
             for igp_channel in session.query(InProgressGameChannel).filter(
-                InProgressGameChannel.in_progress_game_id == None
+                InProgressGameChannel.in_progress_game_id
+                == queue_waitlist.in_progress_game_id
             ):
                 if guild:
                     guild_channel = guild.get_channel(igp_channel.channel_id)
                     if guild_channel:
                         await guild_channel.delete()
                 session.delete(igp_channel)
+            session.query(InProgressGame).filter(
+                InProgressGame.id == queue_waitlist.in_progress_game_id
+            ).delete()
 
             session.query(QueueWaitlistPlayer).filter(
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
