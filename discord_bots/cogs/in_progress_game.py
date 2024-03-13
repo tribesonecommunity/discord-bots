@@ -171,6 +171,7 @@ class InProgressGameCog(commands.Cog):
             if not confirmation_buttons.value:
                 return
             await self.cancel_in_progress_game(session, interaction, game)
+            session.commit()
 
     @cancelgame.autocomplete("game_id")
     async def cancelgame_autocomplete(
@@ -492,23 +493,14 @@ class InProgressGameCog(commands.Cog):
         if game_history_message is not None:
             embed_description = game_history_message.jump_url
         embed = discord.Embed(
-            title=f":x: Game {queue_name}g({short_uuid(game.id)}) cancelled",
+            title=f"❌ Game {queue_name}g({short_uuid(game.id)}) cancelled",
             description=embed_description,
             colour=discord.Colour.red(),
             timestamp=discord.utils.utcnow(),
         )
         embed.set_footer(text=f"Cancelled by {interaction.user.name}")
 
-        # temporary solution for when the command is used in the game channel
-        # since we need to reply to the interaction before the channel is deleted
-        # ideally all messages should be sent at the end of the function
-        await interaction.followup.send(embed=embed, ephemeral=False)
-        if (
-            config.CHANNEL_ID
-            and interaction.channel_id != config.CHANNEL_ID
-            and interaction.guild
-        ):
-            # if this interaction was not used in the main channel, post the update message in the main channel
+        if config.CHANNEL_ID and interaction.guild:
             main_channel = interaction.guild.get_channel(config.CHANNEL_ID)
             if isinstance(main_channel, discord.TextChannel):
                 await main_channel.send(embed=embed)
@@ -521,7 +513,7 @@ class InProgressGameCog(commands.Cog):
                             await economy_cog.cancel_predictions(game.id)
                         else:
                             _log.warning("Could not get EconomyCommands cog")
-                    except ValueError as ve:
+                    except ValueError:
                         # Raised if there are no predictions on this game
                         await main_channel.send(
                             embed=discord.Embed(
@@ -529,10 +521,11 @@ class InProgressGameCog(commands.Cog):
                                 colour=discord.Colour.blue(),
                             )
                         )
-                    except Exception as e:
+                    except Exception:
+                        _log.exception("Predictions failed to refund")
                         await main_channel.send(
                             embed=discord.Embed(
-                                description=f"Predictions failed to refund: {e}",
+                                description=f"Predictions failed to refund",
                                 colour=discord.Colour.red(),
                             )
                         )
@@ -557,7 +550,6 @@ class InProgressGameCog(commands.Cog):
                     await guild_channel.delete()
             session.delete(ipg_channel)
         session.query(InProgressGame).filter(InProgressGame.id == game.id).delete()
-        session.commit()
         return True
 
 
@@ -756,6 +748,7 @@ class InProgressGameView(discord.ui.View):
             if self.is_game_finished:
                 # no need to disable the buttons, since the channel will be deleted immediately
                 self.stop()
+            session.commit()
 
     async def disable_buttons(self, interaction: discord.Interaction):
         for child in self.children:
