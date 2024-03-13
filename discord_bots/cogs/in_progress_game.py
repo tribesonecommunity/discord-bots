@@ -51,7 +51,7 @@ class InProgressGameCog(commands.Cog):
 
     async def cog_load(self) -> None:
         session: sqlalchemy.orm.Session
-        with Session.begin() as session:  # type: ignore
+        with Session() as session:
             in_progress_games: list[InProgressGame] = session.query(
                 InProgressGame
             ).all()
@@ -119,23 +119,22 @@ class InProgressGameCog(commands.Cog):
         outcome: Literal["win", "loss", "tie"],
     ):
         await interaction.response.defer(ephemeral=False)
-        session = Session()
-        result = self.get_player_and_in_progress_game(session, interaction.user.id)
-        if result is None:
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description="You are not in this game!",
-                    color=discord.Colour.red(),
-                ),
-                ephemeral=True,
+        with Session() as session:
+            result = self.get_player_and_in_progress_game(session, interaction.user.id)
+            if result is None:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        description="You are not in this game!",
+                        color=discord.Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            game_player, in_progress_game = result[0], result[1]
+            await self.finish_in_progress_game(
+                session, interaction, outcome, game_player, in_progress_game
             )
-            return
-        game_player, in_progress_game = result[0], result[1]
-        await self.finish_in_progress_game(
-            session, interaction, outcome, game_player, in_progress_game
-        )
-        session.commit()
-        session.close()
+            session.commit()
 
     @discord.app_commands.command(
         name="cancelgame", description="Cancels the specified game"
@@ -159,8 +158,8 @@ class InProgressGameCog(commands.Cog):
                     ephemeral=True,
                 )
                 return
-            confirmation_buttons = ConfirmationView()
-            await interaction.response.send_message(
+            confirmation_buttons = ConfirmationView(interaction.user.id)
+            confirmation_buttons.message = await interaction.response.send_message(
                 embed=discord.Embed(
                     description=f"Are you sure you want to **Cancel** game **{short_uuid(game.id)}**?",
                     color=discord.Colour.orange(),
@@ -602,8 +601,8 @@ class InProgressGameView(discord.ui.View):
 
             game_player: InProgressGamePlayer = result[0]
             in_progress_game: InProgressGame = result[1]
-            confirmation_buttons = ConfirmationView()
-            await interaction.response.send_message(
+            confirmation_buttons = ConfirmationView(interaction.user.id)
+            confirmation_buttons.message = await interaction.response.send_message(
                 embed=discord.Embed(
                     description=f"Are you sure you want to finish game **{short_uuid(self.game_id)}** as a **Win**?",
                     color=discord.Colour.orange(),
@@ -647,8 +646,8 @@ class InProgressGameView(discord.ui.View):
 
             game_player: InProgressGamePlayer = result[0]
             in_progress_game: InProgressGame = result[1]
-            confirmation_buttons = ConfirmationView()
-            await interaction.response.send_message(
+            confirmation_buttons = ConfirmationView(interaction.user.id)
+            confirmation_buttons.message = await interaction.response.send_message(
                 embed=discord.Embed(
                     description=f"Are you sure you want to finish game **{short_uuid(self.game_id)}** as a **Loss**?",
                     color=discord.Colour.orange(),
@@ -692,8 +691,8 @@ class InProgressGameView(discord.ui.View):
 
             game_player: InProgressGamePlayer = result[0]
             in_progress_game: InProgressGame = result[1]
-            confirmation_buttons = ConfirmationView()
-            await interaction.response.send_message(
+            confirmation_buttons = ConfirmationView(interaction.user.id)
+            confirmation_buttons.message = await interaction.response.send_message(
                 embed=discord.Embed(
                     description=f"Are you sure you want to finish game **{short_uuid(self.game_id)}** as a **Tie**?",
                     color=discord.Colour.orange(),
@@ -738,8 +737,8 @@ class InProgressGameView(discord.ui.View):
                 )
                 return
 
-            confirmation_buttons = ConfirmationView()
-            await interaction.response.send_message(
+            confirmation_buttons = ConfirmationView(interaction.user.id)
+            confirmation_buttons.message = await interaction.response.send_message(
                 embed=discord.Embed(
                     description=f"Are you sure you want to **Cancel** game **{short_uuid(self.game_id)}**?",
                     color=discord.Colour.orange(),

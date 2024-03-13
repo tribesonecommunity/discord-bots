@@ -149,7 +149,7 @@ async def queue_waitlist_task():
     TODO: Tests for this method
     """
     session: sqlalchemy.orm.Session
-    with Session.begin() as session:  # type: ignore
+    with Session() as session:
         queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc())  # type: ignore
         queue_waitlist: QueueWaitlist
         channel = None
@@ -219,6 +219,7 @@ async def queue_waitlist_task():
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
             ).delete()
             session.delete(queue_waitlist)
+        session.commit()
 
 
 @tasks.loop(seconds=1)

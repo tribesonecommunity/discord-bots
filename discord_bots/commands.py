@@ -2167,7 +2167,7 @@ async def gamehistory(interaction: Interaction, count: int):
 
     await interaction.response.defer(ephemeral=True, thinking=True)
     session: SQLAlchemySession
-    with Session.begin() as session:  # type: ignore
+    with Session() as session:
         finished_games: list[FinishedGame]
         finished_games = (
             session.query(FinishedGame)
@@ -2188,7 +2188,6 @@ async def gamehistory(interaction: Interaction, count: int):
                 ephemeral=True,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
-            session.close()
             return
 
         embeds = []
