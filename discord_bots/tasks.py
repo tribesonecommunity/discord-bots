@@ -149,7 +149,7 @@ async def queue_waitlist_task():
     TODO: Tests for this method
     """
     session: sqlalchemy.orm.Session
-    with Session.begin() as session:  # type: ignore
+    with Session() as session:
         queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc())  # type: ignore
         queue_waitlist: QueueWaitlist
         channel = None
@@ -203,18 +203,23 @@ async def queue_waitlist_task():
                         )
             # cleanup any InProgressGameChannels that are hanging around
             for igp_channel in session.query(InProgressGameChannel).filter(
-                InProgressGameChannel.in_progress_game_id == None
+                InProgressGameChannel.in_progress_game_id
+                == queue_waitlist.in_progress_game_id
             ):
                 if guild:
                     guild_channel = guild.get_channel(igp_channel.channel_id)
                     if guild_channel:
                         await guild_channel.delete()
                 session.delete(igp_channel)
+            session.query(InProgressGame).filter(
+                InProgressGame.id == queue_waitlist.in_progress_game_id
+            ).delete()
 
             session.query(QueueWaitlistPlayer).filter(
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
             ).delete()
             session.delete(queue_waitlist)
+        session.commit()
 
 
 @tasks.loop(seconds=1)

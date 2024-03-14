@@ -58,16 +58,6 @@ https://docs.sqlalchemy.org/en/14/orm/mapping_styles.html#example-two-dataclasse
 """
 
 
-@event.listens_for(Engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    """
-    sqlite does not enable foreign key constraints by default, so we have to enable it ourselves:
-    https://docs.sqlalchemy.org/en/14/dialects/sqlite.html#foreign-key-support
-    """
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
-
 @mapper_registry.mapped
 @dataclass
 class AdminRole:
@@ -342,7 +332,7 @@ class EconomyTransaction:
         metadata={
             "sa": Column(
                 String,
-                ForeignKey("in_progress_game.id", ondelete="SET NULL"),
+                ForeignKey("in_progress_game.id"),
                 nullable=True,
                 index=True,
             )
@@ -587,7 +577,7 @@ class InProgressGameChannel:
         metadata={
             "sa": Column(
                 String,
-                ForeignKey("in_progress_game.id", ondelete="SET NULL"),
+                ForeignKey("in_progress_game.id"),
                 nullable=True,
                 index=True,
             )
@@ -1053,6 +1043,8 @@ class QueueWaitlist:
     """
     A waitlist to buffer players after they finish game. Players are randomly
     added from this waitlist into queues.
+
+    :in_progress_game_id: Needed to close channels after processing waitlist
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -1067,6 +1059,13 @@ class QueueWaitlist:
         },
     )
     guild_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
+    in_progress_game_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("in_progress_game.id"), nullable=False, unique=True
+            )
+        },
+    )
     queue_id: str = field(
         metadata={"sa": Column(String, ForeignKey("queue.id"), nullable=False)},
     )

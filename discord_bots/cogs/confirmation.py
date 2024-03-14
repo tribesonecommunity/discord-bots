@@ -10,24 +10,37 @@ class ConfirmationView(discord.ui.View):
     You must wait for the view to finish.
     """
 
-    def __init__(self):
+    def __init__(self, author_id):
         super().__init__()
         self.value = None
+        self.message: Optional[discord.Message] = None
+        self.author_id: int = author_id
 
-    @discord.ui.button(label="Yes", style=discord.ButtonStyle.secondary, emoji="✅")
-    async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def on_timeout(self) -> None:
+        if self.message:
+            await self.message.delete()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user and interaction.user.id == self.author_id:
+            return True
+        else:
+            await interaction.response.send_message(
+                "This confirmation dialog is not for you.", ephemeral=True
+            )
+            return False
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.secondary, emoji="✅")
+    async def confirm(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         self.value = True
-        for child in self.children:
-            if type(child) == discord.ui.Button and not child.disabled:
-                child.disabled = True
-        await interaction.response.edit_message(view=self)
+        await interaction.response.defer()
+        await interaction.delete_original_response()
         self.stop()
 
-    @discord.ui.button(label="No", style=discord.ButtonStyle.secondary, emoji="❌")
-    async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, emoji="❌")
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.value = False
-        for child in self.children:
-            if type(child) == discord.ui.Button and not child.disabled:
-                child.disabled = True
-        await interaction.response.edit_message(view=self)
+        await interaction.response.defer()
+        await interaction.delete_original_response()
         self.stop()
