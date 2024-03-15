@@ -137,13 +137,9 @@ def create_finished_game_embed(
     user_name: Optional[str] = None,
 ) -> Embed:
     # assumes that the FinishedGamePlayers have already been comitted
-    aware_db_datetime: datetime = finished_game.finished_at.replace(
-        tzinfo=timezone.utc
-    )  # timezones aren't stored in the DB, so add it ourselves
     embed = Embed(
         title=f":white_check_mark: Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)})",
         color=Colour.blue(),
-        timestamp=aware_db_datetime,
     )
     if user_name is not None:
         embed.set_footer(text=f"Finished by {user_name}")
@@ -219,7 +215,6 @@ def create_cancelled_game_embed(
     embed = Embed(
         title=f"❌ Game {queue_name} ({short_uuid(in_progress_game.id)})",
         color=Colour.red(),
-        timestamp=discord.utils.utcnow(),
     )
     if user_name is not None:
         embed.set_footer(text=f"Cancelled by {user_name}")

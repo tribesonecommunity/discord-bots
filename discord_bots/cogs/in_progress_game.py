@@ -455,7 +455,6 @@ class InProgressGameCog(commands.Cog):
             title=f"✅ Game '{queue_name}' ({short_uuid(finished_game.game_id)}) finished",
             description=embed_description,
             colour=discord.Colour.green(),
-            timestamp=discord.utils.utcnow(),
         )
         embed.set_footer(text=f"Finished by {interaction.user.name}")
         if interaction.channel:
@@ -496,7 +495,6 @@ class InProgressGameCog(commands.Cog):
             title=f"❌ Game {queue_name} ({short_uuid(game.id)}) cancelled",
             description=embed_description,
             colour=discord.Colour.red(),
-            timestamp=discord.utils.utcnow(),
         )
         embed.set_footer(text=f"Cancelled by {interaction.user.name}")
 
