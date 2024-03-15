@@ -493,7 +493,7 @@ class InProgressGameCog(commands.Cog):
         if game_history_message is not None:
             embed_description = game_history_message.jump_url
         embed = discord.Embed(
-            title=f"❌ Game {queue_name}g({short_uuid(game.id)}) cancelled",
+            title=f"❌ Game {queue_name} ({short_uuid(game.id)}) cancelled",
             description=embed_description,
             colour=discord.Colour.red(),
             timestamp=discord.utils.utcnow(),
