@@ -138,7 +138,7 @@ def create_finished_game_embed(
 ) -> Embed:
     # assumes that the FinishedGamePlayers have already been comitted
     embed = Embed(
-        title=f":white_check_mark: Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)})",
+        title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)})",
         color=Colour.blue(),
     )
     if user_name is not None:
