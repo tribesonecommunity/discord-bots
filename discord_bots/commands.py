@@ -56,6 +56,7 @@ from discord_bots.utils import (
     send_message,
     short_uuid,
     update_next_map_to_map_after_next,
+    upload_stats_screenshot_imgkit_channel,
     win_probability,
 )
 
@@ -1849,10 +1850,10 @@ async def enablestats(ctx: Context):
 #     await upload_stats_screenshot_selenium(ctx, False)
 
 
-# @bot.command()
-# @commands.check(is_admin)
-# async def imagetest2(ctx: Context):
-#     await upload_stats_screenshot_imgkit(ctx, False)
+@bot.command()
+@commands.check(is_admin)
+async def imagetest2(ctx: Context):
+    await upload_stats_screenshot_imgkit_channel(ctx.channel, False)
 
 
 @bot.command()
