@@ -31,6 +31,7 @@ from discord_bots.config import (
     CURRENCY_AWARD,
     CURRENCY_NAME,
     ECONOMY_ENABLED,
+    GAME_HISTORY_CHANNEL,
     PREDICTION_TIMEOUT,
 )
 from discord_bots.models import (
@@ -544,11 +545,12 @@ class EconomyCommands(BaseCog):
                 session.query(InProgressGame)
                 .filter(InProgressGame.id == game_player.in_progress_game_id)
                 .first()
-            )
-            game_id = in_progress_game.id
+            ) 
             if not in_progress_game:
                 session.close()
                 return
+            else:
+                game_id = in_progress_game.id
 
         # Embed created with player award at index 0
         embed: Embed = await EconomyCommands.award_currency(
@@ -758,6 +760,12 @@ class EconomyCommands(BaseCog):
             )
             if channel:
                 await channel.send(embed=embed)
+        if GAME_HISTORY_CHANNEL and GAME_HISTORY_CHANNEL != interaction.channel_id:
+            history_channel: TextChannel | None = get(
+                interaction.guild.text_channels, id=GAME_HISTORY_CHANNEL
+            )
+            if history_channel:
+                await history_channel.send(embed=embed)
         session.close()
 
     @app_commands.command(
@@ -998,7 +1006,7 @@ class EconomyPredictionModal(Modal):
         self.game: InProgressGame = in_progress_game
         self.team_name: str = team_name
         self.team_value: int = team_value
-        self.input: TextChannel = TextInput(
+        self.input: TextInput = TextInput(
             label="Prediction Value",
             style=TextStyle.short,
             required=True,
@@ -1012,6 +1020,12 @@ class EconomyPredictionModal(Modal):
         except Exception as e:
             await interaction.response.send_message(
                 "Prediction value must be an integer", ephemeral=True
+            )
+            return
+
+        if self.value < 0:
+            await interaction.response.send_message(
+                "Prediction value must be greater than 0", ephemeral=True
             )
             return
 
