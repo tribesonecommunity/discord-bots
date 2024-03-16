@@ -1023,7 +1023,7 @@ class EconomyPredictionModal(Modal):
             )
             return
 
-        if self.value < 0:
+        if self.value <= 0:
             await interaction.response.send_message(
                 "Prediction value must be greater than 0", ephemeral=True
             )
