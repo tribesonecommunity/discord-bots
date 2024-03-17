@@ -473,8 +473,8 @@ async def send_in_guild_message(
         if member:
             try:
                 await member.send(content=message_content, embed=embed)
-            except Exception as e:
-                print(f"Caught exception sending message: {e}")
+            except Exception:
+                _log.exception("[send_in_guild_message] exception:")
 
 
 async def send_message(
@@ -505,8 +505,8 @@ async def send_message(
         embed.colour = colour
     try:
         await channel.send(content=content, embed=embed)
-    except Exception as e:
-        print("[send_message] exception:", e)
+    except Exception:
+        _log.exception("[send_message] exception:")
 
 
 async def print_leaderboard(channel=None):
