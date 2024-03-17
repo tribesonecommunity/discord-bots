@@ -405,7 +405,7 @@ class InProgressGameCog(commands.Cog):
         in_progress_game.is_finished = True
         session.add(
             QueueWaitlist(
-                channel_id=interaction.channel_id,  # not sure about this column and what it's used for
+                channel_id=config.CHANNEL_ID,  # not sure about this column and what it's used for
                 finished_game_id=finished_game.id,
                 in_progress_game_id=in_progress_game.id,
                 guild_id=interaction.guild_id,
