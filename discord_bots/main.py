@@ -244,7 +244,6 @@ async def setup():
 
 
 async def main():
-    discord.utils.setup_logging(level=config.LOG_LEVEL)  # setup basic logging
     await create_seed_admins()
     await setup()
     await bot.start(config.API_KEY)

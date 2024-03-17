@@ -1,6 +1,7 @@
 import logging
 import os
 
+import discord
 from dotenv import load_dotenv
 
 _log = logging.getLogger(__name__)
@@ -15,7 +16,7 @@ def _to_str(key: str, required: bool = False, default: str | None = None) -> str
     elif required and not value:
         global CONFIG_IS_VALID
         CONFIG_IS_VALID = False
-        logging.warning(f"{key} must be specified correctly, was '{value}'")
+        _log.error(f"{key} must be specified correctly, was '{value}'")
         return None
     else:
         return value
@@ -29,7 +30,7 @@ def _to_int(key: str, required: bool = False, default: int | None = None) -> int
         if required and default is None:
             global CONFIG_IS_VALID
             CONFIG_IS_VALID = False
-            print(f"{key} must be specified correctly, was '{value}'")
+            _log.error(f"{key} must be specified correctly, was '{value}'")
         return default
 
 
@@ -43,7 +44,7 @@ def _to_float(
         if required and default is None:
             global CONFIG_IS_VALID
             CONFIG_IS_VALID = False
-            print(f"{key} must be specified correctly, was '{value}'")
+            _log.error(f"{key} must be specified correctly, was '{value}'")
         return default
 
 
@@ -59,7 +60,7 @@ def _to_bool(
         if required and default is None:
             global CONFIG_IS_VALID
             CONFIG_IS_VALID = False
-            print(f"{key} must be specified correctly, was '{value}'")
+            _log.error(f"{key} must be specified correctly, was '{value}'")
         return default
 
 
@@ -74,6 +75,8 @@ def _convert_to_int(value: str) -> int | None:
 
 # Use "sqlite:///tribes.db" for sqlite
 # Use "postgresql://postgres:password@localhost:5432/postgres" for postgres
+LOG_LEVEL: str = _to_str(key="LOG_LEVEL", default="INFO")
+discord.utils.setup_logging(level=LOG_LEVEL)  # setup basic logging
 DATABASE_URI: str = _to_str(key="DATABASE_URI", required=False)
 DB_NAME = "tribes"
 API_KEY: str = _to_str(key="DISCORD_API_KEY", required=True)
@@ -118,7 +121,6 @@ MAP_VOTE_THRESHOLD: int = _to_int(key="MAP_VOTE_THRESHOLD", default=7)
 STATS_DIR: str | None = _to_str(key="STATS_DIR")
 STATS_WIDTH = _to_int(key="STATS_WIDTH")
 STATS_HEIGHT = _to_int(key="STATS_HEIGHT")
-LOG_LEVEL: str = _to_str(key="LOG_LEVEL", default="INFO")
 ECONOMY_ENABLED: bool = _to_bool(key="ECONOMY_ENABLED", default=False)
 CURRENCY_NAME: str = _to_str(key="CURRENCY_NAME", default="Shazbucks")
 STARTING_CURRENCY: int = _to_int(key="STARTING_CURRENCY", default=100)
