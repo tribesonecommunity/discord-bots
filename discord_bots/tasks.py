@@ -324,15 +324,13 @@ async def map_rotation_task():
     session.close()
 
 
-@tasks.loop(seconds=1)
-async def add_player_task():
+async def add_players(session: sqlalchemy.orm.Session):
     """
     Handle adding players in a task that pulls messages off of a queue.
 
     This helps with concurrency issues since players can be added from multiple
     sources (waitlist vs normal add command)
     """
-    session = Session()
     queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc()).all()
     queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
     message: AddPlayerQueueMessage | None = None
@@ -356,7 +354,6 @@ async def add_player_task():
         if not queue_popped and message.should_print_status:
             queue_statuses = []
             queue: Queue
-            session = Session()
             for queue in queues:
                 queue_players = (
                     Session()
@@ -385,11 +382,9 @@ async def add_player_task():
             )
             content += "".join(queue_statuses)
             await message.channel.send(code_block(content))
-            session.close()
 
     # No messages processed, so no way that sweaty queues popped
     if not message:
-        session.close()
         return
 
     # Handle sweaty queues
@@ -432,8 +427,13 @@ async def add_player_task():
                 channel=message.channel,
                 guild=message.guild,
             )
-    session.close()
 
+
+@tasks.loop(seconds=1)
+async def add_player_task():
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        await add_players(session)
 
 @tasks.loop(seconds=1800)
 async def leaderboard_task():
