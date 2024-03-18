@@ -485,6 +485,7 @@ async def send_message(
     embed_content: bool = True,
     embed_title: str | None = None,
     embed_thumbnail: str | None = None,
+    delete_after: int | None = None,
 ):
     """
     :colour: red = fail, green = success, blue = informational
@@ -504,9 +505,9 @@ async def send_message(
     if colour:
         embed.colour = colour
     try:
-        await channel.send(content=content, embed=embed)
+        await channel.send(content=content, embed=embed, delete_after=delete_after)
     except Exception:
-        _log.exception("[send_message] exception:")
+        _log.exception("[send_message] Ignoring exception:")
 
 
 async def print_leaderboard(channel=None):
