@@ -1,12 +1,13 @@
 from typing import Protocol
 
+import sqlalchemy
 from discord import Colour, Embed, Interaction, Member, Message
 from discord.ext.commands.context import Context
 
 from discord_bots.utils import send_message
 
-from .models import AdminRole, Player, Session
 from .config import ECONOMY_ENABLED
+from .models import AdminRole, Player, Session
 
 
 async def is_admin(ctx: Context):
@@ -51,50 +52,56 @@ async def is_admin(ctx: Context):
         session.close()
         return False
 
-async def is_admin_app_command(interaction: Interaction) -> bool:   
-    session = Session()
-    caller = (
-        session.query(Player)
-        .filter(Player.id == interaction.user.id, Player.is_admin == True)
-        .first()
-    )
-    if caller:
-        session.close()
-        return True
 
-    member: Member = interaction.user
-    if not member:
-        session.close()
-        return False
-
-    admin_roles = session.query(AdminRole).all()
-    admin_role_ids = map(lambda x: x.role_id, admin_roles)
-    member_role_ids = map(lambda x: x.id, member.roles)
-    is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
-    if is_admin:
-        session.close()
-        return True
-    else:
-        await interaction.response.send_message(
-        # send_message(
-            embed=Embed(
-                description="You must be an admin to use that command",
-                colour=Colour.red(),
-            ),
-            ephemeral=True
+async def is_admin_app_command(interaction: Interaction) -> bool:
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        caller = (
+            session.query(Player)
+            .filter(Player.id == interaction.user.id, Player.is_admin == True)
+            .first()
         )
-        session.close()
-        return False
+        if caller:
+            return True
+
+        member: Member = interaction.user
+        if not member:
+            return False
+
+        admin_roles = session.query(AdminRole).all()
+        admin_role_ids = map(lambda x: x.role_id, admin_roles)
+        member_role_ids = map(lambda x: x.id, member.roles)
+        is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
+        if is_admin:
+            return True
+        else:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="You must be an admin to use that command",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                await interaction.followup.send(
+                    embed=Embed(
+                        description="You must be an admin to use that command",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+            return False
 
 
 async def economy_enabled(interaction: Interaction) -> bool:
     """
     Check to wrap functions that require player economy to be enabled
     """
-    
+
     if not interaction:
         return False
-    
+
     if not ECONOMY_ENABLED:
         await interaction.response.send_message(
             "Player economy is disabled",

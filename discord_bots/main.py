@@ -66,6 +66,18 @@ async def on_ready():
 async def on_app_command_error(
     interaction: Interaction, error: AppCommandError
 ) -> None:
+    # TODO: provide more context about the error to the user
+    if interaction.response.is_done():
+        await interaction.followup.send(
+            embed=Embed(description="Oops! Something went wrong ☹️", color=Colour.red())
+        )
+    else:
+        # fallback case that responds to the interaction, since there always needs to be a response
+        await interaction.response.send_message(
+            embed=Embed(description="Oops! Something went wrong ☹️", color=Colour.red()),
+            ephemeral=True,
+        )
+
     if isinstance(error, errors.CheckFailure):
         return
     else:
