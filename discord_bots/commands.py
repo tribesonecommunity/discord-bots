@@ -16,6 +16,7 @@ from typing import List, Union
 
 import discord
 import imgkit
+import sqlalchemy
 from discord import (
     CategoryChannel,
     Colour,
@@ -457,6 +458,7 @@ async def create_game(
             embed=embed, view=InProgressGameView(game.id, in_progress_game_cog)
         )
         game.message_id = message.id
+        game.channel_id = match_channel.id
         session.commit()
     else:
         _log.warning("Could not get InProgressGameCog")
@@ -475,6 +477,7 @@ async def create_game(
             game.prediction_message_id = prediction_message_id
             session.commit()
 
+    await channel.send(embed=embed)
     if config.ENABLE_VOICE_MOVE and queue.move_enabled and be_channel and ds_channel:
         await _movegameplayers(short_game_id, None, guild)
         await send_message(
@@ -2829,135 +2832,185 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 
 @bot.command()
 async def status(ctx: Context, *args):
-    session: SQLAlchemySession = ctx.session
-
-    queue_indices: list[int] = []
-    queue_names: list[str] = []
-    all_rotations: list[Rotation] = []  # TODO: use sets
-    if len(args) == 0:
-        all_rotations = (
-            session.query(Rotation).order_by(Rotation.created_at.asc()).all()
-        )
-    else:
-        # get the rotation associated to the specified queue
-        all_rotations = []
-        for arg in args:
-            # TODO: avoid looping so you only need one query
-            try:
-                queue_index = int(arg)
-                arg_rotation = (
-                    session.query(Rotation)
-                    .join(Queue)
-                    .filter(Queue.ordinal == queue_index)
-                    .first()
-                )
-                if arg_rotation:
-                    queue_indices.append(queue_index)
-                    if arg_rotation not in all_rotations:
-                        all_rotations.append(arg_rotation)
-            except ValueError:
-                arg_rotation = (
-                    session.query(Rotation)
-                    .join(Queue)
-                    .filter(Queue.name.ilike(arg))
-                    .first()
-                )
-                if arg_rotation:
-                    queue_names.append(arg)
-                    if arg_rotation not in all_rotations:
-                        all_rotations.append(arg_rotation)
-            except IndexError:
-                pass
-
-    if not all_rotations:
-        await ctx.channel.send("No Rotations")
-        return
-
-    embeds: list[Embed] = []
-    rotation_queues: list[Queue] | None
-    for rotation in all_rotations:
-        embed = Embed(title=rotation.name, color=Colour.blue())
-        conditions = [Queue.rotation_id == rotation.id]
-        if queue_indices:
-            conditions.append(Queue.ordinal.in_(queue_indices))
-        if queue_names:
-            conditions.append(Queue.name.in_(queue_names))
-        rotation_queues = (
-            session.query(Queue).filter(*conditions).order_by(Queue.ordinal.asc()).all()
-        )
-        if not rotation_queues:
-            continue
-
-        games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
-        for game in session.query(InProgressGame).filter(
-            InProgressGame.is_finished == False
-        ):
-            if game.queue_id:
-                games_by_queue[game.queue_id].append(game)
-
-        next_rotation_map: RotationMap | None = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation.id)
-            .filter(RotationMap.is_next == True)
-            .first()
-        )
-        if not next_rotation_map:
-            continue
-        next_map: Map | None = (
-            session.query(Map)
-            .join(RotationMap, RotationMap.map_id == Map.id)
-            .filter(next_rotation_map.map_id == Map.id)
-            .first()
-        )
-        next_map_str = f"Next map: {next_map.full_name} ({next_map.short_name})"
-        if config.ENABLE_RAFFLE:
-            has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
-            raffle_reward = (
-                next_rotation_map.raffle_ticket_reward
-                if has_raffle_reward
-                else config.DEFAULT_RAFFLE_VALUE
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        queue_indices: list[int] = []
+        queue_names: list[str] = []
+        all_rotations: list[Rotation] = []  # TODO: use sets
+        if len(args) == 0:
+            all_rotations = (
+                session.query(Rotation).order_by(Rotation.created_at.asc()).all()
             )
-            next_map_str += f" ({raffle_reward} tickets)"
-        embed.description = (
-            f"📍**Next Map**: {next_map.full_name} ({next_map.short_name})"
-        )
+        else:
+            # get the rotation associated to the specified queue
+            all_rotations = []
+            for arg in args:
+                # TODO: avoid looping so you only need one query
+                try:
+                    queue_index = int(arg)
+                    arg_rotation = (
+                        session.query(Rotation)
+                        .join(Queue)
+                        .filter(Queue.ordinal == queue_index)
+                        .first()
+                    )
+                    if arg_rotation:
+                        queue_indices.append(queue_index)
+                        if arg_rotation not in all_rotations:
+                            all_rotations.append(arg_rotation)
+                except ValueError:
+                    arg_rotation = (
+                        session.query(Rotation)
+                        .join(Queue)
+                        .filter(Queue.name.ilike(arg))
+                        .first()
+                    )
+                    if arg_rotation:
+                        queue_names.append(arg)
+                        if arg_rotation not in all_rotations:
+                            all_rotations.append(arg_rotation)
+                except IndexError:
+                    pass
 
-        for queue in rotation_queues:
-            players_in_queue = (
-                session.query(Player)
-                .join(QueuePlayer)
-                .filter(QueuePlayer.queue_id == queue.id)
+        if not all_rotations:
+            await ctx.channel.send("No Rotations")
+            return
+
+        embed = Embed(title="Queues", color=Colour.blue())
+        rotation_queues: list[Queue] | None
+        for rotation in all_rotations:
+            conditions = [Queue.rotation_id == rotation.id]
+            if queue_indices:
+                conditions.append(Queue.ordinal.in_(queue_indices))
+            if queue_names:
+                conditions.append(Queue.name.in_(queue_names))
+            rotation_queues = (
+                session.query(Queue)
+                .filter(*conditions)
+                .order_by(Queue.ordinal.asc())
                 .all()
             )
-            if queue.is_locked:
+            if not rotation_queues:
                 continue
-            else:
-                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]\n"
 
+            games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
+            for game in session.query(InProgressGame).filter(
+                InProgressGame.is_finished == False
+            ):
+                if game.queue_id:
+                    games_by_queue[game.queue_id].append(game)
+
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.is_next == True)
+                .first()
+            )
+            if not next_rotation_map:
+                continue
+            next_map: Map | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(next_rotation_map.map_id == Map.id)
+                .first()
+            )
+            next_map_str = f"{next_map.full_name} ({next_map.short_name})"
+            if config.ENABLE_RAFFLE:
+                has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
+                raffle_reward = (
+                    next_rotation_map.raffle_ticket_reward
+                    if has_raffle_reward
+                    else config.DEFAULT_RAFFLE_VALUE
+                )
+                next_map_str += f" ({raffle_reward} tickets)"
             embed.add_field(
-                name=queue_title_str,
-                value=", ".join([f"<@{player.id}>" for player in players_in_queue]),
-                inline=False,
+                name=f"{rotation.name}: {next_map_str}", value="", inline=False
             )
 
-            if queue.id in games_by_queue:
-                game: InProgressGame
-                ipg_strs = []
-                for game in games_by_queue[queue.id]:
-                    short_game_id = short_uuid(game.id)
-                    aware_db_datetime: datetime = game.created_at.replace(
-                        tzinfo=timezone.utc
-                    )  # timezones aren't stored in the DB, so add it ourselves
-                    timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
-                    ipg_strs.append(f"{short_game_id} {timestamp}")
-                embed.add_field(
-                    name="In Progress Games",
-                    value="\n".join([ipg_str for ipg_str in ipg_strs]),
+            for queue in rotation_queues:
+                players_in_queue: list[Player] = (
+                    session.query(Player)
+                    .join(QueuePlayer)
+                    .filter(QueuePlayer.queue_id == queue.id)
+                    .all()
                 )
-        embeds.append(embed)
-    await ctx.channel.send(
-        embeds=embeds,
-    )
+                if queue.is_locked:
+                    continue
+                else:
+                    queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]\n"
+
+                player_mentions = ", ".join(
+                    [f"<@{player.id}>" for player in players_in_queue]
+                )
+                embed.add_field(
+                    name=queue_title_str,
+                    value="" if not player_mentions else f"> {player_mentions}",
+                    inline=False,
+                )
+
+                if queue.id in games_by_queue:
+                    game: InProgressGame
+                    ipg_strs = []
+                    for game in games_by_queue[queue.id]:
+                        short_game_id = short_uuid(game.id)
+                        aware_db_datetime: datetime = game.created_at.replace(
+                            tzinfo=timezone.utc
+                        )  # timezones aren't stored in the DB, so add it ourselves
+                        timestamp = discord.utils.format_dt(
+                            aware_db_datetime, style="R"
+                        )
+                        team0_players: list[Player] = (
+                            session.query(Player)
+                            .join(InProgressGamePlayer)
+                            .filter(
+                                InProgressGamePlayer.in_progress_game_id == game.id,
+                                InProgressGamePlayer.team == 0,
+                            )
+                            .all()
+                        )
+                        team1_players = list[Player](
+                            session.query(Player)
+                            .join(InProgressGamePlayer)
+                            .filter(
+                                InProgressGamePlayer.in_progress_game_id == game.id,
+                                InProgressGamePlayer.team == 1,
+                            )
+                            .all()
+                        )
+                        team0_mentions = f", ".join(
+                            [f"<@{player.id}>" for player in team0_players]
+                        )
+                        team1_mentions = f", ".join(
+                            [f"<@{player.id}>" for player in team1_players]
+                        )
+                        ipg_str = ""
+                        if game.message_id and game.channel_id:
+                            game_channel = bot.get_channel(game.channel_id)
+                            try:
+                                if isinstance(game_channel, TextChannel):
+                                    game_message = await game_channel.fetch_message(
+                                        game.message_id
+                                    )
+                                    if game_message:
+                                        ipg_str += (
+                                            f"{game_message.jump_url} {timestamp}"
+                                        )
+                            except Exception as e:
+                                _log.warning(
+                                    f"Could not find game message {game.message_id} due to: {e}"
+                                )
+                        else:
+                            ipg_str += f"{short_game_id} {timestamp}"
+                        ipg_str += f"\n{game.team0_name}\n> {team0_mentions}"
+                        ipg_str += f"\n{game.team1_name}\n> {team1_mentions}"
+                        ipg_strs.append(ipg_str)
+                    embed.add_field(
+                        name="In Progress Games",
+                        value="\n".join([ipg_str for ipg_str in ipg_strs]),
+                    )
+        await ctx.channel.send(
+            embed=embed,
+        )
 
 
 def win_rate(wins, losses, ties):
