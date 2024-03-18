@@ -138,8 +138,8 @@ def create_finished_game_embed(
 ) -> Embed:
     # assumes that the FinishedGamePlayers have already been comitted
     embed = Embed(
-        title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)})",
-        color=Colour.blue(),
+        title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)}) Result",
+        color=Colour.green(),
     )
     if user_name is not None:
         embed.set_footer(text=f"Finished by {user_name}")
@@ -213,7 +213,7 @@ def create_cancelled_game_embed(
     )
     queue_name = f"'{queue.name}'" if queue is not None else ""
     embed = Embed(
-        title=f"❌ Game {queue_name} ({short_uuid(in_progress_game.id)})",
+        title=f"❌ Game {queue_name} ({short_uuid(in_progress_game.id)}) Cancelled",
         color=Colour.red(),
     )
     if user_name is not None:
