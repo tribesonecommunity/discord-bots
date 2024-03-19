@@ -1102,7 +1102,7 @@ async def add(ctx: Context, *args):
                     session.rollback()
 
         queue_names = [queue.name for queue in queues_to_add]
-        embed_description = f"<@{message.author.id}> your game has just finished, you will be randomized into **{','.join(queue_names)}** {timer}"
+        embed_description = f"<@{message.author.id}> your game has just finished, you will be randomized into **{', '.join(queue_names)}** {timer}"
         await send_message(
             message.channel,
             # TODO: Populate this message with the queues the player was

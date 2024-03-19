@@ -366,7 +366,14 @@ async def add_players(session: sqlalchemy.orm.Session):
                     .all()
                 )
                 queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(queue_players)}/{queue.size}]"
-                embed.add_field(name=queue_title_str, value="", inline=False)
+                player_mentions = ", ".join(
+                    [f"<@{qp.player_id}>" for qp in queue_players]
+                )
+                embed.add_field(
+                    name=queue_title_str,
+                    value="" if not player_mentions else f"> {player_mentions}",
+                    inline=False,
+                )
 
                 in_progress_games: list[InProgressGame] = (
                     session.query(InProgressGame)
