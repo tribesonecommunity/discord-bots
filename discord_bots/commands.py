@@ -1659,6 +1659,59 @@ async def del_(ctx: Context, *args):
             value="" if not player_mentions else f"> {player_mentions}",
             inline=False,
         )
+        in_progress_games: list[InProgressGame] = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.queue_id == queue.id)
+            .all()
+        )
+        ipg_strs = []
+        for game in in_progress_games:
+            aware_db_datetime: datetime = game.created_at.replace(
+                tzinfo=timezone.utc
+            )  # timezones aren't stored in the DB, so add it ourselves
+            timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+            team0_players: list[Player] = (
+                session.query(Player)
+                .join(InProgressGamePlayer)
+                .filter(
+                    InProgressGamePlayer.in_progress_game_id == game.id,
+                    InProgressGamePlayer.team == 0,
+                )
+                .all()
+            )
+            team1_players = list[Player](
+                session.query(Player)
+                .join(InProgressGamePlayer)
+                .filter(
+                    InProgressGamePlayer.in_progress_game_id == game.id,
+                    InProgressGamePlayer.team == 1,
+                )
+                .all()
+            )
+            team0_mentions = f", ".join([f"<@{player.id}>" for player in team0_players])
+            team1_mentions = f", ".join([f"<@{player.id}>" for player in team1_players])
+            ipg_str = ""
+            if game.message_id and game.channel_id:
+                game_channel = bot.get_channel(game.channel_id)
+                try:
+                    if isinstance(game_channel, TextChannel):
+                        game_message = await game_channel.fetch_message(game.message_id)
+                        if game_message:
+                            ipg_str += f"{game_message.jump_url} {timestamp}"
+                except Exception as e:
+                    _log.warning(
+                        f"Could not find game message {game.message_id} due to: {e}"
+                    )
+            else:
+                ipg_str += f"{short_uuid(game.id)} {timestamp}"
+            ipg_str += f"\n{game.team0_name} ({round(100 * game.win_probability)}%)\n> {team0_mentions}"
+            ipg_str += f"\n{game.team1_name} ({round(100 * (1 - game.win_probability))}%)\n> {team1_mentions}"
+            ipg_strs.append(ipg_str)
+        if in_progress_games:
+            embed.add_field(
+                name="In Progress Games",
+                value="\n".join([ipg_str for ipg_str in ipg_strs]),
+            )
 
     # TODO: Check deleting by name / ordinal
     # session.query(QueueWaitlistPlayer).filter(

@@ -32,6 +32,7 @@ from .commands import add_player_to_queue, create_game, is_in_game
 from .models import (
     InProgressGame,
     InProgressGameChannel,
+    InProgressGamePlayer,
     MapVote,
     Player,
     PlayerCategoryTrueskill,
@@ -386,6 +387,30 @@ async def add_players(session: sqlalchemy.orm.Session):
                         tzinfo=timezone.utc
                     )  # timezones aren't stored in the DB, so add it ourselves
                     timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+                    team0_players: list[Player] = (
+                        session.query(Player)
+                        .join(InProgressGamePlayer)
+                        .filter(
+                            InProgressGamePlayer.in_progress_game_id == game.id,
+                            InProgressGamePlayer.team == 0,
+                        )
+                        .all()
+                    )
+                    team1_players = list[Player](
+                        session.query(Player)
+                        .join(InProgressGamePlayer)
+                        .filter(
+                            InProgressGamePlayer.in_progress_game_id == game.id,
+                            InProgressGamePlayer.team == 1,
+                        )
+                        .all()
+                    )
+                    team0_mentions = f", ".join(
+                        [f"<@{player.id}>" for player in team0_players]
+                    )
+                    team1_mentions = f", ".join(
+                        [f"<@{player.id}>" for player in team1_players]
+                    )
                     ipg_str = ""
                     if game.message_id and game.channel_id:
                         game_channel = bot.get_channel(game.channel_id)
@@ -402,6 +427,8 @@ async def add_players(session: sqlalchemy.orm.Session):
                             )
                     else:
                         ipg_str += f"{short_uuid(game.id)} {timestamp}"
+                    ipg_str += f"\n{game.team0_name} ({round(100 * game.win_probability)}%)\n> {team0_mentions}"
+                    ipg_str += f"\n{game.team1_name} ({round(100 * (1 - game.win_probability))}%)\n> {team1_mentions}"
                     ipg_strs.append(ipg_str)
                 if in_progress_games:
                     embed.add_field(
