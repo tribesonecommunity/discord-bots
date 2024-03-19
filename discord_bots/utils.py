@@ -528,14 +528,9 @@ async def print_leaderboard(interaction: Optional[Interaction] = None):
                 player: Player = (
                     session.query(Player).filter(Player.id == pct.player_id).first()
                 )
-                output += f"\n{i}. {round(pct.rank, 1)} - {player.name} _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
-            output += "\n"
+                output += f"\n{i}. {round(pct.rank, 1)} - <@{player.id}> _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
         pass
     
-    output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
-    output += "\n(Leaderboard updates periodically)"
-    output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
-
     if config.ECONOMY_ENABLED:
         output += f"\n\n**{config.CURRENCY_NAME}**"
         top_10_player_currency: list[Player] = (
@@ -544,7 +539,12 @@ async def print_leaderboard(interaction: Optional[Interaction] = None):
             .limit(10)
         )
         for i, player_currency in enumerate(top_10_player_currency, 1):
-            output += f"\n{i}. {player_currency.currency} - {player_currency.name}"
+            output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
+    
+    output += "\n"
+    output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
+    output += "\n(Leaderboard updates periodically)"
+    output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
     
     session.close()
 
