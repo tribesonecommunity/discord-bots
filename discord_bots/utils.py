@@ -510,7 +510,7 @@ async def send_message(
         print("[send_message] exception:", e)
 
 
-async def print_leaderboard(interaction: Optional[Interaction] = None):
+async def print_leaderboard():
     output = "**Leaderboard**"
     session: SQLAlchemySession
     with Session() as session:
