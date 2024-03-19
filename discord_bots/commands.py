@@ -1295,7 +1295,6 @@ async def ban(ctx: Context, member: Member):
             )
 
 
-
 @bot.command()
 async def coinflip(ctx: Context):
     message = ctx.message
@@ -1842,8 +1841,6 @@ async def enablestats(ctx: Context):
     )
 
 
-
-
 # @bot.command()
 # @commands.check(is_admin)
 # async def imagetest(ctx: Context):
@@ -2348,33 +2345,41 @@ async def roll(ctx: Context, low_range: int, high_range: int):
     )
 
 
-@bot.command()
+@bot.tree.command(
+    name="resetleaderboardchannel", description="Resets & updates the leaderboards"
+)
 @commands.check(is_admin)
-async def resetleaderboardchannel(ctx: Context):
+async def resetleaderboardchannel(interaction: Interaction):
     if not config.LEADERBOARD_CHANNEL:
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Leaderboard channel ID not configured",
-            colour=Colour.red(),
+        await interaction.response.send_message(
+            "Leaderboard channel ID not configured", ephemeral=True
         )
         return
-    channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
+    channel: TextChannel = bot.get_channel(config.LEADERBOARD_CHANNEL)
     if not channel:
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Could not find leaderboard channel, check ID",
-            colour=Colour.red(),
+        await interaction.response.send_message(
+            "Could not find leaderboard channel, check ID", ephemeral=True
         )
         return
 
-    await channel.purge()
-    await print_leaderboard(ctx.channel)
-    await send_message(
-        ctx.message.channel,
-        embed_description=f"Leaderboard channel reset",
-        colour=Colour.green(),
-    )
-    return
+    await interaction.response.defer()
+    try:
+        await channel.purge()
+        await print_leaderboard()
+    except:
+        await interaction.followup.send(
+            embed=Embed(
+                description="Leaderboard failed to reset",
+                colour=Colour.red(),
+            )
+        )
+    else:
+        await interaction.followup.send(
+            embed=Embed(
+                description="Leaderboard channel reset",
+                colour=Colour.green(),
+            )
+        )
 
 
 @bot.command()

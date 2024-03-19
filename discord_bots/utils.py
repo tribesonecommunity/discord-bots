@@ -509,9 +509,9 @@ async def send_message(
         print("[send_message] exception:", e)
 
 
-async def print_leaderboard(channel=None):
+async def print_leaderboard(interaction: Optional[Interaction] = None):
     output = "**Leaderboard**"
-    session = Session()
+    session: SQLAlchemySession = Session()
     categories: list[Category] = (
         session.query(Category).filter(Category.is_rated == True).all()
     )
@@ -531,39 +531,32 @@ async def print_leaderboard(channel=None):
                 output += f"\n{i}. {round(pct.rank, 1)} - {player.name} _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
             output += "\n"
         pass
-    else:
-        output = "**Leaderboard**"
-        top_40_players: list[Player] = (
-            session.query(Player)
-            .filter(Player.rated_trueskill_sigma != 5.0)  # Season reset
-            .filter(Player.rated_trueskill_sigma != 12.0)  # New player
-            .filter(Player.leaderboard_enabled == True)
-            # .order_by(Player.leaderboard_trueskill.desc())
-            # .limit(20)
-        )
-        players_adjusted = sorted(
-            [
-                (player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, player)
-                for player in top_40_players
-            ],
-            reverse=True,
-        )[0:50]
-        for i, (_, player) in enumerate(players_adjusted, 1):
-            output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
-    session.close()
+    
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
     output += "\n(Leaderboard updates periodically)"
     output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
 
+    if config.ECONOMY_ENABLED:
+        output += f"\n\n**{config.CURRENCY_NAME}**"
+        top_10_player_currency: list[Player] = (
+            session.query(Player)
+            .order_by(Player.currency.desc())
+            .limit(10)
+        )
+        for i, player_currency in enumerate(top_10_player_currency, 1):
+            output += f"\n{i}. {player_currency.currency} - {player_currency.name}"
+    
+    session.close()
+
     if config.LEADERBOARD_CHANNEL:
-        leaderboard_channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
+        leaderboard_channel: TextChannel = bot.get_channel(config.LEADERBOARD_CHANNEL)
         if leaderboard_channel:
             try:
                 last_message = await leaderboard_channel.fetch_message(
                     leaderboard_channel.last_message_id
                 )
                 if last_message:
-                    await last_message.edit(embed=Embed(description=output))
+                    await last_message.edit(embed=Embed(description=output, colour=Colour.blue()))
                     return
             except Exception as e:
                 print("caught exception fetching channel last message:", e)
@@ -571,11 +564,11 @@ async def print_leaderboard(channel=None):
                 leaderboard_channel, embed_description=output, colour=Colour.blue()
             )
             return
-        else:
-            if channel:
-                await send_message(
-                    channel, embed_description=output, colour=Colour.blue()
-                )
+        # else:
+        #     if channel:
+        #         await send_message(
+        #             channel, embed_description=output, colour=Colour.blue()
+        #         )
 
 
 def code_block(content: str, language: str = "autohotkey") -> str:
