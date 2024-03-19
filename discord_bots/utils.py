@@ -138,7 +138,7 @@ def create_finished_game_embed(
 ) -> Embed:
     # assumes that the FinishedGamePlayers have already been comitted
     embed = Embed(
-        title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)}) Result",
+        title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)}) Results",
         color=Colour.green(),
     )
     if user_name is not None:
@@ -485,7 +485,7 @@ async def send_message(
     embed_content: bool = True,
     embed_title: str | None = None,
     embed_thumbnail: str | None = None,
-    delete_after: int | None = None,
+    delete_after: float | None = None,
 ):
     """
     :colour: red = fail, green = success, blue = informational
