@@ -564,11 +564,6 @@ async def print_leaderboard(interaction: Optional[Interaction] = None):
                 leaderboard_channel, embed_description=output, colour=Colour.blue()
             )
             return
-        # else:
-        #     if channel:
-        #         await send_message(
-        #             channel, embed_description=output, colour=Colour.blue()
-        #         )
 
 
 def code_block(content: str, language: str = "autohotkey") -> str:
