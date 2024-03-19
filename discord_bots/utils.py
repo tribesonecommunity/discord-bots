@@ -17,6 +17,7 @@ from discord import (
     GroupChannel,
     Guild,
     Interaction,
+    Message,
     TextChannel,
 )
 from discord.ext import commands
@@ -511,50 +512,50 @@ async def send_message(
 
 async def print_leaderboard(interaction: Optional[Interaction] = None):
     output = "**Leaderboard**"
-    session: SQLAlchemySession = Session()
-    categories: list[Category] = (
-        session.query(Category).filter(Category.is_rated == True).all()
-    )
-    if len(categories) > 0:
-        for category in categories:
-            output += f"\n_{category.name}_"
-            top_10_pcts: list[PlayerCategoryTrueskill] = (
-                session.query(PlayerCategoryTrueskill)
-                .filter(PlayerCategoryTrueskill.category_id == category.id)
-                .order_by(PlayerCategoryTrueskill.rank.desc())
+    session: SQLAlchemySession
+    with Session() as session:
+        categories: list[Category] = (
+            session.query(Category).filter(Category.is_rated == True).all()
+        )
+        if len(categories) > 0:
+            for category in categories:
+                output += f"\n_{category.name}_"
+                top_10_pcts: list[PlayerCategoryTrueskill] = (
+                    session.query(PlayerCategoryTrueskill)
+                    .filter(PlayerCategoryTrueskill.category_id == category.id)
+                    .order_by(PlayerCategoryTrueskill.rank.desc())
+                    .limit(10)
+                )
+                for i, pct in enumerate(top_10_pcts, 1):
+                    player: Player = (
+                        session.query(Player).filter(Player.id == pct.player_id).first()
+                    )
+                    output += f"\n{i}. {round(pct.rank, 1)} - <@{player.id}> _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
+            pass
+        
+        if config.ECONOMY_ENABLED:
+            output += f"\n\n**{config.CURRENCY_NAME}**"
+            top_10_player_currency: list[Player] = (
+                session.query(Player)
+                .order_by(Player.currency.desc())
                 .limit(10)
             )
-            for i, pct in enumerate(top_10_pcts, 1):
-                player: Player = (
-                    session.query(Player).filter(Player.id == pct.player_id).first()
-                )
-                output += f"\n{i}. {round(pct.rank, 1)} - <@{player.id}> _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
-        pass
-    
-    if config.ECONOMY_ENABLED:
-        output += f"\n\n**{config.CURRENCY_NAME}**"
-        top_10_player_currency: list[Player] = (
-            session.query(Player)
-            .order_by(Player.currency.desc())
-            .limit(10)
-        )
-        for i, player_currency in enumerate(top_10_player_currency, 1):
-            output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
+            for i, player_currency in enumerate(top_10_player_currency, 1):
+                output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
     
     output += "\n"
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
     output += "\n(Leaderboard updates periodically)"
     output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
-    
-    session.close()
 
     if config.LEADERBOARD_CHANNEL:
-        leaderboard_channel: TextChannel = bot.get_channel(config.LEADERBOARD_CHANNEL)
-        if leaderboard_channel:
+        leaderboard_channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
+        if leaderboard_channel and isinstance(leaderboard_channel, TextChannel):
             try:
-                last_message = await leaderboard_channel.fetch_message(
-                    leaderboard_channel.last_message_id
-                )
+                if leaderboard_channel.last_message_id:
+                    last_message: Message = await leaderboard_channel.fetch_message(
+                        leaderboard_channel.last_message_id
+                    )
                 if last_message:
                     await last_message.edit(embed=Embed(description=output, colour=Colour.blue()))
                     return
