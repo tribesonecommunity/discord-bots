@@ -12,6 +12,7 @@ from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
+from turtle import delay
 from typing import List, Union
 
 import discord
@@ -958,7 +959,7 @@ async def add(ctx: Context, *args):
     if is_in_game(message.author.id):
         await send_message(
             message.channel,
-            embed_description=f"{message.author} you are already in a game",
+            embed_description=f"<@{message.author.id}> you are already in a game",
             colour=Colour.red(),
         )
         return
@@ -1017,7 +1018,7 @@ async def add(ctx: Context, *args):
     if len(queues_to_add) == 0:
         await send_message(
             message.channel,
-            content="No valid queues found",
+            embed_description="No valid queues found",
             colour=Colour.red(),
         )
         return
@@ -1045,14 +1046,21 @@ async def add(ctx: Context, *args):
             vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
         ).total_seconds()
         if difference < config.RE_ADD_DELAY:
-            waitlist_message = f"A vote just passed, you will be randomized into the queue in {floor(difference)} seconds"
+            time_to_wait: int = floor(config.RE_ADD_DELAY - difference)
+            timer = discord.utils.format_dt(
+                discord.utils.utcnow() + timedelta(seconds=time_to_wait), style="R"
+            )
+            waitlist_message = (
+                f"A vote just passed, you will be randomized into the queue {timer}"
+            )
             await send_message(
                 message.channel,
                 # TODO: Populate this message with the queues the player was
                 # eligible for
                 content=f"{message.author.display_name} added to:",
                 embed_description=waitlist_message,
-                colour=Colour.green(),
+                colour=Colour.yellow(),
+                delete_after=time_to_wait,
             )
         return
 
@@ -1067,13 +1075,15 @@ async def add(ctx: Context, *args):
         difference: float = (current_time - finish_time).total_seconds()
         if difference < config.RE_ADD_DELAY:
             time_to_wait: int = floor(config.RE_ADD_DELAY - difference)
-            waitlist_message = f"Your game has just finished, you will be randomized into the queue in {time_to_wait} seconds"
+            timer = discord.utils.format_dt(
+                discord.utils.utcnow() + timedelta(seconds=time_to_wait), style="R"
+            )
             is_waitlist = True
 
     if is_waitlist and most_recent_game:
         for queue in queues_to_add:
             # TODO: Check player eligibility here?
-            queue_waitlist = (
+            queue_waitlist: QueueWaitlist | None = (
                 session.query(QueueWaitlist)
                 .filter(QueueWaitlist.finished_game_id == most_recent_game.id)
                 .first()
@@ -1091,13 +1101,15 @@ async def add(ctx: Context, *args):
                 except IntegrityError:
                     session.rollback()
 
+        queue_names = [queue.name for queue in queues_to_add]
+        embed_description = f"<@{message.author.id}> your game has just finished, you will be randomized into **{','.join(queue_names)}** {timer}"
         await send_message(
             message.channel,
             # TODO: Populate this message with the queues the player was
             # eligible for
-            content=f"{escape_markdown(message.author.display_name)} added to:",
-            embed_description=waitlist_message,
-            colour=Colour.green(),
+            embed_description=embed_description,
+            colour=Colour.yellow(),
+            delete_after=time_to_wait,
         )
         return
 
@@ -1586,7 +1598,8 @@ async def del_(ctx: Context, *args):
     If no args deletes from existing queues
     """
     message = ctx.message
-    session = ctx.session
+    session: sqlalchemy.orm.Session = ctx.session
+    embed = discord.Embed(color=discord.Color.green())
     queues_to_del_query = (
         session.query(Queue)
         .join(QueuePlayer)
@@ -1622,7 +1635,6 @@ async def del_(ctx: Context, *args):
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
             ).delete()
 
-    queue_statuses = []
     queue: Queue
     for queue in (
         session.query(Queue)
@@ -1630,21 +1642,38 @@ async def del_(ctx: Context, *args):
         .order_by(Queue.ordinal.asc())
         .all()
     ):  # type: ignore
-        queue_players = (
-            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
+        if queue.is_locked:
+            continue
+        players_in_queue: list[Player] = (
+            session.query(Player)
+            .join(QueuePlayer)
+            .filter(QueuePlayer.queue_id == queue.id)
+            .all()
         )
-        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]\n")
+        queue_title_str = (
+            f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+        )
+        player_mentions = ", ".join([f"<@{player.id}>" for player in players_in_queue])
+        embed.add_field(
+            name=queue_title_str,
+            value="" if not player_mentions else f"> {player_mentions}",
+            inline=False,
+        )
 
     # TODO: Check deleting by name / ordinal
     # session.query(QueueWaitlistPlayer).filter(
     #     QueueWaitlistPlayer.player_id == message.author.id
     # ).delete()
 
+    if queues_to_del:
+        embed_description = f"<@{message.author.id}> removed from **{', '.join([queue.name for queue in queues_to_del])}**"
+        embed.color = discord.Color.green()
+    else:
+        embed_description = f"<@{message.author.id}> no valid queues were specified"
+        embed.color = discord.Color.red()
+    embed.description = embed_description
+    await message.channel.send(embed=embed)
     session.commit()
-
-    content = f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}\n\n"
-    content += "".join(queue_statuses)
-    await message.channel.send(code_block(content))
     session.close()
 
 
@@ -2928,17 +2957,15 @@ async def status(ctx: Context, *args):
             )
 
             for queue in rotation_queues:
+                if queue.is_locked:
+                    continue
                 players_in_queue: list[Player] = (
                     session.query(Player)
                     .join(QueuePlayer)
                     .filter(QueuePlayer.queue_id == queue.id)
                     .all()
                 )
-                if queue.is_locked:
-                    continue
-                else:
-                    queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]\n"
-
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
                 player_mentions = ", ".join(
                     [f"<@{player.id}>" for player in players_in_queue]
                 )
@@ -2947,7 +2974,6 @@ async def status(ctx: Context, *args):
                     value="" if not player_mentions else f"> {player_mentions}",
                     inline=False,
                 )
-
                 if queue.id in games_by_queue:
                     game: InProgressGame
                     ipg_strs = []
@@ -3001,8 +3027,8 @@ async def status(ctx: Context, *args):
                                 )
                         else:
                             ipg_str += f"{short_game_id} {timestamp}"
-                        ipg_str += f"\n{game.team0_name}\n> {team0_mentions}"
-                        ipg_str += f"\n{game.team1_name}\n> {team1_mentions}"
+                        ipg_str += f"\n{game.team0_name} ({round(100 * game.win_probability)}%)\n> {team0_mentions}"
+                        ipg_str += f"\n{game.team1_name} ({round(100 * (1 - game.win_probability))}%)\n> {team1_mentions}"
                         ipg_strs.append(ipg_str)
                     embed.add_field(
                         name="In Progress Games",

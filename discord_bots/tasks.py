@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from random import shuffle
 from re import I
 
+import discord
 import sqlalchemy
 from discord.channel import TextChannel
 from discord.colour import Colour
@@ -21,6 +22,7 @@ from discord_bots.utils import (
     code_block,
     print_leaderboard,
     send_message,
+    short_uuid,
     update_next_map_to_map_after_next,
 )
 
@@ -352,36 +354,64 @@ async def add_players(session: sqlalchemy.orm.Session):
                 queues_added_to.append(queue.name)
 
         if not queue_popped and message.should_print_status:
-            queue_statuses = []
             queue: Queue
+            embed = discord.Embed()
             for queue in queues:
+                if queue.is_locked:
+                    continue
                 queue_players = (
                     Session()
                     .query(QueuePlayer)
                     .filter(QueuePlayer.queue_id == queue.id)
                     .all()
                 )
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(queue_players)}/{queue.size}]"
+                embed.add_field(name=queue_title_str, value="", inline=False)
 
                 in_progress_games: list[InProgressGame] = (
                     session.query(InProgressGame)
                     .filter(InProgressGame.queue_id == queue.id)
                     .all()
                 )
-
-                if len(in_progress_games) > 0:
-                    queue_statuses.append(
-                        f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*\n"
+                ipg_strs = []
+                for game in in_progress_games:
+                    aware_db_datetime: datetime = game.created_at.replace(
+                        tzinfo=timezone.utc
+                    )  # timezones aren't stored in the DB, so add it ourselves
+                    timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+                    ipg_str = ""
+                    if game.message_id and game.channel_id:
+                        game_channel = bot.get_channel(game.channel_id)
+                        try:
+                            if isinstance(game_channel, TextChannel):
+                                game_message = await game_channel.fetch_message(
+                                    game.message_id
+                                )
+                                if game_message:
+                                    ipg_str += f"{game_message.jump_url} {timestamp}"
+                        except Exception as e:
+                            _log.warning(
+                                f"Could not find game message {game.message_id} due to: {e}"
+                            )
+                    else:
+                        ipg_str += f"{short_uuid(game.id)} {timestamp}"
+                    ipg_strs.append(ipg_str)
+                if in_progress_games:
+                    embed.add_field(
+                        name="In Progress Games",
+                        value="\n".join([ipg_str for ipg_str in ipg_strs]),
                     )
-                else:
-                    queue_statuses.append(
-                        f"{queue.name} [{len(queue_players)}/{queue.size}]\n"
-                    )
-
-            content = (
-                f"{message.player_name} added to: {', '.join(queues_added_to)}\n\n"
-            )
-            content += "".join(queue_statuses)
-            await message.channel.send(code_block(content))
+            if queues_added_to:
+                embed.description = (
+                    f"<@{message.player_id}> added to **{', '.join(queues_added_to)}**"
+                )
+                embed.color = discord.Color.green()
+            else:
+                embed.description = (
+                    f"<@{message.player_id}> no valid queues were specified"
+                )
+                embed.color = discord.Color.red()
+            await message.channel.send(embed=embed)
 
     # No messages processed, so no way that sweaty queues popped
     if not message:
