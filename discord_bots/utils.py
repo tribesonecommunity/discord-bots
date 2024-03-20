@@ -33,6 +33,7 @@ import discord_bots.config as config
 from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
+    DiscordMember,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -131,6 +132,99 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
                 os.remove(os.path.join(config.STATS_DIR, file_))
 
 
+async def create_in_progress_game_embed(
+    session: sqlalchemy.orm.Session,
+    game: InProgressGame,
+) -> Embed:
+    queue: Queue | None = session.query(Queue).filter(Queue.id == game.queue_id).first()
+    embed: discord.Embed
+    if queue:
+        embed = Embed(
+            title=f"In Progress Game '{queue.name}' ({short_uuid(game.id)})",
+            color=discord.Color.blue(),
+        )
+    else:
+        embed = Embed(
+            title=f"❓Game ({short_uuid(game.id)}) In Progress",
+            color=discord.Color.blue(),
+        )
+
+    aware_db_datetime: datetime = game.created_at.replace(
+        tzinfo=timezone.utc
+    )  # timezones aren't stored in the DB, so add it ourselves
+    timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+    team0_players: list[Player] = (
+        session.query(Player)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team1_players: list[Player] = (
+        session.query(Player)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    team0_display_names: list[str] = []
+    for player in team0_players:
+        try:
+            user: discord.User = await bot.fetch_user(player.id)
+            team0_display_names.append(user.display_name)
+        except:
+            _log.exception(
+                "[create_in_progress_game_embed] Ignoring exception in fetch_user"
+            )
+    team1_display_names: list[str] = []
+    for player in team1_players:
+        try:
+            user: discord.User = await bot.fetch_user(player.id)
+            team1_display_names.append(user.display_name)
+        except:
+            _log.exception(
+                "[create_in_progress_game_embed] Ignoring exception in fetch_user"
+            )
+
+    embed.add_field(
+        name="🗺️ Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=True
+    )
+    embed.add_field(name="⏳Started", value=f"{timestamp}", inline=True)
+    if config.SHOW_TRUESKILL:
+        embed.add_field(
+            name=f"📊 Average {MU_LOWER_UNICODE}",
+            value=round(game.average_trueskill, 2),
+            inline=True,
+        )
+    if game.message_id and game.channel_id:
+        game_channel = bot.get_channel(game.channel_id)
+        try:
+            if isinstance(game_channel, TextChannel):
+                game_message = await game_channel.fetch_message(game.message_id)
+                if game_message:
+                    embed.add_field(
+                        name="📺 Match Channel", value=f"{game_message.jump_url}"
+                    )
+        except Exception as e:
+            _log.warning(f"Could not find game message {game.message_id} due to: {e}")
+    embed.add_field(name="", value="", inline=False)  # newline
+    embed.add_field(
+        name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
+        value="" if not team0_players else f"\n> {', '.join(team0_display_names)}",
+        inline=True,
+    )
+    embed.add_field(
+        name=f"➡️ {game.team0_name} ({round(100 * (1 - game.win_probability))}%)",
+        value="" if not team1_players else f"\n> {', '.join(team1_display_names)}",
+        inline=True,
+    )
+    return embed
+
+
 def create_finished_game_embed(
     session: sqlalchemy.orm.Session,
     finished_game: FinishedGame,
@@ -208,6 +302,7 @@ def create_cancelled_game_embed(
     in_progress_game: InProgressGame,
     user_name: Optional[str] = None,
 ) -> Embed:
+    # TODO: merge with create_finished_game_embed
     queue: Queue | None = (
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )

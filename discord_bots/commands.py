@@ -51,6 +51,7 @@ from discord_bots.utils import (
     SIGMA_LOWER_UNICODE,
     code_block,
     create_finished_game_embed,
+    create_in_progress_game_embed,
     mean,
     pretty_format_team,
     print_leaderboard,
@@ -2959,6 +2960,7 @@ async def status(ctx: Context, *args):
             return
 
         embed = Embed(title="Queues", color=Colour.blue())
+        ipg_embeds: list[Embed] = []
         rotation_queues: list[Queue] | None
         for rotation in all_rotations:
             conditions = [Queue.rotation_id == rotation.id]
@@ -3029,66 +3031,11 @@ async def status(ctx: Context, *args):
                 )
                 if queue.id in games_by_queue:
                     game: InProgressGame
-                    ipg_strs = []
                     for game in games_by_queue[queue.id]:
-                        short_game_id = short_uuid(game.id)
-                        aware_db_datetime: datetime = game.created_at.replace(
-                            tzinfo=timezone.utc
-                        )  # timezones aren't stored in the DB, so add it ourselves
-                        timestamp = discord.utils.format_dt(
-                            aware_db_datetime, style="R"
-                        )
-                        team0_players: list[Player] = (
-                            session.query(Player)
-                            .join(InProgressGamePlayer)
-                            .filter(
-                                InProgressGamePlayer.in_progress_game_id == game.id,
-                                InProgressGamePlayer.team == 0,
-                            )
-                            .all()
-                        )
-                        team1_players = list[Player](
-                            session.query(Player)
-                            .join(InProgressGamePlayer)
-                            .filter(
-                                InProgressGamePlayer.in_progress_game_id == game.id,
-                                InProgressGamePlayer.team == 1,
-                            )
-                            .all()
-                        )
-                        team0_mentions = f", ".join(
-                            [f"<@{player.id}>" for player in team0_players]
-                        )
-                        team1_mentions = f", ".join(
-                            [f"<@{player.id}>" for player in team1_players]
-                        )
-                        ipg_str = ""
-                        if game.message_id and game.channel_id:
-                            game_channel = bot.get_channel(game.channel_id)
-                            try:
-                                if isinstance(game_channel, TextChannel):
-                                    game_message = await game_channel.fetch_message(
-                                        game.message_id
-                                    )
-                                    if game_message:
-                                        ipg_str += (
-                                            f"{game_message.jump_url} {timestamp}"
-                                        )
-                            except Exception as e:
-                                _log.warning(
-                                    f"Could not find game message {game.message_id} due to: {e}"
-                                )
-                        else:
-                            ipg_str += f"{short_game_id} {timestamp}"
-                        ipg_str += f"\n{game.team0_name} ({round(100 * game.win_probability)}%)\n> {team0_mentions}"
-                        ipg_str += f"\n{game.team1_name} ({round(100 * (1 - game.win_probability))}%)\n> {team1_mentions}"
-                        ipg_strs.append(ipg_str)
-                    embed.add_field(
-                        name="In Progress Games",
-                        value="\n".join([ipg_str for ipg_str in ipg_strs]),
-                    )
+                        ipg_embed = await create_in_progress_game_embed(session, game)
+                        ipg_embeds.append(ipg_embed)
         await ctx.channel.send(
-            embed=embed,
+            embeds=[embed] + ipg_embeds,
         )
 
 
