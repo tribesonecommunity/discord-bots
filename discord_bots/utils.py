@@ -144,7 +144,7 @@ async def create_in_progress_game_embed(
         )
     else:
         embed = Embed(
-            title=f"❓Game ({short_uuid(game.id)}) In Progress",
+            title=f"In Progress Game ({short_uuid(game.id)})",
             color=discord.Color.blue(),
         )
 
