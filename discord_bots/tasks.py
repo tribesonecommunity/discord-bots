@@ -363,38 +363,27 @@ async def add_players(session: sqlalchemy.orm.Session):
             for queue in queues_added_to:
                 if queue.is_locked:
                     continue
-                queue_players = (
-                    Session()
-                    .query(QueuePlayer)
+                players_in_queue: list[Player] = (
+                    session.query(Player)
+                    .join(QueuePlayer)
                     .filter(QueuePlayer.queue_id == queue.id)
                     .all()
                 )
-                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(queue_players)}/{queue.size}]"
-                player_display_names: list[str] = []
-                for qp in queue_players:
-                    user: discord.User | None = bot.get_user(qp.player_id)
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+                player_names: list[str] = []
+                for player in players_in_queue:
+                    user: discord.User | None = bot.get_user(player.id)
                     if user:
-                        player_display_names.append(user.display_name)
+                        # try and get their discord displayname
+                        player_names.append(user.display_name)
                     else:
-                        player: Player | None = (
-                            session.query(Player).join(QueuePlayer).first()
-                        )
-                        if player:
-                            player_display_names.append(player.name)
-                        else:
-                            player_display_names.append(f"<@{qp.player_id}>")
-                # player_mentions = ", ".join(
-                # [f"<@{qp.player_id}>" for qp in queue_players]
-                # )
+                        # fallback to their discord username
+                        player_names.append(player.name)
+                newline = "\n"
                 embed.add_field(
                     name=queue_title_str,
-                    # value="" if not player_mentions else f"> {player_mentions}",
-                    value=(
-                        ""
-                        if not player_display_names
-                        else f"> {', '.join(player_display_names)}"
-                    ),
-                    inline=False,
+                    value=(f">>> {newline.join(player_names)}"),
+                    inline=True,
                 )
 
             if queues_added_to:

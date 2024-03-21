@@ -139,12 +139,12 @@ async def create_in_progress_game_embed(
     embed: discord.Embed
     if queue:
         embed = Embed(
-            title=f"In Progress Game '{queue.name}' ({short_uuid(game.id)})",
+            title=f"⏳In Progress Game '{queue.name}' ({short_uuid(game.id)})",
             color=discord.Color.blue(),
         )
     else:
         embed = Embed(
-            title=f"In Progress Game ({short_uuid(game.id)})",
+            title=f"⏳In Progress Game ({short_uuid(game.id)})",
             color=discord.Color.blue(),
         )
 
@@ -188,7 +188,7 @@ async def create_in_progress_game_embed(
     embed.add_field(
         name="🗺️ Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=True
     )
-    embed.add_field(name="⏳Started", value=f"{timestamp}", inline=True)
+    embed.add_field(name="⏱️Started", value=f"{timestamp}", inline=True)
     if config.SHOW_TRUESKILL:
         embed.add_field(
             name=f"📊 Average {MU_LOWER_UNICODE}",
@@ -213,7 +213,7 @@ async def create_in_progress_game_embed(
         inline=True,
     )
     embed.add_field(
-        name=f"➡️ {game.team0_name} ({round(100 * (1 - game.win_probability))}%)",
+        name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
         value="" if not team1_players else f"\n> {', '.join(team1_display_names)}",
         inline=True,
     )

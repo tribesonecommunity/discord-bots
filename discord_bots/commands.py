@@ -1644,21 +1644,22 @@ async def del_(ctx: Context, *args):
         queue_title_str = (
             f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
         )
-        player_display_names: list[str] = []
+        player_names: list[str] = []
         for player in players_in_queue:
             user: discord.User | None = bot.get_user(player.id)
             if user:
-                player_display_names.append(user.display_name)
+                player_names.append(user.display_name)
             else:
-                player_display_names.append(player.name)
+                player_names.append(player.name)
+        newline = "\n"
         embed.add_field(
             name=queue_title_str,
             value=(
-                ""
-                if not player_display_names
-                else f"> {', '.join(player_display_names)}"
+                "> \n** **"  # weird hack to create an empty quote
+                if not player_names
+                else f">>> {newline.join(player_names)}"
             ),
-            inline=False,
+            inline=True,
         )
 
     # TODO: Check deleting by name / ordinal
@@ -2955,8 +2956,14 @@ async def status(ctx: Context, *args):
                 )
                 next_map_str += f" ({raffle_reward} tickets)"
             embed.add_field(
-                name=f"{rotation.name}",
-                value=f"**Next Map**: {next_map_str}",
+                name=f"",
+                # value="─"*10,
+                value=f"```asciidoc\n* {rotation.name}```",
+                inline=False,
+            )
+            embed.add_field(
+                name=f"🗺️ Next Map",
+                value=next_map_str,
                 inline=False,
             )
 
@@ -2978,14 +2985,15 @@ async def status(ctx: Context, *args):
                     else:
                         player_display_names.append(player.name)
 
+                newline = "\n"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
                 embed.add_field(
                     name=queue_title_str,
                     value=(
-                        ""
+                        "> \n** **"  # weird hack to create an empty quote
                         if not player_display_names
-                        else f"> {', '.join(player_display_names)}"
+                        else f">>> {newline.join(player_display_names)}"
                     ),
-                    inline=False,
+                    inline=True,
                 )
                 if queue.id in games_by_queue:
                     game: InProgressGame
