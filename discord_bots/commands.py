@@ -12,10 +12,12 @@ from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
+from turtle import delay
 from typing import List, Union
 
 import discord
 import imgkit
+import sqlalchemy
 from discord import (
     CategoryChannel,
     Colour,
@@ -49,6 +51,7 @@ from discord_bots.utils import (
     SIGMA_LOWER_UNICODE,
     code_block,
     create_finished_game_embed,
+    create_in_progress_game_embed,
     mean,
     pretty_format_team,
     print_leaderboard,
@@ -295,195 +298,205 @@ async def create_game(
     channel: TextChannel | DMChannel | GroupChannel,
     guild: Guild,
 ):
-    session = Session()
-    queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
-    if len(player_ids) == 1:
-        # Useful for debugging, no real world application
-        players = session.query(Player).filter(Player.id == player_ids[0]).all()
-        win_prob = 0
-    else:
-        players, win_prob = get_even_teams(
-            player_ids,
-            len(player_ids) // 2,
-            is_rated=queue.is_rated,
-            queue_category_id=queue.category_id,
-        )
-    category = session.query(Category).filter(Category.id == queue.category_id).first()
-    player_category_trueskills = None
-    if category:
-        player_category_trueskills: list[PlayerCategoryTrueskill] = (
-            session.query(PlayerCategoryTrueskill)
-            .filter(
-                PlayerCategoryTrueskill.category_id == category.id,
-                PlayerCategoryTrueskill.player_id.in_(player_ids),
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        queue: Queue | None = session.query(Queue).filter(Queue.id == queue_id).first()
+        if not queue:
+            _log.error(f"[create_game] could not find queue with id {queue_id}")
+            return
+        if len(player_ids) == 1:
+            # Useful for debugging, no real world application
+            players = session.query(Player).filter(Player.id == player_ids[0]).all()
+            win_prob = 0
+        else:
+            players, win_prob = get_even_teams(
+                player_ids,
+                len(player_ids) // 2,
+                is_rated=queue.is_rated,
+                queue_category_id=queue.category_id,
             )
-            .all()
+        category = (
+            session.query(Category).filter(Category.id == queue.category_id).first()
         )
-    if player_category_trueskills:
-        average_trueskill = mean(list(map(lambda x: x.mu, player_category_trueskills)))
-    else:
-        average_trueskill = mean(
-            list(
-                map(
-                    lambda x: x.rated_trueskill_mu,
-                    players,
+        player_category_trueskills = None
+        if category:
+            player_category_trueskills: list[PlayerCategoryTrueskill] = (
+                session.query(PlayerCategoryTrueskill)
+                .filter(
+                    PlayerCategoryTrueskill.category_id == category.id,
+                    PlayerCategoryTrueskill.player_id.in_(player_ids),
+                )
+                .all()
+            )
+        if player_category_trueskills:
+            average_trueskill = mean(
+                list(map(lambda x: x.mu, player_category_trueskills))
+            )
+        else:
+            average_trueskill = mean(
+                list(
+                    map(
+                        lambda x: x.rated_trueskill_mu,
+                        players,
+                    )
                 )
             )
+
+        next_rotation_map: RotationMap | None = (
+            session.query(RotationMap)
+            .join(Rotation, Rotation.id == RotationMap.rotation_id)
+            .join(Queue, Queue.rotation_id == Rotation.id)
+            .filter(Queue.id == queue.id)
+            .filter(RotationMap.is_next == True)
+            .first()
         )
+        if not next_rotation_map:
+            raise Exception("No next map!")
 
-    next_rotation_map: RotationMap | None = (
-        session.query(RotationMap)
-        .join(Rotation, Rotation.id == RotationMap.rotation_id)
-        .join(Queue, Queue.rotation_id == Rotation.id)
-        .filter(Queue.id == queue.id)
-        .filter(RotationMap.is_next == True)
-        .first()
-    )
-    if not next_rotation_map:
-        raise Exception("No next map!")
+        rolled_random_map = False
+        if next_rotation_map.is_random:
+            # Roll for random map
+            rolled_random_map = uniform(0, 1) < next_rotation_map.random_probability
 
-    rolled_random_map = False
-    if next_rotation_map.is_random:
-        # Roll for random map
-        rolled_random_map = uniform(0, 1) < next_rotation_map.random_probability
-
-    if rolled_random_map:
-        maps: List[Map] = session.query(Map).all()
-        random_map = choice(maps)
-        next_map_full_name = random_map.full_name
-        next_map_short_name = random_map.short_name
-    else:
-        next_map: Map | None = (
-            session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
-        )
-        next_map_full_name = next_map.full_name
-        next_map_short_name = next_map.short_name
-
-    game = InProgressGame(
-        average_trueskill=average_trueskill,
-        map_full_name=next_map_full_name,
-        map_short_name=next_map_short_name,
-        queue_id=queue.id,
-        team0_name=generate_be_name(),
-        team1_name=generate_ds_name(),
-        win_probability=win_prob,
-    )
-    if config.ECONOMY_ENABLED:
-        game.prediction_open = True
-    session.add(game)
-
-    team0_players = players[: len(players) // 2]
-    team1_players = players[len(players) // 2 :]
-
-    short_game_id = short_uuid(game.id)
-    title = f"\nGame '{queue.name}' ({short_game_id}) has begun!\n"
-    embed = Embed(
-        title=title,
-        colour=Colour.blue(),
-    )
-
-    be_channel, ds_channel = None, None
-    categories = {category.id: category for category in guild.categories}
-    voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
-    if voice_category:
-        be_channel, ds_channel = await create_team_voice_channels(
-            session, guild, game, voice_category
-        )
-    else:
-        _log.warning(
-            f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
-        )
-    match_channel: discord.TextChannel = await guild.create_text_channel(
-        f"{queue.name}-({short_game_id})", category=voice_category
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=match_channel.id)
-    )
-    embed.add_field(
-        name="Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=False
-    )
-    embed.add_field(
-        name=f"{game.team0_name} ({round(100 * win_prob)}%)",
-        value="\n".join([f"> <@{player.id}>" for player in team0_players]),
-        inline=True,
-    )
-    embed.add_field(
-        name=f"{game.team1_name} ({round(100 * (1 - win_prob))}%)",
-        value="\n".join([f"> <@{player.id}>" for player in team1_players]),
-        inline=True,
-    )
-    if match_channel:
-        embed.add_field(
-            name="Match Channel", value=match_channel.jump_url, inline=False
-        )
-    if config.SHOW_TRUESKILL:
-        embed.add_field(
-            name=f"Average {MU_LOWER_UNICODE}",
-            value=round(average_trueskill, 2),
-            inline=False,
-        )
-    embed.add_field(
-        name="Match Commands", value="\n".join(["`/setgamecode`"]), inline=True
-    )
-    for player in team0_players:
-        if be_channel:
-            await send_in_guild_message(
-                guild, player.id, message_content=be_channel.jump_url, embed=embed
+        if rolled_random_map:
+            maps: List[Map] = session.query(Map).all()
+            random_map = choice(maps)
+            next_map_full_name = random_map.full_name
+            next_map_short_name = random_map.short_name
+        else:
+            next_map: Map | None = (
+                session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
             )
-        game_player = InProgressGamePlayer(
-            in_progress_game_id=game.id,
-            player_id=player.id,
-            team=0,
-        )
-        session.add(game_player)
+            next_map_full_name = next_map.full_name
+            next_map_short_name = next_map.short_name
 
-    for player in team1_players:
-        if ds_channel:
-            await send_in_guild_message(
-                guild, player.id, message_content=ds_channel.jump_url, embed=embed
+        game = InProgressGame(
+            average_trueskill=average_trueskill,
+            map_full_name=next_map_full_name,
+            map_short_name=next_map_short_name,
+            queue_id=queue.id,
+            team0_name=generate_be_name(),
+            team1_name=generate_ds_name(),
+            win_probability=win_prob,
+        )
+        if config.ECONOMY_ENABLED:
+            game.prediction_open = True
+        session.add(game)
+
+        team0_players = players[: len(players) // 2]
+        team1_players = players[len(players) // 2 :]
+        for player in team1_players:
+            game_player = InProgressGamePlayer(
+                in_progress_game_id=game.id,
+                player_id=player.id,
+                team=1,
             )
-        game_player = InProgressGamePlayer(
-            in_progress_game_id=game.id,
-            player_id=player.id,
-            team=1,
-        )
-        session.add(game_player)
+            session.add(game_player)
+        for player in team0_players:
+            game_player = InProgressGamePlayer(
+                in_progress_game_id=game.id,
+                player_id=player.id,
+                team=0,
+            )
+            session.add(game_player)
 
-    in_progress_game_cog = bot.get_cog("InProgressGameCog")
-    if in_progress_game_cog is not None and isinstance(
-        in_progress_game_cog, InProgressGameCog
-    ):
-        message = await match_channel.send(
-            embed=embed, view=InProgressGameView(game.id, in_progress_game_cog)
+        short_game_id = short_uuid(game.id)
+        # embed = Embed(
+        # title=title,
+        # colour=Colour.blue(),
+        # )
+        embed: Embed = await create_in_progress_game_embed(session, game)
+        embed.title = f"⏳Game '{queue.name}' ({short_uuid(game.id)}) has begun!"
+
+        be_channel, ds_channel = None, None
+        categories = {category.id: category for category in guild.categories}
+        voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
+        if voice_category:
+            be_channel, ds_channel = await create_team_voice_channels(
+                session, guild, game, voice_category
+            )
+        else:
+            _log.warning(
+                f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
+            )
+        try:
+            match_channel: discord.TextChannel | None = await guild.create_text_channel(
+                f"{queue.name}-({short_game_id})", category=voice_category
+            )
+            session.add(
+                InProgressGameChannel(
+                    in_progress_game_id=game.id, channel_id=match_channel.id
+                )
+            )
+        except:
+            _log.exception(
+                f"[create_game] failed to create match channel for game {short_game_id}"
+            )
+        if match_channel:
+            # the embed won't have the Match Channel Field yet, so we add it ourselves
+            embed.add_field(
+                name="Match Channel", value=match_channel.jump_url, inline=False
+            )
+            game.channel_id = match_channel.id
+        embed.add_field(
+            name="Match Commands",
+            value="\n".join(["`/finishgame`", "`/setgamecode`"]),
+            inline=True,
         )
-        game.message_id = message.id
+        for player in team0_players:
+            if be_channel:
+                await send_in_guild_message(
+                    guild, player.id, message_content=be_channel.jump_url, embed=embed
+                )
+
+        for player in team1_players:
+            if ds_channel:
+                await send_in_guild_message(
+                    guild, player.id, message_content=ds_channel.jump_url, embed=embed
+                )
+
+        in_progress_game_cog = bot.get_cog("InProgressGameCog")
+        if (
+            in_progress_game_cog is not None
+            and isinstance(in_progress_game_cog, InProgressGameCog)
+            and match_channel
+        ):
+            message = await match_channel.send(
+                embed=embed, view=InProgressGameView(game.id, in_progress_game_cog)
+            )
+            game.message_id = message.id
+        else:
+            _log.warning("Could not get InProgressGameCog")
+
+        session.query(QueuePlayer).filter(QueuePlayer.player_id.in_(player_ids)).delete()  # type: ignore
         session.commit()
-    else:
-        _log.warning("Could not get InProgressGameCog")
 
-    session.query(QueuePlayer).filter(QueuePlayer.player_id.in_(player_ids)).delete()  # type: ignore
-    session.commit()
+        if not rolled_random_map:
+            await update_next_map_to_map_after_next(queue.rotation_id, False)
 
-    if not rolled_random_map:
-        await update_next_map_to_map_after_next(queue.rotation_id, False)
+        if config.ECONOMY_ENABLED and match_channel:
+            prediction_message_id: int | None = (
+                await EconomyCommands.create_prediction_message(
+                    None, game, match_channel
+                )
+            )
+            if prediction_message_id:
+                game.prediction_message_id = prediction_message_id
+                session.commit()
 
-    if config.ECONOMY_ENABLED:
-        prediction_message_id: int | None = (
-            await EconomyCommands.create_prediction_message(None, game, match_channel)
-        )
-        if prediction_message_id:
-            game.prediction_message_id = prediction_message_id
-            session.commit()
-
-    if config.ENABLE_VOICE_MOVE and queue.move_enabled and be_channel and ds_channel:
-        await _movegameplayers(short_game_id, None, guild)
-        await send_message(
-            channel,
-            embed_description=f"Players moved to voice channels for game {short_game_id}",
-            colour=Colour.blue(),
-        )
-
-    session.close()
+        await channel.send(embed=embed)
+        if (
+            config.ENABLE_VOICE_MOVE
+            and queue.move_enabled
+            and be_channel
+            and ds_channel
+        ):
+            await _movegameplayers(short_game_id, None, guild)
+            await send_message(
+                channel,
+                embed_description=f"Players moved to voice channels for game {short_game_id}",
+                colour=Colour.blue(),
+            )
 
 
 async def create_team_voice_channels(
@@ -955,7 +968,7 @@ async def add(ctx: Context, *args):
     if is_in_game(message.author.id):
         await send_message(
             message.channel,
-            embed_description=f"{message.author} you are already in a game",
+            embed_description=f"<@{message.author.id}> you are already in a game",
             colour=Colour.red(),
         )
         return
@@ -1014,7 +1027,7 @@ async def add(ctx: Context, *args):
     if len(queues_to_add) == 0:
         await send_message(
             message.channel,
-            content="No valid queues found",
+            embed_description="No valid queues found",
             colour=Colour.red(),
         )
         return
@@ -1042,14 +1055,21 @@ async def add(ctx: Context, *args):
             vpw.end_waitlist_at.replace(tzinfo=timezone.utc) - current_time
         ).total_seconds()
         if difference < config.RE_ADD_DELAY:
-            waitlist_message = f"A vote just passed, you will be randomized into the queue in {floor(difference)} seconds"
+            time_to_wait: int = floor(config.RE_ADD_DELAY - difference)
+            timer = discord.utils.format_dt(
+                discord.utils.utcnow() + timedelta(seconds=time_to_wait), style="R"
+            )
+            waitlist_message = (
+                f"A vote just passed, you will be randomized into the queue {timer}"
+            )
             await send_message(
                 message.channel,
                 # TODO: Populate this message with the queues the player was
                 # eligible for
                 content=f"{message.author.display_name} added to:",
                 embed_description=waitlist_message,
-                colour=Colour.green(),
+                colour=Colour.yellow(),
+                delete_after=time_to_wait,
             )
         return
 
@@ -1064,13 +1084,15 @@ async def add(ctx: Context, *args):
         difference: float = (current_time - finish_time).total_seconds()
         if difference < config.RE_ADD_DELAY:
             time_to_wait: int = floor(config.RE_ADD_DELAY - difference)
-            waitlist_message = f"Your game has just finished, you will be randomized into the queue in {time_to_wait} seconds"
+            timer = discord.utils.format_dt(
+                discord.utils.utcnow() + timedelta(seconds=time_to_wait), style="R"
+            )
             is_waitlist = True
 
     if is_waitlist and most_recent_game:
         for queue in queues_to_add:
             # TODO: Check player eligibility here?
-            queue_waitlist = (
+            queue_waitlist: QueueWaitlist | None = (
                 session.query(QueueWaitlist)
                 .filter(QueueWaitlist.finished_game_id == most_recent_game.id)
                 .first()
@@ -1088,13 +1110,15 @@ async def add(ctx: Context, *args):
                 except IntegrityError:
                     session.rollback()
 
+        queue_names = [queue.name for queue in queues_to_add]
+        embed_description = f"<@{message.author.id}> your game has just finished, you will be randomized into **{', '.join(queue_names)}** {timer}"
         await send_message(
             message.channel,
             # TODO: Populate this message with the queues the player was
             # eligible for
-            content=f"{escape_markdown(message.author.display_name)} added to:",
-            embed_description=waitlist_message,
-            colour=Colour.green(),
+            embed_description=embed_description,
+            colour=Colour.yellow(),
+            delete_after=time_to_wait,
         )
         return
 
@@ -1582,7 +1606,8 @@ async def del_(ctx: Context, *args):
     If no args deletes from existing queues
     """
     message = ctx.message
-    session = ctx.session
+    session: sqlalchemy.orm.Session = ctx.session
+    embed = discord.Embed(color=discord.Color.green())
     queues_to_del_query = (
         session.query(Queue)
         .join(QueuePlayer)
@@ -1617,30 +1642,47 @@ async def del_(ctx: Context, *args):
                 QueueWaitlistPlayer.player_id == message.author.id,
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
             ).delete()
-
-    queue_statuses = []
-    queue: Queue
-    for queue in (
-        session.query(Queue)
-        .filter(Queue.is_locked == False)
-        .order_by(Queue.ordinal.asc())
-        .all()
-    ):  # type: ignore
-        queue_players = (
-            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).all()
+        players_in_queue: list[Player] = (
+            session.query(Player)
+            .join(QueuePlayer)
+            .filter(QueuePlayer.queue_id == queue.id)
+            .all()
         )
-        queue_statuses.append(f"{queue.name} [{len(queue_players)}/{queue.size}]\n")
+        queue_title_str = (
+            f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+        )
+        player_names: list[str] = []
+        for player in players_in_queue:
+            user: discord.User | None = bot.get_user(player.id)
+            if user:
+                player_names.append(user.display_name)
+            else:
+                player_names.append(player.name)
+        newline = "\n"
+        embed.add_field(
+            name=queue_title_str,
+            value=(
+                "> \n** **"  # weird hack to create an empty quote
+                if not player_names
+                else f">>> {newline.join(player_names)}"
+            ),
+            inline=True,
+        )
 
     # TODO: Check deleting by name / ordinal
     # session.query(QueueWaitlistPlayer).filter(
     #     QueueWaitlistPlayer.player_id == message.author.id
     # ).delete()
 
+    if queues_to_del:
+        embed_description = f"<@{message.author.id}> removed from **{', '.join([queue.name for queue in queues_to_del])}**"
+        embed.color = discord.Color.green()
+    else:
+        embed_description = f"<@{message.author.id}> no valid queues specified"
+        embed.color = discord.Color.red()
+    embed.description = embed_description
+    await message.channel.send(embed=embed)
     session.commit()
-
-    content = f"{escape_markdown(message.author.display_name)} removed from: {', '.join([queue.name for queue in queues_to_del])}\n\n"
-    content += "".join(queue_statuses)
-    await message.channel.send(code_block(content))
     session.close()
 
 
@@ -2834,135 +2876,146 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 
 @bot.command()
 async def status(ctx: Context, *args):
-    session: SQLAlchemySession = ctx.session
-
-    queue_indices: list[int] = []
-    queue_names: list[str] = []
-    all_rotations: list[Rotation] = []  # TODO: use sets
-    if len(args) == 0:
-        all_rotations = (
-            session.query(Rotation).order_by(Rotation.created_at.asc()).all()
-        )
-    else:
-        # get the rotation associated to the specified queue
-        all_rotations = []
-        for arg in args:
-            # TODO: avoid looping so you only need one query
-            try:
-                queue_index = int(arg)
-                arg_rotation = (
-                    session.query(Rotation)
-                    .join(Queue)
-                    .filter(Queue.ordinal == queue_index)
-                    .first()
-                )
-                if arg_rotation:
-                    queue_indices.append(queue_index)
-                    if arg_rotation not in all_rotations:
-                        all_rotations.append(arg_rotation)
-            except ValueError:
-                arg_rotation = (
-                    session.query(Rotation)
-                    .join(Queue)
-                    .filter(Queue.name.ilike(arg))
-                    .first()
-                )
-                if arg_rotation:
-                    queue_names.append(arg)
-                    if arg_rotation not in all_rotations:
-                        all_rotations.append(arg_rotation)
-            except IndexError:
-                pass
-
-    if not all_rotations:
-        await ctx.channel.send("No Rotations")
-        return
-
-    embeds: list[Embed] = []
-    rotation_queues: list[Queue] | None
-    for rotation in all_rotations:
-        embed = Embed(title=rotation.name, color=Colour.blue())
-        conditions = [Queue.rotation_id == rotation.id]
-        if queue_indices:
-            conditions.append(Queue.ordinal.in_(queue_indices))
-        if queue_names:
-            conditions.append(Queue.name.in_(queue_names))
-        rotation_queues = (
-            session.query(Queue).filter(*conditions).order_by(Queue.ordinal.asc()).all()
-        )
-        if not rotation_queues:
-            continue
-
-        games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
-        for game in session.query(InProgressGame).filter(
-            InProgressGame.is_finished == False
-        ):
-            if game.queue_id:
-                games_by_queue[game.queue_id].append(game)
-
-        next_rotation_map: RotationMap | None = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation.id)
-            .filter(RotationMap.is_next == True)
-            .first()
-        )
-        if not next_rotation_map:
-            continue
-        next_map: Map | None = (
-            session.query(Map)
-            .join(RotationMap, RotationMap.map_id == Map.id)
-            .filter(next_rotation_map.map_id == Map.id)
-            .first()
-        )
-        next_map_str = f"Next map: {next_map.full_name} ({next_map.short_name})"
-        if config.ENABLE_RAFFLE:
-            has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
-            raffle_reward = (
-                next_rotation_map.raffle_ticket_reward
-                if has_raffle_reward
-                else config.DEFAULT_RAFFLE_VALUE
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        queue_indices: list[int] = []
+        queue_names: list[str] = []
+        all_rotations: list[Rotation] = []  # TODO: use sets
+        if len(args) == 0:
+            all_rotations = (
+                session.query(Rotation).order_by(Rotation.created_at.asc()).all()
             )
-            next_map_str += f" ({raffle_reward} tickets)"
-        embed.description = (
-            f"📍**Next Map**: {next_map.full_name} ({next_map.short_name})"
-        )
+        else:
+            # get the rotation associated to the specified queue
+            all_rotations = []
+            for arg in args:
+                # TODO: avoid looping so you only need one query
+                try:
+                    queue_index = int(arg)
+                    arg_rotation = (
+                        session.query(Rotation)
+                        .join(Queue)
+                        .filter(Queue.ordinal == queue_index)
+                        .first()
+                    )
+                    if arg_rotation:
+                        queue_indices.append(queue_index)
+                        if arg_rotation not in all_rotations:
+                            all_rotations.append(arg_rotation)
+                except ValueError:
+                    arg_rotation = (
+                        session.query(Rotation)
+                        .join(Queue)
+                        .filter(Queue.name.ilike(arg))
+                        .first()
+                    )
+                    if arg_rotation:
+                        queue_names.append(arg)
+                        if arg_rotation not in all_rotations:
+                            all_rotations.append(arg_rotation)
+                except IndexError:
+                    pass
 
-        for queue in rotation_queues:
-            players_in_queue = (
-                session.query(Player)
-                .join(QueuePlayer)
-                .filter(QueuePlayer.queue_id == queue.id)
+        if not all_rotations:
+            await ctx.channel.send("No Rotations")
+            return
+
+        embed = Embed(title="Queues", color=Colour.blue())
+        ipg_embeds: list[Embed] = []
+        rotation_queues: list[Queue] | None
+        for rotation in all_rotations:
+            conditions = [Queue.rotation_id == rotation.id]
+            if queue_indices:
+                conditions.append(Queue.ordinal.in_(queue_indices))
+            if queue_names:
+                conditions.append(Queue.name.in_(queue_names))
+            rotation_queues = (
+                session.query(Queue)
+                .filter(*conditions)
+                .order_by(Queue.ordinal.asc())
                 .all()
             )
-            if queue.is_locked:
+            if not rotation_queues:
                 continue
-            else:
-                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]\n"
 
+            games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
+            for game in session.query(InProgressGame).filter(
+                InProgressGame.is_finished == False
+            ):
+                if game.queue_id:
+                    games_by_queue[game.queue_id].append(game)
+
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.is_next == True)
+                .first()
+            )
+            if not next_rotation_map:
+                continue
+            next_map: Map | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(next_rotation_map.map_id == Map.id)
+                .first()
+            )
+            next_map_str = f"{next_map.full_name} ({next_map.short_name})"
+            if config.ENABLE_RAFFLE:
+                has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
+                raffle_reward = (
+                    next_rotation_map.raffle_ticket_reward
+                    if has_raffle_reward
+                    else config.DEFAULT_RAFFLE_VALUE
+                )
+                next_map_str += f" ({raffle_reward} tickets)"
             embed.add_field(
-                name=queue_title_str,
-                value=", ".join([f"<@{player.id}>" for player in players_in_queue]),
+                name=f"",
+                # value="─"*10,
+                value=f"```asciidoc\n* {rotation.name}```",
+                inline=False,
+            )
+            embed.add_field(
+                name=f"🗺️ Next Map",
+                value=next_map_str,
                 inline=False,
             )
 
-            if queue.id in games_by_queue:
-                game: InProgressGame
-                ipg_strs = []
-                for game in games_by_queue[queue.id]:
-                    short_game_id = short_uuid(game.id)
-                    aware_db_datetime: datetime = game.created_at.replace(
-                        tzinfo=timezone.utc
-                    )  # timezones aren't stored in the DB, so add it ourselves
-                    timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
-                    ipg_strs.append(f"{short_game_id} {timestamp}")
-                embed.add_field(
-                    name="In Progress Games",
-                    value="\n".join([ipg_str for ipg_str in ipg_strs]),
+            for queue in rotation_queues:
+                if queue.is_locked:
+                    continue
+                players_in_queue: list[Player] = (
+                    session.query(Player)
+                    .join(QueuePlayer)
+                    .filter(QueuePlayer.queue_id == queue.id)
+                    .all()
                 )
-        embeds.append(embed)
-    await ctx.channel.send(
-        embeds=embeds,
-    )
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+                player_display_names: list[str] = []
+                for player in players_in_queue:
+                    user: discord.User | None = bot.get_user(player.id)
+                    if user:
+                        player_display_names.append(user.display_name)
+                    else:
+                        player_display_names.append(player.name)
+
+                newline = "\n"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
+                embed.add_field(
+                    name=queue_title_str,
+                    value=(
+                        "> \n** **"  # weird hack to create an empty quote
+                        if not player_display_names
+                        else f">>> {newline.join(player_display_names)}"
+                    ),
+                    inline=True,
+                )
+                if queue.id in games_by_queue:
+                    game: InProgressGame
+                    for game in games_by_queue[queue.id]:
+                        ipg_embed = await create_in_progress_game_embed(session, game)
+                        ipg_embeds.append(ipg_embed)
+        await ctx.channel.send(
+            embeds=[embed] + ipg_embeds,
+        )
 
 
 def win_rate(wins, losses, ties):

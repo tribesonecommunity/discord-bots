@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from random import shuffle
 from re import I
 
+import discord
 import sqlalchemy
 from discord.channel import TextChannel
 from discord.colour import Colour
@@ -21,6 +22,7 @@ from discord_bots.utils import (
     code_block,
     print_leaderboard,
     send_message,
+    short_uuid,
     update_next_map_to_map_after_next,
 )
 
@@ -30,6 +32,7 @@ from .commands import add_player_to_queue, create_game, is_in_game
 from .models import (
     InProgressGame,
     InProgressGameChannel,
+    InProgressGamePlayer,
     MapVote,
     Player,
     PlayerCategoryTrueskill,
@@ -324,20 +327,21 @@ async def map_rotation_task():
     session.close()
 
 
-@tasks.loop(seconds=1)
-async def add_player_task():
+async def add_players(session: sqlalchemy.orm.Session):
     """
     Handle adding players in a task that pulls messages off of a queue.
 
     This helps with concurrency issues since players can be added from multiple
     sources (waitlist vs normal add command)
     """
-    session = Session()
+    if add_player_queue.empty():
+        # check if the queue is empty up front to avoid emitting any SQL
+        return
     queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc()).all()
     queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
     message: AddPlayerQueueMessage | None = None
     while not add_player_queue.empty():
-        queues_added_to: list[str] = []
+        queues_added_to: list[Queue] = []
         message: AddPlayerQueueMessage = add_player_queue.get()
         queue_popped = False
         for queue_id in message.queue_ids:
@@ -351,45 +355,52 @@ async def add_player_task():
             if queue_popped:
                 break
             if added_to_queue:
-                queues_added_to.append(queue.name)
+                queues_added_to.append(queue)
 
         if not queue_popped and message.should_print_status:
-            queue_statuses = []
             queue: Queue
-            session = Session()
-            for queue in queues:
-                queue_players = (
-                    Session()
-                    .query(QueuePlayer)
+            embed = discord.Embed()
+            for queue in queues_added_to:
+                if queue.is_locked:
+                    continue
+                players_in_queue: list[Player] = (
+                    session.query(Player)
+                    .join(QueuePlayer)
                     .filter(QueuePlayer.queue_id == queue.id)
                     .all()
                 )
-
-                in_progress_games: list[InProgressGame] = (
-                    session.query(InProgressGame)
-                    .filter(InProgressGame.queue_id == queue.id)
-                    .all()
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+                player_names: list[str] = []
+                for player in players_in_queue:
+                    user: discord.User | None = bot.get_user(player.id)
+                    if user:
+                        # try and get their discord displayname
+                        player_names.append(user.display_name)
+                    else:
+                        # fallback to their discord username
+                        player_names.append(player.name)
+                newline = "\n"
+                embed.add_field(
+                    name=queue_title_str,
+                    value=(f">>> {newline.join(player_names)}"),
+                    inline=True,
                 )
 
-                if len(in_progress_games) > 0:
-                    queue_statuses.append(
-                        f"{queue.name} [{len(queue_players)}/{queue.size}] *(In game)*\n"
-                    )
-                else:
-                    queue_statuses.append(
-                        f"{queue.name} [{len(queue_players)}/{queue.size}]\n"
-                    )
-
-            content = (
-                f"{message.player_name} added to: {', '.join(queues_added_to)}\n\n"
+            if queues_added_to:
+                queue_names = [queue.name for queue in queues_added_to]
+                embed.description = (
+                    f"<@{message.player_id}> added to **{', '.join(queue_names)}**"
+                )
+                embed.color = discord.Color.green()
+            else:
+                embed.description = f"<@{message.player_id}> no valid queues specified"
+                embed.color = discord.Color.red()
+            await message.channel.send(
+                embed=embed, allowed_mentions=discord.AllowedMentions.none()
             )
-            content += "".join(queue_statuses)
-            await message.channel.send(code_block(content))
-            session.close()
 
     # No messages processed, so no way that sweaty queues popped
     if not message:
-        session.close()
         return
 
     # Handle sweaty queues
@@ -432,8 +443,13 @@ async def add_player_task():
                 channel=message.channel,
                 guild=message.guild,
             )
-    session.close()
 
+
+@tasks.loop(seconds=1)
+async def add_player_task():
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        await add_players(session)
 
 @tasks.loop(seconds=1800)
 async def leaderboard_task():

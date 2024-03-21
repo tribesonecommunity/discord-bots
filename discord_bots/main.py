@@ -2,12 +2,11 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-import discord.utils
+import sqlalchemy
 from discord import Colour, Embed, Interaction, Member, Message, Reaction
 from discord.abc import User
 from discord.app_commands import AppCommandError, errors
 from discord.ext.commands import CommandError, Context, UserInputError
-from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
 from discord_bots.cogs.categories import CategoryCommands
@@ -20,7 +19,14 @@ from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.vote import VoteCommands
 
 from .bot import bot
-from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
+from .models import (
+    CustomCommand,
+    Player,
+    QueuePlayer,
+    QueueWaitlistPlayer,
+    Session,
+    engine,
+)
 from .tasks import (
     add_player_task,
     afk_timer_task,
@@ -66,6 +72,18 @@ async def on_ready():
 async def on_app_command_error(
     interaction: Interaction, error: AppCommandError
 ) -> None:
+    # TODO: provide more context about the error to the user
+    if interaction.response.is_done():
+        await interaction.followup.send(
+            embed=Embed(description="Oops! Something went wrong ☹️", color=Colour.red())
+        )
+    else:
+        # fallback case that responds to the interaction, since there always needs to be a response
+        await interaction.response.send_message(
+            embed=Embed(description="Oops! Something went wrong ☹️", color=Colour.red()),
+            ephemeral=True,
+        )
+
     if isinstance(error, errors.CheckFailure):
         return
     else:
@@ -125,25 +143,25 @@ async def on_message(message: Message):
     if (config.CHANNEL_ID and message.channel.id == config.CHANNEL_ID) or (
         config.LEADERBOARD_CHANNEL and message.channel.id == config.LEADERBOARD_CHANNEL
     ):
-        session: SQLAlchemySession = Session()
-        player: Player | None = (
-            session.query(Player).filter(Player.id == message.author.id).first()
-        )
-        if player:
-            player.last_activity_at = datetime.now(timezone.utc)
-            if player.name != message.author.display_name:
-                player.name = message.author.display_name
-        else:
-            session.add(
-                Player(
-                    id=message.author.id,
-                    name=message.author.display_name,
-                    last_activity_at=datetime.now(timezone.utc),
-                    currency=config.STARTING_CURRENCY,
-                )
+        session: sqlalchemy.orm.Session
+        with Session() as session:
+            player: Player | None = (
+                session.query(Player).filter(Player.id == message.author.id).first()
             )
-        session.commit()
-        session.close()
+            if player:
+                player.last_activity_at = datetime.now(timezone.utc)
+                if player.name != message.author.display_name:
+                    player.name = message.author.display_name
+            else:
+                session.add(
+                    Player(
+                        id=message.author.id,
+                        name=message.author.display_name,
+                        last_activity_at=datetime.now(timezone.utc),
+                        currency=config.STARTING_CURRENCY,
+                    )
+                )
+            session.commit()
         await bot.process_commands(message)
 
         # Custom commands below
@@ -152,16 +170,15 @@ async def on_message(message: Message):
 
         bot_commands = {command.name for command in bot.commands}
         command_name = message.content.split(" ")[0][1:]
-        session = Session()
-        if command_name not in bot_commands:
-            custom_command: CustomCommand | None = (
-                session.query(CustomCommand)
-                .filter(CustomCommand.name == command_name)
-                .first()
-            )
-            if custom_command:
-                await message.channel.send(content=custom_command.output)
-        session.close()
+        with Session() as session:
+            if command_name not in bot_commands:
+                custom_command: CustomCommand | None = (
+                    session.query(CustomCommand)
+                    .filter(CustomCommand.name == command_name)
+                    .first()
+                )
+                if custom_command:
+                    await message.channel.send(content=custom_command.output)
 
 
 @bot.event
@@ -244,7 +261,6 @@ async def setup():
 
 
 async def main():
-    discord.utils.setup_logging(level=config.LOG_LEVEL)  # setup basic logging
     await create_seed_admins()
     await setup()
     await bot.start(config.API_KEY)

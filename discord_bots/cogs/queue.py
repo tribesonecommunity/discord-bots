@@ -144,7 +144,10 @@ class QueueCommands(BaseCog):
 
         output = ""
         for queue in queues:
-            output += f"### {queue.name}\n"
+            if queue.is_locked:
+                output += f"### {queue.name} [locked]\n"
+            else:
+                output += f"### {queue.name}\n"
 
             output += "- Category: "
             category_name: str | None = (

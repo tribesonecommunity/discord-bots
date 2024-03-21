@@ -3,15 +3,17 @@ from typing import Optional
 
 import discord
 
+from discord_bots.cogs.base import BaseView
 
-class ConfirmationView(discord.ui.View):
+
+class ConfirmationView(BaseView):
     """
     Generic View that can be added to messages to implement a confirmation popup.
     You must wait for the view to finish.
     """
 
-    def __init__(self, author_id):
-        super().__init__()
+    def __init__(self, author_id, timeout=10):
+        super().__init__(timeout=timeout)
         self.value = None
         self.message: Optional[discord.Message] = None
         self.author_id: int = author_id

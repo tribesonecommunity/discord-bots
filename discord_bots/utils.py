@@ -132,6 +132,95 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
                 os.remove(os.path.join(config.STATS_DIR, file_))
 
 
+async def create_in_progress_game_embed(
+    session: sqlalchemy.orm.Session,
+    game: InProgressGame,
+) -> Embed:
+    queue: Queue | None = session.query(Queue).filter(Queue.id == game.queue_id).first()
+    embed: discord.Embed
+    if queue:
+        embed = Embed(
+            title=f"⏳In Progress Game '{queue.name}' ({short_uuid(game.id)})",
+            color=discord.Color.blue(),
+        )
+    else:
+        embed = Embed(
+            title=f"⏳In Progress Game ({short_uuid(game.id)})",
+            color=discord.Color.blue(),
+        )
+
+    aware_db_datetime: datetime = game.created_at.replace(
+        tzinfo=timezone.utc
+    )  # timezones aren't stored in the DB, so add it ourselves
+    timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+    team0_players: list[Player] = (
+        session.query(Player)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team1_players: list[Player] = (
+        session.query(Player)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    team0_display_names: list[str] = []
+    for player in team0_players:
+        user: discord.User | None = bot.get_user(player.id)
+        if user:
+            team0_display_names.append(user.display_name)
+        else:
+            team0_display_names.append(player.name)
+    team1_display_names: list[str] = []
+    for player in team1_players:
+        user: discord.User | None = bot.get_user(player.id)
+        if user:
+            team1_display_names.append(user.display_name)
+        else:
+            team1_display_names.append(player.name)
+
+    embed.add_field(
+        name="🗺️ Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=True
+    )
+    embed.add_field(name="⏱️Started", value=f"{timestamp}", inline=True)
+    if config.SHOW_TRUESKILL:
+        embed.add_field(
+            name=f"📊 Average {MU_LOWER_UNICODE}",
+            value=round(game.average_trueskill, 2),
+            inline=True,
+        )
+    if game.message_id and game.channel_id:
+        game_channel = bot.get_channel(game.channel_id)
+        try:
+            if isinstance(game_channel, TextChannel):
+                game_message = await game_channel.fetch_message(game.message_id)
+                if game_message:
+                    embed.add_field(
+                        name="📺 Match Channel", value=f"{game_message.jump_url}"
+                    )
+        except Exception as e:
+            _log.warning(f"Could not find game message {game.message_id} due to: {e}")
+    embed.add_field(name="", value="", inline=False)  # newline
+    embed.add_field(
+        name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
+        value="" if not team0_players else f"\n> {', '.join(team0_display_names)}",
+        inline=True,
+    )
+    embed.add_field(
+        name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
+        value="" if not team1_players else f"\n> {', '.join(team1_display_names)}",
+        inline=True,
+    )
+    return embed
+
+
 def create_finished_game_embed(
     session: sqlalchemy.orm.Session,
     finished_game: FinishedGame,
@@ -139,8 +228,8 @@ def create_finished_game_embed(
 ) -> Embed:
     # assumes that the FinishedGamePlayers have already been comitted
     embed = Embed(
-        title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)})",
-        color=Colour.blue(),
+        title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)}) Results",
+        color=Colour.green(),
     )
     if user_name is not None:
         embed.set_footer(text=f"Finished by {user_name}")
@@ -209,12 +298,13 @@ def create_cancelled_game_embed(
     in_progress_game: InProgressGame,
     user_name: Optional[str] = None,
 ) -> Embed:
+    # TODO: merge with create_finished_game_embed
     queue: Queue | None = (
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )
     queue_name = f"'{queue.name}'" if queue is not None else ""
     embed = Embed(
-        title=f"❌ Game {queue_name} ({short_uuid(in_progress_game.id)})",
+        title=f"❌ Game {queue_name} ({short_uuid(in_progress_game.id)}) Cancelled",
         color=Colour.red(),
     )
     if user_name is not None:
@@ -474,8 +564,8 @@ async def send_in_guild_message(
         if member:
             try:
                 await member.send(content=message_content, embed=embed)
-            except Exception as e:
-                print(f"Caught exception sending message: {e}")
+            except Exception:
+                _log.exception("[send_in_guild_message] exception:")
 
 
 async def send_message(
@@ -486,6 +576,7 @@ async def send_message(
     embed_content: bool = True,
     embed_title: str | None = None,
     embed_thumbnail: str | None = None,
+    delete_after: float | None = None,
 ):
     """
     :colour: red = fail, green = success, blue = informational
@@ -505,9 +596,9 @@ async def send_message(
     if colour:
         embed.colour = colour
     try:
-        await channel.send(content=content, embed=embed)
-    except Exception as e:
-        print("[send_message] exception:", e)
+        await channel.send(content=content, embed=embed, delete_after=delete_after)
+    except Exception:
+        _log.exception("[send_message] Ignoring exception:")
 
 
 async def print_leaderboard():
@@ -560,7 +651,7 @@ async def print_leaderboard():
                     await last_message.edit(embed=Embed(description=output, colour=Colour.blue()))
                     return
             except Exception as e:
-                print("caught exception fetching channel last message:", e)
+                _log.exception("[print_leaderboard] exception")
             await send_message(
                 leaderboard_channel, embed_description=output, colour=Colour.blue()
             )
