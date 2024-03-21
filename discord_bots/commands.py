@@ -1635,16 +1635,6 @@ async def del_(ctx: Context, *args):
                 QueueWaitlistPlayer.player_id == message.author.id,
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
             ).delete()
-
-    queue: Queue
-    for queue in (
-        session.query(Queue)
-        .filter(Queue.is_locked == False)
-        .order_by(Queue.ordinal.asc())
-        .all()
-    ):  # type: ignore
-        if queue.is_locked:
-            continue
         players_in_queue: list[Player] = (
             session.query(Player)
             .join(QueuePlayer)
@@ -1654,65 +1644,22 @@ async def del_(ctx: Context, *args):
         queue_title_str = (
             f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
         )
-        player_mentions = ", ".join([f"<@{player.id}>" for player in players_in_queue])
+        player_display_names: list[str] = []
+        for player in players_in_queue:
+            user: discord.User | None = bot.get_user(player.id)
+            if user:
+                player_display_names.append(user.display_name)
+            else:
+                player_display_names.append(player.name)
         embed.add_field(
             name=queue_title_str,
-            value="" if not player_mentions else f"> {player_mentions}",
+            value=(
+                ""
+                if not player_display_names
+                else f"> {', '.join(player_display_names)}"
+            ),
             inline=False,
         )
-        in_progress_games: list[InProgressGame] = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.queue_id == queue.id)
-            .all()
-        )
-        ipg_strs = []
-        for game in in_progress_games:
-            aware_db_datetime: datetime = game.created_at.replace(
-                tzinfo=timezone.utc
-            )  # timezones aren't stored in the DB, so add it ourselves
-            timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
-            team0_players: list[Player] = (
-                session.query(Player)
-                .join(InProgressGamePlayer)
-                .filter(
-                    InProgressGamePlayer.in_progress_game_id == game.id,
-                    InProgressGamePlayer.team == 0,
-                )
-                .all()
-            )
-            team1_players = list[Player](
-                session.query(Player)
-                .join(InProgressGamePlayer)
-                .filter(
-                    InProgressGamePlayer.in_progress_game_id == game.id,
-                    InProgressGamePlayer.team == 1,
-                )
-                .all()
-            )
-            team0_mentions = f", ".join([f"<@{player.id}>" for player in team0_players])
-            team1_mentions = f", ".join([f"<@{player.id}>" for player in team1_players])
-            ipg_str = ""
-            if game.message_id and game.channel_id:
-                game_channel = bot.get_channel(game.channel_id)
-                try:
-                    if isinstance(game_channel, TextChannel):
-                        game_message = await game_channel.fetch_message(game.message_id)
-                        if game_message:
-                            ipg_str += f"{game_message.jump_url} {timestamp}"
-                except Exception as e:
-                    _log.warning(
-                        f"Could not find game message {game.message_id} due to: {e}"
-                    )
-            else:
-                ipg_str += f"{short_uuid(game.id)} {timestamp}"
-            ipg_str += f"\n{game.team0_name} ({round(100 * game.win_probability)}%)\n> {team0_mentions}"
-            ipg_str += f"\n{game.team1_name} ({round(100 * (1 - game.win_probability))}%)\n> {team1_mentions}"
-            ipg_strs.append(ipg_str)
-        if in_progress_games:
-            embed.add_field(
-                name="In Progress Games",
-                value="\n".join([ipg_str for ipg_str in ipg_strs]),
-            )
 
     # TODO: Check deleting by name / ordinal
     # session.query(QueueWaitlistPlayer).filter(
@@ -1723,7 +1670,7 @@ async def del_(ctx: Context, *args):
         embed_description = f"<@{message.author.id}> removed from **{', '.join([queue.name for queue in queues_to_del])}**"
         embed.color = discord.Color.green()
     else:
-        embed_description = f"<@{message.author.id}> no valid queues were specified"
+        embed_description = f"<@{message.author.id}> no valid queues specified"
         embed.color = discord.Color.red()
     embed.description = embed_description
     await message.channel.send(embed=embed)
@@ -3008,7 +2955,9 @@ async def status(ctx: Context, *args):
                 )
                 next_map_str += f" ({raffle_reward} tickets)"
             embed.add_field(
-                name=f"{rotation.name}: {next_map_str}", value="", inline=False
+                name=f"{rotation.name}",
+                value=f"**Next Map**: {next_map_str}",
+                inline=False,
             )
 
             for queue in rotation_queues:
@@ -3021,12 +2970,21 @@ async def status(ctx: Context, *args):
                     .all()
                 )
                 queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
-                player_mentions = ", ".join(
-                    [f"<@{player.id}>" for player in players_in_queue]
-                )
+                player_display_names: list[str] = []
+                for player in players_in_queue:
+                    user: discord.User | None = bot.get_user(player.id)
+                    if user:
+                        player_display_names.append(user.display_name)
+                    else:
+                        player_display_names.append(player.name)
+
                 embed.add_field(
                     name=queue_title_str,
-                    value="" if not player_mentions else f"> {player_mentions}",
+                    value=(
+                        ""
+                        if not player_display_names
+                        else f"> {', '.join(player_display_names)}"
+                    ),
                     inline=False,
                 )
                 if queue.id in games_by_queue:

@@ -33,7 +33,6 @@ import discord_bots.config as config
 from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
-    DiscordMember,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -173,22 +172,18 @@ async def create_in_progress_game_embed(
     )
     team0_display_names: list[str] = []
     for player in team0_players:
-        try:
-            user: discord.User = await bot.fetch_user(player.id)
+        user: discord.User | None = bot.get_user(player.id)
+        if user:
             team0_display_names.append(user.display_name)
-        except:
-            _log.exception(
-                "[create_in_progress_game_embed] Ignoring exception in fetch_user"
-            )
+        else:
+            team0_display_names.append(player.name)
     team1_display_names: list[str] = []
     for player in team1_players:
-        try:
-            user: discord.User = await bot.fetch_user(player.id)
+        user: discord.User | None = bot.get_user(player.id)
+        if user:
             team1_display_names.append(user.display_name)
-        except:
-            _log.exception(
-                "[create_in_progress_game_embed] Ignoring exception in fetch_user"
-            )
+        else:
+            team1_display_names.append(player.name)
 
     embed.add_field(
         name="🗺️ Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=True
