@@ -298,197 +298,205 @@ async def create_game(
     channel: TextChannel | DMChannel | GroupChannel,
     guild: Guild,
 ):
-    session = Session()
-    queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
-    if len(player_ids) == 1:
-        # Useful for debugging, no real world application
-        players = session.query(Player).filter(Player.id == player_ids[0]).all()
-        win_prob = 0
-    else:
-        players, win_prob = get_even_teams(
-            player_ids,
-            len(player_ids) // 2,
-            is_rated=queue.is_rated,
-            queue_category_id=queue.category_id,
-        )
-    category = session.query(Category).filter(Category.id == queue.category_id).first()
-    player_category_trueskills = None
-    if category:
-        player_category_trueskills: list[PlayerCategoryTrueskill] = (
-            session.query(PlayerCategoryTrueskill)
-            .filter(
-                PlayerCategoryTrueskill.category_id == category.id,
-                PlayerCategoryTrueskill.player_id.in_(player_ids),
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        queue: Queue | None = session.query(Queue).filter(Queue.id == queue_id).first()
+        if not queue:
+            _log.error(f"[create_game] could not find queue with id {queue_id}")
+            return
+        if len(player_ids) == 1:
+            # Useful for debugging, no real world application
+            players = session.query(Player).filter(Player.id == player_ids[0]).all()
+            win_prob = 0
+        else:
+            players, win_prob = get_even_teams(
+                player_ids,
+                len(player_ids) // 2,
+                is_rated=queue.is_rated,
+                queue_category_id=queue.category_id,
             )
-            .all()
+        category = (
+            session.query(Category).filter(Category.id == queue.category_id).first()
         )
-    if player_category_trueskills:
-        average_trueskill = mean(list(map(lambda x: x.mu, player_category_trueskills)))
-    else:
-        average_trueskill = mean(
-            list(
-                map(
-                    lambda x: x.rated_trueskill_mu,
-                    players,
+        player_category_trueskills = None
+        if category:
+            player_category_trueskills: list[PlayerCategoryTrueskill] = (
+                session.query(PlayerCategoryTrueskill)
+                .filter(
+                    PlayerCategoryTrueskill.category_id == category.id,
+                    PlayerCategoryTrueskill.player_id.in_(player_ids),
+                )
+                .all()
+            )
+        if player_category_trueskills:
+            average_trueskill = mean(
+                list(map(lambda x: x.mu, player_category_trueskills))
+            )
+        else:
+            average_trueskill = mean(
+                list(
+                    map(
+                        lambda x: x.rated_trueskill_mu,
+                        players,
+                    )
                 )
             )
+
+        next_rotation_map: RotationMap | None = (
+            session.query(RotationMap)
+            .join(Rotation, Rotation.id == RotationMap.rotation_id)
+            .join(Queue, Queue.rotation_id == Rotation.id)
+            .filter(Queue.id == queue.id)
+            .filter(RotationMap.is_next == True)
+            .first()
         )
+        if not next_rotation_map:
+            raise Exception("No next map!")
 
-    next_rotation_map: RotationMap | None = (
-        session.query(RotationMap)
-        .join(Rotation, Rotation.id == RotationMap.rotation_id)
-        .join(Queue, Queue.rotation_id == Rotation.id)
-        .filter(Queue.id == queue.id)
-        .filter(RotationMap.is_next == True)
-        .first()
-    )
-    if not next_rotation_map:
-        raise Exception("No next map!")
+        rolled_random_map = False
+        if next_rotation_map.is_random:
+            # Roll for random map
+            rolled_random_map = uniform(0, 1) < next_rotation_map.random_probability
 
-    rolled_random_map = False
-    if next_rotation_map.is_random:
-        # Roll for random map
-        rolled_random_map = uniform(0, 1) < next_rotation_map.random_probability
-
-    if rolled_random_map:
-        maps: List[Map] = session.query(Map).all()
-        random_map = choice(maps)
-        next_map_full_name = random_map.full_name
-        next_map_short_name = random_map.short_name
-    else:
-        next_map: Map | None = (
-            session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
-        )
-        next_map_full_name = next_map.full_name
-        next_map_short_name = next_map.short_name
-
-    game = InProgressGame(
-        average_trueskill=average_trueskill,
-        map_full_name=next_map_full_name,
-        map_short_name=next_map_short_name,
-        queue_id=queue.id,
-        team0_name=generate_be_name(),
-        team1_name=generate_ds_name(),
-        win_probability=win_prob,
-    )
-    if config.ECONOMY_ENABLED:
-        game.prediction_open = True
-    session.add(game)
-
-    team0_players = players[: len(players) // 2]
-    team1_players = players[len(players) // 2 :]
-
-    short_game_id = short_uuid(game.id)
-    title = f"\nGame '{queue.name}' ({short_game_id}) has begun!\n"
-    embed = Embed(
-        title=title,
-        colour=Colour.blue(),
-    )
-
-    be_channel, ds_channel = None, None
-    categories = {category.id: category for category in guild.categories}
-    voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
-    if voice_category:
-        be_channel, ds_channel = await create_team_voice_channels(
-            session, guild, game, voice_category
-        )
-    else:
-        _log.warning(
-            f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
-        )
-    match_channel: discord.TextChannel = await guild.create_text_channel(
-        f"{queue.name}-({short_game_id})", category=voice_category
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=match_channel.id)
-    )
-    embed.add_field(
-        name="Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=False
-    )
-    embed.add_field(
-        name=f"{game.team0_name} ({round(100 * win_prob)}%)",
-        value="\n".join([f"> <@{player.id}>" for player in team0_players]),
-        inline=True,
-    )
-    embed.add_field(
-        name=f"{game.team1_name} ({round(100 * (1 - win_prob))}%)",
-        value="\n".join([f"> <@{player.id}>" for player in team1_players]),
-        inline=True,
-    )
-    if match_channel:
-        embed.add_field(
-            name="Match Channel", value=match_channel.jump_url, inline=False
-        )
-    if config.SHOW_TRUESKILL:
-        embed.add_field(
-            name=f"Average {MU_LOWER_UNICODE}",
-            value=round(average_trueskill, 2),
-            inline=False,
-        )
-    embed.add_field(
-        name="Match Commands", value="\n".join(["`/setgamecode`"]), inline=True
-    )
-    for player in team0_players:
-        if be_channel:
-            await send_in_guild_message(
-                guild, player.id, message_content=be_channel.jump_url, embed=embed
+        if rolled_random_map:
+            maps: List[Map] = session.query(Map).all()
+            random_map = choice(maps)
+            next_map_full_name = random_map.full_name
+            next_map_short_name = random_map.short_name
+        else:
+            next_map: Map | None = (
+                session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
             )
-        game_player = InProgressGamePlayer(
-            in_progress_game_id=game.id,
-            player_id=player.id,
-            team=0,
-        )
-        session.add(game_player)
+            next_map_full_name = next_map.full_name
+            next_map_short_name = next_map.short_name
 
-    for player in team1_players:
-        if ds_channel:
-            await send_in_guild_message(
-                guild, player.id, message_content=ds_channel.jump_url, embed=embed
+        game = InProgressGame(
+            average_trueskill=average_trueskill,
+            map_full_name=next_map_full_name,
+            map_short_name=next_map_short_name,
+            queue_id=queue.id,
+            team0_name=generate_be_name(),
+            team1_name=generate_ds_name(),
+            win_probability=win_prob,
+        )
+        if config.ECONOMY_ENABLED:
+            game.prediction_open = True
+        session.add(game)
+
+        team0_players = players[: len(players) // 2]
+        team1_players = players[len(players) // 2 :]
+        for player in team1_players:
+            game_player = InProgressGamePlayer(
+                in_progress_game_id=game.id,
+                player_id=player.id,
+                team=1,
             )
-        game_player = InProgressGamePlayer(
-            in_progress_game_id=game.id,
-            player_id=player.id,
-            team=1,
-        )
-        session.add(game_player)
+            session.add(game_player)
+        for player in team0_players:
+            game_player = InProgressGamePlayer(
+                in_progress_game_id=game.id,
+                player_id=player.id,
+                team=0,
+            )
+            session.add(game_player)
 
-    in_progress_game_cog = bot.get_cog("InProgressGameCog")
-    if in_progress_game_cog is not None and isinstance(
-        in_progress_game_cog, InProgressGameCog
-    ):
-        message = await match_channel.send(
-            embed=embed, view=InProgressGameView(game.id, in_progress_game_cog)
+        short_game_id = short_uuid(game.id)
+        # embed = Embed(
+        # title=title,
+        # colour=Colour.blue(),
+        # )
+        embed: Embed = await create_in_progress_game_embed(session, game)
+        embed.title = f"⏳Game '{queue.name}' ({short_uuid(game.id)}) has begun!"
+
+        be_channel, ds_channel = None, None
+        categories = {category.id: category for category in guild.categories}
+        voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
+        if voice_category:
+            be_channel, ds_channel = await create_team_voice_channels(
+                session, guild, game, voice_category
+            )
+        else:
+            _log.warning(
+                f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
+            )
+        try:
+            match_channel: discord.TextChannel | None = await guild.create_text_channel(
+                f"{queue.name}-({short_game_id})", category=voice_category
+            )
+            session.add(
+                InProgressGameChannel(
+                    in_progress_game_id=game.id, channel_id=match_channel.id
+                )
+            )
+        except:
+            _log.exception(
+                f"[create_game] failed to create match channel for game {short_game_id}"
+            )
+        if match_channel:
+            # the embed won't have the Match Channel Field yet, so we add it ourselves
+            embed.add_field(
+                name="Match Channel", value=match_channel.jump_url, inline=False
+            )
+            game.channel_id = match_channel.id
+        embed.add_field(
+            name="Match Commands",
+            value="\n".join(["`/finishgame`", "`/setgamecode`"]),
+            inline=True,
         )
-        game.message_id = message.id
-        game.channel_id = match_channel.id
+        for player in team0_players:
+            if be_channel:
+                await send_in_guild_message(
+                    guild, player.id, message_content=be_channel.jump_url, embed=embed
+                )
+
+        for player in team1_players:
+            if ds_channel:
+                await send_in_guild_message(
+                    guild, player.id, message_content=ds_channel.jump_url, embed=embed
+                )
+
+        in_progress_game_cog = bot.get_cog("InProgressGameCog")
+        if (
+            in_progress_game_cog is not None
+            and isinstance(in_progress_game_cog, InProgressGameCog)
+            and match_channel
+        ):
+            message = await match_channel.send(
+                embed=embed, view=InProgressGameView(game.id, in_progress_game_cog)
+            )
+            game.message_id = message.id
+        else:
+            _log.warning("Could not get InProgressGameCog")
+
+        session.query(QueuePlayer).filter(QueuePlayer.player_id.in_(player_ids)).delete()  # type: ignore
         session.commit()
-    else:
-        _log.warning("Could not get InProgressGameCog")
 
-    session.query(QueuePlayer).filter(QueuePlayer.player_id.in_(player_ids)).delete()  # type: ignore
-    session.commit()
+        if not rolled_random_map:
+            await update_next_map_to_map_after_next(queue.rotation_id, False)
 
-    if not rolled_random_map:
-        await update_next_map_to_map_after_next(queue.rotation_id, False)
+        if config.ECONOMY_ENABLED and match_channel:
+            prediction_message_id: int | None = (
+                await EconomyCommands.create_prediction_message(
+                    None, game, match_channel
+                )
+            )
+            if prediction_message_id:
+                game.prediction_message_id = prediction_message_id
+                session.commit()
 
-    if config.ECONOMY_ENABLED:
-        prediction_message_id: int | None = (
-            await EconomyCommands.create_prediction_message(None, game, match_channel)
-        )
-        if prediction_message_id:
-            game.prediction_message_id = prediction_message_id
-            session.commit()
-
-    await channel.send(embed=embed)
-    if config.ENABLE_VOICE_MOVE and queue.move_enabled and be_channel and ds_channel:
-        await _movegameplayers(short_game_id, None, guild)
-        await send_message(
-            channel,
-            embed_description=f"Players moved to voice channels for game {short_game_id}",
-            colour=Colour.blue(),
-        )
-
-    session.close()
+        await channel.send(embed=embed)
+        if (
+            config.ENABLE_VOICE_MOVE
+            and queue.move_enabled
+            and be_channel
+            and ds_channel
+        ):
+            await _movegameplayers(short_game_id, None, guild)
+            await send_message(
+                channel,
+                embed_description=f"Players moved to voice channels for game {short_game_id}",
+                colour=Colour.blue(),
+            )
 
 
 async def create_team_voice_channels(
