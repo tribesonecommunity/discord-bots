@@ -12,7 +12,6 @@ from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from turtle import delay
 from typing import List, Union
 
 import discord
@@ -96,7 +95,7 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .names import generate_be_name, generate_ds_name
-from .queues import AddPlayerQueueMessage, add_player_queue
+from .queues import AddPlayerQueueMessage, add_player_queue, waitlist_messages
 from .twitch import twitch
 
 _log = logging.getLogger(__name__)
@@ -1112,14 +1111,15 @@ async def add(ctx: Context, *args):
 
         queue_names = [queue.name for queue in queues_to_add]
         embed_description = f"<@{message.author.id}> your game has just finished, you will be randomized into **{', '.join(queue_names)}** {timer}"
-        await send_message(
+        waitlist_message: Message | None = await send_message(
             message.channel,
             # TODO: Populate this message with the queues the player was
             # eligible for
             embed_description=embed_description,
             colour=Colour.yellow(),
-            delete_after=time_to_wait,
         )
+        if waitlist_message:
+            waitlist_messages.append(waitlist_message)
         return
 
     if isinstance(message.channel, TextChannel) and message.guild:
@@ -1681,6 +1681,11 @@ async def del_(ctx: Context, *args):
         embed_description = f"<@{message.author.id}> no valid queues specified"
         embed.color = discord.Color.red()
     embed.description = embed_description
+    embed_fields_len = len(embed.fields)
+    if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
+        # embeds are allowed 3 "columns" per "row"
+        # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
+        embed.add_field(name="", value="", inline=True)
     await message.channel.send(embed=embed)
     session.commit()
     session.close()
@@ -2980,7 +2985,8 @@ async def status(ctx: Context, *args):
                 inline=False,
             )
 
-            for queue in rotation_queues:
+            rotation_queues_len = len(rotation_queues)
+            for i, queue in enumerate(rotation_queues):
                 if queue.is_locked:
                     continue
                 players_in_queue: list[Player] = (
@@ -3008,6 +3014,10 @@ async def status(ctx: Context, *args):
                     ),
                     inline=True,
                 )
+                if i == rotation_queues_len - 1 and i >= 5 and i % 3 == 2:
+                    # embeds are allowed 3 "columns" per "row"
+                    # to line everything up nicely when there's >= 5 queues and only one "column" slot left, we add a blank
+                    embed.add_field(name="", value="", inline=True)
                 if queue.id in games_by_queue:
                     game: InProgressGame
                     for game in games_by_queue[queue.id]:

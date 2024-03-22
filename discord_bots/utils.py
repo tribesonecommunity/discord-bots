@@ -208,14 +208,15 @@ async def create_in_progress_game_embed(
         except Exception as e:
             _log.warning(f"Could not find game message {game.message_id} due to: {e}")
     embed.add_field(name="", value="", inline=False)  # newline
+    newline = "\n"
     embed.add_field(
         name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
-        value="" if not team0_players else f"\n> {', '.join(team0_display_names)}",
+        value="" if not team0_players else f"\n>>> {newline.join(team0_display_names)}",
         inline=True,
     )
     embed.add_field(
         name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
-        value="" if not team1_players else f"\n> {', '.join(team1_display_names)}",
+        value="" if not team1_players else f"\n>>> {newline.join(team1_display_names)}",
         inline=True,
     )
     return embed
@@ -577,10 +578,11 @@ async def send_message(
     embed_title: str | None = None,
     embed_thumbnail: str | None = None,
     delete_after: float | None = None,
-):
+) -> Message | None:
     """
     :colour: red = fail, green = success, blue = informational
     """
+    message: Message | None = None
     if content:
         if embed_content:
             content = f"`{content}`"
@@ -596,9 +598,12 @@ async def send_message(
     if colour:
         embed.colour = colour
     try:
-        await channel.send(content=content, embed=embed, delete_after=delete_after)
+        message = await channel.send(
+            content=content, embed=embed, delete_after=delete_after
+        )
     except Exception:
         _log.exception("[send_message] Ignoring exception:")
+    return message
 
 
 async def print_leaderboard():
@@ -623,7 +628,7 @@ async def print_leaderboard():
                     )
                     output += f"\n{i}. {round(pct.rank, 1)} - <@{player.id}> _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
             pass
-        
+
         if config.ECONOMY_ENABLED:
             output += f"\n\n**{config.CURRENCY_NAME}**"
             top_10_player_currency: list[Player] = (
@@ -633,7 +638,7 @@ async def print_leaderboard():
             )
             for i, player_currency in enumerate(top_10_player_currency, 1):
                 output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
-    
+
     output += "\n"
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
     output += "\n(Leaderboard updates periodically)"
