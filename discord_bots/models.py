@@ -1283,6 +1283,7 @@ class SchedulePlayer:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "schedule_player"
+    __table_args__ = (UniqueConstraint("schedule_id", "player_id"),)
 
     schedule_id: str = field(
         metadata={
