@@ -1258,6 +1258,51 @@ class RotationMap:
 
 @mapper_registry.mapped
 @dataclass
+class Schedule:
+    """
+    Stores datetimes for scheduling games up to a week in advance
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "schedule"
+
+    date_time: datetime = field(metadata={"sa": Column(DateTime, nullable=False)})
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class SchedulePlayer:
+    """
+    Player registers as available for a scheduled time
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "schedule_player"
+
+    schedule_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("schedule.id"), index=True, nullable=False)
+        }
+    )
+    player_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("player.id"), index=True, nullable=False)
+        }
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class VotePassedWaitlist:
     """
     Queue players from adding after a vote passes. This is to avoid the race
