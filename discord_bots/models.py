@@ -1266,7 +1266,9 @@ class Schedule:
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "schedule"
 
-    date_time: datetime = field(metadata={"sa": Column(DateTime, nullable=False)})
+    date_time: datetime = field(
+        metadata={"sa": Column(DateTime, nullable=False, unique=True)}
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
