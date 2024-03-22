@@ -3143,7 +3143,7 @@ async def stats(interaction: Interaction):
             last_nfgs = [
                 fg
                 for fg in finished_games
-                if fg.finished_at > datetime.now() - timedelta(days=n)
+                if fg.finished_at > datetime.now(timezone.utc) - timedelta(days=n)
             ]
         wins = [
             fg
