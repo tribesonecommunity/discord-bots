@@ -135,6 +135,7 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
 async def create_in_progress_game_embed(
     session: sqlalchemy.orm.Session,
     game: InProgressGame,
+    guild: discord.Guild,
 ) -> Embed:
     queue: Queue | None = session.query(Queue).filter(Queue.id == game.queue_id).first()
     embed: discord.Embed
@@ -171,20 +172,20 @@ async def create_in_progress_game_embed(
         )
         .all()
     )
-    team0_display_names: list[str] = []
+    team0_names: list[str] = []
     for player in team0_players:
-        user: discord.User | None = bot.get_user(player.id)
-        if user:
-            team0_display_names.append(user.display_name)
+        member: discord.Member | None = guild.get_member(player.id)
+        if member:
+            team0_names.append(member.name)
         else:
-            team0_display_names.append(player.name)
-    team1_display_names: list[str] = []
+            team0_names.append(player.name)
+    team1_names: list[str] = []
     for player in team1_players:
-        user: discord.User | None = bot.get_user(player.id)
-        if user:
-            team1_display_names.append(user.display_name)
+        member: discord.Member | None = guild.get_member(player.id)
+        if member:
+            team1_names.append(member.display_name)
         else:
-            team1_display_names.append(player.name)
+            team1_names.append(player.name)
 
     embed.add_field(
         name="🗺️ Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=True
@@ -208,14 +209,15 @@ async def create_in_progress_game_embed(
         except Exception as e:
             _log.warning(f"Could not find game message {game.message_id} due to: {e}")
     embed.add_field(name="", value="", inline=False)  # newline
+    newline = "\n"
     embed.add_field(
         name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
-        value="" if not team0_players else f"\n> {', '.join(team0_display_names)}",
+        value="" if not team0_players else f"\n>>> {newline.join(team0_names)}",
         inline=True,
     )
     embed.add_field(
         name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
-        value="" if not team1_players else f"\n> {', '.join(team1_display_names)}",
+        value="" if not team1_players else f"\n>>> {newline.join(team1_names)}",
         inline=True,
     )
     return embed
@@ -469,87 +471,90 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
     :is_verbose: specifies if we want to see queues affected in the bot response.
                  currently passing in False for when game pops, True for everything else.
     """
-    session = Session()
-
-    rotation: Rotation | None = (
-        session.query(Rotation).filter(Rotation.id == rotation_id).first()
-    )
-
-    next_rotation_map: RotationMap | None = (
-        session.query(RotationMap)
-        .filter(RotationMap.rotation_id == rotation_id)
-        .filter(RotationMap.is_next == True)
-        .first()
-    )
-
-    if rotation.is_random:
-        rotation_map_after_next: RotationMap | None = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation_id)
-            .filter(RotationMap.is_next == False)
-            .order_by(func.random())
-            .first()
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.id == rotation_id).first()
         )
-    else:
-        rotation_map_length = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation_id)
-            .count()
-        )
-        rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
-        if rotation_map_after_next_ordinal > rotation_map_length:
-            rotation_map_after_next_ordinal = 1
 
-        rotation_map_after_next: RotationMap | None = (
+        next_rotation_map: RotationMap | None = (
             session.query(RotationMap)
             .filter(RotationMap.rotation_id == rotation_id)
-            .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
+            .filter(RotationMap.is_next == True)
             .first()
         )
 
-    next_rotation_map.is_next = False
-    rotation_map_after_next.is_next = True
-
-    map_after_next_name: str | None = (
-        session.query(Map.full_name)
-        .join(RotationMap, RotationMap.map_id == Map.id)
-        .filter(RotationMap.id == rotation_map_after_next.id)
-        .scalar()
-    )
-
-    channel = bot.get_channel(config.CHANNEL_ID)
-    if isinstance(channel, discord.TextChannel):
-        if is_verbose:
-            rotation_queues = (
-                session.query(Queue.name).filter(Queue.rotation_id == rotation_id).all()
-            )
-            rotation_queue_names = ""
-            for name in rotation_queues:
-                rotation_queue_names += f"\n- {name[0]}"
-
-            await send_message(
-                channel,
-                embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
-                colour=Colour.blue(),
+        if rotation.is_random:
+            rotation_map_after_next: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .filter(RotationMap.is_next == False)
+                .order_by(func.random())
+                .first()
             )
         else:
-            await send_message(
-                channel,
-                embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed",
-                colour=Colour.blue(),
+            rotation_map_length = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .count()
+            )
+            rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
+            if rotation_map_after_next_ordinal > rotation_map_length:
+                rotation_map_after_next_ordinal = 1
+
+            rotation_map_after_next: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
+                .first()
             )
 
-    map_votes = (
-        session.query(MapVote)
-        .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
-        .filter(RotationMap.rotation_id == rotation_id)
-        .all()
-    )
-    for map_vote in map_votes:
-        session.delete(map_vote)
-    session.query(SkipMapVote).filter(SkipMapVote.rotation_id == rotation_id).delete()
-    session.commit()
-    session.close()
+        next_rotation_map.is_next = False
+        rotation_map_after_next.is_next = True
+
+        map_after_next_name: str | None = (
+            session.query(Map.full_name)
+            .join(RotationMap, RotationMap.map_id == Map.id)
+            .filter(RotationMap.id == rotation_map_after_next.id)
+            .scalar()
+        )
+
+        channel = bot.get_channel(config.CHANNEL_ID)
+        if isinstance(channel, discord.TextChannel):
+            if is_verbose:
+                rotation_queues = (
+                    session.query(Queue.name)
+                    .filter(Queue.rotation_id == rotation_id)
+                    .all()
+                )
+                rotation_queue_names = ""
+                for name in rotation_queues:
+                    rotation_queue_names += f"\n- {name[0]}"
+
+                await send_message(
+                    channel,
+                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
+                    colour=Colour.blue(),
+                )
+            else:
+                await send_message(
+                    channel,
+                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed",
+                    colour=Colour.blue(),
+                )
+
+        map_votes = (
+            session.query(MapVote)
+            .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
+            .filter(RotationMap.rotation_id == rotation_id)
+            .all()
+        )
+        for map_vote in map_votes:
+            session.delete(map_vote)
+        session.query(SkipMapVote).filter(
+            SkipMapVote.rotation_id == rotation_id
+        ).delete()
+        session.commit()
 
 
 async def send_in_guild_message(
@@ -577,10 +582,11 @@ async def send_message(
     embed_title: str | None = None,
     embed_thumbnail: str | None = None,
     delete_after: float | None = None,
-):
+) -> Message | None:
     """
     :colour: red = fail, green = success, blue = informational
     """
+    message: Message | None = None
     if content:
         if embed_content:
             content = f"`{content}`"
@@ -596,9 +602,12 @@ async def send_message(
     if colour:
         embed.colour = colour
     try:
-        await channel.send(content=content, embed=embed, delete_after=delete_after)
+        message = await channel.send(
+            content=content, embed=embed, delete_after=delete_after
+        )
     except Exception:
         _log.exception("[send_message] Ignoring exception:")
+    return message
 
 
 async def print_leaderboard():
@@ -623,7 +632,7 @@ async def print_leaderboard():
                     )
                     output += f"\n{i}. {round(pct.rank, 1)} - <@{player.id}> _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
             pass
-        
+
         if config.ECONOMY_ENABLED:
             output += f"\n\n**{config.CURRENCY_NAME}**"
             top_10_player_currency: list[Player] = (
@@ -633,7 +642,7 @@ async def print_leaderboard():
             )
             for i, player_currency in enumerate(top_10_player_currency, 1):
                 output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
-    
+
     output += "\n"
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
     output += "\n(Leaderboard updates periodically)"

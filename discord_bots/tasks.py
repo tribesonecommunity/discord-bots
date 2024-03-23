@@ -47,83 +47,60 @@ from .models import (
     VotePassedWaitlist,
     VotePassedWaitlistPlayer,
 )
-from .queues import AddPlayerQueueMessage, add_player_queue
+from .queues import AddPlayerQueueMessage, add_player_queue, waitlist_messages
 
 _log = logging.getLogger(__name__)
 
 
 @tasks.loop(minutes=1)
 async def afk_timer_task():
-    session = Session()
-    timeout: datetime = datetime.now(timezone.utc) - timedelta(
-        minutes=config.AFK_TIME_MINUTES
-    )
-
-    player: Player
-    for player in (
-        session.query(Player)
-        .join(QueuePlayer)
-        .filter(Player.last_activity_at < timeout, QueuePlayer.player_id == Player.id)
-    ):
-        queue_player = (
-            session.query(QueuePlayer)
-            .filter(QueuePlayer.player_id == player.id)
-            .first()
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        timeout: datetime = datetime.now(timezone.utc) - timedelta(
+            minutes=config.AFK_TIME_MINUTES
         )
-        if queue_player:
-            channel = bot.get_channel(queue_player.channel_id)
-            if channel and isinstance(channel, TextChannel):
-                member: Member | None = channel.guild.get_member(player.id)
-                if member:
-                    await send_message(
-                        channel,
-                        content=member.mention,
-                        embed_content=False,
-                        embed_description=f"{escape_markdown(player.name)} was removed from all queues for being inactive for {config.AFK_TIME_MINUTES} minutes",
-                        colour=Colour.red(),
-                    )
-            session.query(QueuePlayer).filter(
-                QueuePlayer.player_id == player.id
-            ).delete()
-            session.commit()
 
-    votes_removed_sent = False
-    for player in (
-        session.query(Player)
-        .join(MapVote)
-        .filter(Player.last_activity_at < timeout, MapVote.player_id == Player.id)
-    ):
-        map_votes: list[MapVote] = (
-            session.query(MapVote).filter(MapVote.player_id == player.id).all()
-        )
-        if len(map_votes) > 0:
-            channel = bot.get_channel(map_votes[0].channel_id)
-            if channel and isinstance(channel, TextChannel):
-                member: Member | None = channel.guild.get_member(player.id)
-                if member:
-                    await send_message(
-                        channel,
-                        content=member.mention,
-                        embed_content=False,
-                        embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {config.AFK_TIME_MINUTES} minutes",
-                        colour=Colour.red(),
-                    )
-                    votes_removed_sent = True
-            session.query(MapVote).filter(MapVote.player_id == player.id).delete()
-            session.commit()
+        player: Player
+        for player in (
+            session.query(Player)
+            .join(QueuePlayer)
+            .filter(
+                Player.last_activity_at < timeout, QueuePlayer.player_id == Player.id
+            )
+        ):
+            queue_player = (
+                session.query(QueuePlayer)
+                .filter(QueuePlayer.player_id == player.id)
+                .first()
+            )
+            if queue_player:
+                channel = bot.get_channel(queue_player.channel_id)
+                if channel and isinstance(channel, TextChannel):
+                    member: Member | None = channel.guild.get_member(player.id)
+                    if member:
+                        await send_message(
+                            channel,
+                            content=member.mention,
+                            embed_content=False,
+                            embed_description=f"{escape_markdown(player.name)} was removed from all queues for being inactive for {config.AFK_TIME_MINUTES} minutes",
+                            colour=Colour.red(),
+                        )
+                session.query(QueuePlayer).filter(
+                    QueuePlayer.player_id == player.id
+                ).delete()
+                session.commit()
 
-    for player in (
-        session.query(Player)
-        .join(SkipMapVote)
-        .filter(Player.last_activity_at < timeout, SkipMapVote.player_id == Player.id)
-    ):
-        skip_map_votes: list[SkipMapVote] = (
-            session.query(SkipMapVote).filter(SkipMapVote.player_id == player.id).all()
-        )
-        if len(skip_map_votes) > 0:
-            # So we don't send this message twice
-            if not votes_removed_sent:
-                channel = bot.get_channel(skip_map_votes[0].channel_id)
+        votes_removed_sent = False
+        for player in (
+            session.query(Player)
+            .join(MapVote)
+            .filter(Player.last_activity_at < timeout, MapVote.player_id == Player.id)
+        ):
+            map_votes: list[MapVote] = (
+                session.query(MapVote).filter(MapVote.player_id == player.id).all()
+            )
+            if len(map_votes) > 0:
+                channel = bot.get_channel(map_votes[0].channel_id)
                 if channel and isinstance(channel, TextChannel):
                     member: Member | None = channel.guild.get_member(player.id)
                     if member:
@@ -134,11 +111,40 @@ async def afk_timer_task():
                             embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {config.AFK_TIME_MINUTES} minutes",
                             colour=Colour.red(),
                         )
-            session.query(SkipMapVote).filter(
-                SkipMapVote.player_id == player.id
-            ).delete()
-            session.commit()
-    session.close()
+                        votes_removed_sent = True
+                session.query(MapVote).filter(MapVote.player_id == player.id).delete()
+                session.commit()
+
+        for player in (
+            session.query(Player)
+            .join(SkipMapVote)
+            .filter(
+                Player.last_activity_at < timeout, SkipMapVote.player_id == Player.id
+            )
+        ):
+            skip_map_votes: list[SkipMapVote] = (
+                session.query(SkipMapVote)
+                .filter(SkipMapVote.player_id == player.id)
+                .all()
+            )
+            if len(skip_map_votes) > 0:
+                # So we don't send this message twice
+                if not votes_removed_sent:
+                    channel = bot.get_channel(skip_map_votes[0].channel_id)
+                    if channel and isinstance(channel, TextChannel):
+                        member: Member | None = channel.guild.get_member(player.id)
+                        if member:
+                            await send_message(
+                                channel,
+                                content=member.mention,
+                                embed_content=False,
+                                embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {config.AFK_TIME_MINUTES} minutes",
+                                colour=Colour.red(),
+                            )
+                session.query(SkipMapVote).filter(
+                    SkipMapVote.player_id == player.id
+                ).delete()
+                session.commit()
 
 
 @tasks.loop(seconds=1)
@@ -155,13 +161,29 @@ async def queue_waitlist_task():
     with Session() as session:
         queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc())  # type: ignore
         queue_waitlist: QueueWaitlist
-        channel = None
+        channel: (
+            discord.abc.GuildChannel
+            | discord.Thread
+            | discord.abc.PrivateChannel
+            | None
+        ) = None
         guild: Guild | None = None
         for queue_waitlist in session.query(QueueWaitlist).filter(
             QueueWaitlist.end_waitlist_at < datetime.now(timezone.utc)
         ):
             if not channel:
                 channel = bot.get_channel(queue_waitlist.channel_id)
+                if isinstance(channel, TextChannel) and waitlist_messages:
+                    # TODO: delete_messages can only delete a max of 100 messages
+                    # so add logic to chunk waitlist_messages
+                    try:
+                        await channel.delete_messages(waitlist_messages)
+                    except:
+                        _log.exception(
+                            f"[queue_waitlist_task] Ignoring exception in delete_messages"
+                        )
+                    finally:
+                        waitlist_messages.clear()
             if not guild:
                 guild = bot.get_guild(queue_waitlist.guild_id)
 
@@ -199,7 +221,7 @@ async def queue_waitlist_task():
                                 player.name,
                                 # TODO: This is sucky to do it one at a time
                                 [queue.id],
-                                False,
+                                True,
                                 channel,
                                 guild,
                             )
@@ -210,18 +232,20 @@ async def queue_waitlist_task():
                 == queue_waitlist.in_progress_game_id
             ):
                 if guild:
-                    guild_channel = guild.get_channel(igp_channel.channel_id)
+                    guild_channel: discord.abc.GuildChannel | None = guild.get_channel(
+                        igp_channel.channel_id
+                    )
                     if guild_channel:
                         await guild_channel.delete()
                 session.delete(igp_channel)
-            session.query(InProgressGame).filter(
-                InProgressGame.id == queue_waitlist.in_progress_game_id
-            ).delete()
 
             session.query(QueueWaitlistPlayer).filter(
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
             ).delete()
             session.delete(queue_waitlist)
+            session.query(InProgressGame).filter(
+                InProgressGame.id == queue_waitlist.in_progress_game_id
+            ).delete()
         session.commit()
 
 
@@ -235,66 +259,65 @@ async def vote_passed_waitlist_task():
 
     TODO: Tests for this method
     """
-    session = Session()
-    vpw: VotePassedWaitlist | None = (
-        session.query(VotePassedWaitlist)
-        .filter(VotePassedWaitlist.end_waitlist_at < datetime.now(timezone.utc))
-        .first()
-    )
-    if not vpw:
-        return
-
-    channel = bot.get_channel(vpw.channel_id)
-    guild: Guild | None = bot.get_guild(vpw.guild_id)
-    queues: list[Queue] = session.query(Queue).order_by(Queue.created_at.asc())  # type: ignore
-
-    # TODO: Do we actually need to filter by id?
-    vote_passed_waitlist_players: list[VotePassedWaitlistPlayer] = (
-        session.query(VotePassedWaitlistPlayer)
-        .filter(VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id)
-        .all()
-    )
-    vpwp_by_queue_id: dict[str, list[VotePassedWaitlistPlayer]] = defaultdict(list)
-    for vote_passed_waitlist_player in vote_passed_waitlist_players:
-        vpwp_by_queue_id[vote_passed_waitlist_player.queue_id].append(
-            vote_passed_waitlist_player
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        vpw: VotePassedWaitlist | None = (
+            session.query(VotePassedWaitlist)
+            .filter(VotePassedWaitlist.end_waitlist_at < datetime.now(timezone.utc))
+            .first()
         )
+        if not vpw:
+            return
 
-    # Ensure that we process the queues in the order the queues were created
-    for queue in queues:
-        vpwps_for_queue = vpwp_by_queue_id[queue.id]
-        shuffle(vpwps_for_queue)
-        for vote_passed_waitlist_player in vpwps_for_queue:
-            if is_in_game(vote_passed_waitlist_player.player_id):
-                session.delete(vote_passed_waitlist_player)
-                continue
+        channel = bot.get_channel(vpw.channel_id)
+        guild: Guild | None = bot.get_guild(vpw.guild_id)
+        queues: list[Queue] = session.query(Queue).order_by(Queue.created_at.asc())  # type: ignore
 
-            if isinstance(channel, TextChannel) and guild:
-                player = (
-                    session.query(Player)
-                    .filter(Player.id == vote_passed_waitlist_player.player_id)
-                    .first()
-                )
+        # TODO: Do we actually need to filter by id?
+        vote_passed_waitlist_players: list[VotePassedWaitlistPlayer] = (
+            session.query(VotePassedWaitlistPlayer)
+            .filter(VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id)
+            .all()
+        )
+        vpwp_by_queue_id: dict[str, list[VotePassedWaitlistPlayer]] = defaultdict(list)
+        for vote_passed_waitlist_player in vote_passed_waitlist_players:
+            vpwp_by_queue_id[vote_passed_waitlist_player.queue_id].append(
+                vote_passed_waitlist_player
+            )
 
-                add_player_queue.put(
-                    AddPlayerQueueMessage(
-                        vote_passed_waitlist_player.player_id,
-                        player.name,
-                        # TODO: This is sucky to do it one at a time
-                        [queue.id],
-                        False,
-                        channel,
-                        guild,
+        # Ensure that we process the queues in the order the queues were created
+        for queue in queues:
+            vpwps_for_queue = vpwp_by_queue_id[queue.id]
+            shuffle(vpwps_for_queue)
+            for vote_passed_waitlist_player in vpwps_for_queue:
+                if is_in_game(vote_passed_waitlist_player.player_id):
+                    session.delete(vote_passed_waitlist_player)
+                    continue
+
+                if isinstance(channel, TextChannel) and guild:
+                    player = (
+                        session.query(Player)
+                        .filter(Player.id == vote_passed_waitlist_player.player_id)
+                        .first()
                     )
-                )
 
-    session.query(VotePassedWaitlistPlayer).filter(
-        VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id
-    ).delete()
-    session.delete(vpw)
-    session.commit()
-    session.close()
+                    add_player_queue.put(
+                        AddPlayerQueueMessage(
+                            vote_passed_waitlist_player.player_id,
+                            player.name,
+                            # TODO: This is sucky to do it one at a time
+                            [queue.id],
+                            False,
+                            channel,
+                            guild,
+                        )
+                    )
 
+        session.query(VotePassedWaitlistPlayer).filter(
+            VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id
+        ).delete()
+        session.delete(vpw)
+        session.commit()
 
 @tasks.loop(minutes=1)
 async def map_rotation_task():
@@ -304,27 +327,25 @@ async def map_rotation_task():
     if config.DISABLE_MAP_ROTATION:
         return
 
-    session = Session()
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        rotations: list[Rotation] | None = session.query(Rotation).all()
+        if not rotations:
+            return
 
-    rotations: list[Rotation] | None = session.query(Rotation).all()
-    if not rotations:
-        session.close()
-        return
-
-    for rotation in rotations:
-        next_rotation_map: RotationMap | None = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation.id)
-            .filter(RotationMap.is_next == True)
-            .first()
-        )
-        if next_rotation_map and next_rotation_map.ordinal != 1:
-            time_since_update: timedelta = datetime.now(
-                timezone.utc
-            ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
-            if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
-                await update_next_map_to_map_after_next(rotation.id, True)
-    session.close()
+        for rotation in rotations:
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.is_next == True)
+                .first()
+            )
+            if next_rotation_map and next_rotation_map.ordinal != 1:
+                time_since_update: timedelta = datetime.now(
+                    timezone.utc
+                ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
+                if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
+                    await update_next_map_to_map_after_next(rotation.id, True)
 
 
 async def add_players(session: sqlalchemy.orm.Session):
@@ -339,7 +360,10 @@ async def add_players(session: sqlalchemy.orm.Session):
         return
     queues: list[Queue] = session.query(Queue).order_by(Queue.ordinal.asc()).all()
     queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
+    queues_added_to_by_player_id: dict[int, list[Queue]] = {}
+    queues_added_to_by_id: dict[str, Queue] = {}
     message: AddPlayerQueueMessage | None = None
+    embed = discord.Embed()
     while not add_player_queue.empty():
         queues_added_to: list[Queue] = []
         message: AddPlayerQueueMessage = add_player_queue.get()
@@ -356,48 +380,68 @@ async def add_players(session: sqlalchemy.orm.Session):
                 break
             if added_to_queue:
                 queues_added_to.append(queue)
+        for queue in queues_added_to:
+            queues_added_to_by_id[queue.id] = queue
+        if message.player_id not in queues_added_to_by_player_id:
+            queues_added_to_by_player_id[message.player_id] = queues_added_to
+        else:
+            queues_added_to_by_player_id[message.player_id] += queues_added_to
 
-        if not queue_popped and message.should_print_status:
-            queue: Queue
-            embed = discord.Embed()
-            for queue in queues_added_to:
-                if queue.is_locked:
-                    continue
-                players_in_queue: list[Player] = (
-                    session.query(Player)
-                    .join(QueuePlayer)
-                    .filter(QueuePlayer.queue_id == queue.id)
-                    .all()
-                )
-                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
-                player_names: list[str] = []
-                for player in players_in_queue:
-                    user: discord.User | None = bot.get_user(player.id)
-                    if user:
-                        # try and get their discord displayname
-                        player_names.append(user.display_name)
-                    else:
-                        # fallback to their discord username
-                        player_names.append(player.name)
-                newline = "\n"
-                embed.add_field(
-                    name=queue_title_str,
-                    value=(f">>> {newline.join(player_names)}"),
-                    inline=True,
-                )
-
-            if queues_added_to:
-                queue_names = [queue.name for queue in queues_added_to]
-                embed.description = (
-                    f"<@{message.player_id}> added to **{', '.join(queue_names)}**"
-                )
-                embed.color = discord.Color.green()
-            else:
-                embed.description = f"<@{message.player_id}> no valid queues specified"
-                embed.color = discord.Color.red()
-            await message.channel.send(
-                embed=embed, allowed_mentions=discord.AllowedMentions.none()
+    if not queue_popped:
+        queue: Queue
+        embed_description = ""
+        for queue in queues_added_to_by_id.values():
+            if queue.is_locked:
+                continue
+            players_in_queue: list[Player] = (
+                session.query(Player)
+                .join(QueuePlayer)
+                .filter(QueuePlayer.queue_id == queue.id)
+                .all()
             )
+            queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+            player_names: list[str] = []
+            for player in players_in_queue:
+                user: discord.User | None = bot.get_user(player.id)
+                if user:
+                    # try and get their discord displayname
+                    player_names.append(user.display_name)
+                else:
+                    # fallback to their discord username
+                    player_names.append(player.name)
+            newline = "\n"
+            embed.add_field(
+                name=queue_title_str,
+                value=(
+                    f">>> {newline.join(player_names)}"
+                    if player_names
+                    else "> \n** **"  # weird hack to create an empty quote
+                ),
+                inline=True,
+            )
+
+        for player_id in queues_added_to_by_player_id.keys():
+            queues_added_to = queues_added_to_by_player_id[player_id]
+            queue_names = [queue.name for queue in queues_added_to]
+            if not queues_added_to:
+                embed_description += (
+                    f"<@{player_id}> **not added** to any queues" + "\n"
+                )
+            else:
+                embed_description += (
+                    f"<@{player_id}> added to **{', '.join(queue_names)}**" + "\n"
+                )
+            embed.color = discord.Color.green()
+
+        embed.description = embed_description
+        if not queues_added_to_by_id:
+            embed.color = discord.Color.yellow()
+        embed_fields_len = len(embed.fields)
+        if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
+            # embeds are allowed 3 "columns" per "row"
+            # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
+            embed.add_field(name="", value="", inline=True)
+        await message.channel.send(embed=embed)
 
     # No messages processed, so no way that sweaty queues popped
     if not message:
@@ -421,7 +465,7 @@ async def add_players(session: sqlalchemy.orm.Session):
                     prt.player_id
                     for prt in sorted(
                         pcts,
-                        key=lambda prt: prt.rated_trueskill_mu,
+                        key=lambda prt: prt.mu,
                         reverse=True,
                     )[: queue.size]
                 ]

@@ -12,7 +12,6 @@ from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from turtle import delay
 from typing import List, Union
 
 import discord
@@ -96,7 +95,7 @@ from .models import (
     VotePassedWaitlistPlayer,
 )
 from .names import generate_be_name, generate_ds_name
-from .queues import AddPlayerQueueMessage, add_player_queue
+from .queues import AddPlayerQueueMessage, add_player_queue, waitlist_messages
 from .twitch import twitch
 
 _log = logging.getLogger(__name__)
@@ -115,75 +114,76 @@ def get_even_teams(
 
     :returns: list of players and win probability for the first team
     """
-    session = Session()
-    players: list[Player] = (
-        session.query(Player).filter(Player.id.in_(player_ids)).all()
-    )
-    # This is important! This ensures captains are randomly distributed!
-    shuffle(players)
-    if queue_category_id:
-        player_category_trueskills = session.query(PlayerCategoryTrueskill).filter(
-            PlayerCategoryTrueskill.player_id.in_(player_ids),
-            PlayerCategoryTrueskill.category_id == queue_category_id,
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        players: list[Player] = (
+            session.query(Player).filter(Player.id.in_(player_ids)).all()
         )
-        player_category_trueskills = {
-            prt.player_id: prt for prt in player_category_trueskills
-        }
-    else:
-        player_category_trueskills = {}
-    best_win_prob_so_far: float = 0.0
-    best_teams_so_far: list[Player] = []
+        # This is important! This ensures captains are randomly distributed!
+        shuffle(players)
+        if queue_category_id:
+            player_category_trueskills = session.query(PlayerCategoryTrueskill).filter(
+                PlayerCategoryTrueskill.player_id.in_(player_ids),
+                PlayerCategoryTrueskill.category_id == queue_category_id,
+            )
+            player_category_trueskills = {
+                prt.player_id: prt for prt in player_category_trueskills
+            }
+        else:
+            player_category_trueskills = {}
+        best_win_prob_so_far: float = 0.0
+        best_teams_so_far: list[Player] = []
 
-    all_combinations = list(combinations(players, team_size))
-    if config.MAXIMUM_TEAM_COMBINATIONS:
-        all_combinations = all_combinations[: config.MAXIMUM_TEAM_COMBINATIONS]
-    for i, team0 in enumerate(all_combinations):
-        team1 = [p for p in players if p not in team0]
-        team0_ratings = []
-        for player in team0:
-            if queue_category_id and player.id in player_category_trueskills:
-                player_category_trueskill: PlayerCategoryTrueskill = (
-                    player_category_trueskills[player.id]
-                )
-                team0_ratings.append(
-                    Rating(
-                        player_category_trueskill.mu,
-                        player_category_trueskill.sigma,
+        all_combinations = list(combinations(players, team_size))
+        if config.MAXIMUM_TEAM_COMBINATIONS:
+            all_combinations = all_combinations[: config.MAXIMUM_TEAM_COMBINATIONS]
+        for i, team0 in enumerate(all_combinations):
+            team1 = [p for p in players if p not in team0]
+            team0_ratings = []
+            for player in team0:
+                if queue_category_id and player.id in player_category_trueskills:
+                    player_category_trueskill: PlayerCategoryTrueskill = (
+                        player_category_trueskills[player.id]
                     )
-                )
-            else:
-                team0_ratings.append(
-                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-                )
-        team1_ratings = []
-        for player in team1:
-            if queue_category_id and player.id in player_category_trueskills:
-                player_category_trueskill: PlayerCategoryTrueskill = (
-                    player_category_trueskills[player.id]
-                )
-                team1_ratings.append(
-                    Rating(
-                        player_category_trueskill.mu,
-                        player_category_trueskill.sigma,
+                    team0_ratings.append(
+                        Rating(
+                            player_category_trueskill.mu,
+                            player_category_trueskill.sigma,
+                        )
                     )
-                )
-            else:
-                team1_ratings.append(
-                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-                )
-        win_prob = win_probability(team0_ratings, team1_ratings)
-        current_team_evenness = abs(0.50 - win_prob)
-        best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
-        if current_team_evenness < best_team_evenness_so_far:
-            best_win_prob_so_far = win_prob
-            best_teams_so_far = list(team0[:]) + list(team1[:])
-        if best_team_evenness_so_far < 0.001:
-            break
+                else:
+                    team0_ratings.append(
+                        Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                    )
+            team1_ratings = []
+            for player in team1:
+                if queue_category_id and player.id in player_category_trueskills:
+                    player_category_trueskill: PlayerCategoryTrueskill = (
+                        player_category_trueskills[player.id]
+                    )
+                    team1_ratings.append(
+                        Rating(
+                            player_category_trueskill.mu,
+                            player_category_trueskill.sigma,
+                        )
+                    )
+                else:
+                    team1_ratings.append(
+                        Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                    )
+            win_prob = win_probability(team0_ratings, team1_ratings)
+            current_team_evenness = abs(0.50 - win_prob)
+            best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
+            if current_team_evenness < best_team_evenness_so_far:
+                best_win_prob_so_far = win_prob
+                best_teams_so_far = list(team0[:]) + list(team1[:])
+            if best_team_evenness_so_far < 0.001:
+                break
 
-    _log.info(
-        f"Found team evenness: {best_team_evenness_so_far} interations: {i}"
-    )  # DEBUG, TRACE?
-    return best_teams_so_far, best_win_prob_so_far
+        _log.info(
+            f"Found team evenness: {best_team_evenness_so_far} interations: {i}"
+        )  # DEBUG, TRACE?
+        return best_teams_so_far, best_win_prob_so_far
 
 
 # Return n of the most even or least even teams
@@ -405,7 +405,7 @@ async def create_game(
         # title=title,
         # colour=Colour.blue(),
         # )
-        embed: Embed = await create_in_progress_game_embed(session, game)
+        embed: Embed = await create_in_progress_game_embed(session, game, guild)
         embed.title = f"⏳Game '{queue.name}' ({short_uuid(game.id)}) has begun!"
 
         be_channel, ds_channel = None, None
@@ -535,95 +535,97 @@ async def add_player_to_queue(
     added to the queue, the second represents whether the queue popped as a
     result.
     """
-    session = Session()
-    queue_roles = session.query(QueueRole).filter(QueueRole.queue_id == queue_id).all()
-
-    # Zero queue roles means no role restrictions
-    if len(queue_roles) > 0:
-        member = guild.get_member(player_id)
-        if not member:
-            return False, False
-        queue_role_ids = set(map(lambda x: x.role_id, queue_roles))
-        player_role_ids = set(map(lambda x: x.id, member.roles))
-        has_role = len(queue_role_ids.intersection(player_role_ids)) > 0
-        if not has_role:
-            return False, False
-
-    if is_in_game(player_id):
-        return False, False
-
-    player: Player = session.query(Player).filter(Player.id == player_id).first()
-    queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
-    category = session.query(Category).filter(Category.id == queue.category_id).first()
-    player_category_trueskill: PlayerCategoryTrueskill | None = None
-    if category:
-        player_category_trueskill = (
-            session.query(PlayerCategoryTrueskill)
-            .filter(
-                PlayerCategoryTrueskill.player_id == player_id,
-                PlayerCategoryTrueskill.category_id == category.id,
-            )
-            .first()
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        queue_roles = (
+            session.query(QueueRole).filter(QueueRole.queue_id == queue_id).all()
         )
-    player_mu = player.rated_trueskill_mu
-    if player_category_trueskill:
-        player_mu = player_category_trueskill.mu
-    if queue.mu_max is not None:
-        if player_mu > queue.mu_max:
+
+        # Zero queue roles means no role restrictions
+        if len(queue_roles) > 0:
+            member = guild.get_member(player_id)
+            if not member:
+                return False, False
+            queue_role_ids = set(map(lambda x: x.role_id, queue_roles))
+            player_role_ids = set(map(lambda x: x.id, member.roles))
+            has_role = len(queue_role_ids.intersection(player_role_ids)) > 0
+            if not has_role:
+                return False, False
+
+        if is_in_game(player_id):
             return False, False
-    if queue.mu_min is not None:
-        if player_mu < queue.mu_min:
-            return False, False
 
-    session.add(
-        QueuePlayer(
-            queue_id=queue_id,
-            player_id=player_id,
-            channel_id=channel.id,
+        player: Player = session.query(Player).filter(Player.id == player_id).first()
+        queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
+        category = (
+            session.query(Category).filter(Category.id == queue.category_id).first()
         )
-    )
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        session.close()
-        return False, False
-
-    queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
-    queue_players: list[QueuePlayer] = (
-        session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).all()
-    )
-    if len(queue_players) == queue.size and not queue.is_sweaty:  # Pop!
-        player_ids: list[int] = list(map(lambda x: x.player_id, queue_players))
-        session.close()
-        await create_game(queue.id, player_ids, channel, guild)
-        return True, True
-
-    queue_notifications: list[QueueNotification] = (
-        session.query(QueueNotification)
-        .filter(
-            QueueNotification.queue_id == queue_id,
-            QueueNotification.size == len(queue_players),
-        )
-        .all()
-    )
-    for queue_notification in queue_notifications:
-        member: Member | None = guild.get_member(queue_notification.player_id)
-        if member:
-            try:
-                await member.send(
-                    embed=Embed(
-                        description=f"'{queue.name}' is at {queue_notification.size} players!",
-                        colour=Colour.blue(),
-                    )
+        player_category_trueskill: PlayerCategoryTrueskill | None = None
+        if category:
+            player_category_trueskill = (
+                session.query(PlayerCategoryTrueskill)
+                .filter(
+                    PlayerCategoryTrueskill.player_id == player_id,
+                    PlayerCategoryTrueskill.category_id == category.id,
                 )
-            except Exception:
-                pass
-        session.delete(queue_notification)
-    session.commit()
-    session.close()
+                .first()
+            )
+        player_mu = player.rated_trueskill_mu
+        if player_category_trueskill:
+            player_mu = player_category_trueskill.mu
+        if queue.mu_max is not None:
+            if player_mu > queue.mu_max:
+                return False, False
+        if queue.mu_min is not None:
+            if player_mu < queue.mu_min:
+                return False, False
 
-    return True, False
+        session.add(
+            QueuePlayer(
+                queue_id=queue_id,
+                player_id=player_id,
+                channel_id=channel.id,
+            )
+        )
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            return False, False
+
+        queue: Queue = session.query(Queue).filter(Queue.id == queue_id).first()
+        queue_players: list[QueuePlayer] = (
+            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue_id).all()
+        )
+        if len(queue_players) == queue.size and not queue.is_sweaty:  # Pop!
+            player_ids: list[int] = list(map(lambda x: x.player_id, queue_players))
+            await create_game(queue.id, player_ids, channel, guild)
+            return True, True
+
+        queue_notifications: list[QueueNotification] = (
+            session.query(QueueNotification)
+            .filter(
+                QueueNotification.queue_id == queue_id,
+                QueueNotification.size == len(queue_players),
+            )
+            .all()
+        )
+        for queue_notification in queue_notifications:
+            member: Member | None = guild.get_member(queue_notification.player_id)
+            if member:
+                try:
+                    await member.send(
+                        embed=Embed(
+                            description=f"'{queue.name}' is at {queue_notification.size} players!",
+                            colour=Colour.blue(),
+                        )
+                    )
+                except Exception:
+                    pass
+            session.delete(queue_notification)
+        session.commit()
+
+        return True, False
 
 
 def mock_teams_str(
@@ -673,60 +675,61 @@ def mock_finished_game_teams_str(
     Helper method to debug print teams if these were the players
     """
     output = ""
-    session = Session()
-    team0_rating = [
-        Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
-        for fgp in team0_fg_players
-    ]
-    team1_rating = [
-        Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
-        for fgp in team1_fg_players
-    ]
-    team0_player_ids_map = {x.player_id: x for x in team0_fg_players}
-    team1_player_ids_map = {x.player_id: x for x in team1_fg_players}
-    team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
-    team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
-    team0_players: list[Player] = session.query(Player).filter(
-        Player.id.in_(team0_player_ids)
-    )
-    team1_players: list[Player] = session.query(Player).filter(
-        Player.id.in_(team1_player_ids)
-    )
-    team0_names = ", ".join(
-        sorted(
-            [
-                f"{escape_markdown(player.name)} ({round(team0_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
-                for player in team0_players
-            ]
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        team0_rating = [
+            Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
+            for fgp in team0_fg_players
+        ]
+        team1_rating = [
+            Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
+            for fgp in team1_fg_players
+        ]
+        team0_player_ids_map = {x.player_id: x for x in team0_fg_players}
+        team1_player_ids_map = {x.player_id: x for x in team1_fg_players}
+        team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
+        team0_players: list[Player] = session.query(Player).filter(
+            Player.id.in_(team0_player_ids)
         )
-    )
-    team1_names = ", ".join(
-        sorted(
-            [
-                f"{escape_markdown(player.name)} ({round(team1_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
-                for player in team1_players
-            ]
+        team1_players: list[Player] = session.query(Player).filter(
+            Player.id.in_(team1_player_ids)
         )
-    )
-    team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
-    team1_win_prob = round(100 - team0_win_prob, 1)
-    team0_mu = round(
-        mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
-    )
-    team1_mu = round(
-        mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
-    )
-    team0_sigma = round(
-        mean([player.rated_trueskill_sigma_before for player in team0_fg_players]),
-        2,
-    )
-    team1_sigma = round(
-        mean([player.rated_trueskill_sigma_before for player in team1_fg_players]),
-        2,
-    )
-    output += f"\n**BE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
-    output += f"\n**DS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
-    return output
+        team0_names = ", ".join(
+            sorted(
+                [
+                    f"{escape_markdown(player.name)} ({round(team0_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
+                    for player in team0_players
+                ]
+            )
+        )
+        team1_names = ", ".join(
+            sorted(
+                [
+                    f"{escape_markdown(player.name)} ({round(team1_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
+                    for player in team1_players
+                ]
+            )
+        )
+        team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
+        team1_win_prob = round(100 - team0_win_prob, 1)
+        team0_mu = round(
+            mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
+        )
+        team1_mu = round(
+            mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
+        )
+        team0_sigma = round(
+            mean([player.rated_trueskill_sigma_before for player in team0_fg_players]),
+            2,
+        )
+        team1_sigma = round(
+            mean([player.rated_trueskill_sigma_before for player in team1_fg_players]),
+            2,
+        )
+        output += f"\n**BE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
+        output += f"\n**DS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
+        return output
 
 
 def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
@@ -734,87 +737,87 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     Helper method to pretty print a finished game
     """
     output = ""
-    session = Session()
-    short_game_id = short_uuid(finished_game.game_id)
-    team0_fg_players: list[FinishedGamePlayer] = (
-        session.query(FinishedGamePlayer)
-        .filter(
-            FinishedGamePlayer.finished_game_id == finished_game.id,
-            FinishedGamePlayer.team == 0,
-        )
-        .all()
-    )
-    team1_fg_players: list[FinishedGamePlayer] = (
-        session.query(FinishedGamePlayer)
-        .filter(
-            FinishedGamePlayer.finished_game_id == finished_game.id,
-            FinishedGamePlayer.team == 1,
-        )
-        .all()
-    )
-
-    if config.SHOW_TRUESKILL:
-        output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id}) (mu: {round(finished_game.average_trueskill, 2)})"
-    else:
-        output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id})"
-
-    team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
-    team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
-    team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_fg_players}
-    team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_fg_players}
-    team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
-    team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
-    if debug:
-        team0_names = ", ".join(
-            sorted(
-                [
-                    f"{escape_markdown(player.name)} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
-                    for player in team0_players
-                ]
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        short_game_id = short_uuid(finished_game.game_id)
+        team0_fg_players: list[FinishedGamePlayer] = (
+            session.query(FinishedGamePlayer)
+            .filter(
+                FinishedGamePlayer.finished_game_id == finished_game.id,
+                FinishedGamePlayer.team == 0,
             )
+            .all()
         )
-        team1_names = ", ".join(
-            sorted(
-                [
-                    f"{escape_markdown(player.name)} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
-                    for player in team1_players
-                ]
+        team1_fg_players: list[FinishedGamePlayer] = (
+            session.query(FinishedGamePlayer)
+            .filter(
+                FinishedGamePlayer.finished_game_id == finished_game.id,
+                FinishedGamePlayer.team == 1,
             )
+            .all()
         )
-    else:
-        team0_names = ", ".join(
-            sorted([escape_markdown(player.name) for player in team0_players])
-        )
-        team1_names = ", ".join(
-            sorted([escape_markdown(player.name) for player in team1_players])
-        )
-    team0_win_prob = round(100 * finished_game.win_probability, 1)
-    team1_win_prob = round(100 - team0_win_prob, 1)
-    team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
-    team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
 
-    if finished_game.winning_team == 0:
-        output += f"\n**{team0_str}**"
-        output += f"\n{team1_str}"
-    elif finished_game.winning_team == 1:
-        output += f"\n{team0_str}"
-        output += f"\n**{team1_str}**"
-    else:
-        output += f"\n{team0_str}"
-        output += f"\n{team1_str}"
-    delta: timedelta = datetime.now(timezone.utc) - finished_game.finished_at.replace(
-        tzinfo=timezone.utc
-    )
-    if delta.days > 0:
-        output += f"\n@ {delta.days} days ago\n"
-    elif delta.seconds > 3600:
-        hours_ago = delta.seconds // 3600
-        output += f"\n@ {hours_ago} hours ago\n"
-    else:
-        minutes_ago = delta.seconds // 60
-        output += f"\n@ {minutes_ago} minutes ago\n"
-    session.close()
-    return output
+        if config.SHOW_TRUESKILL:
+            output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id}) (mu: {round(finished_game.average_trueskill, 2)})"
+        else:
+            output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id})"
+
+        team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
+        team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_fg_players}
+        team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_fg_players}
+        team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+        team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+        if debug:
+            team0_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team0_players
+                    ]
+                )
+            )
+            team1_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team1_players
+                    ]
+                )
+            )
+        else:
+            team0_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team0_players])
+            )
+            team1_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team1_players])
+            )
+        team0_win_prob = round(100 * finished_game.win_probability, 1)
+        team1_win_prob = round(100 - team0_win_prob, 1)
+        team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
+        team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
+
+        if finished_game.winning_team == 0:
+            output += f"\n**{team0_str}**"
+            output += f"\n{team1_str}"
+        elif finished_game.winning_team == 1:
+            output += f"\n{team0_str}"
+            output += f"\n**{team1_str}**"
+        else:
+            output += f"\n{team0_str}"
+            output += f"\n{team1_str}"
+        delta: timedelta = datetime.now(
+            timezone.utc
+        ) - finished_game.finished_at.replace(tzinfo=timezone.utc)
+        if delta.days > 0:
+            output += f"\n@ {delta.days} days ago\n"
+        elif delta.seconds > 3600:
+            hours_ago = delta.seconds // 3600
+            output += f"\n@ {hours_ago} hours ago\n"
+        else:
+            minutes_ago = delta.seconds // 60
+            output += f"\n@ {minutes_ago} minutes ago\n"
+        return output
 
 
 def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) -> str:
@@ -822,85 +825,89 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
     Helper method to pretty print a finished game
     """
     output = ""
-    session = Session()
-    short_game_id = short_uuid(in_progress_game.id)
-    queue: Queue = (
-        session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
-    )
-    if debug:
-        output += f"**{queue.name}** ({short_game_id}) (TS: {round(in_progress_game.average_trueskill, 2)})"
-    else:
-        output += f"**{queue.name}** ({short_game_id})"
-    team0_igp_players: list[InProgressGamePlayer] = session.query(
-        InProgressGamePlayer
-    ).filter(
-        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
-        InProgressGamePlayer.team == 0,
-    )
-    team1_igp_players: list[InProgressGamePlayer] = session.query(
-        InProgressGamePlayer
-    ).filter(
-        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
-        InProgressGamePlayer.team == 1,
-    )
-    team0_player_ids = set(map(lambda x: x.player_id, team0_igp_players))
-    team1_player_ids = set(map(lambda x: x.player_id, team1_igp_players))
-    team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_igp_players}
-    team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_igp_players}
-    team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
-    team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
-    if debug and False:
-        team0_names = ", ".join(
-            sorted(
-                [
-                    f"{escape_markdown(player.name)} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
-                    for player in team0_players
-                ]
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        short_game_id = short_uuid(in_progress_game.id)
+        queue: Queue = (
+            session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+        )
+        if debug:
+            output += f"**{queue.name}** ({short_game_id}) (TS: {round(in_progress_game.average_trueskill, 2)})"
+        else:
+            output += f"**{queue.name}** ({short_game_id})"
+        team0_igp_players: list[InProgressGamePlayer] = session.query(
+            InProgressGamePlayer
+        ).filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        team1_igp_players: list[InProgressGamePlayer] = session.query(
+            InProgressGamePlayer
+        ).filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        team0_player_ids = set(map(lambda x: x.player_id, team0_igp_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_igp_players))
+        team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_igp_players}
+        team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_igp_players}
+        team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+        team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+        if debug and False:
+            team0_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team0_players
+                    ]
+                )
             )
-        )
-        team1_names = ", ".join(
-            sorted(
-                [
-                    f"{escape_markdown(player.name)} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
-                    for player in team1_players
-                ]
+            team1_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team1_players
+                    ]
+                )
             )
+        else:
+            team0_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team0_players])
+            )
+            team1_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team1_players])
+            )
+        # TODO: Include win prob
+        # team0_win_prob = round(100 * finished_game.win_probability, 1)
+        # team1_win_prob = round(100 - team0_win_prob, 1)
+        team0_tsr = round(
+            mean([player.rated_trueskill_mu for player in team0_players]), 1
         )
-    else:
-        team0_names = ", ".join(
-            sorted([escape_markdown(player.name) for player in team0_players])
+        team1_tsr = round(
+            mean([player.rated_trueskill_mu for player in team1_players]), 1
         )
-        team1_names = ", ".join(
-            sorted([escape_markdown(player.name) for player in team1_players])
-        )
-    # TODO: Include win prob
-    # team0_win_prob = round(100 * finished_game.win_probability, 1)
-    # team1_win_prob = round(100 - team0_win_prob, 1)
-    team0_tsr = round(mean([player.rated_trueskill_mu for player in team0_players]), 1)
-    team1_tsr = round(mean([player.rated_trueskill_mu for player in team1_players]), 1)
-    # TODO: Include win prob
-    if debug:
-        team0_str = f"{in_progress_game.team0_name} ({team0_tsr}): {team0_names}"
-        team1_str = f"{in_progress_game.team1_name} ({team1_tsr}): {team1_names}"
-    else:
-        team0_str = f"{in_progress_game.team0_name} ({team0_names}"
-        team1_str = f"{in_progress_game.team1_name} ({team1_names}"
+        # TODO: Include win prob
+        if debug:
+            team0_str = f"{in_progress_game.team0_name} ({team0_tsr}): {team0_names}"
+            team1_str = f"{in_progress_game.team1_name} ({team1_tsr}): {team1_names}"
+        else:
+            team0_str = f"{in_progress_game.team0_name} ({team0_names}"
+            team1_str = f"{in_progress_game.team1_name} ({team1_names}"
 
-    output += f"\n{team0_str}"
-    output += f"\n{team1_str}"
-    delta: timedelta = datetime.now(timezone.utc) - in_progress_game.created_at.replace(
-        tzinfo=timezone.utc
-    )
-    if delta.days > 0:
-        output += f"\n@ {delta.days} days ago\n"
-    elif delta.seconds > 3600:
-        hours_ago = delta.seconds // 3600
-        output += f"\n@ {hours_ago} hours ago\n"
-    else:
-        minutes_ago = delta.seconds // 60
-        output += f"\n@ {minutes_ago} minutes ago\n"
-    session.close()
-    return output
+        output += f"\n{team0_str}"
+        output += f"\n{team1_str}"
+        delta: timedelta = datetime.now(
+            timezone.utc
+        ) - in_progress_game.created_at.replace(tzinfo=timezone.utc)
+        if delta.days > 0:
+            output += f"\n@ {delta.days} days ago\n"
+        elif delta.seconds > 3600:
+            hours_ago = delta.seconds // 3600
+            output += f"\n@ {hours_ago} hours ago\n"
+        else:
+            minutes_ago = delta.seconds // 60
+            output += f"\n@ {minutes_ago} minutes ago\n"
+        return output
 
 
 def is_in_game(player_id: int) -> bool:
@@ -948,12 +955,13 @@ async def is_not_banned(ctx: Context):
 
     https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
     """
-    is_banned = (
-        Session()
-        .query(Player)
-        .filter(Player.id == ctx.message.author.id, Player.is_banned)
-        .first()
-    )
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        is_banned = (
+            session.query(Player)
+            .filter(Player.id == ctx.message.author.id, Player.is_banned)
+            .first()
+        )
     return not is_banned
 
 
@@ -1112,14 +1120,16 @@ async def add(ctx: Context, *args):
 
         queue_names = [queue.name for queue in queues_to_add]
         embed_description = f"<@{message.author.id}> your game has just finished, you will be randomized into **{', '.join(queue_names)}** {timer}"
-        await send_message(
+        waitlist_message: Message | None = await send_message(
             message.channel,
             # TODO: Populate this message with the queues the player was
             # eligible for
             embed_description=embed_description,
             colour=Colour.yellow(),
-            delete_after=time_to_wait,
         )
+        if waitlist_message:
+            waitlist_messages.append(waitlist_message)
+            waitlist_messages.append(ctx.message)
         return
 
     if isinstance(message.channel, TextChannel) and message.guild:
@@ -1479,32 +1489,32 @@ async def commendstats(ctx: Context):
 
 @bot.tree.command(description="Initially configure the bot for this server")
 async def configure(interaction: Interaction):
-    session = Session()
-    guild = (
-        session.query(DiscordGuild)
-        .filter(DiscordGuild.discord_id == interaction.guild_id)
-        .first()
-    )
-    if guild:
-        await interaction.response.send_message(
-            embed=Embed(
-                description="Server already configured",
-                colour=Colour.red(),
-            ),
-            ephemeral=True,
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        guild = (
+            session.query(DiscordGuild)
+            .filter(DiscordGuild.discord_id == interaction.guild_id)
+            .first()
         )
-    else:
-        guild = DiscordGuild(interaction.guild_id, interaction.guild.name)
-        session.add(guild)
-        session.commit()
-        await interaction.response.send_message(
-            embed=Embed(
-                description="Server configured successfully!",
-                colour=Colour.green(),
-            ),
-            ephemeral=True,
-        )
-    session.close()
+        if guild:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Server already configured",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+        else:
+            guild = DiscordGuild(interaction.guild_id, interaction.guild.name)
+            session.add(guild)
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Server configured successfully!",
+                    colour=Colour.green(),
+                ),
+                ephemeral=True,
+            )
 
 
 @bot.command()
@@ -1615,6 +1625,7 @@ async def del_(ctx: Context, *args):
         .order_by(Queue.ordinal.asc())
     )  # type: ignore
 
+    # TODO: handle DataError here
     if len(args) > 0:
         queues_to_del_query = queues_to_del_query.filter(
             or_(
@@ -1681,6 +1692,11 @@ async def del_(ctx: Context, *args):
         embed_description = f"<@{message.author.id}> no valid queues specified"
         embed.color = discord.Color.red()
     embed.description = embed_description
+    embed_fields_len = len(embed.fields)
+    if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
+        # embeds are allowed 3 "columns" per "row"
+        # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
+        embed.add_field(name="", value="", inline=True)
     await message.channel.send(embed=embed)
     session.commit()
     session.close()
@@ -1932,8 +1948,10 @@ async def listadminroles(ctx: Context):
 async def listbans(ctx: Context):
     message = ctx.message
     output = "Bans:"
-    for player in Session().query(Player).filter(Player.is_banned == True):
-        output += f"\n- {escape_markdown(player.name)}"
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        for player in session.query(Player).filter(Player.is_banned == True):
+            output += f"\n- {escape_markdown(player.name)}"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
@@ -2029,78 +2047,78 @@ async def trueskill(ctx: Context):
 
 
 async def _movegameplayers(game_id: str, ctx: Context = None, guild: Guild = None):
-    message: Message | None = None
-    if ctx:
-        message = ctx.message
-        session = ctx.session
-        guild = ctx.guild
-    elif guild:
-        message = None
-        session = Session()
-    else:
-        raise Exception("No Context or Guild on _movegameplayers")
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        message: Message | None = None
+        if ctx:
+            message = ctx.message
+            guild = ctx.guild
+        elif guild:
+            message = None
+        else:
+            raise Exception("No Context or Guild on _movegameplayers")
 
-    in_progress_game = (
-        session.query(InProgressGame)
-        .filter(InProgressGame.id.startswith(game_id))
-        .first()
-    )
-    if not in_progress_game:
-        if message:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find game: {game_id}",
-                colour=Colour.red(),
-            )
+        in_progress_game = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id.startswith(game_id))
+            .first()
+        )
+        if not in_progress_game:
+            if message:
+                await send_message(
+                    message.channel,
+                    embed_description=f"Could not find game: {game_id}",
+                    colour=Colour.red(),
+                )
+                return
             return
-        return
 
-    team0_ipg_players: list[InProgressGamePlayer] = session.query(
-        InProgressGamePlayer
-    ).filter(
-        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
-        InProgressGamePlayer.team == 0,
-    )
-    team1_ipg_players: list[InProgressGamePlayer] = session.query(
-        InProgressGamePlayer
-    ).filter(
-        InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
-        InProgressGamePlayer.team == 1,
-    )
-    team0_player_ids = set(map(lambda x: x.player_id, team0_ipg_players))
-    team1_player_ids = set(map(lambda x: x.player_id, team1_ipg_players))
-    team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
-    team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+        team0_ipg_players: list[InProgressGamePlayer] = session.query(
+            InProgressGamePlayer
+        ).filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        team1_ipg_players: list[InProgressGamePlayer] = session.query(
+            InProgressGamePlayer
+        ).filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        team0_player_ids = set(map(lambda x: x.player_id, team0_ipg_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_ipg_players))
+        team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+        team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
 
-    in_progress_game_channels: list[InProgressGameChannel] = session.query(
-        InProgressGameChannel
-    ).filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
+        in_progress_game_channels: list[InProgressGameChannel] = session.query(
+            InProgressGameChannel
+        ).filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
 
-    for player in team0_players:
-        if player.move_enabled:
-            member: Member | None = guild.get_member(player.id)
-            if member:
-                channel: VoiceChannel | None = guild.get_channel(
-                    in_progress_game_channels[0].channel_id
-                )
-                if channel:
-                    try:
-                        await member.move_to(channel, reason=game_id)
-                    except Exception:
-                        _log.exception(f"Caught exception sending message")
+        for player in team0_players:
+            if player.move_enabled:
+                member: Member | None = guild.get_member(player.id)
+                if member:
+                    channel: VoiceChannel | None = guild.get_channel(
+                        in_progress_game_channels[0].channel_id
+                    )
+                    if channel:
+                        try:
+                            await member.move_to(channel, reason=game_id)
+                        except Exception:
+                            _log.exception(f"Caught exception sending message")
 
-    for player in team1_players:
-        if player.move_enabled:
-            member: Member | None = guild.get_member(player.id)
-            if member:
-                channel: VoiceChannel | None = guild.get_channel(
-                    in_progress_game_channels[1].channel_id
-                )
-                if channel:
-                    try:
-                        await member.move_to(channel, reason=game_id)
-                    except Exception:
-                        _log.exception(f"Caught exception sending message")
+        for player in team1_players:
+            if player.move_enabled:
+                member: Member | None = guild.get_member(player.id)
+                if member:
+                    channel: VoiceChannel | None = guild.get_channel(
+                        in_progress_game_channels[1].channel_id
+                    )
+                    if channel:
+                        try:
+                            await member.move_to(channel, reason=game_id)
+                        except Exception:
+                            _log.exception(f"Caught exception sending message")
 
 
 @bot.command(usage="<game_id>")
@@ -2508,78 +2526,78 @@ async def setcommandprefix(ctx: Context, prefix: str):
 )
 @discord.app_commands.guild_only()
 async def setgamecode(interaction: Interaction, code: str):
-    session = Session()
-    ipgp = (
-        session.query(InProgressGamePlayer)
-        .filter(InProgressGamePlayer.player_id == interaction.user.id)
-        .first()
-    )
-    if not ipgp:
-        await interaction.response.send_message(
-            embed=Embed(
-                description="You must be in game to set the game code!",
-                colour=Colour.red(),
-            ),
-            ephemeral=True,
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        ipgp = (
+            session.query(InProgressGamePlayer)
+            .filter(InProgressGamePlayer.player_id == interaction.user.id)
+            .first()
         )
-        return
-
-    ipg = (
-        session.query(InProgressGame)
-        .filter(InProgressGame.id == ipgp.in_progress_game_id)
-        .first()
-    )
-    if not ipg:
-        await interaction.response.send_message(
-            embed=Embed(
-                description="You must be in game to set the game code!",
-                colour=Colour.red(),
-            ),
-            ephemeral=True,
-        )
-        return
-
-    ipg.code = code
-    ipg_players: list[InProgressGamePlayer] = (
-        session.query(InProgressGamePlayer)
-        .filter(
-            InProgressGamePlayer.in_progress_game_id == ipg.id,
-            InProgressGamePlayer.player_id
-            != interaction.user.id,  # don't send the code to the one who wants to send it out
-        )
-        .all()
-    )
-    session.commit()
-
-    await interaction.response.defer(ephemeral=True)
-    for ipg_player in ipg_players:
-        embed = Embed(
-            title=f"Lobby code for ({short_uuid(ipg.id)})",
-            description=f"`{code}`",
-            colour=Colour.blue(),
-        )
-        embed.set_footer(text=f"set by {interaction.user}")
-        if interaction.guild:
-            await send_in_guild_message(
-                interaction.guild, ipg_player.player_id, embed=embed
+        if not ipgp:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="You must be in game to set the game code!",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
             )
-    if ipg_players:
-        await interaction.followup.send(
-            embed=Embed(
-                description="Lobby code sent to each player", colour=Colour.blue()
-            ),
-            ephemeral=True,
+            return
+
+        ipg = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == ipgp.in_progress_game_id)
+            .first()
         )
-    else:
-        _log.warn("No in_progress_game_players to send a lobby code to")
-        await interaction.followup.send(
-            embed=Embed(
-                description="There are no in-game players to send this lobby code to!",
-                colour=Colour.red(),
-            ),
-            ephemeral=True,
+        if not ipg:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="You must be in game to set the game code!",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+
+        ipg.code = code
+        ipg_players: list[InProgressGamePlayer] = (
+            session.query(InProgressGamePlayer)
+            .filter(
+                InProgressGamePlayer.in_progress_game_id == ipg.id,
+                InProgressGamePlayer.player_id
+                != interaction.user.id,  # don't send the code to the one who wants to send it out
+            )
+            .all()
         )
-    session.close()
+        session.commit()
+
+        await interaction.response.defer(ephemeral=True)
+        for ipg_player in ipg_players:
+            embed = Embed(
+                title=f"Lobby code for ({short_uuid(ipg.id)})",
+                description=f"`{code}`",
+                colour=Colour.blue(),
+            )
+            embed.set_footer(text=f"set by {interaction.user}")
+            if interaction.guild:
+                await send_in_guild_message(
+                    interaction.guild, ipg_player.player_id, embed=embed
+                )
+        if ipg_players:
+            await interaction.followup.send(
+                embed=Embed(
+                    description="Lobby code sent to each player", colour=Colour.blue()
+                ),
+                ephemeral=True,
+            )
+        else:
+            _log.warn("No in_progress_game_players to send a lobby code to")
+            await interaction.followup.send(
+                embed=Embed(
+                    description="There are no in-game players to send this lobby code to!",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
 
 
 @bot.command(usage="<true|false>")
@@ -2876,6 +2894,7 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 
 @bot.command()
 async def status(ctx: Context, *args):
+    assert ctx.guild
     session: sqlalchemy.orm.Session
     with Session() as session:
         queue_indices: list[int] = []
@@ -2980,7 +2999,8 @@ async def status(ctx: Context, *args):
                 inline=False,
             )
 
-            for queue in rotation_queues:
+            rotation_queues_len = len(rotation_queues)
+            for i, queue in enumerate(rotation_queues):
                 if queue.is_locked:
                     continue
                 players_in_queue: list[Player] = (
@@ -3008,10 +3028,16 @@ async def status(ctx: Context, *args):
                     ),
                     inline=True,
                 )
+                if i == rotation_queues_len - 1 and i >= 5 and i % 3 == 2:
+                    # embeds are allowed 3 "columns" per "row"
+                    # to line everything up nicely when there's >= 5 queues and only one "column" slot left, we add a blank
+                    embed.add_field(name="", value="", inline=True)
                 if queue.id in games_by_queue:
                     game: InProgressGame
                     for game in games_by_queue[queue.id]:
-                        ipg_embed = await create_in_progress_game_embed(session, game)
+                        ipg_embed = await create_in_progress_game_embed(
+                            session, game, ctx.guild
+                        )
                         ipg_embeds.append(ipg_embed)
         await ctx.channel.send(
             embeds=[embed] + ipg_embeds,
@@ -3133,7 +3159,7 @@ async def stats(interaction: Interaction):
             last_nfgs = [
                 fg
                 for fg in finished_games
-                if fg.finished_at > datetime.now() - timedelta(days=n)
+                if fg.finished_at > datetime.now(timezone.utc) - timedelta(days=n)
             ]
         wins = [
             fg
