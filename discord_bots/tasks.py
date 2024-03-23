@@ -251,66 +251,65 @@ async def vote_passed_waitlist_task():
 
     TODO: Tests for this method
     """
-    session = Session()
-    vpw: VotePassedWaitlist | None = (
-        session.query(VotePassedWaitlist)
-        .filter(VotePassedWaitlist.end_waitlist_at < datetime.now(timezone.utc))
-        .first()
-    )
-    if not vpw:
-        return
-
-    channel = bot.get_channel(vpw.channel_id)
-    guild: Guild | None = bot.get_guild(vpw.guild_id)
-    queues: list[Queue] = session.query(Queue).order_by(Queue.created_at.asc())  # type: ignore
-
-    # TODO: Do we actually need to filter by id?
-    vote_passed_waitlist_players: list[VotePassedWaitlistPlayer] = (
-        session.query(VotePassedWaitlistPlayer)
-        .filter(VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id)
-        .all()
-    )
-    vpwp_by_queue_id: dict[str, list[VotePassedWaitlistPlayer]] = defaultdict(list)
-    for vote_passed_waitlist_player in vote_passed_waitlist_players:
-        vpwp_by_queue_id[vote_passed_waitlist_player.queue_id].append(
-            vote_passed_waitlist_player
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        vpw: VotePassedWaitlist | None = (
+            session.query(VotePassedWaitlist)
+            .filter(VotePassedWaitlist.end_waitlist_at < datetime.now(timezone.utc))
+            .first()
         )
+        if not vpw:
+            return
 
-    # Ensure that we process the queues in the order the queues were created
-    for queue in queues:
-        vpwps_for_queue = vpwp_by_queue_id[queue.id]
-        shuffle(vpwps_for_queue)
-        for vote_passed_waitlist_player in vpwps_for_queue:
-            if is_in_game(vote_passed_waitlist_player.player_id):
-                session.delete(vote_passed_waitlist_player)
-                continue
+        channel = bot.get_channel(vpw.channel_id)
+        guild: Guild | None = bot.get_guild(vpw.guild_id)
+        queues: list[Queue] = session.query(Queue).order_by(Queue.created_at.asc())  # type: ignore
 
-            if isinstance(channel, TextChannel) and guild:
-                player = (
-                    session.query(Player)
-                    .filter(Player.id == vote_passed_waitlist_player.player_id)
-                    .first()
-                )
+        # TODO: Do we actually need to filter by id?
+        vote_passed_waitlist_players: list[VotePassedWaitlistPlayer] = (
+            session.query(VotePassedWaitlistPlayer)
+            .filter(VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id)
+            .all()
+        )
+        vpwp_by_queue_id: dict[str, list[VotePassedWaitlistPlayer]] = defaultdict(list)
+        for vote_passed_waitlist_player in vote_passed_waitlist_players:
+            vpwp_by_queue_id[vote_passed_waitlist_player.queue_id].append(
+                vote_passed_waitlist_player
+            )
 
-                add_player_queue.put(
-                    AddPlayerQueueMessage(
-                        vote_passed_waitlist_player.player_id,
-                        player.name,
-                        # TODO: This is sucky to do it one at a time
-                        [queue.id],
-                        False,
-                        channel,
-                        guild,
+        # Ensure that we process the queues in the order the queues were created
+        for queue in queues:
+            vpwps_for_queue = vpwp_by_queue_id[queue.id]
+            shuffle(vpwps_for_queue)
+            for vote_passed_waitlist_player in vpwps_for_queue:
+                if is_in_game(vote_passed_waitlist_player.player_id):
+                    session.delete(vote_passed_waitlist_player)
+                    continue
+
+                if isinstance(channel, TextChannel) and guild:
+                    player = (
+                        session.query(Player)
+                        .filter(Player.id == vote_passed_waitlist_player.player_id)
+                        .first()
                     )
-                )
 
-    session.query(VotePassedWaitlistPlayer).filter(
-        VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id
-    ).delete()
-    session.delete(vpw)
-    session.commit()
-    session.close()
+                    add_player_queue.put(
+                        AddPlayerQueueMessage(
+                            vote_passed_waitlist_player.player_id,
+                            player.name,
+                            # TODO: This is sucky to do it one at a time
+                            [queue.id],
+                            False,
+                            channel,
+                            guild,
+                        )
+                    )
 
+        session.query(VotePassedWaitlistPlayer).filter(
+            VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id
+        ).delete()
+        session.delete(vpw)
+        session.commit()
 
 @tasks.loop(minutes=1)
 async def map_rotation_task():
@@ -320,27 +319,26 @@ async def map_rotation_task():
     if config.DISABLE_MAP_ROTATION:
         return
 
-    session = Session()
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        rotations: list[Rotation] | None = session.query(Rotation).all()
+        if not rotations:
+            session.close()
+            return
 
-    rotations: list[Rotation] | None = session.query(Rotation).all()
-    if not rotations:
-        session.close()
-        return
-
-    for rotation in rotations:
-        next_rotation_map: RotationMap | None = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation.id)
-            .filter(RotationMap.is_next == True)
-            .first()
-        )
-        if next_rotation_map and next_rotation_map.ordinal != 1:
-            time_since_update: timedelta = datetime.now(
-                timezone.utc
-            ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
-            if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
-                await update_next_map_to_map_after_next(rotation.id, True)
-    session.close()
+        for rotation in rotations:
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.is_next == True)
+                .first()
+            )
+            if next_rotation_map and next_rotation_map.ordinal != 1:
+                time_since_update: timedelta = datetime.now(
+                    timezone.utc
+                ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
+                if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
+                    await update_next_map_to_map_after_next(rotation.id, True)
 
 
 async def add_players(session: sqlalchemy.orm.Session):
