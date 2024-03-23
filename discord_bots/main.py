@@ -185,51 +185,54 @@ async def on_message(message: Message):
 
 @bot.event
 async def on_reaction_add(reaction: Reaction, user: User | Member):
-    session = Session()
-    player: Player | None = session.query(Player).filter(Player.id == user.id).first()
-    if player:
-        player.last_activity_at = datetime.now(timezone.utc)
-        player.name = user.display_name
-        session.commit()
-    else:
-        session.add(
-            Player(
-                id=reaction.message.author.id,
-                name=reaction.message.author.display_name,
-                last_activity_at=datetime.now(timezone.utc),
-                currency=config.STARTING_CURRENCY,
-            )
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        player: Player | None = (
+            session.query(Player).filter(Player.id == user.id).first()
         )
-    session.close()
+        if player:
+            player.last_activity_at = datetime.now(timezone.utc)
+            player.name = user.display_name
+            session.commit()
+        else:
+            session.add(
+                Player(
+                    id=reaction.message.author.id,
+                    name=reaction.message.author.display_name,
+                    last_activity_at=datetime.now(timezone.utc),
+                    currency=config.STARTING_CURRENCY,
+                )
+            )
 
 
 @bot.event
 async def on_join(member: Member):
-    session = Session()
-    player = session.query(Player).filter(Player.id == member.id).first()
-    if player:
-        player.name = member.name
-        session.commit()
-    else:
-        session.add(
-            Player(
-                id=member.id,
-                name=member.display_name,
-                currency=config.STARTING_CURRENCY,
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        player = session.query(Player).filter(Player.id == member.id).first()
+        if player:
+            player.name = member.name
+            session.commit()
+        else:
+            session.add(
+                Player(
+                    id=member.id,
+                    name=member.display_name,
+                    currency=config.STARTING_CURRENCY,
+                )
             )
-        )
-        session.commit()
-    session.close()
+            session.commit()
 
 
 @bot.event
 async def on_leave(member: Member):
-    session = Session()
-    session.query(QueuePlayer).filter(QueuePlayer.player_id == member.id).delete()
-    session.query(QueueWaitlistPlayer).filter(
-        QueueWaitlistPlayer.player_id == member.id
-    ).delete()
-    session.commit()
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        session.query(QueuePlayer).filter(QueuePlayer.player_id == member.id).delete()
+        session.query(QueueWaitlistPlayer).filter(
+            QueueWaitlistPlayer.player_id == member.id
+        ).delete()
+        session.commit()
 
 
 @bot.before_invoke

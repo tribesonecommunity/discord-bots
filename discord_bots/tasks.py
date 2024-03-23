@@ -54,76 +54,53 @@ _log = logging.getLogger(__name__)
 
 @tasks.loop(minutes=1)
 async def afk_timer_task():
-    session = Session()
-    timeout: datetime = datetime.now(timezone.utc) - timedelta(
-        minutes=config.AFK_TIME_MINUTES
-    )
-
-    player: Player
-    for player in (
-        session.query(Player)
-        .join(QueuePlayer)
-        .filter(Player.last_activity_at < timeout, QueuePlayer.player_id == Player.id)
-    ):
-        queue_player = (
-            session.query(QueuePlayer)
-            .filter(QueuePlayer.player_id == player.id)
-            .first()
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        timeout: datetime = datetime.now(timezone.utc) - timedelta(
+            minutes=config.AFK_TIME_MINUTES
         )
-        if queue_player:
-            channel = bot.get_channel(queue_player.channel_id)
-            if channel and isinstance(channel, TextChannel):
-                member: Member | None = channel.guild.get_member(player.id)
-                if member:
-                    await send_message(
-                        channel,
-                        content=member.mention,
-                        embed_content=False,
-                        embed_description=f"{escape_markdown(player.name)} was removed from all queues for being inactive for {config.AFK_TIME_MINUTES} minutes",
-                        colour=Colour.red(),
-                    )
-            session.query(QueuePlayer).filter(
-                QueuePlayer.player_id == player.id
-            ).delete()
-            session.commit()
 
-    votes_removed_sent = False
-    for player in (
-        session.query(Player)
-        .join(MapVote)
-        .filter(Player.last_activity_at < timeout, MapVote.player_id == Player.id)
-    ):
-        map_votes: list[MapVote] = (
-            session.query(MapVote).filter(MapVote.player_id == player.id).all()
-        )
-        if len(map_votes) > 0:
-            channel = bot.get_channel(map_votes[0].channel_id)
-            if channel and isinstance(channel, TextChannel):
-                member: Member | None = channel.guild.get_member(player.id)
-                if member:
-                    await send_message(
-                        channel,
-                        content=member.mention,
-                        embed_content=False,
-                        embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {config.AFK_TIME_MINUTES} minutes",
-                        colour=Colour.red(),
-                    )
-                    votes_removed_sent = True
-            session.query(MapVote).filter(MapVote.player_id == player.id).delete()
-            session.commit()
+        player: Player
+        for player in (
+            session.query(Player)
+            .join(QueuePlayer)
+            .filter(
+                Player.last_activity_at < timeout, QueuePlayer.player_id == Player.id
+            )
+        ):
+            queue_player = (
+                session.query(QueuePlayer)
+                .filter(QueuePlayer.player_id == player.id)
+                .first()
+            )
+            if queue_player:
+                channel = bot.get_channel(queue_player.channel_id)
+                if channel and isinstance(channel, TextChannel):
+                    member: Member | None = channel.guild.get_member(player.id)
+                    if member:
+                        await send_message(
+                            channel,
+                            content=member.mention,
+                            embed_content=False,
+                            embed_description=f"{escape_markdown(player.name)} was removed from all queues for being inactive for {config.AFK_TIME_MINUTES} minutes",
+                            colour=Colour.red(),
+                        )
+                session.query(QueuePlayer).filter(
+                    QueuePlayer.player_id == player.id
+                ).delete()
+                session.commit()
 
-    for player in (
-        session.query(Player)
-        .join(SkipMapVote)
-        .filter(Player.last_activity_at < timeout, SkipMapVote.player_id == Player.id)
-    ):
-        skip_map_votes: list[SkipMapVote] = (
-            session.query(SkipMapVote).filter(SkipMapVote.player_id == player.id).all()
-        )
-        if len(skip_map_votes) > 0:
-            # So we don't send this message twice
-            if not votes_removed_sent:
-                channel = bot.get_channel(skip_map_votes[0].channel_id)
+        votes_removed_sent = False
+        for player in (
+            session.query(Player)
+            .join(MapVote)
+            .filter(Player.last_activity_at < timeout, MapVote.player_id == Player.id)
+        ):
+            map_votes: list[MapVote] = (
+                session.query(MapVote).filter(MapVote.player_id == player.id).all()
+            )
+            if len(map_votes) > 0:
+                channel = bot.get_channel(map_votes[0].channel_id)
                 if channel and isinstance(channel, TextChannel):
                     member: Member | None = channel.guild.get_member(player.id)
                     if member:
@@ -134,11 +111,40 @@ async def afk_timer_task():
                             embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {config.AFK_TIME_MINUTES} minutes",
                             colour=Colour.red(),
                         )
-            session.query(SkipMapVote).filter(
-                SkipMapVote.player_id == player.id
-            ).delete()
-            session.commit()
-    session.close()
+                        votes_removed_sent = True
+                session.query(MapVote).filter(MapVote.player_id == player.id).delete()
+                session.commit()
+
+        for player in (
+            session.query(Player)
+            .join(SkipMapVote)
+            .filter(
+                Player.last_activity_at < timeout, SkipMapVote.player_id == Player.id
+            )
+        ):
+            skip_map_votes: list[SkipMapVote] = (
+                session.query(SkipMapVote)
+                .filter(SkipMapVote.player_id == player.id)
+                .all()
+            )
+            if len(skip_map_votes) > 0:
+                # So we don't send this message twice
+                if not votes_removed_sent:
+                    channel = bot.get_channel(skip_map_votes[0].channel_id)
+                    if channel and isinstance(channel, TextChannel):
+                        member: Member | None = channel.guild.get_member(player.id)
+                        if member:
+                            await send_message(
+                                channel,
+                                content=member.mention,
+                                embed_content=False,
+                                embed_description=f"{escape_markdown(player.name)}'s votes removed for being inactive for {config.AFK_TIME_MINUTES} minutes",
+                                colour=Colour.red(),
+                            )
+                session.query(SkipMapVote).filter(
+                    SkipMapVote.player_id == player.id
+                ).delete()
+                session.commit()
 
 
 @tasks.loop(seconds=1)
@@ -226,7 +232,9 @@ async def queue_waitlist_task():
                 == queue_waitlist.in_progress_game_id
             ):
                 if guild:
-                    guild_channel = guild.get_channel(igp_channel.channel_id)
+                    guild_channel: discord.abc.GuildChannel | None = guild.get_channel(
+                        igp_channel.channel_id
+                    )
                     if guild_channel:
                         await guild_channel.delete()
                 session.delete(igp_channel)

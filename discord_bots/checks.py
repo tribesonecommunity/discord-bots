@@ -16,41 +16,37 @@ async def is_admin(ctx: Context):
 
     https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
     """
-    session = Session()
-    message: Message = ctx.message
-    caller = (
-        session.query(Player)
-        .filter(Player.id == message.author.id, Player.is_admin == True)
-        .first()
-    )
-    if caller:
-        session.close()
-        return True
-
-    if not message.guild:
-        session.close()
-        return False
-
-    member = message.guild.get_member(message.author.id)
-    if not member:
-        session.close()
-        return False
-
-    admin_roles = session.query(AdminRole).all()
-    admin_role_ids = map(lambda x: x.role_id, admin_roles)
-    member_role_ids = map(lambda x: x.id, member.roles)
-    is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
-    if is_admin:
-        session.close()
-        return True
-    else:
-        await send_message(
-            message.channel,
-            embed_description="You must be an admin to use that command",
-            colour=Colour.red(),
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        message: Message = ctx.message
+        caller = (
+            session.query(Player)
+            .filter(Player.id == message.author.id, Player.is_admin == True)
+            .first()
         )
-        session.close()
-        return False
+        if caller:
+            return True
+
+        if not message.guild:
+            return False
+
+        member = message.guild.get_member(message.author.id)
+        if not member:
+            return False
+
+        admin_roles = session.query(AdminRole).all()
+        admin_role_ids = map(lambda x: x.role_id, admin_roles)
+        member_role_ids = map(lambda x: x.id, member.roles)
+        is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
+        if is_admin:
+            return True
+        else:
+            await send_message(
+                message.channel,
+                embed_description="You must be an admin to use that command",
+                colour=Colour.red(),
+            )
+            return False
 
 
 async def is_admin_app_command(interaction: Interaction) -> bool:

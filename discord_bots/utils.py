@@ -471,87 +471,90 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
     :is_verbose: specifies if we want to see queues affected in the bot response.
                  currently passing in False for when game pops, True for everything else.
     """
-    session = Session()
-
-    rotation: Rotation | None = (
-        session.query(Rotation).filter(Rotation.id == rotation_id).first()
-    )
-
-    next_rotation_map: RotationMap | None = (
-        session.query(RotationMap)
-        .filter(RotationMap.rotation_id == rotation_id)
-        .filter(RotationMap.is_next == True)
-        .first()
-    )
-
-    if rotation.is_random:
-        rotation_map_after_next: RotationMap | None = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation_id)
-            .filter(RotationMap.is_next == False)
-            .order_by(func.random())
-            .first()
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.id == rotation_id).first()
         )
-    else:
-        rotation_map_length = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation_id)
-            .count()
-        )
-        rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
-        if rotation_map_after_next_ordinal > rotation_map_length:
-            rotation_map_after_next_ordinal = 1
 
-        rotation_map_after_next: RotationMap | None = (
+        next_rotation_map: RotationMap | None = (
             session.query(RotationMap)
             .filter(RotationMap.rotation_id == rotation_id)
-            .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
+            .filter(RotationMap.is_next == True)
             .first()
         )
 
-    next_rotation_map.is_next = False
-    rotation_map_after_next.is_next = True
-
-    map_after_next_name: str | None = (
-        session.query(Map.full_name)
-        .join(RotationMap, RotationMap.map_id == Map.id)
-        .filter(RotationMap.id == rotation_map_after_next.id)
-        .scalar()
-    )
-
-    channel = bot.get_channel(config.CHANNEL_ID)
-    if isinstance(channel, discord.TextChannel):
-        if is_verbose:
-            rotation_queues = (
-                session.query(Queue.name).filter(Queue.rotation_id == rotation_id).all()
-            )
-            rotation_queue_names = ""
-            for name in rotation_queues:
-                rotation_queue_names += f"\n- {name[0]}"
-
-            await send_message(
-                channel,
-                embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
-                colour=Colour.blue(),
+        if rotation.is_random:
+            rotation_map_after_next: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .filter(RotationMap.is_next == False)
+                .order_by(func.random())
+                .first()
             )
         else:
-            await send_message(
-                channel,
-                embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed",
-                colour=Colour.blue(),
+            rotation_map_length = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .count()
+            )
+            rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
+            if rotation_map_after_next_ordinal > rotation_map_length:
+                rotation_map_after_next_ordinal = 1
+
+            rotation_map_after_next: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
+                .first()
             )
 
-    map_votes = (
-        session.query(MapVote)
-        .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
-        .filter(RotationMap.rotation_id == rotation_id)
-        .all()
-    )
-    for map_vote in map_votes:
-        session.delete(map_vote)
-    session.query(SkipMapVote).filter(SkipMapVote.rotation_id == rotation_id).delete()
-    session.commit()
-    session.close()
+        next_rotation_map.is_next = False
+        rotation_map_after_next.is_next = True
+
+        map_after_next_name: str | None = (
+            session.query(Map.full_name)
+            .join(RotationMap, RotationMap.map_id == Map.id)
+            .filter(RotationMap.id == rotation_map_after_next.id)
+            .scalar()
+        )
+
+        channel = bot.get_channel(config.CHANNEL_ID)
+        if isinstance(channel, discord.TextChannel):
+            if is_verbose:
+                rotation_queues = (
+                    session.query(Queue.name)
+                    .filter(Queue.rotation_id == rotation_id)
+                    .all()
+                )
+                rotation_queue_names = ""
+                for name in rotation_queues:
+                    rotation_queue_names += f"\n- {name[0]}"
+
+                await send_message(
+                    channel,
+                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
+                    colour=Colour.blue(),
+                )
+            else:
+                await send_message(
+                    channel,
+                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed",
+                    colour=Colour.blue(),
+                )
+
+        map_votes = (
+            session.query(MapVote)
+            .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
+            .filter(RotationMap.rotation_id == rotation_id)
+            .all()
+        )
+        for map_vote in map_votes:
+            session.delete(map_vote)
+        session.query(SkipMapVote).filter(
+            SkipMapVote.rotation_id == rotation_id
+        ).delete()
+        session.commit()
 
 
 async def send_in_guild_message(
