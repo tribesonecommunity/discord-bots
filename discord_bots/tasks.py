@@ -323,7 +323,6 @@ async def map_rotation_task():
     with Session() as session:
         rotations: list[Rotation] | None = session.query(Rotation).all()
         if not rotations:
-            session.close()
             return
 
         for rotation in rotations:

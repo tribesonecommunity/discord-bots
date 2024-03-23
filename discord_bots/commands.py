@@ -404,7 +404,7 @@ async def create_game(
         # title=title,
         # colour=Colour.blue(),
         # )
-        embed: Embed = await create_in_progress_game_embed(session, game)
+        embed: Embed = await create_in_progress_game_embed(session, game, guild)
         embed.title = f"⏳Game '{queue.name}' ({short_uuid(game.id)}) has begun!"
 
         be_channel, ds_channel = None, None
@@ -947,12 +947,13 @@ async def is_not_banned(ctx: Context):
 
     https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
     """
-    is_banned = (
-        Session()
-        .query(Player)
-        .filter(Player.id == ctx.message.author.id, Player.is_banned)
-        .first()
-    )
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        is_banned = (
+            session.query(Player)
+            .filter(Player.id == ctx.message.author.id, Player.is_banned)
+            .first()
+        )
     return not is_banned
 
 
@@ -1120,6 +1121,7 @@ async def add(ctx: Context, *args):
         )
         if waitlist_message:
             waitlist_messages.append(waitlist_message)
+            waitlist_messages.append(ctx.message)
         return
 
     if isinstance(message.channel, TextChannel) and message.guild:
@@ -1615,6 +1617,7 @@ async def del_(ctx: Context, *args):
         .order_by(Queue.ordinal.asc())
     )  # type: ignore
 
+    # TODO: handle DataError here
     if len(args) > 0:
         queues_to_del_query = queues_to_del_query.filter(
             or_(
@@ -1937,8 +1940,10 @@ async def listadminroles(ctx: Context):
 async def listbans(ctx: Context):
     message = ctx.message
     output = "Bans:"
-    for player in Session().query(Player).filter(Player.is_banned == True):
-        output += f"\n- {escape_markdown(player.name)}"
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        for player in session.query(Player).filter(Player.is_banned == True):
+            output += f"\n- {escape_markdown(player.name)}"
     await send_message(message.channel, embed_description=output, colour=Colour.blue())
 
 
@@ -2881,6 +2886,7 @@ async def showtrueskillnormdist(ctx: Context, queue_name: str):
 
 @bot.command()
 async def status(ctx: Context, *args):
+    assert ctx.guild
     session: sqlalchemy.orm.Session
     with Session() as session:
         queue_indices: list[int] = []
@@ -3021,7 +3027,9 @@ async def status(ctx: Context, *args):
                 if queue.id in games_by_queue:
                     game: InProgressGame
                     for game in games_by_queue[queue.id]:
-                        ipg_embed = await create_in_progress_game_embed(session, game)
+                        ipg_embed = await create_in_progress_game_embed(
+                            session, game, ctx.guild
+                        )
                         ipg_embeds.append(ipg_embed)
         await ctx.channel.send(
             embeds=[embed] + ipg_embeds,

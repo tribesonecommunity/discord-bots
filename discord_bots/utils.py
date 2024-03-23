@@ -135,6 +135,7 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
 async def create_in_progress_game_embed(
     session: sqlalchemy.orm.Session,
     game: InProgressGame,
+    guild: discord.Guild,
 ) -> Embed:
     queue: Queue | None = session.query(Queue).filter(Queue.id == game.queue_id).first()
     embed: discord.Embed
@@ -171,20 +172,20 @@ async def create_in_progress_game_embed(
         )
         .all()
     )
-    team0_display_names: list[str] = []
+    team0_names: list[str] = []
     for player in team0_players:
-        user: discord.User | None = bot.get_user(player.id)
-        if user:
-            team0_display_names.append(user.display_name)
+        member: discord.Member | None = guild.get_member(player.id)
+        if member:
+            team0_names.append(member.name)
         else:
-            team0_display_names.append(player.name)
-    team1_display_names: list[str] = []
+            team0_names.append(player.name)
+    team1_names: list[str] = []
     for player in team1_players:
-        user: discord.User | None = bot.get_user(player.id)
-        if user:
-            team1_display_names.append(user.display_name)
+        member: discord.Member | None = guild.get_member(player.id)
+        if member:
+            team1_names.append(member.display_name)
         else:
-            team1_display_names.append(player.name)
+            team1_names.append(player.name)
 
     embed.add_field(
         name="🗺️ Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=True
@@ -211,12 +212,12 @@ async def create_in_progress_game_embed(
     newline = "\n"
     embed.add_field(
         name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
-        value="" if not team0_players else f"\n>>> {newline.join(team0_display_names)}",
+        value="" if not team0_players else f"\n>>> {newline.join(team0_names)}",
         inline=True,
     )
     embed.add_field(
         name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
-        value="" if not team1_players else f"\n>>> {newline.join(team1_display_names)}",
+        value="" if not team1_players else f"\n>>> {newline.join(team1_names)}",
         inline=True,
     )
     return embed

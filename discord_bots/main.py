@@ -114,9 +114,11 @@ async def on_command_error(ctx: Context, error: CommandError):
             )
     else:
         if ctx.command:
-            _log.error(f"[on_command_error]: {error}, command: {ctx.command.name}")
+            _log.exception(
+                f"[on_command_error]: Ignoring exception in command {ctx.command.name}: {error}"
+            )
         else:
-            _log.error(f"[on_command_error]: {error}")
+            _log.exception(f"[on_command_error]: Ignoring exception: {error}")
 
 
 @bot.event
