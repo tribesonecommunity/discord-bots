@@ -177,7 +177,7 @@ async def queue_waitlist_task():
                             f"[queue_waitlist_task] Ignoring exception in delete_messages"
                         )
                     finally:
-                        waitlist_messages = []
+                        waitlist_messages.clear()
             if not guild:
                 guild = bot.get_guild(queue_waitlist.guild_id)
 
