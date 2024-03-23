@@ -168,7 +168,16 @@ async def queue_waitlist_task():
             if not channel:
                 channel = bot.get_channel(queue_waitlist.channel_id)
                 if isinstance(channel, TextChannel) and waitlist_messages:
-                    await channel.delete_messages(waitlist_messages)
+                    # TODO: delete_messages can only delete a max of 100 messages
+                    # so add logic to chunk waitlist_messages
+                    try:
+                        await channel.delete_messages(waitlist_messages)
+                    except:
+                        _log.exception(
+                            f"[queue_waitlist_task] Ignoring exception in delete_messages"
+                        )
+                    finally:
+                        waitlist_messages = []
             if not guild:
                 guild = bot.get_guild(queue_waitlist.guild_id)
 
@@ -398,7 +407,11 @@ async def add_players(session: sqlalchemy.orm.Session):
             newline = "\n"
             embed.add_field(
                 name=queue_title_str,
-                value=(f">>> {newline.join(player_names)}"),
+                value=(
+                    f">>> {newline.join(player_names)}"
+                    if player_names
+                    else "> \n** **"  # weird hack to create an empty quote
+                ),
                 inline=True,
             )
 

@@ -230,7 +230,6 @@ class QueueCommands(BaseCog):
             115204465589616646,
             347125254050676738,
             508003755220926464,
-            133700743201816577,
         ]:
             await self.send_error_message("Only special people can use this command")
             return
