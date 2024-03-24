@@ -1269,6 +1269,9 @@ class Schedule:
     date_time: datetime = field(
         metadata={"sa": Column(DateTime, nullable=False, unique=True)}
     )
+    message_id: int | None = field(
+        default=None, metadata={"sa": Column(BigInteger, nullable=True)}
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
