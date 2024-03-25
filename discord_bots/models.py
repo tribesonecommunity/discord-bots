@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -12,6 +12,7 @@ from sqlalchemy import (
     Float,
     Integer,
     String,
+    Time,
     UniqueConstraint,
     create_engine,
     event,
@@ -1260,15 +1261,15 @@ class RotationMap:
 @dataclass
 class Schedule:
     """
-    Stores datetimes for scheduling games up to a week in advance
+    Stores days and times for scheduling games up to a week in advance
     """
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "schedule"
+    __table_args__ = (UniqueConstraint("day", "time"),)
 
-    date_time: datetime = field(
-        metadata={"sa": Column(DateTime, nullable=False, unique=True)}
-    )
+    day: str = field(metadata={"sa": Column(String, nullable=False)})
+    time: time = field(metadata={"sa": Column(Time, nullable=False)})
     message_id: int | None = field(
         default=None, metadata={"sa": Column(BigInteger, nullable=True)}
     )
