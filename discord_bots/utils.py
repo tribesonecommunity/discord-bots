@@ -18,6 +18,7 @@ from discord import (
     Guild,
     Interaction,
     Message,
+    PartialMessage,
     TextChannel,
 )
 from discord.ext import commands
@@ -95,6 +96,39 @@ def pretty_format_team_no_format(
 
 def short_uuid(uuid: str) -> str:
     return uuid.split("-")[0]
+
+
+async def get_member_or_user_display_names(
+    player_ids: list[int], guild_id: int
+) -> list[str] | None:
+    """
+    Returns a list of player names in alphabetical order given a list of player_ids and a guild_id
+    The current Player.name column stores the user's name and not their display name, so this is the temp solution
+    If we cannot find the discord.Member in the bot's cache, we use bot.fetch_user which emits an HTTP request;
+    normally this will not happen, but it's the fallback.
+    """
+    guild: discord.Guild | None = bot.get_guild(guild_id)
+    if not guild:
+        _log.warning(
+            f"[get_member_or_user_display_names] Could not find guild with id {guild_id}"
+        )
+        return None
+    result: list[str] = []
+    for player_id in player_ids:
+        # try and get the member from the bot's cache
+        member: discord.Member | None = guild.get_member(player_id)
+        if member:
+            result.append(member.display_name)
+        else:
+            # make an HTTP request to discord to find the specific User
+            try:
+                user: discord.User | None = await bot.fetch_user(player_id)
+                if user:
+                    result.append(user.display_name)
+            except:
+                _log.exception(f"Could not find discord.User with id {player_id}")
+    result.sort()
+    return result
 
 
 async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
@@ -186,29 +220,9 @@ async def create_in_progress_game_embed(
             team1_names.append(member.display_name)
         else:
             team1_names.append(player.name)
-
-    embed.add_field(
-        name="🗺️ Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=True
-    )
-    embed.add_field(name="⏱️Started", value=f"{timestamp}", inline=True)
-    if config.SHOW_TRUESKILL:
-        embed.add_field(
-            name=f"📊 Average {MU_LOWER_UNICODE}",
-            value=round(game.average_trueskill, 2),
-            inline=True,
-        )
-    if game.message_id and game.channel_id:
-        game_channel = bot.get_channel(game.channel_id)
-        try:
-            if isinstance(game_channel, TextChannel):
-                game_message = await game_channel.fetch_message(game.message_id)
-                if game_message:
-                    embed.add_field(
-                        name="📺 Match Channel", value=f"{game_message.jump_url}"
-                    )
-        except Exception as e:
-            _log.warning(f"Could not find game message {game.message_id} due to: {e}")
-    embed.add_field(name="", value="", inline=False)  # newline
+    # sort the names alphabetically to make them easier to read
+    team0_names.sort()
+    team1_names.sort()
     newline = "\n"
     embed.add_field(
         name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
@@ -220,39 +234,90 @@ async def create_in_progress_game_embed(
         value="" if not team1_players else f"\n>>> {newline.join(team1_names)}",
         inline=True,
     )
+    embed.add_field(name="", value="", inline=False)  # newline
+    embed.add_field(
+        name="🗺️ Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=True
+    )
+    embed.add_field(name="⏱️ Started", value=f"{timestamp}", inline=True)
+    if config.SHOW_TRUESKILL:
+        embed.add_field(
+            name=f"📊 Average {MU_LOWER_UNICODE}",
+            value=round(game.average_trueskill, 2),
+            inline=True,
+        )
+    # this list of commands is configurable of course and /setgamcode only applies to T3
+    # once a set of people memorize the commands, this is not needed
+    embed.add_field(
+        name="🔧 Commands",
+        value="\n".join(["`/finishgame`", "`/setgamecode`"]),
+        inline=True,
+    )
+    if game.channel_id:
+        embed.add_field(name="📺 Channel", value=f"<#{game.channel_id}>", inline=True)
+    if game.code:
+        embed.add_field(name="🔢 Game Code", value=f"`{game.code}`", inline=True)
+    embed_fields_len = len(embed.fields) - 3  # subtract team0 and team1 fields
+    if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
+        # embeds are allowed 3 "columns" per "row"
+        # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
+        embed.add_field(name="", value="", inline=True)
     return embed
 
 
 def create_finished_game_embed(
     session: sqlalchemy.orm.Session,
-    finished_game: FinishedGame,
-    user_name: Optional[str] = None,
+    finished_game_id: str,
+    guild_id: int,
+    name_tuple: Optional[tuple[str, str]] = None,  # (user_name, display_name)
 ) -> Embed:
     # assumes that the FinishedGamePlayers have already been comitted
+    finished_game = (
+        session.query(FinishedGame).filter(FinishedGame.id == finished_game_id).first()
+    )
+    if not finished_game:
+        _log.error(
+            f"[create_finished_game_embed] Could not find finished_game with id={finished_game_id}"
+        )
+        return discord.Embed(
+            description=f"Oops! Could not find the Finished Game...️☹️",
+            color=discord.Color.red(),
+        )
+    guild: discord.Guild | None = bot.get_guild(guild_id)
+    if not guild:
+        _log.error(
+            f"[create_finished_game_embed] Could not find guild with id={guild_id}"
+        )
+        return discord.Embed(
+            description=f"Oops! Could not find the Finished Game...️☹️",
+            color=discord.Color.red(),
+        )
     embed = Embed(
         title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)}) Results",
         color=Colour.green(),
     )
-    if user_name is not None:
-        embed.set_footer(text=f"Finished by {user_name}")
-    else:
-        embed.set_footer(text="Finished")
-    team0_fg_players: list[FinishedGamePlayer] = (
-        session.query(FinishedGamePlayer)
+    if name_tuple is not None:
+        user_name, display_name = name_tuple[0], name_tuple[1]
+        embed.set_footer(text=f"Finished by {display_name} ({user_name})")
+    result = (
+        session.query(FinishedGamePlayer.player_name)
         .filter(
             FinishedGamePlayer.finished_game_id == finished_game.id,
             FinishedGamePlayer.team == 0,
         )
         .all()
     )
-    team1_fg_players: list[FinishedGamePlayer] = (
-        session.query(FinishedGamePlayer)
+    team0_player_names: list[str] = [p.player_name for p in result] if result else []
+    result = (
+        session.query(FinishedGamePlayer.player_name)
         .filter(
             FinishedGamePlayer.finished_game_id == finished_game.id,
             FinishedGamePlayer.team == 1,
         )
         .all()
     )
+    team1_player_names: list[str] = [p.player_name for p in result] if result else []
+    team0_player_names.sort()
+    team1_player_names.sort()
     if finished_game.winning_team == 0:
         be_str = f"🥇 {finished_game.team0_name}"
         ds_str = f"🥈 {finished_game.team1_name}"
@@ -262,10 +327,30 @@ def create_finished_game_embed(
     else:
         be_str = f"🥈 {finished_game.team0_name}"
         ds_str = f"🥈 {finished_game.team1_name}"
+    newline = "\n"
     embed.add_field(
-        name="📍 Map",
+        name=f"{be_str} ({round(100 * finished_game.win_probability)}%)",
+        value=(
+            ""
+            if not team0_player_names
+            else f"\n>>> {newline.join(team0_player_names)}"
+        ),
+        inline=True,
+    )
+    embed.add_field(
+        name=f"{ds_str} ({round(100*(1 - finished_game.win_probability))}%)",
+        value=(
+            ""
+            if not team1_player_names
+            else f"\n>>> {newline.join(team1_player_names)}"
+        ),
+        inline=True,
+    )
+    embed.add_field(name="", value="", inline=False)  # newline
+    embed.add_field(
+        name="🗺️️ Map",
         value=f"{finished_game.map_full_name} ({finished_game.map_short_name})",
-        inline=False,
+        inline=True,
     )
     duration: timedelta = finished_game.finished_at.replace(
         tzinfo=timezone.utc
@@ -273,25 +358,14 @@ def create_finished_game_embed(
     embed.add_field(
         name="⏱️ Duration",
         value=f"{duration.seconds // 60} minutes",
-        inline=False,
+        inline=True,
     )
     if config.SHOW_TRUESKILL:
         embed.add_field(
             name=f"📊 Average {MU_LOWER_UNICODE}",
             value=round(finished_game.average_trueskill, 2),
-            inline=False,
+            inline=True,
         )
-    embed.add_field(name="", value="", inline=False)  # newline
-    embed.add_field(
-        name=f"{be_str} ({round(100 * finished_game.win_probability)}%)",
-        value="\n".join([f"> <@{player.player_id}>" for player in team0_fg_players]),
-        inline=True,
-    )
-    embed.add_field(
-        name=f"{ds_str} ({round(100*(1 - finished_game.win_probability))}%)",
-        value="\n".join([f"> <@{player.player_id}>" for player in team1_fg_players]),
-        inline=True,
-    )
     return embed
 
 
@@ -563,7 +637,7 @@ async def send_in_guild_message(
     message_content: Optional[str] = None,
     embed: Optional[Embed] = None,
 ):
-    # TODO: implement mechanism to avoid being rate limited or some way to send DMs in bulk
+    # TODO: implement mechanism to avoid being rate limited
     if not config.DISABLE_PRIVATE_MESSAGES:
         member: Member | None = guild.get_member(user_id)
         if member:
@@ -571,6 +645,25 @@ async def send_in_guild_message(
                 await member.send(content=message_content, embed=embed)
             except Exception:
                 _log.exception("[send_in_guild_message] exception:")
+
+
+def get_guild_partial_message(
+    guild: Guild,
+    channel_id: int,
+    message_id: int,
+) -> PartialMessage | None:
+    """
+    Helper funcction to get a PartialMessage from a given Guild and channel_id.
+    Using discord.Guild.get_channel and discord.Channel.get_partial_message avoids emitting any API calls to discord
+    Note: discord.Guild.get_channel may emit an API call if the channel is not in the bot's cache
+    Partial Messages have less functionality than Messages:
+    https://discordpy.readthedocs.io/en/stable/api.html?highlight=get%20message#discord.PartialMessage
+    """
+    channel: discord.abc.GuildChannel | None = guild.get_channel(channel_id)
+    if isinstance(channel, discord.TextChannel):
+        message: discord.PartialMessage = channel.get_partial_message(message_id)
+        return message
+    return None
 
 
 async def send_message(
@@ -669,44 +762,3 @@ async def print_leaderboard():
 
 def code_block(content: str, language: str = "autohotkey") -> str:
     return "\n".join(["```" + language, content, "```"])
-
-
-@bot.command()
-@commands.guild_only()
-@commands.is_owner()
-async def sync(
-    ctx: Context,
-    guilds: commands.Greedy[discord.Object],
-    spec: Optional[Literal["~", "*", "^"]] = None,
-) -> None:
-    """
-    https://about.abstractumbra.dev/discord.py/2023/01/29/sync-command-example.html
-    """
-    if not guilds:
-        if spec == "~":
-            synced = await ctx.bot.tree.sync(guild=ctx.guild)
-        elif spec == "*":
-            ctx.bot.tree.copy_global_to(guild=ctx.guild)
-            synced = await ctx.bot.tree.sync(guild=ctx.guild)
-        elif spec == "^":
-            ctx.bot.tree.clear_commands(guild=ctx.guild)
-            await ctx.bot.tree.sync(guild=ctx.guild)
-            synced = []
-        else:
-            synced = await ctx.bot.tree.sync()
-
-        await ctx.send(
-            f"Synced {len(synced)} commands {'globally' if spec is None else 'to the current guild.'}"
-        )
-        return
-
-    ret = 0
-    for guild in guilds:
-        try:
-            await ctx.bot.tree.sync(guild=guild)
-        except discord.HTTPException as e:
-            _log.warn(f"Caught exception trying to sync for guild: ${guild}, e: {e}")
-        else:
-            ret += 1
-
-    await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")

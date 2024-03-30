@@ -257,10 +257,10 @@ async def setup():
     await bot.add_cog(InProgressGameCog(bot))
     add_player_task.start()
     afk_timer_task.start()
-    leaderboard_task.start()
-    map_rotation_task.start()
+    # leaderboard_task.start()
+    # map_rotation_task.start()
     queue_waitlist_task.start()
-    vote_passed_waitlist_task.start()
+    # vote_passed_waitlist_task.start()
     if config.ECONOMY_ENABLED:
         prediction_task.start()
 
@@ -273,6 +273,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        with config.setup_logging(config.LOG_LEVEL):
+            asyncio.run(main())
     except KeyboardInterrupt:
         print("KeyboardInterrupt")

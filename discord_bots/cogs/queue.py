@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 import numpy
@@ -9,7 +10,12 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-
+from discord_bots.config import (
+    CURRENCY_AWARD,
+    CURRENCY_NAME,
+    ECONOMY_ENABLED,
+    ENABLE_VOICE_MOVE,
+)
 from discord_bots.models import (
     Category,
     FinishedGame,
@@ -24,12 +30,8 @@ from discord_bots.models import (
     RotationMap,
 )
 from discord_bots.queues import AddPlayerQueueMessage, add_player_queue
-from discord_bots.config import (
-    ENABLE_VOICE_MOVE,
-    ECONOMY_ENABLED,
-    CURRENCY_AWARD,
-    CURRENCY_NAME,
-)
+
+_log = logging.getLogger(__name__)
 
 
 class QueueCommands(BaseCog):
@@ -230,6 +232,7 @@ class QueueCommands(BaseCog):
             115204465589616646,
             347125254050676738,
             508003755220926464,
+            133700743201816577,
         ]:
             await self.send_error_message("Only special people can use this command")
             return

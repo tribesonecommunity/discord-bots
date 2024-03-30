@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -37,7 +38,7 @@ else:
 
 # RDS free tier has max 81 connections
 if db_url.startswith("postgresql://"):
-    engine = create_engine(db_url, echo=False, pool_size=60)
+    engine = create_engine(db_url, echo=False, pool_size=40, max_overflow=50)
 else:
     engine = create_engine(db_url, echo=False)
 naming_convention = {
