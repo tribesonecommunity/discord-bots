@@ -756,7 +756,7 @@ def get_team_name_diff(
     team0_diff_vaules: list[str] = []
     team1_diff_vaules: list[str] = []
     # sort the names alphabetically and caselessly to make them easier to read
-    team0_player_names_before.sort(key=str.casefold)
+    team0_player_names_after.sort(key=str.casefold)
     team1_player_names_after.sort(key=str.casefold)
     for name in team0_player_names_after:
         if name in players_added_to_team0:
