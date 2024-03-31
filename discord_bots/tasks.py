@@ -410,29 +410,23 @@ async def add_players(session: sqlalchemy.orm.Session):
         for queue in queues_added_to_by_id.values():
             if queue.is_locked:
                 continue
-            players_in_queue: list[Player] = (
-                session.query(Player)
+            result = (
+                session.query(Player.name)
                 .join(QueuePlayer)
                 .filter(QueuePlayer.queue_id == queue.id)
                 .all()
             )
-            queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
-            player_names: list[str] = []
-            for player in players_in_queue:
-                user: discord.User | None = bot.get_user(player.id)
-                if user:
-                    # try and get their discord displayname
-                    player_names.append(user.display_name)
-                else:
-                    # fallback to their discord username
-                    player_names.append(player.name)
+            player_names: list[str] = [name[0] for name in result] if result else []
+            queue_title_str = (
+                f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
+            )
             newline = "\n"
             embed.add_field(
                 name=queue_title_str,
                 value=(
                     f">>> {newline.join(player_names)}"
                     if player_names
-                    else "> \n** **"  # weird hack to create an empty quote
+                    else "> \n** **"  # creates an empty quote
                 ),
                 inline=True,
             )
@@ -444,12 +438,10 @@ async def add_players(session: sqlalchemy.orm.Session):
             queues_added_to = queues_added_to_by_player_id[player_id]
             queue_names = [queue.name for queue in queues_added_to]
             if not queues_added_to:
-                embed_description += (
-                    f"**{player_name}** *not added* to any queues" + "\n"
-                )
+                embed_description += f"**{player_name}** not added to any queues" + "\n"
             else:
                 embed_description += (
-                    f"**{player_name}** *added* to **{', '.join(queue_names)}**" + "\n"
+                    f"**{player_name}** added to **{', '.join(queue_names)}**" + "\n"
                 )
             embed.color = discord.Color.green()
 

@@ -98,39 +98,6 @@ def short_uuid(uuid: str) -> str:
     return uuid.split("-")[0]
 
 
-async def get_member_or_user_display_names(
-    player_ids: list[int], guild_id: int
-) -> list[str] | None:
-    """
-    Returns a list of player names in alphabetical order given a list of player_ids and a guild_id
-    The current Player.name column stores the user's name and not their display name, so this is the temp solution
-    If we cannot find the discord.Member in the bot's cache, we use bot.fetch_user which emits an HTTP request;
-    normally this will not happen, but it's the fallback.
-    """
-    guild: discord.Guild | None = bot.get_guild(guild_id)
-    if not guild:
-        _log.warning(
-            f"[get_member_or_user_display_names] Could not find guild with id {guild_id}"
-        )
-        return None
-    result: list[str] = []
-    for player_id in player_ids:
-        # try and get the member from the bot's cache
-        member: discord.Member | None = guild.get_member(player_id)
-        if member:
-            result.append(member.display_name)
-        else:
-            # make an HTTP request to discord to find the specific User
-            try:
-                user: discord.User | None = await bot.fetch_user(player_id)
-                if user:
-                    result.append(user.display_name)
-            except:
-                _log.exception(f"Could not find discord.User with id {player_id}")
-    result.sort()
-    return result
-
-
 async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
     # Assume the most recently modified HTML file is the correct stat sheet
     if not config.STATS_DIR:
@@ -188,8 +155,8 @@ async def create_in_progress_game_embed(
         tzinfo=timezone.utc
     )  # timezones aren't stored in the DB, so add it ourselves
     timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
-    team0_players: list[Player] = (
-        session.query(Player)
+    result: list[str] | None = (
+        session.query(Player.name)
         .join(InProgressGamePlayer)
         .filter(
             InProgressGamePlayer.in_progress_game_id == game.id,
@@ -197,8 +164,9 @@ async def create_in_progress_game_embed(
         )
         .all()
     )
-    team1_players: list[Player] = (
-        session.query(Player)
+    team0_player_names = [name[0] for name in result if name] if result else []
+    result: list[str] | None = (
+        session.query(Player.name)
         .join(InProgressGamePlayer)
         .filter(
             InProgressGamePlayer.in_progress_game_id == game.id,
@@ -206,32 +174,29 @@ async def create_in_progress_game_embed(
         )
         .all()
     )
-    team0_names: list[str] = []
-    for player in team0_players:
-        member: discord.Member | None = guild.get_member(player.id)
-        if member:
-            team0_names.append(member.name)
-        else:
-            team0_names.append(player.name)
-    team1_names: list[str] = []
-    for player in team1_players:
-        member: discord.Member | None = guild.get_member(player.id)
-        if member:
-            team1_names.append(member.display_name)
-        else:
-            team1_names.append(player.name)
-    # sort the names alphabetically to make them easier to read
-    team0_names.sort()
-    team1_names.sort()
+    team1_player_names: list[str] = (
+        [name[0] for name in result if name] if result else []
+    )
+    # sort the names alphabetically and caselessly to make them easier to read
+    team0_player_names.sort(key=str.casefold)
+    team1_player_names.sort(key=str.casefold)
     newline = "\n"
     embed.add_field(
         name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
-        value="" if not team0_players else f"\n>>> {newline.join(team0_names)}",
+        value=(
+            f"\n>>> {newline.join(team0_player_names)}"
+            if team0_player_names
+            else "> \n** **"
+        ),
         inline=True,
     )
     embed.add_field(
         name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
-        value="" if not team1_players else f"\n>>> {newline.join(team1_names)}",
+        value=(
+            f"\n>>> {newline.join(team1_player_names)}"
+            if team1_player_names
+            else "> \n** **"
+        ),
         inline=True,
     )
     embed.add_field(name="", value="", inline=False)  # newline
@@ -245,8 +210,7 @@ async def create_in_progress_game_embed(
             value=round(game.average_trueskill, 2),
             inline=True,
         )
-    # this list of commands is configurable of course and /setgamcode only applies to T3
-    # once a set of people memorize the commands, this is not needed
+    # TODO: make the commands configurable/toggleable
     embed.add_field(
         name="🔧 Commands",
         value="\n".join(["`/finishgame`", "`/setgamecode`"]),
@@ -316,8 +280,9 @@ def create_finished_game_embed(
         .all()
     )
     team1_player_names: list[str] = [p.player_name for p in result] if result else []
-    team0_player_names.sort()
-    team1_player_names.sort()
+    # sort the names alphabetically and caselessly to make them easier to read
+    team0_player_names.sort(key=str.casefold)
+    team1_player_names.sort(key=str.casefold)
     if finished_game.winning_team == 0:
         be_str = f"🥇 {finished_game.team0_name}"
         ds_str = f"🥈 {finished_game.team1_name}"
@@ -762,3 +727,56 @@ async def print_leaderboard():
 
 def code_block(content: str, language: str = "autohotkey") -> str:
     return "\n".join(["```" + language, content, "```"])
+
+
+def get_team_name_diff(
+    team0_player_names_before: list[str] | None,
+    team0_player_names_after: list[str] | None,
+    team1_player_names_before: list[str] | None,
+    team1_player_names_after: list[str] | None,
+) -> tuple[str, str]:
+    """
+    Given lists of player names for team0 and team1 (before and after), returns a tuple[str, str] that represents the diff in discord markdown format
+    Useful for displaying after a rebalance, typically after a sub or autosub.
+    Note: the returned string is a vertical list
+    """
+    if (
+        not team0_player_names_before
+        or not team0_player_names_after
+        or not team1_player_names_before
+        or not team1_player_names_after
+    ):
+        return "", ""
+    players_added_to_team0: list[str] = list(
+        set(team0_player_names_after) - set(team0_player_names_before)
+    )
+    players_added_to_team1: list[str] = list(
+        set(team1_player_names_after) - set(team1_player_names_before)
+    )
+    team0_diff_vaules: list[str] = []
+    team1_diff_vaules: list[str] = []
+    # sort the names alphabetically and caselessly to make them easier to read
+    team0_player_names_before.sort(key=str.casefold)
+    team1_player_names_after.sort(key=str.casefold)
+    for name in team0_player_names_after:
+        if name in players_added_to_team0:
+            team0_diff_vaules.append(f"+ {name}")
+        else:
+            team0_diff_vaules.append(f" {name}")
+    for name in team1_player_names_after:
+        if name in players_added_to_team1:
+            team1_diff_vaules.append(f"+ {name}")
+        else:
+            team1_diff_vaules.append(f"  {name}")
+    newline = "\n"
+    team0_diff_str: str = (
+        f">>> ```diff\n{newline.join(team0_diff_vaules)}```"
+        if team0_diff_vaules
+        else "> \n** **"  # creates an empty quote
+    )
+    team1_diff_str: str = (
+        f">>> ```diff\n{newline.join(team1_diff_vaules)}```"
+        if team1_diff_vaules
+        else "> \n** **"  # creates an empty quote
+    )
+    return team0_diff_str, team1_diff_str

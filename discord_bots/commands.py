@@ -53,7 +53,7 @@ from discord_bots.utils import (
     code_block,
     create_finished_game_embed,
     create_in_progress_game_embed,
-    get_member_or_user_display_names,
+    get_team_name_diff,
     mean,
     print_leaderboard,
     send_in_guild_message,
@@ -1261,26 +1261,24 @@ async def autosub(ctx: Context, member: Member = None):
 
     player_in_game_id = member.id if member else message.author.id
     player_name = member.display_name if member else message.author.display_name
-    # If target player isn't in a game, exit early
     ipg_player: InProgressGamePlayer | None = (
         session.query(InProgressGamePlayer)
         .filter(InProgressGamePlayer.player_id == player_in_game_id)
         .first()
     )
     if not ipg_player:
+        # If target player isn't in a game, exit early
         await send_message(
             message.channel,
             embed_description=f"**{player_name}** must be in a game!",
             colour=Colour.red(),
         )
         return
-    player_team = ipg_player.team
     game: InProgressGame = (
         session.query(InProgressGame)
         .filter(InProgressGame.id == ipg_player.in_progress_game_id)
         .first()
     )
-
     team0_player_names_before: list[str] = [
         p.name
         for p in session.query(Player.name)
@@ -1290,6 +1288,7 @@ async def autosub(ctx: Context, member: Member = None):
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 0,
         )
+        or []  # handles None being returned from the query
     ]
     team1_player_names_before: list[str] = [
         p.name
@@ -1300,6 +1299,7 @@ async def autosub(ctx: Context, member: Member = None):
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 1,
         )
+        or []  # handles None being returned from the query
     ]
     players_in_queue: List[QueuePlayer] = (
         session.query(QueuePlayer).filter(QueuePlayer.queue_id == game.queue_id).all()
@@ -1352,11 +1352,7 @@ async def autosub(ctx: Context, member: Member = None):
         f"Auto-subbed **{subbed_in_player.name}** in for **{subbed_out_player_name}**"
     )
     embed.color = discord.Color.yellow()
-    team0_player_ids_after: list[int] | None = None
-    team0_player_names_after: list[str] | None = None
-    team1_player_ids_after: list[int] | None = None
-    team1_player_names_after: list[str] | None = None
-    result = (
+    results = (
         session.query(Player.id, Player.name)
         .join(InProgressGamePlayer)
         .filter(
@@ -1365,10 +1361,13 @@ async def autosub(ctx: Context, member: Member = None):
         )
         .all()
     )
-    if result:
-        team0_player_ids_after = [res[0] for res in result]
-        team0_player_names_after = [res[1] for res in result]
-    result = (
+    team0_player_ids_after: list[int] = (
+        [res[0] for res in results] if results and results[0] else []
+    )
+    team0_player_names_after: list[str] = (
+        [res[1] for res in results] if results and results[1] else []
+    )
+    results = (
         session.query(Player.id, Player.name)
         .join(InProgressGamePlayer)
         .filter(
@@ -1377,49 +1376,21 @@ async def autosub(ctx: Context, member: Member = None):
         )
         .all()
     )
-    if result:
-        team1_player_ids_after = [res[0] for res in result]
-        team1_player_names_after = [res[1] for res in result]
-    players_added_to_team0: list[str] = []
-    players_added_to_team1: list[str] = []
-    if team0_player_names_before and team0_player_names_after:
-        players_added_to_team0 = list(
-            set(team0_player_names_after) - set(team0_player_names_before)
-        )
-    if team1_player_names_before and team1_player_names_after:
-        players_added_to_team1 = list(
-            set(team1_player_names_after) - set(team1_player_names_before)
-        )
-    content = ""
-    content += f"{game.team0_name}:\n"
-    team0_diff_vaules: list[str] = []
-    team1_diff_vaules: list[str] = []
-
-    if team0_player_names_after:
-        team0_player_names_before.sort()
-        for name in team0_player_names_after:
-            if name in players_added_to_team0:
-                team0_diff_vaules.append(f"+ {name}")
-            else:
-                team0_diff_vaules.append(f" {name}")
-    if team1_player_names_after:
-        team1_player_names_after.sort()
-        for name in team1_player_names_after:
-            if name in players_added_to_team1:
-                team1_diff_vaules.append(f"+ {name}")
-            else:
-                team1_diff_vaules.append(f"  {name}")
-    newline = "\n"
+    team1_player_ids_after: list[int] = [res[0] for res in results] if results else []
+    team1_player_names_after: list[str] = [res[1] for res in results] if results else []
+    team0_diff_vaules, team1_diff_values = get_team_name_diff(
+        team0_player_names_before,
+        team0_player_names_after,
+        team1_player_names_before,
+        team1_player_names_after,
+    )
     for i, field in enumerate(embed.fields):
+        # brute force iteration through the embed's fields until we find the original team0 and team1 embeds to update
         if field.name == f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)":
             embed.set_field_at(
                 i,
                 name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
-                value=(
-                    f">>> ```diff\n{newline.join(team0_diff_vaules)}```"
-                    if team0_diff_vaules
-                    else "> \n** **"
-                ),  # weird hack to create an empty quote
+                value=team0_diff_vaules,
                 inline=True,
             )
         if (
@@ -1429,26 +1400,22 @@ async def autosub(ctx: Context, member: Member = None):
             embed.set_field_at(
                 i,
                 name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
-                value=(
-                    f">>> ```diff\n{newline.join(team1_diff_vaules)}```"
-                    if team1_diff_vaules
-                    else "> \n** **"
-                ),  # weird hack to create an empty quote
+                value=team1_diff_values,
                 inline=True,
             )
     be_voice_channel: discord.VoiceChannel | None = None
     ds_voice_channel: discord.VoiceChannel | None = None
-    channels: list[InProgressGameChannel] | None = (
+    ipg_channels: list[InProgressGameChannel] | None = (
         session.query(InProgressGameChannel)
         .filter(InProgressGameChannel.in_progress_game_id == game.id)
         .all()
     )
-    for channel in channels:
-        discord_channel: discord.abc.GuildChannel | None = message.guild.get_channel(
-            channel.channel_id
+    for ipg_channel in ipg_channels or []:
+        discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
+            ipg_channel.channel_id
         )
         if isinstance(discord_channel, discord.VoiceChannel):
-            # This is suboptimal solution but it's good enough for now. We should be keeping track of each team's VC
+            # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
             if discord_channel.name == game.team0_name:
                 be_voice_channel = discord_channel
             elif discord_channel.name == game.team1_name:
@@ -1465,35 +1432,32 @@ async def autosub(ctx: Context, member: Member = None):
             )
             coroutines.append(game_message.edit(embed=embed))
 
-    # send the new Embed to each player
-    if team0_player_ids_after:
+    # send the new discord.Embed to each player
+    if be_voice_channel:
         for player_id in team0_player_ids_after:
-            if be_voice_channel:
-                coroutines.append(
-                    send_in_guild_message(
-                        guild,
-                        player_id,
-                        message_content=be_voice_channel.jump_url,
-                        embed=embed,
-                    )
+            coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player_id,
+                    message_content=be_voice_channel.jump_url,
+                    embed=embed,
                 )
-
-    if team1_player_ids_after:
+            )
+    if ds_voice_channel:
         for player_id in team1_player_ids_after:
-            if ds_voice_channel:
-                coroutines.append(
-                    send_in_guild_message(
-                        guild,
-                        player_id,
-                        message_content=ds_voice_channel.jump_url,
-                        embed=embed,
-                    )
+            coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player_id,
+                    message_content=ds_voice_channel.jump_url,
+                    embed=embed,
                 )
+            )
     # use gather to run the sends and edit concurrently in the event loop
     try:
         await asyncio.gather(*coroutines)
     except:
-        _log.exception("[_rebalance_game] Ignoring exception in asyncio.gather:")
+        _log.exception("[autosub] Ignoring exception in asyncio.gather:")
 
     session.commit()
     session.close()
@@ -1862,29 +1826,23 @@ async def del_(ctx: Context, *args):
                 QueueWaitlistPlayer.player_id == message.author.id,
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
             ).delete()
-        players_in_queue: list[Player] = (
-            session.query(Player)
+        result = (
+            session.query(Player.name)
             .join(QueuePlayer)
             .filter(QueuePlayer.queue_id == queue.id)
             .all()
         )
+        player_names: list[str] = [name[0] for name in result] if result else []
         queue_title_str = (
-            f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+            f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
         )
-        player_names: list[str] = []
-        for player in players_in_queue:
-            user: discord.User | None = bot.get_user(player.id)
-            if user:
-                player_names.append(user.display_name)
-            else:
-                player_names.append(player.name)
         newline = "\n"
         embed.add_field(
             name=queue_title_str,
             value=(
-                "> \n** **"  # weird hack to create an empty quote
-                if not player_names
-                else f">>> {newline.join(player_names)}"
+                f">>> {newline.join(player_names)}"
+                if player_names
+                else "> \n** **"  # creates an empty quote
             ),
             inline=True,
         )
@@ -3718,6 +3676,13 @@ async def sub(ctx: Context, member: Member):
     guild = ctx.guild
     assert guild
     caller = message.author
+    if message.author.id == member.id:
+        await send_message(
+            channel=message.channel,
+            embed_description=f"You cannot sub yourself",
+            colour=Colour.red(),
+        )
+        return
     caller_game = get_player_game(caller.id, session)
     callee = member
     callee_game = get_player_game(callee.id, session)
@@ -3787,8 +3752,30 @@ async def sub(ctx: Context, member: Member):
     game: InProgressGame | None = callee_game or caller_game
     if not game:
         return
+    # get the list of player names
+    team0_player_names_before: list[str] = [
+        p.name
+        for p in session.query(Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            Player.id == InProgressGamePlayer.player_id,
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+    ]
+    team1_player_names_before: list[str] = [
+        p.name
+        for p in session.query(Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            Player.id == InProgressGamePlayer.player_id,
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+    ]
 
     await _rebalance_game(game, session, message)
+    # TODO: generate diff
     embed: discord.Embed = await create_in_progress_game_embed(session, game, guild)
     short_game_id: str = short_uuid(game.id)
     embed.title = f"New Teams for Game {short_game_id})"
