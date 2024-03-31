@@ -602,7 +602,7 @@ async def send_in_guild_message(
     message_content: Optional[str] = None,
     embed: Optional[Embed] = None,
 ):
-    # TODO: implement mechanism to avoid being rate limited
+    # use asyncio.gather to run this coroutine in parallel, else each send has to await for the previous one to finish
     if not config.DISABLE_PRIVATE_MESSAGES:
         member: Member | None = guild.get_member(user_id)
         if member:
