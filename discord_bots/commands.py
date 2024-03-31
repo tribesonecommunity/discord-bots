@@ -460,7 +460,9 @@ async def create_game(
             embed.add_field(
                 name="📺 Channel", value=match_channel.jump_url, inline=True
             )
-            embed_fields_len = len(embed.fields) - 3  # subtract team0 and team1 fields
+            embed_fields_len = (
+                len(embed.fields) - 3
+            )  # subtract team0, team1, and "newline" fields
             if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
                 # embeds are allowed 3 "columns" per "row"
                 # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
