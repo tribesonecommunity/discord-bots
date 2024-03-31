@@ -34,7 +34,6 @@ from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
-from discord.user import User
 from discord.utils import escape_markdown
 from numpy import std
 from PIL import Image
@@ -43,7 +42,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import select
 from table2ascii import Alignment, PresetStyle, table2ascii
-from trueskill import Rating, rate
+from trueskill import Rating
 
 import discord_bots.config as config
 from discord_bots.checks import is_admin
@@ -2791,7 +2790,7 @@ async def setgamecode(interaction: Interaction, code: str):
                             )
                             embed_fields_len = (
                                 len(embed.fields) - 3
-                            )  # subtract team0 and team1 fields
+                            )  # subtract team0, team1, and "newline" fields
                             if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
                                 # embeds are allowed 3 "columns" per "row"
                                 # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
