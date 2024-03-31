@@ -1279,28 +1279,32 @@ async def autosub(ctx: Context, member: Member = None):
         .filter(InProgressGame.id == ipg_player.in_progress_game_id)
         .first()
     )
-    team0_player_names_before: list[str] = [
-        p.name
-        for p in session.query(Player.name)
+    results = (
+        session.query(Player.id, Player.name)
         .join(InProgressGamePlayer)
         .filter(
-            Player.id == InProgressGamePlayer.player_id,
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 0,
         )
-        or []  # handles None being returned from the query
-    ]
-    team1_player_names_before: list[str] = [
-        p.name
-        for p in session.query(Player.name)
+        .all()
+    )
+    # skip copying the player_ids
+    team0_player_names_before: list[str] = (
+        [res[1] for res in results if res] if results else []
+    )
+    results = (
+        session.query(Player.id, Player.name)
         .join(InProgressGamePlayer)
         .filter(
-            Player.id == InProgressGamePlayer.player_id,
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 1,
         )
-        or []  # handles None being returned from the query
-    ]
+        .all()
+    )
+    # skip copying the player_ids
+    team1_player_names_before: list[str] = (
+        [res[1] for res in results if res] if results else []
+    )
     players_in_queue: List[QueuePlayer] = (
         session.query(QueuePlayer).filter(QueuePlayer.queue_id == game.queue_id).all()
     )
@@ -1341,7 +1345,7 @@ async def autosub(ctx: Context, member: Member = None):
     )
     await send_message(
         message.channel,
-        embed_description=f"Auto-subbed **{subbed_in_player.name}** in for **{subbed_out_player_name}**",
+        embed_description=f"Auto-substituted **{subbed_in_player.name}** in for **{subbed_out_player_name}**",
         colour=Colour.yellow(),
     )
     await _rebalance_game(game, session, message)
@@ -1362,11 +1366,9 @@ async def autosub(ctx: Context, member: Member = None):
         .all()
     )
     team0_player_ids_after: list[int] = (
-        [res[0] for res in results] if results and results[0] else []
+        [res[0] for res in results if res] if results else []
     )
-    team0_player_names_after: list[str] = (
-        [res[1] for res in results] if results and results[1] else []
-    )
+    team0_player_names_after: list[str] = [res[1] for res in results] if results else []
     results = (
         session.query(Player.id, Player.name)
         .join(InProgressGamePlayer)
@@ -1460,7 +1462,6 @@ async def autosub(ctx: Context, member: Member = None):
         _log.exception("[autosub] Ignoring exception in asyncio.gather:")
 
     session.commit()
-    session.close()
 
 
 @bot.command()
@@ -3752,38 +3753,147 @@ async def sub(ctx: Context, member: Member):
     game: InProgressGame | None = callee_game or caller_game
     if not game:
         return
-    # get the list of player names
-    team0_player_names_before: list[str] = [
-        p.name
-        for p in session.query(Player.name)
+
+    # get player_names per team before the swap
+    results = (
+        session.query(Player.id, Player.name)
         .join(InProgressGamePlayer)
         .filter(
-            Player.id == InProgressGamePlayer.player_id,
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 0,
         )
-    ]
-    team1_player_names_before: list[str] = [
-        p.name
-        for p in session.query(Player.name)
+        .all()
+    )
+    # skip copying the player_ids
+    team0_player_names_before: list[str] = (
+        [res[1] for res in results if res] if results else []
+    )
+    results = (
+        session.query(Player.id, Player.name)
         .join(InProgressGamePlayer)
         .filter(
-            Player.id == InProgressGamePlayer.player_id,
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 1,
         )
-    ]
+        .all()
+    )
+    # skip copying the player_ids
+    team1_player_names_before: list[str] = (
+        [res[1] for res in results if res] if results else []
+    )
 
     await _rebalance_game(game, session, message)
-    # TODO: generate diff
     embed: discord.Embed = await create_in_progress_game_embed(session, game, guild)
     short_game_id: str = short_uuid(game.id)
     embed.title = f"New Teams for Game {short_game_id})"
     embed.description = (
-        f"Subbed **{caller.display_name}** in for **{callee.display_name}**"
+        f"Substituted **{caller.display_name}** in for **{callee.display_name}**"
     )
     embed.color = discord.Color.yellow()
-    await message.channel.send(embed=embed)
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team0_player_ids_after: list[int] = (
+        [res[0] for res in results if res] if results else []
+    )
+    team0_player_names_after: list[str] = [res[1] for res in results] if results else []
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    team1_player_ids_after: list[int] = [res[0] for res in results] if results else []
+    team1_player_names_after: list[str] = [res[1] for res in results] if results else []
+    team0_diff_vaules, team1_diff_values = get_team_name_diff(
+        team0_player_names_before,
+        team0_player_names_after,
+        team1_player_names_before,
+        team1_player_names_after,
+    )
+    for i, field in enumerate(embed.fields):
+        # brute force iteration through the embed's fields until we find the original team0 and team1 embeds to update
+        if field.name == f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)":
+            embed.set_field_at(
+                i,
+                name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
+                value=team0_diff_vaules,
+                inline=True,
+            )
+        if (
+            field.name
+            == f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)"
+        ):
+            embed.set_field_at(
+                i,
+                name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
+                value=team1_diff_values,
+                inline=True,
+            )
+    be_voice_channel: discord.VoiceChannel | None = None
+    ds_voice_channel: discord.VoiceChannel | None = None
+    ipg_channels: list[InProgressGameChannel] | None = (
+        session.query(InProgressGameChannel)
+        .filter(InProgressGameChannel.in_progress_game_id == game.id)
+        .all()
+    )
+    for ipg_channel in ipg_channels or []:
+        discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
+            ipg_channel.channel_id
+        )
+        if isinstance(discord_channel, discord.VoiceChannel):
+            # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
+            if discord_channel.name == game.team0_name:
+                be_voice_channel = discord_channel
+            elif discord_channel.name == game.team1_name:
+                ds_voice_channel = discord_channel
+
+    coroutines = []
+    coroutines.append(message.channel.send(embed=embed))
+    # update the embed in the game channel
+    if game.message_id and game.channel_id:
+        game_channel = bot.get_channel(game.channel_id)
+        if isinstance(game_channel, TextChannel):
+            game_message: discord.PartialMessage = game_channel.get_partial_message(
+                game.message_id
+            )
+            coroutines.append(game_message.edit(embed=embed))
+
+    # send the new discord.Embed to each player
+    if be_voice_channel:
+        for player_id in team0_player_ids_after:
+            coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player_id,
+                    message_content=be_voice_channel.jump_url,
+                    embed=embed,
+                )
+            )
+    if ds_voice_channel:
+        for player_id in team1_player_ids_after:
+            coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player_id,
+                    message_content=ds_voice_channel.jump_url,
+                    embed=embed,
+                )
+            )
+    # use gather to run the sends and edit concurrently in the event loop
+    try:
+        await asyncio.gather(*coroutines)
+    except:
+        _log.exception("[autosub] Ignoring exception in asyncio.gather:")
     session.commit()
 
 
