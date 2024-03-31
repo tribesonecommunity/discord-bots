@@ -317,6 +317,7 @@ async def create_game(
             players = session.query(Player).filter(Player.id == player_ids[0]).all()
             win_prob = 0
         else:
+            """
             # run get_even_teams in a separate process, so that it doesn't block the event loop
             loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
             with concurrent.futures.ProcessPoolExecutor() as pool:
@@ -330,6 +331,10 @@ async def create_game(
                 )
                 players = result[0]
                 win_prob = result[1]
+            """
+            players, win_prob = get_even_teams(
+                player_ids, len(player_ids) // 2, queue.is_rated, queue.category_id
+            )
         category = (
             session.query(Category).filter(Category.id == queue.category_id).first()
         )
@@ -3591,6 +3596,7 @@ async def _rebalance_game(
         .all()
     )
     player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
+    """
     # run get_even_teams in a separate process, so that it doesn't block the event loop
     loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
     with concurrent.futures.ProcessPoolExecutor() as pool:
@@ -3604,6 +3610,10 @@ async def _rebalance_game(
         )
         players = result[0]
         win_prob = result[1]
+    """
+    players, win_prob = get_even_teams(
+        player_ids, len(player_ids) // 2, queue.is_rated, queue.category_id
+    )
     for game_player in game_players:
         session.delete(game_player)
     game.win_probability = win_prob
