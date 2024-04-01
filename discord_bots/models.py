@@ -165,6 +165,29 @@ class CustomCommand:
 
 @mapper_registry.mapped
 @dataclass
+class DiscordChannel:
+    """
+    Stores the IDs of Discord channels
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "discord_channel"
+
+    name: str = field(
+        metadata={"sa": Column(String, nullable=False, unique=True)},
+    )
+    channel_id: int = field(
+        metadata={"sa": Column(BigInteger, nullable=False, unique=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class DiscordGuild:
     """
     A discord server / guild
