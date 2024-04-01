@@ -715,7 +715,13 @@ async def print_leaderboard():
                         leaderboard_channel.last_message_id
                     )
                 if last_message:
-                    await last_message.edit(embed=Embed(description=output, colour=Colour.blue()))
+                    embed = Embed(
+                        description=output,
+                        colour=Colour.blue(),
+                        timestamp=discord.utils.utcnow(),
+                    )
+                    embed.set_footer(text="Last updated")
+                    await last_message.edit(embed=embed)
                     return
             except Exception as e:
                 _log.exception("[print_leaderboard] exception")
