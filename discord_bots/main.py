@@ -273,6 +273,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        with config.setup_logging(config.LOG_LEVEL):
+            asyncio.run(main())
     except KeyboardInterrupt:
         print("KeyboardInterrupt")

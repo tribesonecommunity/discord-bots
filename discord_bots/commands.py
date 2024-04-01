@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import heapq
 import logging
 import os
@@ -12,7 +14,7 @@ from os import remove
 from random import choice, randint, random, shuffle, uniform
 from shutil import copyfile
 from tempfile import NamedTemporaryFile
-from typing import List, Union
+from typing import List, Literal, Optional, Union
 
 import discord
 import imgkit
@@ -32,7 +34,6 @@ from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.guild import Guild
 from discord.member import Member
-from discord.user import User
 from discord.utils import escape_markdown
 from numpy import std
 from PIL import Image
@@ -41,7 +42,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import select
 from table2ascii import Alignment, PresetStyle, table2ascii
-from trueskill import Rating, rate
+from trueskill import Rating
 
 import discord_bots.config as config
 from discord_bots.checks import is_admin
@@ -51,8 +52,8 @@ from discord_bots.utils import (
     code_block,
     create_finished_game_embed,
     create_in_progress_game_embed,
+    get_team_name_diff,
     mean,
-    pretty_format_team,
     print_leaderboard,
     send_in_guild_message,
     send_message,
@@ -97,6 +98,7 @@ from .models import (
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue, waitlist_messages
 from .twitch import twitch
+from .utils import get_guild_partial_message
 
 _log = logging.getLogger(__name__)
 
@@ -295,9 +297,15 @@ def get_n_worst_finished_game_teams(
 async def create_game(
     queue_id: str,
     player_ids: list[int],
-    channel: TextChannel | DMChannel | GroupChannel,
-    guild: Guild,
+    channel_id,
+    guild_id,
 ):
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return
+    channel = guild.get_channel(channel_id)
+    if not channel:
+        return
     session: sqlalchemy.orm.Session
     with Session() as session:
         queue: Queue | None = session.query(Queue).filter(Queue.id == queue_id).first()
@@ -309,11 +317,23 @@ async def create_game(
             players = session.query(Player).filter(Player.id == player_ids[0]).all()
             win_prob = 0
         else:
+            """
+            # run get_even_teams in a separate process, so that it doesn't block the event loop
+            loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+            with concurrent.futures.ProcessPoolExecutor() as pool:
+                result = await loop.run_in_executor(
+                    pool,
+                    get_even_teams,
+                    player_ids,
+                    len(player_ids) // 2,
+                    queue.is_rated,
+                    queue.category_id,
+                )
+                players = result[0]
+                win_prob = result[1]
+            """
             players, win_prob = get_even_teams(
-                player_ids,
-                len(player_ids) // 2,
-                is_rated=queue.is_rated,
-                queue_category_id=queue.category_id,
+                player_ids, len(player_ids) // 2, queue.is_rated, queue.category_id
             )
         category = (
             session.query(Category).filter(Category.id == queue.category_id).first()
@@ -385,18 +405,18 @@ async def create_game(
 
         team0_players = players[: len(players) // 2]
         team1_players = players[len(players) // 2 :]
-        for player in team1_players:
-            game_player = InProgressGamePlayer(
-                in_progress_game_id=game.id,
-                player_id=player.id,
-                team=1,
-            )
-            session.add(game_player)
         for player in team0_players:
             game_player = InProgressGamePlayer(
                 in_progress_game_id=game.id,
                 player_id=player.id,
                 team=0,
+            )
+            session.add(game_player)
+        for player in team1_players:
+            game_player = InProgressGamePlayer(
+                in_progress_game_id=game.id,
+                player_id=player.id,
+                team=1,
             )
             session.add(game_player)
 
@@ -408,52 +428,72 @@ async def create_game(
         embed: Embed = await create_in_progress_game_embed(session, game, guild)
         embed.title = f"⏳Game '{queue.name}' ({short_uuid(game.id)}) has begun!"
 
-        be_channel, ds_channel = None, None
-        categories = {category.id: category for category in guild.categories}
-        voice_category = categories[config.TRIBES_VOICE_CATEGORY_CHANNEL_ID]
-        if voice_category:
-            be_channel, ds_channel = await create_team_voice_channels(
-                session, guild, game, voice_category
+        category_channel: discord.abc.GuildChannel | None = guild.get_channel(
+            config.TRIBES_VOICE_CATEGORY_CHANNEL_ID
+        )
+        if isinstance(category_channel, discord.CategoryChannel):
+            match_channel = await guild.create_text_channel(
+                f"{queue.name}-({short_game_id})", category=category_channel
             )
-        else:
-            _log.warning(
-                f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
+            be_voice_channel = await guild.create_voice_channel(
+                f"{game.team0_name}", category=category_channel
             )
-        try:
-            match_channel: discord.TextChannel | None = await guild.create_text_channel(
-                f"{queue.name}-({short_game_id})", category=voice_category
+            ds_voice_channel = await guild.create_voice_channel(
+                f"{game.team1_name}", category=category_channel
             )
             session.add(
                 InProgressGameChannel(
                     in_progress_game_id=game.id, channel_id=match_channel.id
                 )
             )
-        except:
-            _log.exception(
-                f"[create_game] failed to create match channel for game {short_game_id}"
+            session.add(
+                InProgressGameChannel(
+                    in_progress_game_id=game.id, channel_id=be_voice_channel.id
+                )
+            )
+            session.add(
+                InProgressGameChannel(
+                    in_progress_game_id=game.id, channel_id=ds_voice_channel.id
+                )
+            )
+        else:
+            _log.warning(
+                f"could not find tribes_voice_category with id {config.TRIBES_VOICE_CATEGORY_CHANNEL_ID} in guild"
             )
         if match_channel:
             # the embed won't have the Match Channel Field yet, so we add it ourselves
             embed.add_field(
-                name="Match Channel", value=match_channel.jump_url, inline=False
+                name="📺 Channel", value=match_channel.jump_url, inline=True
             )
+            embed_fields_len = (
+                len(embed.fields) - 3
+            )  # subtract team0, team1, and "newline" fields
+            if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
+                # embeds are allowed 3 "columns" per "row"
+                # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
+                embed.add_field(name="", value="", inline=True)
             game.channel_id = match_channel.id
-        embed.add_field(
-            name="Match Commands",
-            value="\n".join(["`/finishgame`", "`/setgamecode`"]),
-            inline=True,
-        )
+        send_message_coroutines = []
         for player in team0_players:
-            if be_channel:
-                await send_in_guild_message(
-                    guild, player.id, message_content=be_channel.jump_url, embed=embed
+            send_message_coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player.id,
+                    message_content=be_voice_channel.jump_url,
+                    embed=embed,
                 )
+            )
 
         for player in team1_players:
-            if ds_channel:
-                await send_in_guild_message(
-                    guild, player.id, message_content=ds_channel.jump_url, embed=embed
+            send_message_coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player.id,
+                    message_content=ds_voice_channel.jump_url,
+                    embed=embed,
                 )
+            )
+        await asyncio.gather(*send_message_coroutines)
 
         in_progress_game_cog = bot.get_cog("InProgressGameCog")
         if (
@@ -599,7 +639,7 @@ async def add_player_to_queue(
         )
         if len(queue_players) == queue.size and not queue.is_sweaty:  # Pop!
             player_ids: list[int] = list(map(lambda x: x.player_id, queue_players))
-            await create_game(queue.id, player_ids, channel, guild)
+            await create_game(queue.id, player_ids, channel.id, guild.id)
             return True, True
 
         queue_notifications: list[QueueNotification] = (
@@ -911,7 +951,9 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
 
 
 def is_in_game(player_id: int) -> bool:
-    return get_player_game(player_id, Session()) is not None
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        return get_player_game(player_id, session) is not None
 
 
 def get_player_game(player_id: int, session=None) -> InProgressGame | None:
@@ -924,7 +966,9 @@ def get_player_game(player_id: int, session=None) -> InProgressGame | None:
     should_close = False
     if not session:
         should_close = True
-        session = Session()
+        session = (
+            Session()
+        )  # TODO: this session has the potential to not be closed, replace with context manager
     ipg_player = (
         session.query(InProgressGamePlayer)
         .join(InProgressGame)
@@ -1217,38 +1261,62 @@ async def autosub(ctx: Context, member: Member = None):
     """
     message = ctx.message
     session = ctx.session
+    guild = ctx.guild
+    assert message
+    assert guild
 
     player_in_game_id = member.id if member else message.author.id
-    # If target player isn't a game, exit early
-    ipg_player = (
+    player_name = member.display_name if member else message.author.display_name
+    ipg_player: InProgressGamePlayer | None = (
         session.query(InProgressGamePlayer)
         .filter(InProgressGamePlayer.player_id == player_in_game_id)
         .first()
     )
     if not ipg_player:
-        player_name = member.name if member else message.author.name
+        # If target player isn't in a game, exit early
         await send_message(
             message.channel,
             embed_description=f"**{player_name}** must be in a game!",
             colour=Colour.red(),
         )
         return
-
-    in_progress_game: InProgressGame = (
+    game: InProgressGame = (
         session.query(InProgressGame)
         .filter(InProgressGame.id == ipg_player.in_progress_game_id)
         .first()
     )
-    players_in_queue: List[QueuePlayer] = (
-        session.query(QueuePlayer)
-        .filter(QueuePlayer.queue_id == in_progress_game.queue_id)
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
         .all()
+    )
+    # skip copying the player_ids
+    team0_player_names_before: list[str] = (
+        [res[1] for res in results if res] if results else []
+    )
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    # skip copying the player_ids
+    team1_player_names_before: list[str] = (
+        [res[1] for res in results if res] if results else []
+    )
+    players_in_queue: List[QueuePlayer] = (
+        session.query(QueuePlayer).filter(QueuePlayer.queue_id == game.queue_id).all()
     )
 
     if len(players_in_queue) == 0:
-        queue: Queue = (
-            session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
-        )
+        queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
         await send_message(
             message.channel,
             embed_description=f"No players in queue **{queue.name}**",
@@ -1278,16 +1346,128 @@ async def autosub(ctx: Context, member: Member = None):
     subbed_in_player: Player = (
         session.query(Player).filter(Player.id == player_to_sub.player_id).first()
     )
-    subbed_out_player_name = member.name if member else message.author.name
+    subbed_out_player_name = (
+        member.display_name if member else message.author.display_name
+    )
     await send_message(
         message.channel,
-        embed_description=f"Auto-subbed **{subbed_in_player.name}** in for **{subbed_out_player_name}**",
-        colour=Colour.blue(),
+        embed_description=f"Auto-substituted **{subbed_in_player.name}** in for **{subbed_out_player_name}**",
+        colour=Colour.yellow(),
     )
+    await _rebalance_game(game, session, message)
+    embed: discord.Embed = await create_in_progress_game_embed(session, game, guild)
+    short_game_id: str = short_uuid(game.id)
+    embed.title = f"New Teams for Game {short_game_id})"
+    embed.description = (
+        f"Auto-subbed **{subbed_in_player.name}** in for **{subbed_out_player_name}**"
+    )
+    embed.color = discord.Color.yellow()
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team0_player_ids_after: list[int] = (
+        [res[0] for res in results if res] if results else []
+    )
+    team0_player_names_after: list[str] = [res[1] for res in results] if results else []
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    team1_player_ids_after: list[int] = [res[0] for res in results] if results else []
+    team1_player_names_after: list[str] = [res[1] for res in results] if results else []
+    team0_diff_vaules, team1_diff_values = get_team_name_diff(
+        team0_player_names_before,
+        team0_player_names_after,
+        team1_player_names_before,
+        team1_player_names_after,
+    )
+    for i, field in enumerate(embed.fields):
+        # brute force iteration through the embed's fields until we find the original team0 and team1 embeds to update
+        if field.name == f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)":
+            embed.set_field_at(
+                i,
+                name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
+                value=team0_diff_vaules,
+                inline=True,
+            )
+        if (
+            field.name
+            == f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)"
+        ):
+            embed.set_field_at(
+                i,
+                name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
+                value=team1_diff_values,
+                inline=True,
+            )
+    be_voice_channel: discord.VoiceChannel | None = None
+    ds_voice_channel: discord.VoiceChannel | None = None
+    ipg_channels: list[InProgressGameChannel] | None = (
+        session.query(InProgressGameChannel)
+        .filter(InProgressGameChannel.in_progress_game_id == game.id)
+        .all()
+    )
+    for ipg_channel in ipg_channels or []:
+        discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
+            ipg_channel.channel_id
+        )
+        if isinstance(discord_channel, discord.VoiceChannel):
+            # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
+            if discord_channel.name == game.team0_name:
+                be_voice_channel = discord_channel
+            elif discord_channel.name == game.team1_name:
+                ds_voice_channel = discord_channel
 
-    await _rebalance_game(in_progress_game, session, message)
+    coroutines = []
+    coroutines.append(message.channel.send(embed=embed))
+    # update the embed in the game channel
+    if game.message_id and game.channel_id:
+        game_channel = bot.get_channel(game.channel_id)
+        if isinstance(game_channel, TextChannel):
+            game_message: discord.PartialMessage = game_channel.get_partial_message(
+                game.message_id
+            )
+            coroutines.append(game_message.edit(embed=embed))
+
+    # send the new discord.Embed to each player
+    if be_voice_channel:
+        for player_id in team0_player_ids_after:
+            coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player_id,
+                    message_content=be_voice_channel.jump_url,
+                    embed=embed,
+                )
+            )
+    if ds_voice_channel:
+        for player_id in team1_player_ids_after:
+            coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player_id,
+                    message_content=ds_voice_channel.jump_url,
+                    embed=embed,
+                )
+            )
+    # use gather to run the sends and edit concurrently in the event loop
+    try:
+        await asyncio.gather(*coroutines)
+    except:
+        _log.exception("[autosub] Ignoring exception in asyncio.gather:")
+
     session.commit()
-    session.close()
 
 
 @bot.command()
@@ -1545,7 +1725,7 @@ async def createcommand(ctx: Context, name: str, *, output: str):
 @commands.check(is_admin)
 async def createdbbackup(ctx: Context):
     message = ctx.message
-    date_string = datetime.now().strftime("%Y-%m-%d")
+    date_string = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     copyfile(f"{config.DB_NAME}.db", f"{config.DB_NAME}_{date_string}.db")
     await send_message(
         message.channel,
@@ -1653,29 +1833,23 @@ async def del_(ctx: Context, *args):
                 QueueWaitlistPlayer.player_id == message.author.id,
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
             ).delete()
-        players_in_queue: list[Player] = (
-            session.query(Player)
+        result = (
+            session.query(Player.name)
             .join(QueuePlayer)
             .filter(QueuePlayer.queue_id == queue.id)
             .all()
         )
+        player_names: list[str] = [name[0] for name in result] if result else []
         queue_title_str = (
-            f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+            f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
         )
-        player_names: list[str] = []
-        for player in players_in_queue:
-            user: discord.User | None = bot.get_user(player.id)
-            if user:
-                player_names.append(user.display_name)
-            else:
-                player_names.append(player.name)
         newline = "\n"
         embed.add_field(
             name=queue_title_str,
             value=(
-                "> \n** **"  # weird hack to create an empty quote
-                if not player_names
-                else f">>> {newline.join(player_names)}"
+                f">>> {newline.join(player_names)}"
+                if player_names
+                else "> \n** **"  # creates an empty quote
             ),
             inline=True,
         )
@@ -2203,7 +2377,9 @@ async def notify(ctx: Context, queue_name_or_index: Union[int, str], size: int):
     name="gamehistory",
     description="Privately displays your game history",
 )
+@discord.app_commands.guild_only()
 async def gamehistory(interaction: Interaction, count: int):
+    assert interaction.guild
     if count > 10:
         await interaction.response.send_message(
             embed=Embed(
@@ -2251,7 +2427,11 @@ async def gamehistory(interaction: Interaction, count: int):
         embeds = []
         finished_games.reverse()  # show most recent games last
         for finished_game in finished_games:
-            embeds.append(create_finished_game_embed(session, finished_game))
+            embeds.append(
+                create_finished_game_embed(
+                    session, finished_game.id, interaction.guild.id
+                )
+            )
 
         await interaction.followup.send(
             content=f"Last {count} games for {interaction.user.mention}",
@@ -2526,6 +2706,7 @@ async def setcommandprefix(ctx: Context, prefix: str):
 )
 @discord.app_commands.guild_only()
 async def setgamecode(interaction: Interaction, code: str):
+    assert interaction.guild
     session: sqlalchemy.orm.Session
     with Session() as session:
         ipgp = (
@@ -2558,6 +2739,15 @@ async def setgamecode(interaction: Interaction, code: str):
             )
             return
 
+        if ipg.code == code:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="This is already the current game code!",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
         ipg.code = code
         ipg_players: list[InProgressGamePlayer] = (
             session.query(InProgressGamePlayer)
@@ -2568,27 +2758,86 @@ async def setgamecode(interaction: Interaction, code: str):
             )
             .all()
         )
-        session.commit()
-
         await interaction.response.defer(ephemeral=True)
-        for ipg_player in ipg_players:
-            embed = Embed(
-                title=f"Lobby code for ({short_uuid(ipg.id)})",
-                description=f"`{code}`",
-                colour=Colour.blue(),
+        title: str = f"Lobby code for ({short_uuid(ipg.id)})"
+        if ipg.channel_id and ipg.message_id:
+            partial_message = get_guild_partial_message(
+                interaction.guild, ipg.channel_id, ipg.message_id
             )
-            embed.set_footer(text=f"set by {interaction.user}")
-            if interaction.guild:
-                await send_in_guild_message(
+            channel = interaction.guild.get_channel(ipg.channel_id)
+            if isinstance(channel, discord.TextChannel):
+                try:
+                    message: discord.Message = await channel.fetch_message(
+                        ipg.message_id
+                    )
+                    if len(message.embeds) > 0:
+                        embed: discord.Embed = message.embeds[0]
+                        replaced_code = False
+                        for i, field in enumerate(embed.fields):
+                            if field.name == "🔢 Game Code":
+                                field.value = f"`{code}`"
+                                embed.set_field_at(
+                                    i,
+                                    name="🔢 Game Code",
+                                    value=f"`{code}`",
+                                    inline=True,
+                                )
+                                replaced_code = True
+                                break
+                        if not replaced_code:
+                            last = embed.fields[-1]
+                            if (
+                                last.name == ""
+                                and last.value == ""
+                                and last.inline == True
+                            ):
+                                embed.remove_field(-1)
+                            embed.add_field(
+                                name="🔢 Game Code", value=f"`{code}`", inline=True
+                            )
+                            embed_fields_len = (
+                                len(embed.fields) - 3
+                            )  # subtract team0, team1, and "newline" fields
+                            if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
+                                # embeds are allowed 3 "columns" per "row"
+                                # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
+                                embed.add_field(name="", value="", inline=True)
+                        await message.edit(embed=embed)
+                except:
+                    _log.exception(
+                        f"[setgamecode] Failed to get message with guild_id={interaction.guild_id}, channel_id={ipg.channel_id}, message_id={ipg.message_id}:"
+                    )
+            if partial_message:
+                title = f"Lobby code for {partial_message.jump_url}"
+
+        embed = Embed(
+            title=title,
+            description=f"`{code}`",
+            colour=Colour.green(),
+        )
+        embed.set_footer(
+            text=f"set by {interaction.user.display_name} ({interaction.user.name})"
+        )
+        coroutines = []
+        for ipg_player in ipg_players:
+            coroutines.append(
+                send_in_guild_message(
                     interaction.guild, ipg_player.player_id, embed=embed
                 )
-        if ipg_players:
-            await interaction.followup.send(
-                embed=Embed(
-                    description="Lobby code sent to each player", colour=Colour.blue()
-                ),
-                ephemeral=True,
             )
+        if ipg_players:
+            try:
+                await asyncio.gather(*coroutines)
+            except:
+                _log.exception("[setgamecode] Ignoring exception in asyncio.gather:")
+            else:
+                await interaction.followup.send(
+                    embed=Embed(
+                        description="Lobby code sent to each player",
+                        colour=Colour.blue(),
+                    ),
+                    ephemeral=True,
+                )
         else:
             _log.warn("No in_progress_game_players to send a lobby code to")
             await interaction.followup.send(
@@ -2598,6 +2847,7 @@ async def setgamecode(interaction: Interaction, code: str):
                 ),
                 ephemeral=True,
             )
+        session.commit()
 
 
 @bot.command(usage="<true|false>")
@@ -3010,14 +3260,11 @@ async def status(ctx: Context, *args):
                     .all()
                 )
                 queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
-                player_display_names: list[str] = []
-                for player in players_in_queue:
-                    user: discord.User | None = bot.get_user(player.id)
-                    if user:
-                        player_display_names.append(user.display_name)
-                    else:
-                        player_display_names.append(player.name)
-
+                player_display_names: list[str] = (
+                    [player.name for player in players_in_queue]
+                    if players_in_queue
+                    else []
+                )
                 newline = "\n"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
                 embed.add_field(
                     name=queue_title_str,
@@ -3056,190 +3303,225 @@ async def stats(interaction: Interaction):
     """
     Replies to the user with their TrueSkill statistics. Can be used both inside and out of a Guild
     """
-    session: SQLAlchemySession = Session()
-    player: Player | None = (
-        session.query(Player).filter(Player.id == interaction.user.id).first()
-    )
-    if not player:
-        # Edge case where user has no record in the Players table
-        await interaction.response.send_message(
-            "You have not played any games", ephemeral=True
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        player: Player | None = (
+            session.query(Player).filter(Player.id == interaction.user.id).first()
         )
-        session.close()
-        return
-    if not player.stats_enabled:
-        await interaction.response.send_message(
-            "You have disabled `/stats`",
-            ephemeral=True,
-        )
-        session.close()
-        return
-
-    fgps: List[FinishedGamePlayer] | None = (
-        session.query(FinishedGamePlayer)
-        .filter(FinishedGamePlayer.player_id == player.id)
-        .all()
-    )
-    if not fgps:
-        await interaction.response.send_message(
-            "You have not played any games",
-            ephemeral=True,
-        )
-        session.close()
-        return
-
-    finished_game_ids: List[str] | None = [fgp.finished_game_id for fgp in fgps]
-    fgs: List[FinishedGame] | None = (
-        session.query(FinishedGame).filter(FinishedGame.id.in_(finished_game_ids)).all()
-    )
-    if not fgs:
-        await interaction.response.send_message(
-            "You have not played any games",
-            ephemeral=True,
-        )
-        session.close()
-        return
-
-    fgps_by_finished_game_id: dict[str, FinishedGamePlayer] = {
-        fgp.finished_game_id: fgp for fgp in fgps
-    }
-
-    players: list[Player] = session.query(Player).all()
-
-    default_rating = Rating()
-    # Filter players that haven't played a game
-    players = list(
-        filter(
-            lambda x: (
-                x.rated_trueskill_mu != default_rating.mu
-                and x.rated_trueskill_sigma != default_rating.sigma
+        if not player:
+            # Edge case where user has no record in the Players table
+            await interaction.response.send_message(
+                "You have not played any games", ephemeral=True
             )
-            and (
-                x.rated_trueskill_mu != config.DEFAULT_TRUESKILL_MU
-                and x.rated_trueskill_sigma != config.DEFAULT_TRUESKILL_SIGMA
-            ),
-            players,
-        )
-    )
-    trueskills = list(
-        sorted(
-            [
-                round(p.rated_trueskill_mu - 3 * p.rated_trueskill_sigma, 2)
-                for p in players
-            ]
-        )
-    )
-    trueskill_index = bisect(
-        trueskills,
-        round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
-    )
-    trueskill_ratio = (len(trueskills) - trueskill_index) / (len(trueskills) or 1)
-    if trueskill_ratio <= 0.05:
-        trueskill_pct = "Top 5%"
-    elif trueskill_ratio <= 0.10:
-        trueskill_pct = "Top 10%"
-    elif trueskill_ratio <= 0.25:
-        trueskill_pct = "Top 25%"
-    elif trueskill_ratio <= 0.50:
-        trueskill_pct = "Top 50%"
-    elif trueskill_ratio <= 0.75:
-        trueskill_pct = "Top 75%"
-    else:
-        trueskill_pct = "Top 100%"
+            return
+        if not player.stats_enabled:
+            await interaction.response.send_message(
+                "You have disabled `/stats`",
+                ephemeral=True,
+            )
+            return
 
-    # all of this below can probably be done more gracefull with a pandas dataframe
-    def wins_losses_ties_last_ndays(
-        finished_games: List[FinishedGame], n: int = -1
-    ) -> tuple[list[FinishedGame], list[FinishedGame], list[FinishedGame]]:
-        if n == -1:
-            # all finished games
-            last_nfgs = finished_games
+        fgps: List[FinishedGamePlayer] | None = (
+            session.query(FinishedGamePlayer)
+            .filter(FinishedGamePlayer.player_id == player.id)
+            .all()
+        )
+        if not fgps:
+            await interaction.response.send_message(
+                "You have not played any games",
+                ephemeral=True,
+            )
+            return
+
+        finished_game_ids: List[str] | None = [fgp.finished_game_id for fgp in fgps]
+        fgs: List[FinishedGame] | None = (
+            session.query(FinishedGame)
+            .filter(FinishedGame.id.in_(finished_game_ids))
+            .all()
+        )
+        if not fgs:
+            await interaction.response.send_message(
+                "You have not played any games",
+                ephemeral=True,
+            )
+            session.close()
+            return
+
+        fgps_by_finished_game_id: dict[str, FinishedGamePlayer] = {
+            fgp.finished_game_id: fgp for fgp in fgps
+        }
+
+        players: list[Player] = session.query(Player).all()
+
+        default_rating = Rating()
+        # Filter players that haven't played a game
+        players = list(
+            filter(
+                lambda x: (
+                    x.rated_trueskill_mu != default_rating.mu
+                    and x.rated_trueskill_sigma != default_rating.sigma
+                )
+                and (
+                    x.rated_trueskill_mu != config.DEFAULT_TRUESKILL_MU
+                    and x.rated_trueskill_sigma != config.DEFAULT_TRUESKILL_SIGMA
+                ),
+                players,
+            )
+        )
+        trueskills = list(
+            sorted(
+                [
+                    round(p.rated_trueskill_mu - 3 * p.rated_trueskill_sigma, 2)
+                    for p in players
+                ]
+            )
+        )
+        trueskill_index = bisect(
+            trueskills,
+            round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2),
+        )
+        trueskill_ratio = (len(trueskills) - trueskill_index) / (len(trueskills) or 1)
+        if trueskill_ratio <= 0.05:
+            trueskill_pct = "Top 5%"
+        elif trueskill_ratio <= 0.10:
+            trueskill_pct = "Top 10%"
+        elif trueskill_ratio <= 0.25:
+            trueskill_pct = "Top 25%"
+        elif trueskill_ratio <= 0.50:
+            trueskill_pct = "Top 50%"
+        elif trueskill_ratio <= 0.75:
+            trueskill_pct = "Top 75%"
         else:
-            # last n
-            last_nfgs = [
+            trueskill_pct = "Top 100%"
+
+        # all of this below can probably be done more gracefull with a pandas dataframe
+        def wins_losses_ties_last_ndays(
+            finished_games: List[FinishedGame], n: int = -1
+        ) -> tuple[list[FinishedGame], list[FinishedGame], list[FinishedGame]]:
+            if n == -1:
+                # all finished games
+                last_nfgs = finished_games
+            else:
+                # last n
+                last_nfgs = [
+                    fg
+                    for fg in finished_games
+                    if fg.finished_at.replace(tzinfo=timezone.utc)
+                    > datetime.now(timezone.utc) - timedelta(days=n)
+                ]
+            wins = [
                 fg
-                for fg in finished_games
-                if fg.finished_at > datetime.now(timezone.utc) - timedelta(days=n)
+                for fg in last_nfgs
+                if fg.winning_team == fgps_by_finished_game_id[fg.id].team
             ]
-        wins = [
-            fg
-            for fg in last_nfgs
-            if fg.winning_team == fgps_by_finished_game_id[fg.id].team
-        ]
-        losses = [
-            fg
-            for fg in last_nfgs
-            if fg.winning_team != fgps_by_finished_game_id[fg.id].team
-            and fg.winning_team != -1
-        ]
-        ties = [fg for fg in last_nfgs if fg.winning_team == -1]
-        return wins, losses, ties
+            losses = [
+                fg
+                for fg in last_nfgs
+                if fg.winning_team != fgps_by_finished_game_id[fg.id].team
+                and fg.winning_team != -1
+            ]
+            ties = [fg for fg in last_nfgs if fg.winning_team == -1]
+            return wins, losses, ties
 
-    def get_table_col(games: List[FinishedGame]):
+        def get_table_col(games: List[FinishedGame]):
+            cols = []
+            for num_days in [7, 30, 90, 365, -1]:
+                wins, losses, ties = wins_losses_ties_last_ndays(games, num_days)
+                num_wins, num_losses, num_ties = len(wins), len(losses), len(ties)
+                winrate = round(win_rate(num_wins, num_losses, num_ties))
+                col = [
+                    "Total" if num_days == -1 else f"{num_days}D",
+                    len(wins),
+                    len(losses),
+                    len(ties),
+                    num_wins + num_losses + num_ties,
+                    f"{winrate}%",
+                ]
+                cols.append(col)
+            return cols
+
+        embeds: list[Embed] = []
+        trueskill_url = (
+            "https://www.microsoft.com/en-us/research/project/trueskill-ranking-system/"
+        )
+        footer_text = "{}\n{}\n{}".format(
+            f"Rating = {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}",
+            f"{MU_LOWER_UNICODE} (mu) = your average Rating",
+            f"{SIGMA_LOWER_UNICODE} (sigma) = the uncertainity of your Rating",
+        )
         cols = []
-        for num_days in [7, 30, 90, 365, -1]:
-            wins, losses, ties = wins_losses_ties_last_ndays(games, num_days)
-            num_wins, num_losses, num_ties = len(wins), len(losses), len(ties)
-            winrate = round(win_rate(num_wins, num_losses, num_ties))
-            col = [
-                "Total" if num_days == -1 else f"{num_days}D",
-                len(wins),
-                len(losses),
-                len(ties),
-                num_wins + num_losses + num_ties,
-                f"{winrate}%",
-            ]
-            cols.append(col)
-        return cols
+        player_category_trueskills: list[PlayerCategoryTrueskill] | None = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(PlayerCategoryTrueskill.player_id == player.id)
+            .all()
+        )
+        # assume that if a guild uses categories, they will use them exclusively, i.e., no mixing categorized and uncategorized queues
+        if player_category_trueskills:
+            for pct in player_category_trueskills:
+                category: Category | None = (
+                    session.query(Category)
+                    .filter(Category.id == pct.category_id)
+                    .first()
+                )
+                if not category:
+                    # should never happen
+                    _log.error(
+                        f"No Category found for player_category_trueskill with id {pct.id}"
+                    )
+                    await interaction.response.send_message(
+                        embed=Embed(description="Could not find your stats")
+                    )
+                    return
+                title = f"Stats for {category.name}"
+                description = ""
+                if category.is_rated and config.SHOW_TRUESKILL:
+                    description = f"Rating: {round(pct.rank, 1)}"
+                    description += f"\n{MU_LOWER_UNICODE}: {round(pct.mu, 1)}"
+                    description += f"\n{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}"
+                else:
+                    description = f"Rating: {trueskill_pct}"
 
-    embeds: list[Embed] = []
-    trueskill_url = (
-        "https://www.microsoft.com/en-us/research/project/trueskill-ranking-system/"
-    )
-    footer_text = "{}\n{}\n{}".format(
-        f"Rating = {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}",
-        f"{MU_LOWER_UNICODE} (mu) = your average Rating",
-        f"{SIGMA_LOWER_UNICODE} (sigma) = the uncertainity of your Rating",
-    )
-    cols = []
-    player_category_trueskills: list[PlayerCategoryTrueskill] | None = (
-        session.query(PlayerCategoryTrueskill)
-        .filter(PlayerCategoryTrueskill.player_id == player.id)
-        .all()
-    )
-    # assume that if a guild uses categories, they will use them exclusively, i.e., no mixing categorized and uncategorized queues
-    if player_category_trueskills:
-        for pct in player_category_trueskills:
-            category: Category | None = (
-                session.query(Category).filter(Category.id == pct.category_id).first()
-            )
-            if not category:
-                # should never happen
-                _log.error(
-                    f"No Category found for player_category_trueskill with id {pct.id}"
+                category_games = [
+                    game
+                    for game in fgs
+                    if game.category_name and category.name == game.category_name
+                ]
+                cols = get_table_col(category_games)
+                table = table2ascii(
+                    header=["Last", "Win", "Loss", "Tie", "Sum", "%"],
+                    body=cols,
+                    first_col_heading=True,
+                    style=PresetStyle.minimalist,
+                    alignments=[
+                        Alignment.LEFT,
+                        Alignment.DECIMAL,
+                        Alignment.DECIMAL,
+                        Alignment.DECIMAL,
+                        Alignment.DECIMAL,
+                        Alignment.DECIMAL,
+                    ],
                 )
-                await interaction.response.send_message(
-                    embed=Embed(description="Could not find your stats")
-                )
-                session.close()
-                return
-            title = f"Stats for {category.name}"
+                description += code_block(table)
+                description += f"\n{trueskill_url}"
+                embed = Embed(title=title, description=description)
+                embed.set_footer(text=footer_text)
+                embeds.append(embed)
+        if not player_category_trueskills:
+            # no categories defined, display their global trueskill stats
             description = ""
-            if category.is_rated and config.SHOW_TRUESKILL:
-                description = f"Rating: {round(pct.rank, 1)}"
-                description += f"\n{MU_LOWER_UNICODE}: {round(pct.mu, 1)}"
-                description += f"\n{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}"
+            if config.SHOW_TRUESKILL:
+                description = f"Rating: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)}"
+                description += (
+                    f"\n{MU_LOWER_UNICODE}: {round(player.rated_trueskill_mu, 1)}"
+                )
+                description += (
+                    f"\n{SIGMA_LOWER_UNICODE}: {round(player.rated_trueskill_sigma, 1)}"
+                )
             else:
                 description = f"Rating: {trueskill_pct}"
-
-            category_games = [
-                game
-                for game in fgs
-                if game.category_name and category.name == game.category_name
-            ]
-            cols = get_table_col(category_games)
+            cols = get_table_col(fgs)
             table = table2ascii(
-                header=["Last", "Win", "Loss", "Tie", "Sum", "%"],
+                header=["Period", "Wins", "Losses", "Ties", "Total", "Win %"],
                 body=cols,
                 first_col_heading=True,
                 style=PresetStyle.minimalist,
@@ -3253,50 +3535,16 @@ async def stats(interaction: Interaction):
                 ],
             )
             description += code_block(table)
-            description += f"\n{trueskill_url}"
-            embed = Embed(title=title, description=description)
+            embed = Embed(
+                title="Overall Stats",
+                description=description,
+            )
             embed.set_footer(text=footer_text)
             embeds.append(embed)
-    if not player_category_trueskills:
-        # no categories defined, display their global trueskill stats
-        description = ""
-        if config.SHOW_TRUESKILL:
-            description = f"Rating: {round(player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, 2)}"
-            description += (
-                f"\n{MU_LOWER_UNICODE}: {round(player.rated_trueskill_mu, 1)}"
-            )
-            description += (
-                f"\n{SIGMA_LOWER_UNICODE}: {round(player.rated_trueskill_sigma, 1)}"
-            )
-        else:
-            description = f"Rating: {trueskill_pct}"
-        cols = get_table_col(fgs)
-        table = table2ascii(
-            header=["Period", "Wins", "Losses", "Ties", "Total", "Win %"],
-            body=cols,
-            first_col_heading=True,
-            style=PresetStyle.minimalist,
-            alignments=[
-                Alignment.LEFT,
-                Alignment.DECIMAL,
-                Alignment.DECIMAL,
-                Alignment.DECIMAL,
-                Alignment.DECIMAL,
-                Alignment.DECIMAL,
-            ],
-        )
-        description += code_block(table)
-        embed = Embed(
-            title="Overall Stats",
-            description=description,
-        )
-        embed.set_footer(text=footer_text)
-        embeds.append(embed)
-    try:
-        await interaction.response.send_message(embeds=embeds, ephemeral=True)
-    except Exception:
-        _log.exception(f"Caught exception trying to send stats message")
-    session.close()
+        try:
+            await interaction.response.send_message(embeds=embeds, ephemeral=True)
+        except Exception:
+            _log.exception(f"Caught exception trying to send stats message")
 
 
 @bot.command()
@@ -3338,6 +3586,8 @@ async def _rebalance_game(
     """
     Recreate the players on each team - use this after subbing a player
     """
+    assert message.guild
+    assert message.channel
     queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
 
     game_players = (
@@ -3346,65 +3596,37 @@ async def _rebalance_game(
         .all()
     )
     player_ids: list[int] = list(map(lambda x: x.player_id, game_players))
+    """
+    # run get_even_teams in a separate process, so that it doesn't block the event loop
+    loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+    with concurrent.futures.ProcessPoolExecutor() as pool:
+        result = await loop.run_in_executor(
+            pool,
+            get_even_teams,
+            player_ids,
+            len(player_ids) // 2,
+            queue.is_rated,
+            queue.category_id,
+        )
+        players = result[0]
+        win_prob = result[1]
+    """
     players, win_prob = get_even_teams(
-        player_ids,
-        len(player_ids) // 2,
-        is_rated=queue.is_rated,
-        queue_category_id=queue.category_id,
+        player_ids, len(player_ids) // 2, queue.is_rated, queue.category_id
     )
     for game_player in game_players:
         session.delete(game_player)
     game.win_probability = win_prob
     team0_players = players[: len(players) // 2]
     team1_players = players[len(players) // 2 :]
-
-    short_game_id = short_uuid(game.id)
-    channel_message = f"New teams ({short_game_id}):"
-    channel_embed = ""
-    channel_embed += pretty_format_team(game.team0_name, win_prob, team0_players)
-    channel_embed += pretty_format_team(game.team1_name, 1 - win_prob, team1_players)
-
     for player in team0_players:
-        # TODO: This block is duplicated
-        if not config.DISABLE_PRIVATE_MESSAGES:
-            if message.guild:
-                member_: Member | None = message.guild.get_member(player.id)
-                if member_:
-                    try:
-                        await member_.send(
-                            content=channel_message,
-                            embed=Embed(
-                                description=f"{channel_embed}",
-                                colour=Colour.blue(),
-                            ),
-                        )
-                    except Exception:
-                        pass
-
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
             team=0,
         )
         session.add(game_player)
-
     for player in team1_players:
-        # TODO: This block is duplicated
-        if not config.DISABLE_PRIVATE_MESSAGES:
-            if message.guild:
-                member_: Member | None = message.guild.get_member(player.id)
-                if member_:
-                    try:
-                        await member_.send(
-                            content=channel_message,
-                            embed=Embed(
-                                description=f"{channel_embed}",
-                                colour=Colour.blue(),
-                            ),
-                        )
-                    except Exception:
-                        pass
-
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
@@ -3412,17 +3634,15 @@ async def _rebalance_game(
         )
         session.add(game_player)
 
-    await send_message(
-        message.channel,
-        content=channel_message,
-        embed_description=channel_embed,
-        colour=Colour.blue(),
-    )
     session.commit()
 
     if config.ECONOMY_ENABLED:
         try:
-            await EconomyCommands.cancel_predictions(None, game.id)
+            economy_cog = bot.get_cog("EconomyCommands")
+            if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
+                await economy_cog.cancel_predictions(game.id)
+            else:
+                _log.warning("Could not get EconomyCommands cog")
         except ValueError as ve:
             # Raised if there are no predictions on this game
             await send_message(
@@ -3447,6 +3667,7 @@ async def _rebalance_game(
                 colour=Colour.blue(),
             )
 
+    short_game_id: str = short_uuid(game.id)
     if config.ENABLE_VOICE_MOVE:
         if queue.move_enabled:
             await _movegameplayers(short_game_id, None, message.guild)
@@ -3456,8 +3677,6 @@ async def _rebalance_game(
                 colour=Colour.green(),
             )
 
-    pass
-
 
 @bot.command()
 async def sub(ctx: Context, member: Member):
@@ -3466,7 +3685,16 @@ async def sub(ctx: Context, member: Member):
     Substitute one player in a game for another
     """
     session = ctx.session
+    guild = ctx.guild
+    assert guild
     caller = message.author
+    if message.author.id == member.id:
+        await send_message(
+            channel=message.channel,
+            embed_description=f"You cannot sub yourself",
+            colour=Colour.red(),
+        )
+        return
     caller_game = get_player_game(caller.id, session)
     callee = member
     callee_game = get_player_game(callee.id, session)
@@ -3533,17 +3761,150 @@ async def sub(ctx: Context, member: Member):
         session.query(QueuePlayer).filter(QueuePlayer.player_id == caller.id).delete()
         session.commit()
 
-    await send_message(
-        channel=message.channel,
-        embed_description=f"{escape_markdown(callee.name)} has been substituted with {escape_markdown(caller.name)}",
-        colour=Colour.green(),
-    )
-
     game: InProgressGame | None = callee_game or caller_game
     if not game:
         return
 
+    # get player_names per team before the swap
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    # skip copying the player_ids
+    team0_player_names_before: list[str] = (
+        [res[1] for res in results if res] if results else []
+    )
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    # skip copying the player_ids
+    team1_player_names_before: list[str] = (
+        [res[1] for res in results if res] if results else []
+    )
+
     await _rebalance_game(game, session, message)
+    embed: discord.Embed = await create_in_progress_game_embed(session, game, guild)
+    short_game_id: str = short_uuid(game.id)
+    embed.title = f"New Teams for Game {short_game_id})"
+    embed.description = (
+        f"Substituted **{caller.display_name}** in for **{callee.display_name}**"
+    )
+    embed.color = discord.Color.yellow()
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team0_player_ids_after: list[int] = (
+        [res[0] for res in results if res] if results else []
+    )
+    team0_player_names_after: list[str] = [res[1] for res in results] if results else []
+    results = (
+        session.query(Player.id, Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    team1_player_ids_after: list[int] = [res[0] for res in results] if results else []
+    team1_player_names_after: list[str] = [res[1] for res in results] if results else []
+    team0_diff_vaules, team1_diff_values = get_team_name_diff(
+        team0_player_names_before,
+        team0_player_names_after,
+        team1_player_names_before,
+        team1_player_names_after,
+    )
+    for i, field in enumerate(embed.fields):
+        # brute force iteration through the embed's fields until we find the original team0 and team1 embeds to update
+        if field.name == f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)":
+            embed.set_field_at(
+                i,
+                name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
+                value=team0_diff_vaules,
+                inline=True,
+            )
+        if (
+            field.name
+            == f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)"
+        ):
+            embed.set_field_at(
+                i,
+                name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
+                value=team1_diff_values,
+                inline=True,
+            )
+    be_voice_channel: discord.VoiceChannel | None = None
+    ds_voice_channel: discord.VoiceChannel | None = None
+    ipg_channels: list[InProgressGameChannel] | None = (
+        session.query(InProgressGameChannel)
+        .filter(InProgressGameChannel.in_progress_game_id == game.id)
+        .all()
+    )
+    for ipg_channel in ipg_channels or []:
+        discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
+            ipg_channel.channel_id
+        )
+        if isinstance(discord_channel, discord.VoiceChannel):
+            # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
+            if discord_channel.name == game.team0_name:
+                be_voice_channel = discord_channel
+            elif discord_channel.name == game.team1_name:
+                ds_voice_channel = discord_channel
+
+    coroutines = []
+    coroutines.append(message.channel.send(embed=embed))
+    # update the embed in the game channel
+    if game.message_id and game.channel_id:
+        game_channel = bot.get_channel(game.channel_id)
+        if isinstance(game_channel, TextChannel):
+            game_message: discord.PartialMessage = game_channel.get_partial_message(
+                game.message_id
+            )
+            coroutines.append(game_message.edit(embed=embed))
+
+    # send the new discord.Embed to each player
+    if be_voice_channel:
+        for player_id in team0_player_ids_after:
+            coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player_id,
+                    message_content=be_voice_channel.jump_url,
+                    embed=embed,
+                )
+            )
+    if ds_voice_channel:
+        for player_id in team1_player_ids_after:
+            coroutines.append(
+                send_in_guild_message(
+                    guild,
+                    player_id,
+                    message_content=ds_voice_channel.jump_url,
+                    embed=embed,
+                )
+            )
+    # use gather to run the sends and edit concurrently in the event loop
+    try:
+        await asyncio.gather(*coroutines)
+    except:
+        _log.exception("[autosub] Ignoring exception in asyncio.gather:")
     session.commit()
 
 
@@ -3568,3 +3929,46 @@ async def unban(ctx: Context, member: Member):
         embed_description=f"{escape_markdown(member.name)} unbanned",
         colour=Colour.green(),
     )
+
+
+@bot.command()
+@commands.guild_only()
+@commands.check(is_admin)
+# @commands.is_owner() # TODO: In a multi-guild context, use this instead
+async def sync(
+    ctx: Context,
+    guilds: commands.Greedy[discord.Object],
+    spec: Optional[Literal["~", "*", "^"]] = None,
+) -> None:
+    """
+    Do not use this command frequently, as it could get the bot rate limited
+    https://about.abstractumbra.dev/discord.py/2023/01/29/sync-command-example.html
+    """
+    if not guilds:
+        if spec == "~":
+            synced = await ctx.bot.tree.sync(guild=ctx.guild)
+        elif spec == "*":
+            ctx.bot.tree.copy_global_to(guild=ctx.guild)
+            synced = await ctx.bot.tree.sync(guild=ctx.guild)
+        elif spec == "^":
+            ctx.bot.tree.clear_commands(guild=ctx.guild)
+            await ctx.bot.tree.sync(guild=ctx.guild)
+            synced = []
+        else:
+            synced = await ctx.bot.tree.sync()
+
+        await ctx.send(
+            f"Synced {len(synced)} commands {'globally' if spec is None else 'to the current guild.'}"
+        )
+        return
+
+    ret = 0
+    for guild in guilds:
+        try:
+            await ctx.bot.tree.sync(guild=guild)
+        except discord.HTTPException as e:
+            _log.warn(f"Caught exception trying to sync for guild: ${guild}, e: {e}")
+        else:
+            ret += 1
+
+    await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")

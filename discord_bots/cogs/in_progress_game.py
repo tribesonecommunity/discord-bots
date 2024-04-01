@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from mailbox import Message
 from typing import TYPE_CHECKING, Literal, Optional
 
 import discord
@@ -177,10 +176,7 @@ class InProgressGameCog(commands.Cog):
                     embed = discord.Embed(
                         color=discord.Colour.red(),
                     )
-                    if game_id:
-                        embed.description = f"❌ Game {game_id} does not exist"
-                    else:
-                        embed.description = "❌ Could not find a game to **Finish**"
+                    embed.description = "❌ You are not in this game"
                     await interaction.followup.send(
                         embed=embed,
                         ephemeral=True,
@@ -451,7 +447,7 @@ class InProgressGameCog(commands.Cog):
         update_ratings(
             team1_players, team1_rated_ratings_before, team1_rated_ratings_after
         )
-        session.commit()
+        session.commit()  # temporary solution until the foreign key constraint is resolved on EconomyPredictions/EconomyTransactions
         if config.ECONOMY_ENABLED:
             economy_cog = self.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
@@ -476,7 +472,6 @@ class InProgressGameCog(commands.Cog):
                 + timedelta(seconds=config.RE_ADD_DELAY),
             )
         )
-        session.commit()
 
         # Reward raffle tickets
         reward = (
@@ -494,10 +489,13 @@ class InProgressGameCog(commands.Cog):
         for player in players:
             player.raffle_tickets += reward
             session.add(player)
-        queue_name = queue.name
+        session.commit()
 
         finished_game_embed = create_finished_game_embed(
-            session, finished_game, interaction.user.name
+            session,
+            finished_game.id,
+            interaction.guild.id,
+            (interaction.user.name, interaction.user.display_name),
         )
         game_history_message: discord.Message
         if config.GAME_HISTORY_CHANNEL:
@@ -520,7 +518,6 @@ class InProgressGameCog(commands.Cog):
             main_channel = interaction.guild.get_channel(config.CHANNEL_ID)
             if isinstance(main_channel, discord.TextChannel):
                 await main_channel.send(embed=finished_game_embed)
-
         return True
 
     async def cancel_in_progress_game(
@@ -590,6 +587,7 @@ class InProgressGameCog(commands.Cog):
         session.query(InProgressGamePlayer).filter(
             InProgressGamePlayer.in_progress_game_id == game.id
         ).delete()
+        session.commit()  # if you remove this commit, then there is a chance for the DB to lockup if someone types a message at the same time
 
         for ipg_channel in session.query(InProgressGameChannel).filter(
             InProgressGameChannel.in_progress_game_id == game.id

@@ -2,6 +2,7 @@
 # use queues to be able to execute discord actions from child threads.
 # https://stackoverflow.com/a/67996748
 
+import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -19,10 +20,8 @@ from discord.utils import escape_markdown
 
 import discord_bots.config as config
 from discord_bots.utils import (
-    code_block,
     print_leaderboard,
     send_message,
-    short_uuid,
     update_next_map_to_map_after_next,
 )
 
@@ -32,7 +31,6 @@ from .commands import add_player_to_queue, create_game, is_in_game
 from .models import (
     InProgressGame,
     InProgressGameChannel,
-    InProgressGamePlayer,
     MapVote,
     Player,
     PlayerCategoryTrueskill,
@@ -226,19 +224,35 @@ async def queue_waitlist_task():
                                 guild,
                             )
                         )
-            # cleanup any InProgressGameChannels that are hanging around
-            for igp_channel in session.query(InProgressGameChannel).filter(
+            ipg_channels: list[InProgressGameChannel] = (
+                session.query(InProgressGameChannel)
+                .filter(
+                    InProgressGameChannel.in_progress_game_id
+                    == queue_waitlist.in_progress_game_id
+                )
+                .all()
+            )
+            if guild:
+                ipg_discord_channels: list[discord.abc.GuildChannel] = [
+                    channel
+                    for ipg_channel in ipg_channels
+                    if (channel := guild.get_channel(ipg_channel.channel_id))
+                    is not None
+                ]
+                channel_delete_coroutines = [
+                    channel.delete() for channel in ipg_discord_channels
+                ]
+                try:
+                    asyncio.gather(*channel_delete_coroutines)
+                except:
+                    _log.exception(
+                        f"[queue_waitlist_task] Failed to delete in_progress_game channels {ipg_discord_channels} from guild {guild.id}"
+                    )
+            # TODO: deleting channels from the guild and from the DB isn't atomic
+            session.query(InProgressGameChannel).filter(
                 InProgressGameChannel.in_progress_game_id
                 == queue_waitlist.in_progress_game_id
-            ):
-                if guild:
-                    guild_channel: discord.abc.GuildChannel | None = guild.get_channel(
-                        igp_channel.channel_id
-                    )
-                    if guild_channel:
-                        await guild_channel.delete()
-                session.delete(igp_channel)
-
+            ).delete()
             session.query(QueueWaitlistPlayer).filter(
                 QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id
             ).delete()
@@ -362,11 +376,13 @@ async def add_players(session: sqlalchemy.orm.Session):
     queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
     queues_added_to_by_player_id: dict[int, list[Queue]] = {}
     queues_added_to_by_id: dict[str, Queue] = {}
+    player_name_by_id: dict[int, str] = {}
     message: AddPlayerQueueMessage | None = None
     embed = discord.Embed()
     while not add_player_queue.empty():
         queues_added_to: list[Queue] = []
         message: AddPlayerQueueMessage = add_player_queue.get()
+        player_name_by_id[message.player_id] = message.player_name
         queue_popped = False
         for queue_id in message.queue_ids:
             queue: Queue = queue_by_id[queue_id]
@@ -377,6 +393,7 @@ async def add_players(session: sqlalchemy.orm.Session):
                 queue.id, message.player_id, message.channel, message.guild
             )
             if queue_popped:
+                queues_added_to = []
                 break
             if added_to_queue:
                 queues_added_to.append(queue)
@@ -393,43 +410,38 @@ async def add_players(session: sqlalchemy.orm.Session):
         for queue in queues_added_to_by_id.values():
             if queue.is_locked:
                 continue
-            players_in_queue: list[Player] = (
-                session.query(Player)
+            result = (
+                session.query(Player.name)
                 .join(QueuePlayer)
                 .filter(QueuePlayer.queue_id == queue.id)
                 .all()
             )
-            queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
-            player_names: list[str] = []
-            for player in players_in_queue:
-                user: discord.User | None = bot.get_user(player.id)
-                if user:
-                    # try and get their discord displayname
-                    player_names.append(user.display_name)
-                else:
-                    # fallback to their discord username
-                    player_names.append(player.name)
+            player_names: list[str] = [name[0] for name in result] if result else []
+            queue_title_str = (
+                f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
+            )
             newline = "\n"
             embed.add_field(
                 name=queue_title_str,
                 value=(
                     f">>> {newline.join(player_names)}"
                     if player_names
-                    else "> \n** **"  # weird hack to create an empty quote
+                    else "> \n** **"  # creates an empty quote
                 ),
                 inline=True,
             )
 
         for player_id in queues_added_to_by_player_id.keys():
+            if is_in_game(player_id):
+                continue
+            player_name = player_name_by_id[player_id]
             queues_added_to = queues_added_to_by_player_id[player_id]
             queue_names = [queue.name for queue in queues_added_to]
             if not queues_added_to:
-                embed_description += (
-                    f"<@{player_id}> **not added** to any queues" + "\n"
-                )
+                embed_description += f"**{player_name}** not added to any queues" + "\n"
             else:
                 embed_description += (
-                    f"<@{player_id}> added to **{', '.join(queue_names)}**" + "\n"
+                    f"**{player_name}** added to **{', '.join(queue_names)}**" + "\n"
                 )
             embed.color = discord.Color.green()
 
@@ -484,8 +496,8 @@ async def add_players(session: sqlalchemy.orm.Session):
             await create_game(
                 queue_id=queue.id,
                 player_ids=top_player_ids,
-                channel=message.channel,
-                guild=message.guild,
+                channel_id=message.channel.id,
+                guild_id=message.guild.id,
             )
 
 
