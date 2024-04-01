@@ -528,8 +528,8 @@ async def create_game(
         if (
             config.ENABLE_VOICE_MOVE
             and queue.move_enabled
-            and be_channel
-            and ds_channel
+            and be_voice_channel
+            and ds_voice_channel
         ):
             await _movegameplayers(short_game_id, None, guild)
             await send_message(
