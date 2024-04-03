@@ -2,9 +2,10 @@
 # use queues to be able to execute discord actions from child threads.
 # https://stackoverflow.com/a/67996748
 
+import asyncio
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from random import shuffle
 from re import I
 
@@ -17,6 +18,7 @@ from discord.member import Member
 from discord.utils import escape_markdown
 
 import discord_bots.config as config
+from discord_bots.cogs.schedule import ScheduleUtils
 from discord_bots.utils import (
     code_block,
     print_leaderboard,
@@ -39,6 +41,8 @@ from .models import (
     QueueWaitlistPlayer,
     Rotation,
     RotationMap,
+    Schedule,
+    SchedulePlayer,
     Session,
     SkipMapVote,
     VotePassedWaitlist,
@@ -137,6 +141,43 @@ async def afk_timer_task():
             session.commit()
     session.close()
 
+
+@tasks.loop(hours=24)
+async def schedule_task():
+    """
+    When a new day begins, roll over the previous day to the next week and remove scheduled players.
+    """
+    if not ScheduleUtils.is_active():
+        return
+
+    with Session() as session:
+        yesterday = datetime.now() - timedelta(days=1)
+        schedule_players = (
+            session.query(SchedulePlayer)
+            .join(Schedule)
+            .filter(Schedule.day == yesterday.strftime("%A"))
+            .all()
+        )
+        for schedule_player in schedule_players:
+            session.delete(schedule_player)
+        session.commit()
+
+        # assumes we are only running this bot/database on one guild
+        await ScheduleUtils.rebuild_embed(bot.guilds[0], yesterday.strftime("%A"))
+
+
+@schedule_task.before_loop
+async def delay_schedule_task():
+    """
+    Delay start of schedule task until 12:01am tomorrow
+    """
+    await bot.wait_until_ready()
+
+    target_time = time(0, 1)
+    target_date = date.today() + timedelta(days=1)
+    time_until_target = datetime.combine(target_date, target_time) - datetime.now()
+
+    await asyncio.sleep(time_until_target.total_seconds())
 
 @tasks.loop(seconds=1)
 async def queue_waitlist_task():
