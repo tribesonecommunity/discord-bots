@@ -1,10 +1,18 @@
+import sqlalchemy
 from discord.ext.commands import Bot, Context, check, command
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 
 from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import Category, Map, Queue, Rotation, RotationMap
+from discord_bots.models import (
+    Category,
+    Map,
+    PlayerCategoryTrueskill,
+    Queue,
+    Rotation,
+    RotationMap,
+)
 from discord_bots.utils import update_next_map_to_map_after_next
 
 
@@ -67,14 +75,17 @@ class CategoryCommands(BaseCog):
     @command()
     @check(is_admin)
     async def removecategory(self, ctx: Context, name: str):
-        session = ctx.session
-
+        session: sqlalchemy.orm.Session = ctx.session
         try:
-            category = session.query(Category).filter(Category.name.ilike(name)).one()
+            category: Category = (
+                session.query(Category).filter(Category.name.ilike(name)).one()
+            )
         except NoResultFound:
             await self.send_error_message(f"Could not find category **{name}**")
             return
-
+        session.query(PlayerCategoryTrueskill).filter(
+            category.id == PlayerCategoryTrueskill.category_id
+        ).delete()
         session.delete(category)
         session.commit()
         await self.send_success_message(f"Category **{category.name}** removed")

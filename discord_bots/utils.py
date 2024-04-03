@@ -17,6 +17,8 @@ from discord import (
     GroupChannel,
     Guild,
     Interaction,
+    Message,
+    PartialMessage,
     TextChannel,
 )
 from discord.ext import commands
@@ -131,36 +133,156 @@ async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
                 os.remove(os.path.join(config.STATS_DIR, file_))
 
 
+async def create_in_progress_game_embed(
+    session: sqlalchemy.orm.Session,
+    game: InProgressGame,
+    guild: discord.Guild,
+) -> Embed:
+    queue: Queue | None = session.query(Queue).filter(Queue.id == game.queue_id).first()
+    embed: discord.Embed
+    if queue:
+        embed = Embed(
+            title=f"⏳In Progress Game '{queue.name}' ({short_uuid(game.id)})",
+            color=discord.Color.blue(),
+        )
+    else:
+        embed = Embed(
+            title=f"⏳In Progress Game ({short_uuid(game.id)})",
+            color=discord.Color.blue(),
+        )
+
+    aware_db_datetime: datetime = game.created_at.replace(
+        tzinfo=timezone.utc
+    )  # timezones aren't stored in the DB, so add it ourselves
+    timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+    result: list[str] | None = (
+        session.query(Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team0_player_names = [name[0] for name in result if name] if result else []
+    result: list[str] | None = (
+        session.query(Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    team1_player_names: list[str] = (
+        [name[0] for name in result if name] if result else []
+    )
+    # sort the names alphabetically and caselessly to make them easier to read
+    team0_player_names.sort(key=str.casefold)
+    team1_player_names.sort(key=str.casefold)
+    newline = "\n"
+    embed.add_field(
+        name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
+        value=(
+            f"\n>>> {newline.join(team0_player_names)}"
+            if team0_player_names
+            else "> \n** **"
+        ),
+        inline=True,
+    )
+    embed.add_field(
+        name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
+        value=(
+            f"\n>>> {newline.join(team1_player_names)}"
+            if team1_player_names
+            else "> \n** **"
+        ),
+        inline=True,
+    )
+    embed.add_field(name="", value="", inline=False)  # newline
+    embed.add_field(
+        name="🗺️ Map", value=f"{game.map_full_name} ({game.map_short_name})", inline=True
+    )
+    embed.add_field(name="⏱️ Started", value=f"{timestamp}", inline=True)
+    if config.SHOW_TRUESKILL:
+        embed.add_field(
+            name=f"📊 Average {MU_LOWER_UNICODE}",
+            value=round(game.average_trueskill, 2),
+            inline=True,
+        )
+    # TODO: make the commands configurable/toggleable
+    embed.add_field(
+        name="🔧 Commands",
+        value="\n".join(["`/finishgame`", "`/setgamecode`"]),
+        inline=True,
+    )
+    if game.channel_id:
+        embed.add_field(name="📺 Channel", value=f"<#{game.channel_id}>", inline=True)
+    if game.code:
+        embed.add_field(name="🔢 Game Code", value=f"`{game.code}`", inline=True)
+    embed_fields_len = len(embed.fields) - 3  # subtract team0 and team1 fields
+    if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
+        # embeds are allowed 3 "columns" per "row"
+        # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
+        embed.add_field(name="", value="", inline=True)
+    return embed
+
+
 def create_finished_game_embed(
     session: sqlalchemy.orm.Session,
-    finished_game: FinishedGame,
-    user_name: Optional[str] = None,
+    finished_game_id: str,
+    guild_id: int,
+    name_tuple: Optional[tuple[str, str]] = None,  # (user_name, display_name)
 ) -> Embed:
     # assumes that the FinishedGamePlayers have already been comitted
-    embed = Embed(
-        title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)})",
-        color=Colour.blue(),
+    finished_game = (
+        session.query(FinishedGame).filter(FinishedGame.id == finished_game_id).first()
     )
-    if user_name is not None:
-        embed.set_footer(text=f"Finished by {user_name}")
-    else:
-        embed.set_footer(text="Finished")
-    team0_fg_players: list[FinishedGamePlayer] = (
-        session.query(FinishedGamePlayer)
+    if not finished_game:
+        _log.error(
+            f"[create_finished_game_embed] Could not find finished_game with id={finished_game_id}"
+        )
+        return discord.Embed(
+            description=f"Oops! Could not find the Finished Game...️☹️",
+            color=discord.Color.red(),
+        )
+    guild: discord.Guild | None = bot.get_guild(guild_id)
+    if not guild:
+        _log.error(
+            f"[create_finished_game_embed] Could not find guild with id={guild_id}"
+        )
+        return discord.Embed(
+            description=f"Oops! Could not find the Finished Game...️☹️",
+            color=discord.Color.red(),
+        )
+    embed = Embed(
+        title=f"✅ Game '{finished_game.queue_name}' ({short_uuid(finished_game.game_id)}) Results",
+        color=Colour.green(),
+    )
+    if name_tuple is not None:
+        user_name, display_name = name_tuple[0], name_tuple[1]
+        embed.set_footer(text=f"Finished by {display_name} ({user_name})")
+    result = (
+        session.query(FinishedGamePlayer.player_name)
         .filter(
             FinishedGamePlayer.finished_game_id == finished_game.id,
             FinishedGamePlayer.team == 0,
         )
         .all()
     )
-    team1_fg_players: list[FinishedGamePlayer] = (
-        session.query(FinishedGamePlayer)
+    team0_player_names: list[str] = [p.player_name for p in result] if result else []
+    result = (
+        session.query(FinishedGamePlayer.player_name)
         .filter(
             FinishedGamePlayer.finished_game_id == finished_game.id,
             FinishedGamePlayer.team == 1,
         )
         .all()
     )
+    team1_player_names: list[str] = [p.player_name for p in result] if result else []
+    # sort the names alphabetically and caselessly to make them easier to read
+    team0_player_names.sort(key=str.casefold)
+    team1_player_names.sort(key=str.casefold)
     if finished_game.winning_team == 0:
         be_str = f"🥇 {finished_game.team0_name}"
         ds_str = f"🥈 {finished_game.team1_name}"
@@ -170,10 +292,30 @@ def create_finished_game_embed(
     else:
         be_str = f"🥈 {finished_game.team0_name}"
         ds_str = f"🥈 {finished_game.team1_name}"
+    newline = "\n"
     embed.add_field(
-        name="📍 Map",
+        name=f"{be_str} ({round(100 * finished_game.win_probability)}%)",
+        value=(
+            ""
+            if not team0_player_names
+            else f"\n>>> {newline.join(team0_player_names)}"
+        ),
+        inline=True,
+    )
+    embed.add_field(
+        name=f"{ds_str} ({round(100*(1 - finished_game.win_probability))}%)",
+        value=(
+            ""
+            if not team1_player_names
+            else f"\n>>> {newline.join(team1_player_names)}"
+        ),
+        inline=True,
+    )
+    embed.add_field(name="", value="", inline=False)  # newline
+    embed.add_field(
+        name="🗺️️ Map",
         value=f"{finished_game.map_full_name} ({finished_game.map_short_name})",
-        inline=False,
+        inline=True,
     )
     duration: timedelta = finished_game.finished_at.replace(
         tzinfo=timezone.utc
@@ -181,25 +323,14 @@ def create_finished_game_embed(
     embed.add_field(
         name="⏱️ Duration",
         value=f"{duration.seconds // 60} minutes",
-        inline=False,
+        inline=True,
     )
     if config.SHOW_TRUESKILL:
         embed.add_field(
             name=f"📊 Average {MU_LOWER_UNICODE}",
             value=round(finished_game.average_trueskill, 2),
-            inline=False,
+            inline=True,
         )
-    embed.add_field(name="", value="", inline=False)  # newline
-    embed.add_field(
-        name=f"{be_str} ({round(100 * finished_game.win_probability)}%)",
-        value="\n".join([f"> <@{player.player_id}>" for player in team0_fg_players]),
-        inline=True,
-    )
-    embed.add_field(
-        name=f"{ds_str} ({round(100*(1 - finished_game.win_probability))}%)",
-        value="\n".join([f"> <@{player.player_id}>" for player in team1_fg_players]),
-        inline=True,
-    )
     return embed
 
 
@@ -208,12 +339,13 @@ def create_cancelled_game_embed(
     in_progress_game: InProgressGame,
     user_name: Optional[str] = None,
 ) -> Embed:
+    # TODO: merge with create_finished_game_embed
     queue: Queue | None = (
         session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
     )
     queue_name = f"'{queue.name}'" if queue is not None else ""
     embed = Embed(
-        title=f"❌ Game {queue_name} ({short_uuid(in_progress_game.id)})",
+        title=f"❌ Game {queue_name} ({short_uuid(in_progress_game.id)}) Cancelled",
         color=Colour.red(),
     )
     if user_name is not None:
@@ -378,87 +510,90 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
     :is_verbose: specifies if we want to see queues affected in the bot response.
                  currently passing in False for when game pops, True for everything else.
     """
-    session = Session()
-
-    rotation: Rotation | None = (
-        session.query(Rotation).filter(Rotation.id == rotation_id).first()
-    )
-
-    next_rotation_map: RotationMap | None = (
-        session.query(RotationMap)
-        .filter(RotationMap.rotation_id == rotation_id)
-        .filter(RotationMap.is_next == True)
-        .first()
-    )
-
-    if rotation.is_random:
-        rotation_map_after_next: RotationMap | None = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation_id)
-            .filter(RotationMap.is_next == False)
-            .order_by(func.random())
-            .first()
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.id == rotation_id).first()
         )
-    else:
-        rotation_map_length = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation_id)
-            .count()
-        )
-        rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
-        if rotation_map_after_next_ordinal > rotation_map_length:
-            rotation_map_after_next_ordinal = 1
 
-        rotation_map_after_next: RotationMap | None = (
+        next_rotation_map: RotationMap | None = (
             session.query(RotationMap)
             .filter(RotationMap.rotation_id == rotation_id)
-            .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
+            .filter(RotationMap.is_next == True)
             .first()
         )
 
-    next_rotation_map.is_next = False
-    rotation_map_after_next.is_next = True
-
-    map_after_next_name: str | None = (
-        session.query(Map.full_name)
-        .join(RotationMap, RotationMap.map_id == Map.id)
-        .filter(RotationMap.id == rotation_map_after_next.id)
-        .scalar()
-    )
-
-    channel = bot.get_channel(config.CHANNEL_ID)
-    if isinstance(channel, discord.TextChannel):
-        if is_verbose:
-            rotation_queues = (
-                session.query(Queue.name).filter(Queue.rotation_id == rotation_id).all()
-            )
-            rotation_queue_names = ""
-            for name in rotation_queues:
-                rotation_queue_names += f"\n- {name[0]}"
-
-            await send_message(
-                channel,
-                embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
-                colour=Colour.blue(),
+        if rotation.is_random:
+            rotation_map_after_next: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .filter(RotationMap.is_next == False)
+                .order_by(func.random())
+                .first()
             )
         else:
-            await send_message(
-                channel,
-                embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed",
-                colour=Colour.blue(),
+            rotation_map_length = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .count()
+            )
+            rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
+            if rotation_map_after_next_ordinal > rotation_map_length:
+                rotation_map_after_next_ordinal = 1
+
+            rotation_map_after_next: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
+                .first()
             )
 
-    map_votes = (
-        session.query(MapVote)
-        .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
-        .filter(RotationMap.rotation_id == rotation_id)
-        .all()
-    )
-    for map_vote in map_votes:
-        session.delete(map_vote)
-    session.query(SkipMapVote).filter(SkipMapVote.rotation_id == rotation_id).delete()
-    session.commit()
-    session.close()
+        next_rotation_map.is_next = False
+        rotation_map_after_next.is_next = True
+
+        map_after_next_name: str | None = (
+            session.query(Map.full_name)
+            .join(RotationMap, RotationMap.map_id == Map.id)
+            .filter(RotationMap.id == rotation_map_after_next.id)
+            .scalar()
+        )
+
+        channel = bot.get_channel(config.CHANNEL_ID)
+        if isinstance(channel, discord.TextChannel):
+            if is_verbose:
+                rotation_queues = (
+                    session.query(Queue.name)
+                    .filter(Queue.rotation_id == rotation_id)
+                    .all()
+                )
+                rotation_queue_names = ""
+                for name in rotation_queues:
+                    rotation_queue_names += f"\n- {name[0]}"
+
+                await send_message(
+                    channel,
+                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
+                    colour=Colour.blue(),
+                )
+            else:
+                await send_message(
+                    channel,
+                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed",
+                    colour=Colour.blue(),
+                )
+
+        map_votes = (
+            session.query(MapVote)
+            .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
+            .filter(RotationMap.rotation_id == rotation_id)
+            .all()
+        )
+        for map_vote in map_votes:
+            session.delete(map_vote)
+        session.query(SkipMapVote).filter(
+            SkipMapVote.rotation_id == rotation_id
+        ).delete()
+        session.commit()
 
 
 async def send_in_guild_message(
@@ -467,14 +602,33 @@ async def send_in_guild_message(
     message_content: Optional[str] = None,
     embed: Optional[Embed] = None,
 ):
-    # TODO: implement mechanism to avoid being rate limited or some way to send DMs in bulk
+    # use asyncio.gather to run this coroutine in parallel, else each send has to await for the previous one to finish
     if not config.DISABLE_PRIVATE_MESSAGES:
         member: Member | None = guild.get_member(user_id)
         if member:
             try:
                 await member.send(content=message_content, embed=embed)
-            except Exception as e:
-                print(f"Caught exception sending message: {e}")
+            except Exception:
+                _log.exception("[send_in_guild_message] exception:")
+
+
+def get_guild_partial_message(
+    guild: Guild,
+    channel_id: int,
+    message_id: int,
+) -> PartialMessage | None:
+    """
+    Helper funcction to get a PartialMessage from a given Guild and channel_id.
+    Using discord.Guild.get_channel and discord.Channel.get_partial_message avoids emitting any API calls to discord
+    Note: discord.Guild.get_channel may emit an API call if the channel is not in the bot's cache
+    Partial Messages have less functionality than Messages:
+    https://discordpy.readthedocs.io/en/stable/api.html?highlight=get%20message#discord.PartialMessage
+    """
+    channel: discord.abc.GuildChannel | None = guild.get_channel(channel_id)
+    if isinstance(channel, discord.TextChannel):
+        message: discord.PartialMessage = channel.get_partial_message(message_id)
+        return message
+    return None
 
 
 async def send_message(
@@ -485,10 +639,12 @@ async def send_message(
     embed_content: bool = True,
     embed_title: str | None = None,
     embed_thumbnail: str | None = None,
-):
+    delete_after: float | None = None,
+) -> Message | None:
     """
     :colour: red = fail, green = success, blue = informational
     """
+    message: Message | None = None
     if content:
         if embed_content:
             content = f"`{content}`"
@@ -504,120 +660,129 @@ async def send_message(
     if colour:
         embed.colour = colour
     try:
-        await channel.send(content=content, embed=embed)
-    except Exception as e:
-        print("[send_message] exception:", e)
+        message = await channel.send(
+            content=content, embed=embed, delete_after=delete_after
+        )
+    except Exception:
+        _log.exception("[send_message] Ignoring exception:")
+    return message
 
 
-async def print_leaderboard(channel=None):
+async def print_leaderboard():
     output = "**Leaderboard**"
-    session = Session()
-    categories: list[Category] = (
-        session.query(Category).filter(Category.is_rated == True).all()
-    )
-    if len(categories) > 0:
-        for category in categories:
-            output += f"\n_{category.name}_"
-            top_10_pcts: list[PlayerCategoryTrueskill] = (
-                session.query(PlayerCategoryTrueskill)
-                .filter(PlayerCategoryTrueskill.category_id == category.id)
-                .order_by(PlayerCategoryTrueskill.rank.desc())
+    session: SQLAlchemySession
+    with Session() as session:
+        categories: list[Category] = (
+            session.query(Category).filter(Category.is_rated == True).all()
+        )
+        if len(categories) > 0:
+            for category in categories:
+                output += f"\n_{category.name}_"
+                top_10_pcts: list[PlayerCategoryTrueskill] = (
+                    session.query(PlayerCategoryTrueskill)
+                    .filter(PlayerCategoryTrueskill.category_id == category.id)
+                    .order_by(PlayerCategoryTrueskill.rank.desc())
+                    .limit(10)
+                )
+                for i, pct in enumerate(top_10_pcts, 1):
+                    player: Player = (
+                        session.query(Player).filter(Player.id == pct.player_id).first()
+                    )
+                    output += f"\n{i}. {round(pct.rank, 1)} - <@{player.id}> _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
+            pass
+
+        if config.ECONOMY_ENABLED:
+            output += f"\n\n**{config.CURRENCY_NAME}**"
+            top_10_player_currency: list[Player] = (
+                session.query(Player)
+                .order_by(Player.currency.desc())
                 .limit(10)
             )
-            for i, pct in enumerate(top_10_pcts, 1):
-                player: Player = (
-                    session.query(Player).filter(Player.id == pct.player_id).first()
-                )
-                output += f"\n{i}. {round(pct.rank, 1)} - {player.name} _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
-            output += "\n"
-        pass
-    else:
-        output = "**Leaderboard**"
-        top_40_players: list[Player] = (
-            session.query(Player)
-            .filter(Player.rated_trueskill_sigma != 5.0)  # Season reset
-            .filter(Player.rated_trueskill_sigma != 12.0)  # New player
-            .filter(Player.leaderboard_enabled == True)
-            # .order_by(Player.leaderboard_trueskill.desc())
-            # .limit(20)
-        )
-        players_adjusted = sorted(
-            [
-                (player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma, player)
-                for player in top_40_players
-            ],
-            reverse=True,
-        )[0:50]
-        for i, (_, player) in enumerate(players_adjusted, 1):
-            output += f"\n{i}. {round(player.leaderboard_trueskill, 1)} - {player.name} _(mu: {round(player.rated_trueskill_mu, 1)}, sigma: {round(player.rated_trueskill_sigma, 1)})_"
-    session.close()
+            for i, player_currency in enumerate(top_10_player_currency, 1):
+                output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
+
+    output += "\n"
     output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
     output += "\n(Leaderboard updates periodically)"
     output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
 
     if config.LEADERBOARD_CHANNEL:
         leaderboard_channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
-        if leaderboard_channel:
+        if leaderboard_channel and isinstance(leaderboard_channel, TextChannel):
             try:
-                last_message = await leaderboard_channel.fetch_message(
-                    leaderboard_channel.last_message_id
-                )
+                if leaderboard_channel.last_message_id:
+                    last_message: Message = await leaderboard_channel.fetch_message(
+                        leaderboard_channel.last_message_id
+                    )
                 if last_message:
-                    await last_message.edit(embed=Embed(description=output))
+                    embed = Embed(
+                        description=output,
+                        colour=Colour.blue(),
+                        timestamp=discord.utils.utcnow(),
+                    )
+                    embed.set_footer(text="Last updated")
+                    await last_message.edit(embed=embed)
                     return
             except Exception as e:
-                print("caught exception fetching channel last message:", e)
+                _log.exception("[print_leaderboard] exception")
             await send_message(
                 leaderboard_channel, embed_description=output, colour=Colour.blue()
             )
             return
-        else:
-            if channel:
-                await send_message(
-                    channel, embed_description=output, colour=Colour.blue()
-                )
 
 
 def code_block(content: str, language: str = "autohotkey") -> str:
     return "\n".join(["```" + language, content, "```"])
 
 
-@bot.command()
-@commands.guild_only()
-@commands.is_owner()
-async def sync(
-    ctx: Context,
-    guilds: commands.Greedy[discord.Object],
-    spec: Optional[Literal["~", "*", "^"]] = None,
-) -> None:
+def get_team_name_diff(
+    team0_player_names_before: list[str] | None,
+    team0_player_names_after: list[str] | None,
+    team1_player_names_before: list[str] | None,
+    team1_player_names_after: list[str] | None,
+) -> tuple[str, str]:
     """
-    https://about.abstractumbra.dev/discord.py/2023/01/29/sync-command-example.html
+    Given lists of player names for team0 and team1 (before and after), returns a tuple[str, str] that represents the diff in discord markdown format
+    Useful for displaying after a rebalance, typically after a sub or autosub.
+    Note: the returned string is a vertical list
     """
-    if not guilds:
-        if spec == "~":
-            synced = await ctx.bot.tree.sync(guild=ctx.guild)
-        elif spec == "*":
-            ctx.bot.tree.copy_global_to(guild=ctx.guild)
-            synced = await ctx.bot.tree.sync(guild=ctx.guild)
-        elif spec == "^":
-            ctx.bot.tree.clear_commands(guild=ctx.guild)
-            await ctx.bot.tree.sync(guild=ctx.guild)
-            synced = []
+    if (
+        not team0_player_names_before
+        or not team0_player_names_after
+        or not team1_player_names_before
+        or not team1_player_names_after
+    ):
+        return "", ""
+    players_added_to_team0: list[str] = list(
+        set(team0_player_names_after) - set(team0_player_names_before)
+    )
+    players_added_to_team1: list[str] = list(
+        set(team1_player_names_after) - set(team1_player_names_before)
+    )
+    team0_diff_vaules: list[str] = []
+    team1_diff_vaules: list[str] = []
+    # sort the names alphabetically and caselessly to make them easier to read
+    team0_player_names_after.sort(key=str.casefold)
+    team1_player_names_after.sort(key=str.casefold)
+    for name in team0_player_names_after:
+        if name in players_added_to_team0:
+            team0_diff_vaules.append(f"+ {name}")
         else:
-            synced = await ctx.bot.tree.sync()
-
-        await ctx.send(
-            f"Synced {len(synced)} commands {'globally' if spec is None else 'to the current guild.'}"
-        )
-        return
-
-    ret = 0
-    for guild in guilds:
-        try:
-            await ctx.bot.tree.sync(guild=guild)
-        except discord.HTTPException as e:
-            _log.warn(f"Caught exception trying to sync for guild: ${guild}, e: {e}")
+            team0_diff_vaules.append(f" {name}")
+    for name in team1_player_names_after:
+        if name in players_added_to_team1:
+            team1_diff_vaules.append(f"+ {name}")
         else:
-            ret += 1
-
-    await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")
+            team1_diff_vaules.append(f"  {name}")
+    newline = "\n"
+    team0_diff_str: str = (
+        f">>> ```diff\n{newline.join(team0_diff_vaules)}```"
+        if team0_diff_vaules
+        else "> \n** **"  # creates an empty quote
+    )
+    team1_diff_str: str = (
+        f">>> ```diff\n{newline.join(team1_diff_vaules)}```"
+        if team1_diff_vaules
+        else "> \n** **"  # creates an empty quote
+    )
+    return team0_diff_str, team1_diff_str

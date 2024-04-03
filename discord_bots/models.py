@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, time, timezone
 from uuid import uuid4
@@ -38,7 +39,7 @@ else:
 
 # RDS free tier has max 81 connections
 if db_url.startswith("postgresql://"):
-    engine = create_engine(db_url, echo=False, pool_size=60)
+    engine = create_engine(db_url, echo=False, pool_size=40, max_overflow=50)
 else:
     engine = create_engine(db_url, echo=False)
 naming_convention = {
@@ -533,6 +534,10 @@ class InProgressGame:
     )
     # Stores the discord message ID of the InProgressGameView linked to this InProgressGame
     message_id: int | None = field(
+        default=None, metadata={"sa": Column(BigInteger, nullable=True)}
+    )
+    # Stores the discord channel ID of the message_id linked to this InProgressGame
+    channel_id: int | None = field(
         default=None, metadata={"sa": Column(BigInteger, nullable=True)}
     )
     # Stores the discord message ID of the EconomyPredictionView linked to this InProgressGame

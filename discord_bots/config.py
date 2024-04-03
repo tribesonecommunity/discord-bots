@@ -1,12 +1,55 @@
+import contextlib
 import logging
 import os
+from logging.handlers import RotatingFileHandler
 
+import discord
 from dotenv import load_dotenv
 
 _log = logging.getLogger(__name__)
 load_dotenv()
 CONFIG_IS_VALID: bool = True
 
+
+@contextlib.contextmanager
+def setup_logging(log_level: str):
+    log = logging.getLogger()
+
+    try:
+        discord.utils.setup_logging(level=logging.getLevelName(log_level))
+        # __enter__
+        max_bytes = 32 * 1024 * 1024  # 32 MiB
+        logging.getLogger("discord").setLevel(logging.INFO)
+        logging.getLogger("discord.http").setLevel(logging.WARNING)
+        if log_level == "DEBUG":
+            # set these to WARNING manually if you don't want to see emitted SQL when log_level == DEBUG
+            logging.getLogger("sqlalchemy.engine").setLevel(log_level)
+            logging.getLogger("sqlalchemy.pool").setLevel(log_level)
+        else:
+            logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+            logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+
+        handler = RotatingFileHandler(
+            filename="bot.log",
+            encoding="utf-8",
+            mode="w",
+            maxBytes=max_bytes,
+            backupCount=2,
+        )
+        dt_fmt = "%Y-%m-%d %H:%M:%S"
+        fmt = logging.Formatter(
+            "[{asctime}] [{levelname:<7}] {name}: {message}", dt_fmt, style="{"
+        )
+        handler.setFormatter(fmt)
+        log.addHandler(handler)
+
+        yield
+    finally:
+        # __exit__
+        handlers = log.handlers[:]
+        for hdlr in handlers:
+            hdlr.close()
+            log.removeHandler(hdlr)
 
 def _to_str(key: str, required: bool = False, default: str | None = None) -> str | None:
     value = os.getenv(key)
@@ -15,7 +58,7 @@ def _to_str(key: str, required: bool = False, default: str | None = None) -> str
     elif required and not value:
         global CONFIG_IS_VALID
         CONFIG_IS_VALID = False
-        logging.warning(f"{key} must be specified correctly, was '{value}'")
+        _log.error(f"{key} must be specified correctly, was '{value}'")
         return None
     else:
         return value
@@ -29,7 +72,7 @@ def _to_int(key: str, required: bool = False, default: int | None = None) -> int
         if required and default is None:
             global CONFIG_IS_VALID
             CONFIG_IS_VALID = False
-            print(f"{key} must be specified correctly, was '{value}'")
+            _log.error(f"{key} must be specified correctly, was '{value}'")
         return default
 
 
@@ -43,7 +86,7 @@ def _to_float(
         if required and default is None:
             global CONFIG_IS_VALID
             CONFIG_IS_VALID = False
-            print(f"{key} must be specified correctly, was '{value}'")
+            _log.error(f"{key} must be specified correctly, was '{value}'")
         return default
 
 
@@ -59,7 +102,7 @@ def _to_bool(
         if required and default is None:
             global CONFIG_IS_VALID
             CONFIG_IS_VALID = False
-            print(f"{key} must be specified correctly, was '{value}'")
+            _log.error(f"{key} must be specified correctly, was '{value}'")
         return default
 
 
@@ -74,6 +117,7 @@ def _convert_to_int(value: str) -> int | None:
 
 # Use "sqlite:///tribes.db" for sqlite
 # Use "postgresql://postgres:password@localhost:5432/postgres" for postgres
+LOG_LEVEL: str = _to_str(key="LOG_LEVEL", default="INFO")
 DATABASE_URI: str = _to_str(key="DATABASE_URI", required=False)
 DB_NAME = "tribes"
 API_KEY: str = _to_str(key="DISCORD_API_KEY", required=True)
@@ -118,7 +162,6 @@ MAP_VOTE_THRESHOLD: int = _to_int(key="MAP_VOTE_THRESHOLD", default=7)
 STATS_DIR: str | None = _to_str(key="STATS_DIR")
 STATS_WIDTH = _to_int(key="STATS_WIDTH")
 STATS_HEIGHT = _to_int(key="STATS_HEIGHT")
-LOG_LEVEL: str = _to_str(key="LOG_LEVEL", default="INFO")
 ECONOMY_ENABLED: bool = _to_bool(key="ECONOMY_ENABLED", default=False)
 CURRENCY_NAME: str = _to_str(key="CURRENCY_NAME", default="Shazbucks")
 STARTING_CURRENCY: int = _to_int(key="STARTING_CURRENCY", default=100)

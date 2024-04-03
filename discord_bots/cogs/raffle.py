@@ -1,5 +1,6 @@
 from random import choice
 
+import sqlalchemy
 from discord import Colour
 from discord.ext.commands import Bot, Context, check, command
 from discord.member import Member
@@ -73,53 +74,55 @@ class RaffleCommands(BaseCog):
         Displays how many raffle tickets you have
         """
         member = member or ctx.author
-        session = Session()
-        player = session.query(Player).filter(Player.id == member.id).first()
-        if not player:
+        session: sqlalchemy.orm.Session
+        with Session() as session:
+            player = session.query(Player).filter(Player.id == member.id).first()
+            if not player:
+                await send_message(
+                    ctx.message.channel,
+                    embed_description=f"ERROR: Could not find player!",
+                    colour=Colour.red(),
+                )
+                return
             await send_message(
                 ctx.message.channel,
-                embed_description=f"ERROR: Could not find player!",
-                colour=Colour.red(),
+                embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')}",
+                # embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')} \n\n_{choice(strings)}_",
+                colour=Colour.blue(),
             )
-            return
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')}",
-            # embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')} \n\n_{choice(strings)}_",
-            colour=Colour.blue(),
-        )
 
     @command()
     async def rafflestatus(self, ctx, *, member: Member = None):
         """
         Displays raffle ticket information and raffle leaderboard
         """
-        session = Session()
-        total_tickets = session.query(functions.sum(Player.raffle_tickets)).scalar()
-        total_players = (
-            session.query(functions.count("*"))
-            .filter(Player.raffle_tickets > 0)
-            .scalar()
-        )
-        top_15_players = (
-            session.query(Player)
-            .filter(Player.raffle_tickets > 0)
-            .order_by(Player.raffle_tickets.desc())
-            .limit(15)
-            .all()
-        )
-        message = []
-        message.append(
-            f"**{emojize(':admission_tickets:')} Total tickets:** {total_tickets}\n"
-        )
-        message.append(f"**Leaderboard:**")
-        for player in top_15_players:
-            message.append(f"_{player.name}:_ {player.raffle_tickets}")
-        await send_message(
-            ctx.message.channel,
-            embed_description="\n".join(message),
-            colour=Colour.blue(),
-        )
+        session: sqlalchemy.orm.Session
+        with Session() as session:
+            total_tickets = session.query(functions.sum(Player.raffle_tickets)).scalar()
+            total_players = (
+                session.query(functions.count("*"))
+                .filter(Player.raffle_tickets > 0)
+                .scalar()
+            )
+            top_15_players = (
+                session.query(Player)
+                .filter(Player.raffle_tickets > 0)
+                .order_by(Player.raffle_tickets.desc())
+                .limit(15)
+                .all()
+            )
+            message = []
+            message.append(
+                f"**{emojize(':admission_tickets:')} Total tickets:** {total_tickets}\n"
+            )
+            message.append(f"**Leaderboard:**")
+            for player in top_15_players:
+                message.append(f"_{player.name}:_ {player.raffle_tickets}")
+            await send_message(
+                ctx.message.channel,
+                embed_description="\n".join(message),
+                colour=Colour.blue(),
+            )
 
     @command()
     @check(is_admin)

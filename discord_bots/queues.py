@@ -5,8 +5,12 @@ from queue import SimpleQueue
 
 from discord.channel import TextChannel
 from discord.guild import Guild
+from discord.message import Message
 
 add_player_queue: SimpleQueue = SimpleQueue()
+waitlist_messages: list[Message] = (
+    []
+)  # short-term solution to bulk delete queue_waitlist messages
 
 
 @dataclass
