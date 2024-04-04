@@ -499,11 +499,11 @@ async def schedule_task():
 @schedule_task.before_loop
 async def delay_schedule_task():
     """
-    Delay start of schedule task until 12:01am tomorrow
+    Delay start of schedule task until 12:05am tomorrow
     """
     await bot.wait_until_ready()
 
-    target_time = time(0, 1)
+    target_time = time(0, 5)
     target_date = date.today() + timedelta(days=1)
     time_until_target = datetime.combine(target_date, target_time) - datetime.now()
 
