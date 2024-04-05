@@ -91,7 +91,7 @@ class ScheduleCommands(BaseCog):
             view = View()
             view.add_item(select_menu)
             await interaction.response.send_message(
-                view=view, ephemeral=True, delete_after=100
+                view=view, ephemeral=True, delete_after=10
             )
 
     @app_commands.command(name="deleteschedule", description="Delete a schedule")
