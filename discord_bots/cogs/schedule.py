@@ -152,6 +152,7 @@ class ScheduleView(View):
 
     def create_buttons(self):
         for i, schedule in enumerate(self.schedules_for_day, start=1):
+            # \u2800 is a braille character used for button padding
             button_time = Button(
                 label=f"\u2800\u2800\u2800\u2800Time {i}\u2800\u2800\u2800\u2800",
                 style=ButtonStyle.primary,
@@ -243,7 +244,7 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
         await interaction.response.defer(thinking=True)
         inputs = [self.input_one.value, self.input_two.value, self.input_three.value]
         inputs = [x for x in inputs if x != ""]  # clean up empty inputs
-        pattern = r"^\d{1,2}:\d{2}[APap][Mm]$"
+        pattern = r"^\d{1,2}:\d{2}[APap][Mm]$"  # regex for 7:00pm or 7:00PM
 
         for input in inputs:
             if not re.match(pattern, input):
