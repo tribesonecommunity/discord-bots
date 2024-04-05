@@ -1,8 +1,10 @@
+import asyncio
 import logging
 import re
 from datetime import date, datetime, time, timedelta
 
 import discord
+import pytz
 from discord import (
     ButtonStyle,
     Client,
@@ -11,12 +13,13 @@ from discord import (
     Guild,
     Interaction,
     Message,
+    SelectOption,
     TextChannel,
     TextStyle,
     app_commands,
 )
 from discord.ext.commands import Bot
-from discord.ui import Button, TextInput, View
+from discord.ui import Button, Select, TextInput, View
 from discord.utils import get
 from sqlalchemy.exc import IntegrityError
 
@@ -73,10 +76,23 @@ class ScheduleCommands(BaseCog):
                 embed=Embed(
                     description="Only one schedule allowed at a time",
                     colour=Colour.red(),
-                )
+                ),
+                ephemeral=True,
             )
         else:
-            await interaction.response.send_modal(ScheduleModal())
+            timezones = ["US/Pacific", "US/Mountain", "US/Central", "US/Eastern"]
+
+            options = [SelectOption(label=tz, value=tz) for tz in timezones]
+            select_menu = Select(placeholder="Select an option", options=options)
+            select_menu.callback = lambda interaction: asyncio.create_task(
+                interaction.response.send_modal(ScheduleModal(select_menu.values[0]))
+            )
+
+            view = View()
+            view.add_item(select_menu)
+            await interaction.response.send_message(
+                view=view, ephemeral=True, delete_after=100
+            )
 
     @app_commands.command(name="deleteschedule", description="Delete a schedule")
     @app_commands.check(is_admin_app_command)
@@ -94,13 +110,34 @@ class ScheduleCommands(BaseCog):
                 .filter(DiscordChannel.name == "schedule")
                 .first()
             )
-            await interaction.guild.get_channel(discord_channel.channel_id).delete()
+            if not discord_channel:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Could not find schedule channel in database",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
             session.delete(discord_channel)
 
             session.commit()
 
+            schedule_channel = interaction.guild.get_channel(discord_channel.channel_id)
+            if not schedule_channel:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Could not find schedule channel in Discord",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            await schedule_channel.delete()
+
         await interaction.response.send_message(
-            embed=Embed(description="Schedule deleted", colour=Colour.green())
+            embed=Embed(description="Schedule deleted", colour=Colour.green()),
+            ephemeral=True,
         )
 
 
@@ -183,8 +220,9 @@ class ScheduleView(View):
 
 
 class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times."):
-    def __init__(self):
+    def __init__(self, timezone_input: str):
         super().__init__(timeout=None)
+        self.timezone_input = timezone_input
         self.input_one: TextInput = TextInput(
             label="First Time",
             style=TextStyle.short,
@@ -236,6 +274,8 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
                     timestamp_date_time: datetime = datetime.combine(
                         timestamp_date, time_to_add
                     )
+                    timezone = pytz.timezone(self.timezone_input)
+                    timestamp_date_time = timezone.localize(timestamp_date_time)
                     timestamp = discord.utils.format_dt(timestamp_date_time, style="t")
                     embed.add_field(
                         name=f"|            {timestamp}            |",
@@ -255,9 +295,9 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
                 await message.edit(embed=embed, view=ScheduleView(day))
 
         await interaction.followup.send(
-            embed=Embed(description="Schedule created", colour=Colour.green())
+            embed=Embed(description="Schedule created", colour=Colour.green()),
+            ephemeral=True,
         )
-
 
 class ScheduleUtils:
     @classmethod
