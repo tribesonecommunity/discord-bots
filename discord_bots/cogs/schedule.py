@@ -265,6 +265,7 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
         with Session() as session:
             session.add(DiscordChannel(name="schedule", channel_id=schedule_channel.id))
 
+            coroutines = []
             for day in DAYS:
                 embed = Embed(title=day, colour=Colour.blue())
                 message = await schedule_channel.send(embed=embed)
@@ -293,7 +294,12 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
                     _log.error(f"integrity error {exc}")
                     session.rollback()
 
-                await message.edit(embed=embed, view=ScheduleView(day))
+                coroutines.append(message.edit(embed=embed, view=ScheduleView(day)))
+
+            try:
+                await asyncio.gather(*coroutines)
+            except Exception as exc:
+                _log.exception(f"exception {exc}")
 
         await interaction.followup.send(
             embed=Embed(description="Schedule created", colour=Colour.green()),
