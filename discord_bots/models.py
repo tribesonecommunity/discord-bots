@@ -1297,7 +1297,10 @@ class Schedule:
     __table_args__ = (UniqueConstraint("day", "time"),)
 
     day: str = field(metadata={"sa": Column(String, nullable=False)})
-    time: time = field(metadata={"sa": Column(Time, nullable=False)})
+    time: time = field(
+        metadata={"sa": Column(Time, nullable=False)},
+        default_factory=lambda: datetime.now(timezone.utc),
+    )
     message_id: int | None = field(
         default=None, metadata={"sa": Column(BigInteger, nullable=True)}
     )
