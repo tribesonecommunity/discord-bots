@@ -318,7 +318,7 @@ class ScheduleUtils:
             schedule_channel = get(guild.text_channels, id=schedule_channel_id)
 
             schedules_for_day = ScheduleUtils.get_schedules_for_day(day)
-            message: Message = await schedule_channel.fetch_message(
+            message: Message = schedule_channel.get_partial_message(
                 schedules_for_day[0].message_id
             )
 
