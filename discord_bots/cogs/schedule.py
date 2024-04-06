@@ -23,6 +23,7 @@ from discord.ui import Button, Select, TextInput, View
 from discord.utils import get
 from sqlalchemy.exc import IntegrityError
 
+import discord_bots.config as config
 from discord_bots.checks import is_admin_app_command
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
@@ -241,14 +242,14 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
         self.add_item(self.input_three)
 
     async def on_submit(self, interaction: Interaction[Client]) -> None:
-        await interaction.response.defer(thinking=True)
+        await interaction.response.defer(thinking=True, ephemeral=True)
         inputs = [self.input_one.value, self.input_two.value, self.input_three.value]
         inputs = [x for x in inputs if x != ""]  # clean up empty inputs
         pattern = r"^\d{1,2}:\d{2}[APap][Mm]$"  # regex for 7:00pm or 7:00PM
 
         for input in inputs:
             if not re.match(pattern, input):
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     embed=Embed(
                         description="Invalid time format.  Valid formats:\n- 7:00am\n- 2:00pm\n- 11:00AM",
                         colour=Colour.red(),
@@ -257,9 +258,23 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
                 )
                 return
 
+        category_channel: discord.abc.GuildChannel | None = (
+            interaction.guild.get_channel(config.TRIBES_VOICE_CATEGORY_CHANNEL_ID)
+        )
+        if not isinstance(category_channel, discord.CategoryChannel):
+            await interaction.followup.send(
+                embed=Embed(
+                    description="Could not find voice channel category",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+
         schedule_channel: TextChannel = await interaction.guild.create_text_channel(
             "schedule",
             topic="Welcome to the scheduling channel!  Click the Time buttons to toggle your availability for a specific day and time.  Click the Add All button to add to all times for that day.",
+            category=category_channel,
         )
 
         with Session() as session:
