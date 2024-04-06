@@ -177,6 +177,11 @@ async def create_in_progress_game_embed(
     team1_player_names: list[str] = (
         [name[0] for name in result if name] if result else []
     )
+    if config.SHOW_CAPTAINS:
+        if team0_player_names:
+            team0_player_names[0] = "(C) " + team0_player_names[0]
+        if team1_player_names:
+            team1_player_names[0] = "(C) " + team1_player_names[0]
     # sort the names alphabetically and caselessly to make them easier to read
     team0_player_names.sort(key=str.casefold)
     team1_player_names.sort(key=str.casefold)
