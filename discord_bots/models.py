@@ -1294,10 +1294,11 @@ class Schedule:
 
     __sa_dataclass_metadata_key__ = "sa"
     __tablename__ = "schedule"
-    __table_args__ = (UniqueConstraint("day", "time"),)
 
-    day: str = field(metadata={"sa": Column(String, nullable=False)})
-    time: time = field(metadata={"sa": Column(Time, nullable=False)})
+    datetime: datetime = field(
+        metadata={"sa": Column(DateTime, nullable=False, unique=True)},
+        default_factory=datetime.now(timezone.utc),
+    )
     message_id: int | None = field(
         default=None, metadata={"sa": Column(BigInteger, nullable=True)}
     )
