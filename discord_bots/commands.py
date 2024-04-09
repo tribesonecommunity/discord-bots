@@ -2455,11 +2455,12 @@ async def gamehistory(interaction: Interaction, count: int):
         embeds = []
         finished_games.reverse()  # show most recent games last
         for finished_game in finished_games:
-            embeds.append(
-                create_finished_game_embed(
-                    session, finished_game.id, interaction.guild.id
-                )
+            # TODO: bold the callers name to make their name easier to see in the embed
+            embed: discord.Embed = create_finished_game_embed(
+                session, finished_game.id, interaction.guild.id
             )
+            embed.timestamp = finished_game.finished_at
+            embeds.append(embed)
 
         await interaction.followup.send(
             content=f"Last {count} games for {interaction.user.mention}",
