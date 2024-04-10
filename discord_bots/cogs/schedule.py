@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 
 import discord
 import pytz

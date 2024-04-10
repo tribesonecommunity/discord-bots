@@ -5,12 +5,10 @@
 import asyncio
 import logging
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from random import shuffle
-from re import I
 
 import discord
-import pytz
 import sqlalchemy
 from discord.channel import TextChannel
 from discord.colour import Colour
@@ -42,7 +40,6 @@ from .models import (
     QueueWaitlistPlayer,
     Rotation,
     RotationMap,
-    Schedule,
     SchedulePlayer,
     ScopedSession,
     Session,
