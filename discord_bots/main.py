@@ -16,7 +16,7 @@ from discord_bots.cogs.map import MapCommands
 from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
 from discord_bots.cogs.rotation import RotationCommands
-from discord_bots.cogs.schedule import ScheduleCommands
+from discord_bots.cogs.schedule import ScheduleCommands, ScheduleUtils
 from discord_bots.cogs.vote import VoteCommands
 
 from .bot import bot
@@ -263,7 +263,8 @@ async def setup():
     leaderboard_task.start()
     map_rotation_task.start()
     queue_waitlist_task.start()
-    schedule_task.start()
+    if ScheduleUtils.is_active():
+        schedule_task.start()
     vote_passed_waitlist_task.start()
     if config.ECONOMY_ENABLED:
         prediction_task.start()
