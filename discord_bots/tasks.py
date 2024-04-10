@@ -10,6 +10,7 @@ from random import shuffle
 from re import I
 
 import discord
+import pytz
 import sqlalchemy
 from discord.channel import TextChannel
 from discord.colour import Colour
@@ -43,6 +44,7 @@ from .models import (
     RotationMap,
     Schedule,
     SchedulePlayer,
+    ScopedSession,
     Session,
     SkipMapVote,
     VotePassedWaitlist,
@@ -475,38 +477,56 @@ async def queue_waitlist_task():
 @tasks.loop(hours=24)
 async def schedule_task():
     """
-    When a new day begins, roll over the previous day to the next week and remove scheduled players.
-    """
-    if not ScheduleUtils.is_active():
-        return
+    An hour after schedules end, roll over to the next day.
+    Clear yesterday's schedule players, add 1 week.
 
-    with Session() as session:
-        yesterday = datetime.now() - timedelta(days=1)
-        schedule_players = (
-            session.query(SchedulePlayer)
-            .join(Schedule)
-            .filter(Schedule.day == yesterday.strftime("%A"))
-            .all()
-        )
-        for schedule_player in schedule_players:
-            session.delete(schedule_player)
+    """
+    print("task")
+    with ScopedSession() as session:
+        # cycle message ids for n = 1 through 6
+        previous_message_id = ScheduleUtils.get_schedules_for_nth_embed(0)[
+            0
+        ].message_id  # store first message_id here initially
+        current_message_id: int
+        for n in range(1, 7):
+            schedules = ScheduleUtils.get_schedules_for_nth_embed(n)
+            current_message_id = schedules[0].message_id
+            for schedule in schedules:
+                schedule.message_id = previous_message_id
+            previous_message_id = current_message_id
+
+        # handle n = 0, i.e. today
+        today_schedules = ScheduleUtils.get_schedules_for_nth_embed(0)
+        for schedule in today_schedules:
+            schedule.datetime = schedule.datetime + timedelta(days=7)
+            session.query(SchedulePlayer).filter(
+                SchedulePlayer.schedule_id == schedule.id
+            ).delete()
+            schedule.message_id = previous_message_id
+
         session.commit()
 
-        # assumes we are only running this bot/database on one guild
-        await ScheduleUtils.rebuild_embed(bot.guilds[0], yesterday.strftime("%A"))
-
+    # assumes we are only running this bot/database on one guild
+    for n in range(7):
+        await ScheduleUtils.rebuild_embed(bot.guilds[0], n)
 
 @schedule_task.before_loop
 async def delay_schedule_task():
     """
-    Delay start of schedule task until 12:05am tomorrow
+    Delay start of schedule task until an hour after today's last schedule
     """
+    print("delay")
     await bot.wait_until_ready()
 
-    target_time = time(0, 5)
-    target_date = date.today() + timedelta(days=1)
-    time_until_target = datetime.combine(target_date, target_time) - datetime.now()
+    last_schedule_today = ScheduleUtils.get_schedules_for_nth_embed(0)[-1]
+    ScopedSession.remove()
 
+    # can't get timedelta if only one operand has tzinfo, so we convert datetime.now to utc and remove tzinfo
+    time_until_target = (
+        last_schedule_today.datetime
+        - datetime.now(timezone.utc).replace(tzinfo=None)
+        + timedelta(hours=1)
+    )
     await asyncio.sleep(time_until_target.total_seconds())
 
 
