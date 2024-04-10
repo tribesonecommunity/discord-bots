@@ -139,6 +139,10 @@ class ScheduleCommands(BaseCog):
             ephemeral=True,
         )
 
+        from discord_bots.tasks import schedule_task
+
+        schedule_task.cancel()
+
 
 class ScheduleView(View):
     def __init__(self, nth_embed: str):
