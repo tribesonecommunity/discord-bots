@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 import discord
 import pytz
@@ -21,6 +21,7 @@ from discord import (
 from discord.ext.commands import Bot
 from discord.ui import Button, Select, TextInput, View
 from discord.utils import get
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 import discord_bots.config as config
@@ -48,15 +49,12 @@ class ScheduleCommands(BaseCog):
         if not ScheduleUtils.is_active():
             return
 
-        with Session() as session:
-            for day in DAYS:
-                self.views.append(ScheduleView(day=day))
-                message_id = (
-                    session.query(Schedule.message_id)
-                    .filter(Schedule.day == day)
-                    .first()[0]
-                )
-                self.bot.add_view(ScheduleView(day=day), message_id=message_id)
+        for nth_embed in range(7):
+            self.views.append(ScheduleView(nth_embed))
+            first_schedule = ScheduleUtils.get_schedules_for_nth_embed(nth_embed)[0]
+            self.bot.add_view(
+                ScheduleView(nth_embed), message_id=first_schedule.message_id
+            )
 
     async def cog_unload(self) -> None:
         for view in self.views:
@@ -95,7 +93,7 @@ class ScheduleCommands(BaseCog):
                 view=view, ephemeral=True, delete_after=10
             )
 
-    @app_commands.command(name="deleteschedule", description="Delete a schedule")
+    @app_commands.command(name="deleteschedule", description="Delete the schedule")
     @app_commands.check(is_admin_app_command)
     @app_commands.guild_only()
     async def deleteschedule(self, interaction: Interaction):
@@ -121,20 +119,19 @@ class ScheduleCommands(BaseCog):
                 )
                 return
             session.delete(discord_channel)
-
             session.commit()
 
-            schedule_channel = interaction.guild.get_channel(discord_channel.channel_id)
-            if not schedule_channel:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="Could not find schedule channel in Discord",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-            await schedule_channel.delete()
+        schedule_channel = interaction.guild.get_channel(discord_channel.channel_id)
+        if not schedule_channel:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Could not find schedule channel in Discord",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        await schedule_channel.delete()
 
         await interaction.response.send_message(
             embed=Embed(description="Schedule deleted", colour=Colour.green()),
@@ -143,21 +140,27 @@ class ScheduleCommands(BaseCog):
 
 
 class ScheduleView(View):
-    def __init__(self, day: str):
+    def __init__(self, nth_embed: str):
         super().__init__(timeout=None)
-        self.day = day
-        self.schedules_for_day: list[Schedule] = ScheduleUtils.get_schedules_for_day(
-            self.day
-        )
+        # represents the nth embed in the schedule channel, where n=0 is today, listed first.
+        self.nth_embed = nth_embed
         self.create_buttons()
 
     def create_buttons(self):
-        for i, schedule in enumerate(self.schedules_for_day, start=1):
-            # \u2800 is a braille character used for button padding
+        for i, schedule in enumerate(
+            ScheduleUtils.get_schedules_for_nth_embed(self.nth_embed), start=1
+        ):
+            if i == 1:
+                label = "First Time"
+            elif i == 2:
+                label = "Second Time"
+            elif i == 3:
+                label = "Third Time"
             button_time = Button(
-                label=f"\u2800\u2800\u2800\u2800Time {i}\u2800\u2800\u2800\u2800",
+                label=label,
                 style=ButtonStyle.primary,
-                custom_id=f"{self.day}-{i}",
+                custom_id=f"{self.nth_embed}-{i}",
+                emoji="⏱️",
             )
             button_time.callback = (
                 lambda interaction, schedule=schedule: self.button_time_callback(
@@ -167,9 +170,10 @@ class ScheduleView(View):
             self.add_item(button_time)
 
         button_day = Button(
-            label=f"\u2800\u2800\u2800\u2800Add All\u2800\u2800\u2800\u2800",
+            label="Add All",
             style=ButtonStyle.primary,
-            custom_id=f"{self.day}-all",
+            custom_id=f"{self.nth_embed}-all",
+            emoji="⏱️",
         )
         button_day.callback = lambda interaction: self.button_day_callback(interaction)
         self.add_item(button_day)
@@ -196,7 +200,7 @@ class ScheduleView(View):
                 )
             session.commit()
 
-        await ScheduleUtils.rebuild_embed(interaction.guild, self.day)
+        await ScheduleUtils.rebuild_embed(interaction.guild, self.nth_embed)
         await interaction.response.defer()
 
     async def button_day_callback(self, interaction: Interaction):
@@ -210,14 +214,14 @@ class ScheduleView(View):
                 .all()
             )
             schedule_ids = [x.schedule_id for x in schedule_players]
-            for schedule in self.schedules_for_day:
+            for schedule in ScheduleUtils.get_schedules_for_nth_embed(self.nth_embed):
                 if schedule.id not in schedule_ids:
                     session.add(
                         SchedulePlayer(schedule_id=schedule.id, player_id=player.id)
                     )
             session.commit()
 
-        await ScheduleUtils.rebuild_embed(interaction.guild, self.day)
+        await ScheduleUtils.rebuild_embed(interaction.guild, self.nth_embed)
         await interaction.response.defer()
 
 
@@ -280,27 +284,27 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
         with Session() as session:
             session.add(DiscordChannel(name="schedule", channel_id=schedule_channel.id))
 
-            coroutines = []
-            for day in DAYS:
-                embed = Embed(title=day, colour=Colour.blue())
+            user_timezone = pytz.timezone(self.timezone_input)
+            for nth_embed in range(7):
+                embed = Embed(
+                    title=ScheduleUtils.get_embed_title(nth_embed), colour=Colour.blue()
+                )
                 message = await schedule_channel.send(embed=embed)
-                timestamp_date: date = ScheduleUtils.get_next_date(day)
+                date_to_add: date = date.today() + timedelta(days=nth_embed)
 
                 for input in inputs:
                     time_to_add: time = datetime.strptime(input, "%I:%M%p").time()
-                    timestamp_date_time: datetime = datetime.combine(
-                        timestamp_date, time_to_add
+                    datetime_to_add: datetime = datetime.combine(
+                        date_to_add, time_to_add
                     )
-                    timezone = pytz.timezone(self.timezone_input)
-                    timestamp_date_time = timezone.localize(timestamp_date_time)
-                    timestamp = discord.utils.format_dt(timestamp_date_time, style="t")
-                    embed.add_field(
-                        name=f"|            {timestamp}            |",
-                        value="",
-                        inline=True,
-                    )
+                    datetime_to_add = user_timezone.localize(
+                        datetime_to_add
+                    )  # add user's timezone
+                    datetime_to_add = datetime_to_add.astimezone(
+                        pytz.utc
+                    )  # convert to utc for database
                     session.add(
-                        Schedule(day=day, time=time_to_add, message_id=message.id)
+                        Schedule(datetime=datetime_to_add, message_id=message.id)
                     )
 
                 try:
@@ -309,8 +313,12 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
                     _log.error(f"integrity error {exc}")
                     session.rollback()
 
-                coroutines.append(message.edit(embed=embed, view=ScheduleView(day)))
-
+            # run two separate loops because my method for grouping schedules together in embeds relies on them all being added to the database first
+            coroutines = []
+            for nth_embed in range(7):
+                coroutines.append(
+                    ScheduleUtils.rebuild_embed(interaction.guild, nth_embed)
+                )
             try:
                 await asyncio.gather(*coroutines)
             except Exception as exc:
@@ -323,7 +331,7 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
 
 class ScheduleUtils:
     @classmethod
-    async def rebuild_embed(self, guild: Guild, day: str):
+    async def rebuild_embed(self, guild: Guild, nth_embed: int):
         with Session() as session:
             schedule_channel_id = (
                 session.query(DiscordChannel.channel_id)
@@ -332,76 +340,62 @@ class ScheduleUtils:
             )
             schedule_channel = get(guild.text_channels, id=schedule_channel_id)
 
-            schedules_for_day = ScheduleUtils.get_schedules_for_day(day)
+            schedules_for_nth_embed = ScheduleUtils.get_schedules_for_nth_embed(
+                nth_embed
+            )
             message: Message = schedule_channel.get_partial_message(
-                schedules_for_day[0].message_id
+                schedules_for_nth_embed[0].message_id
             )
 
-            embed = Embed(title=day, colour=Colour.blue())
+            embed = Embed(
+                title=ScheduleUtils.get_embed_title(nth_embed), colour=Colour.blue()
+            )
 
-            for schedule in schedules_for_day:
-                timestamp_date: date = ScheduleUtils.get_next_date(day)
-                timestamp_datetime: datetime = datetime.combine(
-                    timestamp_date, schedule.time
-                )
-                timestamp = discord.utils.format_dt(timestamp_datetime, style="t")
+            utc_tz = pytz.utc
+            for schedule in schedules_for_nth_embed:
+                utc_datetime = utc_tz.localize(schedule.datetime)
+                timestamp = discord.utils.format_dt(utc_datetime)
                 players_scheduled = (
                     session.query(Player)
                     .join(SchedulePlayer, SchedulePlayer.player_id == Player.id)
                     .filter(SchedulePlayer.schedule_id == schedule.id)
                     .all()
                 )
-                embed.add_field(
-                    name=f"|            {timestamp}            |",
-                    value="\n".join(
+                if not players_scheduled:
+                    value = "> \n** **"  # create column indentation for empty schedules
+                else:
+                    value = "\n".join(
                         [f"> <@{player.id}>" for player in players_scheduled]
-                    ),
+                    )
+
+                embed.add_field(
+                    name=timestamp,
+                    value=value,
                     inline=True,
                 )
-            await message.edit(embed=embed, view=ScheduleView(day))
+            await message.edit(embed=embed, view=ScheduleView(nth_embed))
 
     @classmethod
-    def get_next_date(cls, target_day: str) -> date:
-        """
-        Returns the upcoming date for a given day of the week.
-        Returns today if the day of the week matches.
-        """
-        target_day_num: int = cls.convert_day_to_datetime_num(target_day)
-        today: date = date.today()
-        today_num: int = today.weekday()
-        if target_day_num == today_num:
-            days_ahead = 0
-        elif target_day_num > today_num:
-            days_ahead = target_day_num - today_num
-        elif target_day_num < today_num:
-            days_ahead = 7 - today_num + target_day_num
-        return today + timedelta(days=days_ahead)
+    def get_embed_title(cls, nth_embed: int) -> str:
+        if nth_embed == 0:
+            return "Today"
+        elif nth_embed == 1:
+            return "Tomorrow"
+        else:
+            return f"{nth_embed} Days From Now"
 
     @classmethod
-    def get_schedules_for_day(cls, day: str) -> list[Schedule]:
+    def get_schedules_for_nth_embed(cls, nth_embed: int) -> list[Schedule]:
         with Session() as session:
-            return session.query(Schedule).filter(Schedule.day == day).all()
-
-    @classmethod
-    def convert_day_to_datetime_num(cls, day: str) -> int:
-        """
-        Number representation of a day in the datetime module, where Monday = 0.
-        """
-        match day:
-            case "Monday":
-                return 0
-            case "Tuesday":
-                return 1
-            case "Wednesday":
-                return 2
-            case "Thursday":
-                return 3
-            case "Friday":
-                return 4
-            case "Saturday":
-                return 5
-            case "Sunday":
-                return 6
+            num_schedules: int = session.query(func.count(Schedule.id)).scalar()
+            schedules_per_day = num_schedules / 7
+            offset = nth_embed * schedules_per_day
+            return (
+                session.query(Schedule)
+                .order_by(Schedule.datetime.asc())
+                .slice(offset, offset + schedules_per_day)
+                .all()
+            )
 
     @classmethod
     def is_active(cls) -> bool:
