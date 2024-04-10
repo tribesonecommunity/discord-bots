@@ -23,7 +23,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.hybrid import hybrid_property
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
-from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
+from sqlalchemy.orm import relationship  # type: ignore
+from sqlalchemy.orm import registry, scoped_session, sessionmaker
 from sqlalchemy.sql import expression, func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
@@ -1390,3 +1391,4 @@ class VotePassedWaitlistPlayer:
 
 
 Session: sessionmaker = sessionmaker(bind=engine)
+ScopedSession = scoped_session(Session)
