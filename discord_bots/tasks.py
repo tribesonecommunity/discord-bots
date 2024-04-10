@@ -481,7 +481,6 @@ async def schedule_task():
     Clear yesterday's schedule players, add 1 week.
 
     """
-    print("task")
     with ScopedSession() as session:
         # cycle message ids for n = 1 through 6
         previous_message_id = ScheduleUtils.get_schedules_for_nth_embed(0)[
@@ -495,7 +494,7 @@ async def schedule_task():
                 schedule.message_id = previous_message_id
             previous_message_id = current_message_id
 
-        # handle n = 0, i.e. today
+        # handle n = 0 (today)
         today_schedules = ScheduleUtils.get_schedules_for_nth_embed(0)
         for schedule in today_schedules:
             schedule.datetime = schedule.datetime + timedelta(days=7)
@@ -515,7 +514,6 @@ async def delay_schedule_task():
     """
     Delay start of schedule task until an hour after today's last schedule
     """
-    print("delay")
     await bot.wait_until_ready()
 
     last_schedule_today = ScheduleUtils.get_schedules_for_nth_embed(0)[-1]
@@ -527,7 +525,13 @@ async def delay_schedule_task():
         - datetime.now(timezone.utc).replace(tzinfo=None)
         + timedelta(hours=1)
     )
-    await asyncio.sleep(time_until_target.total_seconds())
+    seconds_until_target = time_until_target.total_seconds()
+    if (
+        seconds_until_target <= 0
+    ):  # go ahead and rotate to the next day if today's schedules have already passed
+        await schedule_task()
+        seconds_until_target += 86400  # add 24 hours
+    await asyncio.sleep(seconds_until_target)
 
 
 @tasks.loop(seconds=1)
