@@ -32,11 +32,10 @@ from discord_bots.models import (
     Player,
     Schedule,
     SchedulePlayer,
-    Session,
+    ScopedSession,
 )
 
 _log = logging.getLogger(__name__)
-DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
 
 class ScheduleCommands(BaseCog):
@@ -55,6 +54,8 @@ class ScheduleCommands(BaseCog):
             self.bot.add_view(
                 ScheduleView(nth_embed), message_id=first_schedule.message_id
             )
+
+        ScopedSession.remove()
 
     async def cog_unload(self) -> None:
         for view in self.views:
@@ -100,7 +101,7 @@ class ScheduleCommands(BaseCog):
         """
         Delete schedule
         """
-        with Session() as session:
+        with ScopedSession() as session:
             session.query(SchedulePlayer).delete()
             session.query(Schedule).delete()
 
@@ -178,8 +179,10 @@ class ScheduleView(View):
         button_day.callback = lambda interaction: self.button_day_callback(interaction)
         self.add_item(button_day)
 
+        ScopedSession.remove()
+
     async def button_time_callback(self, interaction: Interaction, schedule: Schedule):
-        with Session() as session:
+        with ScopedSession() as session:
             player: Player = (
                 session.query(Player).filter(Player.id == interaction.user.id).first()
             )
@@ -204,7 +207,7 @@ class ScheduleView(View):
         await interaction.response.defer()
 
     async def button_day_callback(self, interaction: Interaction):
-        with Session() as session:
+        with ScopedSession() as session:
             player: Player = (
                 session.query(Player).filter(Player.id == interaction.user.id).first()
             )
@@ -281,7 +284,7 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
             category=category_channel,
         )
 
-        with Session() as session:
+        with ScopedSession() as session:
             session.add(DiscordChannel(name="schedule", channel_id=schedule_channel.id))
 
             user_timezone = pytz.timezone(self.timezone_input)
@@ -328,11 +331,14 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
             embed=Embed(description="Schedule created", colour=Colour.green()),
             ephemeral=True,
         )
+        from discord_bots.tasks import schedule_task
+
+        schedule_task.start()
 
 class ScheduleUtils:
     @classmethod
     async def rebuild_embed(self, guild: Guild, nth_embed: int):
-        with Session() as session:
+        with ScopedSession() as session:
             schedule_channel_id = (
                 session.query(DiscordChannel.channel_id)
                 .filter(DiscordChannel.name == "schedule")
@@ -386,19 +392,21 @@ class ScheduleUtils:
 
     @classmethod
     def get_schedules_for_nth_embed(cls, nth_embed: int) -> list[Schedule]:
-        with Session() as session:
-            num_schedules: int = session.query(func.count(Schedule.id)).scalar()
-            schedules_per_day = num_schedules / 7
-            offset = nth_embed * schedules_per_day
-            return (
-                session.query(Schedule)
-                .order_by(Schedule.datetime.asc())
-                .slice(offset, offset + schedules_per_day)
-                .all()
-            )
+        session = (
+            ScopedSession()
+        )  # this needs to be left open for use in the schedule task
+        num_schedules: int = session.query(func.count(Schedule.id)).scalar()
+        schedules_per_day = num_schedules / 7
+        offset = nth_embed * schedules_per_day
+        return (
+            session.query(Schedule)
+            .order_by(Schedule.datetime.asc())
+            .slice(offset, offset + schedules_per_day)
+            .all()
+        )
 
     @classmethod
     def is_active(cls) -> bool:
-        with Session() as session:
+        with ScopedSession() as session:
             schedule = session.query(Schedule).first()
             return bool(schedule)
