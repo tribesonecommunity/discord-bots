@@ -1,0 +1,52 @@
+# NOTE: Using sqlite for this bot is essentially deprecated. If you are
+#       a new contributor that doesn't have an established database
+#       yet, it is strongly recommend to use postgresql instead.
+#
+#       The default docker-compose.yml file includes a postgresql
+#       container. This postgres container requires no assembly beyond
+#       assigning a password for `POSTGRES_PASSWORD` in the .env file.
+#
+#       Note that `DATABASE_URI` must be commented out in .env if you
+#       are using sqlite, or it will throw an error.
+#
+#       If you do want to use sqlite and already have a tribes.db that
+#       you want to use, you can simply drop it right into the project
+#       root directory and go. Make sure to keep a backup. The Docker
+#       installation is still experimental.
+#       
+#       If you do not have a tribes.db yet, copy tribes.db.basic to
+#       tribes.db to have a very simple test db to start with.
+#
+#       Note that if you try to start the container without a tribes.db
+#       present, weird things may happen, as the container uses
+#       the tribes.db file as a bind mount.
+#       
+#       Since the tribes.db file is in the host and not in the
+#       container, all changes made to the database should persist
+#       regardless of what happens to the container.
+#       
+
+services:
+  tribesbot-sqlite:
+    build:
+      context: .
+      target: build
+    user: tribesbot
+    working_dir: /tribesbot
+    env_file:
+      - .env
+    volumes:
+      - type: bind
+        source: ./discord_bots
+        target: /tribesbot/discord_bots
+      - type: bind
+        source: ./scripts
+        target: /tribesbot/scripts
+      - type: bind
+        source: ./tribes.db
+        target: /tribesbot/tribes.db
+    command: "bash startup.sh"
+
+
+volumes:
+  tribesbot-db:

@@ -1,0 +1,43 @@
+# NOTE: You will probably get errors on the tribesbot container the
+#       first time you use `docker compose up`. Simply shut down
+#       the containers and then start them up again. They should
+#       work after that. I think it has something to do with an
+#       uninitialized database in the first run.
+#       
+#       The database information will be stored in the tribesbot-db
+#       volume, which might get renamed to something like
+#       `discord-bots_tribesbot-db`. If you are using the Docker
+#       installation for a live version of the bot, make sure not
+#       to delete this volume!
+
+services:
+  db:
+    image: postgres
+    volumes:
+      - "tribesbot-db:/var/lib/postgresql/data"
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+  tribesbot:
+    depends_on:
+      - db
+    build:
+      context: .
+      target: build
+    user: tribesbot
+    working_dir: /tribesbot
+    env_file:
+      - .env
+    volumes:
+      - type: bind
+        source: ./discord_bots
+        target: /tribesbot/discord_bots
+      - type: bind
+        source: ./scripts
+        target: /tribesbot/scripts
+    command: "bash startup.sh"
+
+
+volumes:
+  tribesbot-db:
