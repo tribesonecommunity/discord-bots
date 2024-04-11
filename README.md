@@ -170,9 +170,8 @@ Recommend using vscode. If you do, install these vscode plugins:
 
 ## Type checking
 
-If you use vscode add this to your settings.json (if anyone knows how to commit
-this to the project lmk!):
-https://www.emmanuelgautier.com/blog/enable-vscode-python-type-checking
+If you use VSCode, this project will use basic type checking.
+See [`./.vscode/settings.json`](./.vscode/settings.json)
 
 ```json
 {
