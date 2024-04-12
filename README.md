@@ -3,16 +3,26 @@
 This an open source discord bot which assists with game matchmaking.
 
 This uses Microsoft's [Trueskill](https://www.microsoft.com/en-us/research/project/trueskill-ranking-system/)
-matchmaking algorithm to create fair and
-balanced teams. Players are assigned a level of skill (mu) and uncertainty (sigma) which is adjusted after each game.
+matchmaking algorithm to create fair and balanced teams. Players are
+assigned a level of skill (mu) and uncertainty (sigma) which is
+adjusted after each game.
 
-Games are organized using a queueing system and the bot supports features like segmentation by region, game type, ranked / unranked, map rotations, voice channel creation, leaderboards, Twitch integration, dice rolls, coin
-flips, raffles, commends, post-game images, and more.
+Games are organized using a queueing system and the bot supports
+features like segmentation by region, game type, ranked / unranked, map
+rotations, voice channel creation, leaderboards, Twitch integration,
+dice rolls, coin flips, raffles, commends, post-game images, and more.
 
 ## Installation
 
-The bot is written in Python 3 and uses sqlite for persistence. You will need a `DISCORD_API_KEY` at a minimum to run
-the bot.
+The bot is written in Python 3 and uses sqlite for persistence.
+
+The bot must also have Presence, Server Members and Message Contents
+Intents enabled. You can find these in the `Bot` settings at the
+Discord Developer Portal.
+
+For an explanation of all of the environment variables used by the bot,
+check `.env.example`. Note that some variables *must* be set before the
+bot will run.
 
 ### MacOS
 
@@ -48,53 +58,6 @@ TODO
   ```
   You may need to adjust your windows execution policy: https://stackoverflow.com/a/18713789
 
-## .env file configuration
-
-The following are required
-
-- `DISCORD_API_KEY`
-- `CHANNEL_ID` - The discord id of the channel the bot will live in
-- `GAME_HISTORY_CHANNEL` - The discord id of the channel finished games will be reported in
-- `DATABASE_URI` -
-- `TRIBES_VOICE_CATEGORY_CHANNEL_ID` - The id of the voice channel category (so the bot can make voice channels)
-- `SEED_ADMIN_IDS` - Discord ids of players that will start off as admin. You'll need at least one in order to create
-  more
-- `DATABASE_URI` - URL to the database
-
-To find some of these values, set `ENABLE_DEBUG=True` in `.env`, then in any channel type `!configure`. This will print to console your ID, the channel ID, and voice channel category IDs.
-
-The following are optional
-
-- `TWITCH_GAME_NAME`, `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` - These enable the `streams` command to list current
-  streams of the specified game
-- `COMMAND_PREFIX` - Use a different prefix instead of `!`
-- `DEFAULT_TRUESKILL_MU`, `DEFAULT_TRUESKILL_SIGMA` - Customize the default trueskill for new players. Handle with care!
-- `SHOW_TRUESKILL` - Shows player trueskill when making teams, enables the trueskill leaderboard, etc.
-- `REQUIRE_ADD_TARGET` - Players have to specify a queue to add to
-- `ENABLE_VOICE_MOVE` - Enables moving players between voice channels
-- `DEFAULT_VOICE_MOVE` - Sets default move behaviour. True will auto opt-in new players. Defaults to False
-- `ALLOW_VULGAR_NAMES` - Allow dirtier team names. Defaults to False
-- `ENABLE_DEBUG` - Defaults to False
-- `ENABLE_RAFFLE` - Defaults to False
-- `DEFAULT_RAFFLE_VALUE` - Defaults to 5
-- `SHOW_LEFT_RIGHT_TEAM` - Add an indicator which team to add to (`(L)` or `(R)`)
-- `MAXIMUM_TEAM_COMBINATIONS` - Maximum amount of team combinations to try. Performance optimization for larger game modes like 12v12 at the cost of potentially not finding the ideal game.
-- `LEADERBOARD_CHANNEL`
-- `RE_ADD_DELAY` - Time after votes or games finish until the add is processed to allow equal access to all players, so they don't have to exit their game early to participate in the next one.
-- `AFK_TIME_MINUTES` - If no activity is registered within this time, the player is automatically deleted from all queues and votes are removed. Defaults to 45.
-- `MAP_ROTATION_MINUTES` - Time since last map switch after which the maps auto-rotates. Defaults to 60.
-- `DISABLE_MAP_ROTATION`
-- `MAP_VOTE_THRESHOLD` - Defaults to 7. The number of votes needed to succeed a map skip / replacement
-- `STATS_DIR` - Defaults to None. Store screenshots if configured. Doesn't work on Windows.
-- `STATS_WIDTH`, `STATS_HEIGHT`
-
- *Economy Values*
-- `ECONOMY_ENABLED` - Enabled/Disables the economy module, for match predictions & betting. Default is False
-- `CURRENCY_NAME` - Set's the currency name for player economy. Default is Shazbucks
-- `STARTING_CURRENCY` - Define a custom starting currency value for new players. Default is 100
-- `PREDICTION_TIMEOUT` - Define how long (in seconds) a prediction should be open after a game is created. Default is 300 (5 minutes)
-- `CURRENCY_AWARD` - Define how much currency is awarded for players when finishing a game. This can be overridden per queue if desired. Default is 25
-
 ## Running the bot
 
 1. `cd discord-bots`
@@ -108,14 +71,56 @@ The following are optional
 2. `alembic upgrade head`
 3. Restart the python process
 
+### Docker
+
+Instead of chasing down dependencies and running all of the above
+commands by hand, you can also now just fire the bot up in Docker.
+
+This is not necessarily intended to be used for live versions of
+the bot. It was created with the intent of helping new contributors
+to 'just have something working' right away, so that they can learn
+about the bot quickly.
+
+In theory, you could use it for a live bot - but until the Docker
+method is more polished, you're on your own with that one!
+
+With a suitable .env filled out, run in the project root directory:
+
+- `docker compose build && docker compose up`
+
+You will probably get errors the first time you try to do this. Simply
+CTRL+C out, let it stop, and then start it again. It seems like the
+database will initialize on the first run, but not in time to actually
+function. Everything should work on the second boot.
+
+There are two Docker containers: one for the postgres database (`db`) and
+one for the bot itself (`tribesbot`).
+
+The first time you spin up the `tribesbot` container, your system will
+probably ask you to share the `discord_bots` and `scripts` folders.
+The container is configured to treat these folders as bind mounts,
+meaning that the container is reaching directly into your host system
+to get the files for the bot.
+
+This allows you to make code changes without having to rebuild the
+image each time you change anything. It also means that you can just
+use the !restart command in Discord to put new code into action!
+
+There is an alternate compose file, `docker-compose-sqlite.yml`, that
+allows the use of sqlite instead of postgres. This is not recommended
+for new databases, and is only there to grandfather in old sqlite dbs.
+See the comments in that file for more info on how to use it.
+
 # Development
 
-The bot is written in Python 3 with types as much as possible (enforced by Pylance). We use SQLAlchemy as the ORM
-and `alembic` to handle migrations.
+The bot is written in Python 3 with types as much as possible (enforced
+by Pylance). We use SQLAlchemy as the ORM and `alembic` to handle
+migrations.
 
 ## Installation
 
-Postgres is the new preferred way of doing development. To install `psycopg2` you'll need to install `libpq`.
+Postgres is the new preferred way of doing development. To install
+`psycopg2` you'll need to install `libpq`.
 
 ### Ubuntu
 ```
@@ -127,7 +132,8 @@ sudo apt-get install libpq-dev
 pacman -S postgresql-libs
 ```
 
-The steps are the same but use `pip install -e .` instead. This allows local changes to be picked up automatically.
+The steps are the same but use `pip install -e .` instead. This allows
+local changes to be picked up automatically.
 
 ## Database
 
@@ -170,9 +176,8 @@ Recommend using vscode. If you do, install these vscode plugins:
 
 ## Type checking
 
-If you use vscode add this to your settings.json (if anyone knows how to commit
-this to the project lmk!):
-https://www.emmanuelgautier.com/blog/enable-vscode-python-type-checking
+If you use VSCode, this project will use basic type checking.
+See [`./.vscode/settings.json`](./.vscode/settings.json)
 
 ```json
 {
@@ -180,7 +185,7 @@ https://www.emmanuelgautier.com/blog/enable-vscode-python-type-checking
 }
 ```
 
-This enforces type checks for the types declared
+This enforces type checks for the types declared.
 
 ## Formatting
 
@@ -192,7 +197,9 @@ Use python black: https://github.com/psf/black
 
 ### Pre-commit hook
 
-This project uses `darker` for formatting in a pre-commit hook. Darker documentation: https://pypi.org/project/darker/. pre-commit documentation: https://pre-commit.com/#installation
+This project uses `darker` for formatting in a pre-commit hook.
+Darker documentation: https://pypi.org/project/darker/.
+pre-commit documentation: https://pre-commit.com/#installation
 
 - `pip install darker`
 - `pip install pre-commit`
@@ -201,8 +208,9 @@ This project uses `darker` for formatting in a pre-commit hook. Darker documenta
 
 ## Migrations
 
-Migrations are handled by Alembic: https://alembic.sqlalchemy.org/. See here for a
-tutorial: https://alembic.sqlalchemy.org/en/latest/tutorial.html.
+Migrations are handled by Alembic: https://alembic.sqlalchemy.org/. See
+here for a tutorial:
+https://alembic.sqlalchemy.org/en/latest/tutorial.html.
 
 To apply migrations:
 
@@ -211,23 +219,26 @@ To apply migrations:
 To create new migrations:
 
 - Make your changes in `models.py`
-- Generate a migration file: `alembic revision --autogenerate -m "Your migration name here"`. Your migration file will
-  be in `alembic/versions`.
+- Generate a migration file: 
+`alembic revision --autogenerate -m "Your migration name here"`.
+Your migration file will be in `alembic/versions`.
 - Apply your migration to the database: `alembic upgrade head`
 - Commit your migration: `git add alembic/versions`
 
 Common issues:
 
-- Alembic does not pick up certain changes like renaming tables or columns
-  correctly. For these changes you'll need to manually edit the migration file.
-  See here for a full list of changes Alembic will not detect correctly:
+- Alembic does not pick up certain changes like renaming tables or
+  columns correctly. For these changes you'll need to manually edit the
+  migration file. See here for a full list of changes Alembic will not
+  detect correctly:
   https://alembic.sqlalchemy.org/en/latest/autogenerate.html#what-does-autogenerate-detect-and-what-does-it-not-detect
-- To set a default value for a column, you'll need to use `server_default`:
-  https://docs.sqlalchemy.org/en/14/core/defaults.html#server-defaults. This sets
-  a default on the database side.
-- Alembic also sometimes has issues with constraints and naming. If you run into
-  an issue like this, you may need to hand edit the migration. See here:
-  https://alembic.sqlalchemy.org/en/latest/naming.html
+- To set a default value for a column, you'll need to use
+  `server_default`:
+  https://docs.sqlalchemy.org/en/14/core/defaults.html#server-defaults.
+  This sets a default on the database side.
+- Alembic also sometimes has issues with constraints and naming. If you
+  run into an issue like this, you may need to hand edit the migration.
+  See here: https://alembic.sqlalchemy.org/en/latest/naming.html
 
 # Full list of commands
 
@@ -269,7 +280,7 @@ VoteCommands:
   unvote                  Remove all of a player's votes
   unvotemap               Remove all of a player's votes for a map
   unvoteskip              Remove all of a player's votes to skip the next map
-​No Category:
+No Category:
   add                     Players adds self to queue(s). If no args to all existing queues
   addadmin
   addadminrole
