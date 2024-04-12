@@ -2,14 +2,14 @@
 
 Docker-compose is the most straightforward way to run the app.
 
-### Requirements
+## Requirements
 
 * Docker
 * Docker compose (usually included with Docker)
 
 Docker avoids the need to install other requirements on your host system.
 
-### Caveats
+## Caveats
 
 This is not yet well-tested for production use-cases. It was created with the
 intent of helping new contributors to 'just have something working' right away,
@@ -18,7 +18,7 @@ so that they can learn about the bot quickly.
 In theory, you could use it for a live bot - but until the Docker method is more
 polished, you're on your own with that one!
 
-### Executing
+## Executing
 
 With a suitable .env filled out, run in the project root directory:
 
@@ -41,7 +41,7 @@ This allows you to make code changes without having to rebuild the image each
 time you change anything. It also means that you can just use the !restart
 command in Discord to put new code into action!
 
-#### Executing with sqlite
+## Executing with sqlite
 
 There is an alternate compose file, `docker-compose-sqlite.yml`, that allows the
 use of sqlite instead of postgres. This is not recommended for new databases,
