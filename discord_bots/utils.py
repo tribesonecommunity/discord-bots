@@ -699,7 +699,6 @@ async def print_leaderboard():
                     .all()
                 )
                 if top_10_pcts:
-                    player_strs = []
                     cols = []
                     for i, pct in enumerate(top_10_pcts, 1):
                         # TODO: merge this with the pct query
@@ -726,7 +725,6 @@ async def print_leaderboard():
                             SIGMA_LOWER_UNICODE,
                         ],
                         body=cols,
-                        # first_col_heading=True,
                         style=PresetStyle.thin_compact_rounded,
                         alignments=[
                             Alignment.DECIMAL,
