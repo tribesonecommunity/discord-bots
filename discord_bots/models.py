@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -13,6 +13,7 @@ from sqlalchemy import (
     Float,
     Integer,
     String,
+    Time,
     UniqueConstraint,
     create_engine,
     event,
@@ -22,7 +23,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.hybrid import hybrid_property
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
-from sqlalchemy.orm import registry, relationship, sessionmaker  # type: ignore
+from sqlalchemy.orm import relationship  # type: ignore
+from sqlalchemy.orm import registry, scoped_session, sessionmaker
 from sqlalchemy.sql import expression, func
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
@@ -40,7 +42,7 @@ else:
 if db_url.startswith("postgresql://"):
     engine = create_engine(db_url, echo=False, pool_size=40, max_overflow=50)
 else:
-    engine = create_engine(db_url, echo=False)
+    engine = create_engine(db_url, echo=False, connect_args={"timeout": 15})
 naming_convention = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -155,6 +157,29 @@ class CustomCommand:
     )
     output: str = field(
         metadata={"sa": Column(String, nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class DiscordChannel:
+    """
+    Stores the IDs of Discord channels
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "discord_channel"
+
+    name: str = field(
+        metadata={"sa": Column(String, nullable=False, unique=True)},
+    )
+    channel_id: int = field(
+        metadata={"sa": Column(BigInteger, nullable=False, unique=True)},
     )
     id: str = field(
         init=False,
@@ -1263,6 +1288,58 @@ class RotationMap:
 
 @mapper_registry.mapped
 @dataclass
+class Schedule:
+    """
+    Stores days and times for scheduling games up to a week in advance
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "schedule"
+
+    datetime: datetime = field(
+        metadata={"sa": Column(DateTime, nullable=False, unique=True)},
+        default_factory=datetime.now(timezone.utc),
+    )
+    message_id: int | None = field(
+        default=None, metadata={"sa": Column(BigInteger, nullable=True)}
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class SchedulePlayer:
+    """
+    Player registers as available for a scheduled time
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "schedule_player"
+    __table_args__ = (UniqueConstraint("schedule_id", "player_id"),)
+
+    schedule_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("schedule.id"), index=True, nullable=False)
+        }
+    )
+    player_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("player.id"), index=True, nullable=False)
+        }
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class VotePassedWaitlist:
     """
     Queue players from adding after a vote passes. This is to avoid the race
@@ -1314,3 +1391,4 @@ class VotePassedWaitlistPlayer:
 
 
 Session: sessionmaker = sessionmaker(bind=engine)
+ScopedSession = scoped_session(Session)
