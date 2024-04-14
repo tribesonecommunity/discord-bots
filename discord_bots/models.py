@@ -1328,7 +1328,9 @@ class SchedulePlayer:
     )
     player_id: str = field(
         metadata={
-            "sa": Column(String, ForeignKey("player.id"), index=True, nullable=False)
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), index=True, nullable=False
+            )
         }
     )
     id: str = field(
