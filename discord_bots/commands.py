@@ -3650,7 +3650,7 @@ async def _rebalance_game(
     short_game_id: str = short_uuid(game.id)
     if config.ENABLE_VOICE_MOVE:
         if queue.move_enabled:
-            await _movegameplayers(short_game_id, None, message.guild)
+            await move_game_players(short_game_id, None, message.guild)
             await send_message(
                 message.channel,
                 embed_description=f"Players moved to new team voice channels for game {short_game_id}",
