@@ -36,6 +36,7 @@ from discord_bots.utils import (
     short_uuid,
     upload_stats_screenshot_imgkit_channel,
     upload_stats_screenshot_imgkit_interaction,
+    move_game_players_lobby
 )
 
 if TYPE_CHECKING:
@@ -589,6 +590,11 @@ class InProgressGameCog(commands.Cog):
         ).delete()
         session.commit()  # if you remove this commit, then there is a chance for the DB to lockup if someone types a message at the same time
 
+        try:
+            await move_game_players_lobby(game.id, interaction.guild)
+        except Exception:
+            _log.exception("Ignored exception when moving a gameplayer to lobby:")
+        
         for ipg_channel in session.query(InProgressGameChannel).filter(
             InProgressGameChannel.in_progress_game_id == game.id
         ):

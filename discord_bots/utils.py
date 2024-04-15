@@ -906,3 +906,55 @@ async def move_game_players(
         if isinstance(result, BaseException):
             _log.exception("Ignored exception when moving a gameplayer:")
 
+async def move_game_players_lobby(
+    game_id: str, guild: Guild
+):
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        in_progress_game = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == game_id)
+            .first()
+        )
+        if not in_progress_game:
+            return
+        
+        voice_lobby: discord.abc.GuildChannel | None = guild.get_channel(
+                config.VOICE_MOVE_LOBBY
+        )
+        if not isinstance(voice_lobby, VoiceChannel) or not voice_lobby:
+            _log.exception("VOICE_MOVE_LOBBY not found")
+            return
+
+        ipg_channels: list[InProgressGameChannel] | None = (
+                session.query(InProgressGameChannel)
+                .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
+                .all()
+            )
+        
+        coroutines = []
+        for ipg_channel in ipg_channels or []:
+            discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
+                ipg_channel.channel_id
+            )
+            if isinstance(discord_channel, VoiceChannel):
+                members: list[Member] = discord_channel.members
+                if len(members) > 0:
+                    for member in members:
+                        try:
+                            coroutines.append(
+                                member.move_to(
+                                    voice_lobby,
+                                    reason=f"Game {short_uuid(game_id)} finished",
+                                )
+                            )
+                        except Exception:
+                            _log.exception(
+                                    f"Caught exception moving player to voice lobby"
+                                )
+    
+    results = await asyncio.gather(*coroutines, return_exceptions=True)
+    for result in results:
+        # results should be empty unless an exception occured when moving a player
+        if isinstance(result, BaseException):
+            _log.exception("Ignored exception when moving a gameplayer to lobby:")
