@@ -676,9 +676,14 @@ async def send_message(
 async def print_leaderboard():
     output = "**Leaderboard**"
     embeds = []
-    embed = discord.Embed(title="Leaderboard", color=discord.Color.blue())
+    embed = discord.Embed(
+        title="Leaderboard",
+        color=discord.Color.blue(),
+        timestamp=discord.utils.utcnow(),
+    )
     embed_footer = f"\nRanks calculated using the formula: {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}"
     embed_footer += "\n!disableleaderboard to hide yourself from the leaderboard"
+    embed_footer += "\nLast Updated"
     embed.set_footer(text=embed_footer)
     session: SQLAlchemySession
     with Session() as session:
@@ -725,9 +730,9 @@ async def print_leaderboard():
                             SIGMA_LOWER_UNICODE,
                         ],
                         body=cols,
-                        style=PresetStyle.thin_compact_rounded,
+                        style=PresetStyle.plain,
                         alignments=[
-                            Alignment.DECIMAL,
+                            Alignment.LEFT,
                             Alignment.LEFT,
                             Alignment.DECIMAL,
                             Alignment.DECIMAL,
@@ -756,18 +761,11 @@ async def print_leaderboard():
                         leaderboard_channel.last_message_id
                     )
                 if last_message:
-                    embed = Embed(
-                        description=output,
-                        colour=Colour.blue(),
-                        timestamp=discord.utils.utcnow(),
-                    )
-                    embed.set_footer(text="Last updated")
                     await last_message.edit(embeds=embeds)
                     return
             except Exception as e:
                 _log.exception("[print_leaderboard] exception")
-            finally:
-                await leaderboard_channel.send(embeds=embeds)
+            await leaderboard_channel.send(embeds=embeds)
 
 
 def code_block(content: str, language: str = "autohotkey") -> str:
