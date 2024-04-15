@@ -452,7 +452,7 @@ async def queue_waitlist_task():
                     channel.delete() for channel in ipg_discord_channels
                 ]
                 try:
-                    if config.VOICE_MOVE_LOBBY:
+                    if config.ENABLE_VOICE_MOVE and config.VOICE_MOVE_LOBBY:
                         await move_game_players_lobby(queue_waitlist.in_progress_game_id, guild)
                     await asyncio.gather(*channel_delete_coroutines)
                 except:

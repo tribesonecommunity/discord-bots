@@ -911,12 +911,20 @@ async def move_game_players_lobby(
 ):
     session: sqlalchemy.orm.Session
     with Session() as session:
-        in_progress_game = (
+        in_progress_game: InProgressGame | None = (
             session.query(InProgressGame)
             .filter(InProgressGame.id == game_id)
             .first()
         )
         if not in_progress_game:
+            return
+        
+        queue: Queue | None = (
+            session.query(Queue)
+            .filter(Queue.id == in_progress_game.queue_id)
+            .first()
+        )
+        if not queue or not queue.move_enabled:
             return
         
         voice_lobby: discord.abc.GuildChannel | None = guild.get_channel(
