@@ -12,7 +12,7 @@
 FROM debian:stable-slim as debinstall
 SHELL [ "/bin/bash", "-c" ]
 RUN apt-get update
-RUN --mount=type=cache,uid=0,gid=0,target=/var/cache/apt apt-get --yes install python3 python3-venv python3-pip python3-dev libpq-dev libjpeg-dev libffi-dev g++ make
+RUN --mount=type=cache,uid=0,gid=0,target=/var/cache/apt apt-get --yes install python3 python3-venv python3-pip python3-dev libpq-dev libjpeg-dev libffi-dev g++ make vim
 
 FROM debinstall as usersetup
 RUN groupadd -g 999 tribesbot
