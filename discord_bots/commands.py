@@ -29,6 +29,7 @@ from discord import (
     Message,
     TextChannel,
     VoiceChannel,
+    VoiceState
 )
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -45,7 +46,7 @@ from table2ascii import Alignment, PresetStyle, table2ascii
 from trueskill import Rating
 
 import discord_bots.config as config
-from discord_bots.checks import is_admin
+from discord_bots.checks import is_admin, is_admin_app_command
 from discord_bots.utils import (
     MU_LOWER_UNICODE,
     SIGMA_LOWER_UNICODE,
@@ -2220,17 +2221,19 @@ async def trueskill(ctx: Context):
     )
 
 
-async def _movegameplayers(game_id: str, ctx: Context = None, guild: Guild = None):
+async def _movegameplayers(
+    game_id: str, interaction: Interaction | None = None, guild: Guild | None = None
+):
     session: sqlalchemy.orm.Session
     with Session() as session:
         message: Message | None = None
-        if ctx:
-            message = ctx.message
-            guild = ctx.guild
+        if interaction:
+            message = interaction.message
+            guild = interaction.guild
         elif guild:
             message = None
         else:
-            raise Exception("No Context or Guild on _movegameplayers")
+            raise Exception("No Interaction or Guild on _movegameplayers")
 
         in_progress_game = (
             session.query(InProgressGame)
@@ -2287,33 +2290,39 @@ async def _movegameplayers(game_id: str, ctx: Context = None, guild: Guild = Non
             if player.move_enabled and be_voice_channel:
                 member: Member | None = guild.get_member(player.id)
                 if member:
-                    try:
-                        coroutines.append(
-                            member.move_to(
-                                be_voice_channel,
-                                reason=f"Game {game_id} started",
-                            )
-                        )
-                    except Exception:
-                        _log.exception(
-                            f"Caught exception moving player to voice channel"
-                        )
+                    member_voice: VoiceState | None = member.voice
+                    if member_voice:
+                        if member_voice.channel:
+                            try:
+                                coroutines.append(
+                                    member.move_to(
+                                        be_voice_channel,
+                                        reason=f"Game {game_id} started",
+                                    )
+                                )
+                            except Exception:
+                                _log.exception(
+                                    f"Caught exception moving player to voice channel"
+                                )
 
         for player in team1_players:
             if player.move_enabled and ds_voice_channel:
                 member: Member | None = guild.get_member(player.id)
                 if member:
-                    try:
-                        coroutines.append(
-                            member.move_to(
-                                ds_voice_channel,
-                                reason=f"Game {game_id} started",
-                            )
-                        )
-                    except Exception:
-                        _log.exception(
-                            f"Caught exception moving player to voice channel"
-                        )
+                    member_voice: VoiceState | None = member.voice
+                    if member_voice:
+                        if member_voice.channel:
+                            try:
+                                coroutines.append(
+                                    member.move_to(
+                                        ds_voice_channel,
+                                        reason=f"Game {game_id} started",
+                                    )
+                                )
+                            except Exception:
+                                _log.exception(
+                                    f"Caught exception moving player to voice channel"
+                                )
     # use gather to run the moves concurrently in the event loop
     # note: a member has to be in a voice channel already for them to be moved, else it throws an exception
     results = await asyncio.gather(*coroutines, return_exceptions=True)
@@ -2323,28 +2332,43 @@ async def _movegameplayers(game_id: str, ctx: Context = None, guild: Guild = Non
             _log.exception("Ignored exception when moving a gameplayer:")
 
 
-@bot.command(usage="<game_id>")
+@bot.tree.command(
+    name="movegameplayers",
+    description="Moves players in an in progress game to their respective voice channels",
+)
 @commands.check(is_admin)
-async def movegameplayers(ctx: Context, game_id: str):
+async def movegameplayers(self, interaction: Interaction, game_id: str):
     """
     Move players in a given in-progress game to the correct voice channels
     """
-    message = ctx.message
+    assert interaction.guild
 
     if not config.ENABLE_VOICE_MOVE:
-        await send_message(
-            message.channel,
-            embed_description="Voice movement is disabled",
-            colour=Colour.red(),
+        await interaction.response.send_message(
+            embed=Embed(
+                description="Voice movement is disabled",
+                colour=Colour.red(),
+            ),
+            ephemeral=True,
         )
         return
     else:
-        await _movegameplayers(game_id, ctx)
-        await send_message(
-            message.channel,
-            embed_description=f"Players moved to voice channels for game {game_id}",
-            colour=Colour.green(),
-        )
+        try:
+            await _movegameplayers(game_id, interaction)
+        except Exception:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Failed to move players to voice channels for game {game_id}",
+                    colour=Colour.red(),
+                ),
+            )
+        else:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Players moved to voice channels for game {game_id}",
+                    colour=Colour.blue(),
+                ),
+            )
 
 
 @bot.command()
