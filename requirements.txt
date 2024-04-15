@@ -39,7 +39,7 @@ outcome==1.1.0
 packaging==21.3
 pandas==2.2.0
 pathspec==0.9.0
-Pillow==9.0.1
+Pillow==10.3.0
 platformdirs==2.4.0
 pluggy==1.0.0
 pre-commit==2.16.0
