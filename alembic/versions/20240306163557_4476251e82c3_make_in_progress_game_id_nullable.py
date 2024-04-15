@@ -1,7 +1,4 @@
-"""make in_progress-game_id nullable for:
-in_progress_game_channel,
-ecnonomy_transaction
-remove from queue_waitlist
+"""make in_progress-game_id nullable for in_progress_game_channel, ecnonomy_transaction, remove from queue_waitlist
 
 Revision ID: 4476251e82c3
 Revises: 57702a59e6e5
