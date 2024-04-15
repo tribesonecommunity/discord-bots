@@ -1,8 +1,8 @@
 """create schedule, schedule_player, and discord_channel tables
 
-Revision ID: 8e8351c48a6e
+Revision ID: 677c768bdcb5
 Revises: d4bd406cc25c
-Create Date: 2024-04-09 13:08:19.663138
+Create Date: 2024-04-14 12:41:47.129101
 
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "8e8351c48a6e"
+revision = "677c768bdcb5"
 down_revision = "d4bd406cc25c"
 branch_labels = None
 depends_on = None
@@ -39,7 +39,7 @@ def upgrade():
     op.create_table(
         "schedule_player",
         sa.Column("schedule_id", sa.String(), nullable=False),
-        sa.Column("player_id", sa.String(), nullable=False),
+        sa.Column("player_id", sa.BigInteger(), nullable=False),
         sa.Column("id", sa.String(), nullable=False),
         sa.ForeignKeyConstraint(
             ["player_id"],
