@@ -32,6 +32,7 @@ from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from sqlalchemy import func
 from sqlalchemy.orm.session import Session as SQLAlchemySession
+from table2ascii import Alignment, Merge, PresetStyle, table2ascii
 from trueskill import Rating, global_env, rate
 
 import discord_bots.config as config
@@ -676,30 +677,69 @@ async def send_message(
         _log.exception("[send_message] Ignoring exception:")
     return message
 
-
 async def print_leaderboard():
     output = "**Leaderboard**"
+    embeds = []
+    embed = discord.Embed(title="Leaderboard", color=discord.Color.blue())
+    embed_footer = f"\nRanks calculated using the formula: {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}"
+    embed_footer += "\n!disableleaderboard to hide yourself from the leaderboard"
+    embed.set_footer(text=embed_footer)
     session: SQLAlchemySession
     with Session() as session:
         categories: list[Category] = (
-            session.query(Category).filter(Category.is_rated == True).all()
+            session.query(Category)
+            .filter(Category.is_rated == True)
+            .order_by("name")
+            .all()
         )
         if len(categories) > 0:
-            for category in categories:
+            for i, category in enumerate(categories):
                 output += f"\n_{category.name}_"
-                top_10_pcts: list[PlayerCategoryTrueskill] = (
+                top_10_pcts: list[PlayerCategoryTrueskill] | None = (
                     session.query(PlayerCategoryTrueskill)
                     .filter(PlayerCategoryTrueskill.category_id == category.id)
                     .order_by(PlayerCategoryTrueskill.rank.desc())
                     .limit(10)
+                    .all()
                 )
-                for i, pct in enumerate(top_10_pcts, 1):
-                    player: Player = (
-                        session.query(Player).filter(Player.id == pct.player_id).first()
+                if top_10_pcts:
+                    cols = []
+                    for i, pct in enumerate(top_10_pcts, 1):
+                        # TODO: merge this with the pct query
+                        player: Player | None = (
+                            session.query(Player)
+                            .filter(Player.id == pct.player_id)
+                            .first()
+                        )
+                        if player:
+                            col = [
+                                i,
+                                player.name,
+                                round(pct.rank, 1),
+                                round(pct.mu, 1),
+                                round(pct.sigma, 1),
+                            ]
+                            cols.append(col)
+                    table = table2ascii(
+                        header=[
+                            category.name,
+                            Merge.LEFT,
+                            "Rank",
+                            MU_LOWER_UNICODE,
+                            SIGMA_LOWER_UNICODE,
+                        ],
+                        body=cols,
+                        style=PresetStyle.thin_compact_rounded,
+                        alignments=[
+                            Alignment.DECIMAL,
+                            Alignment.LEFT,
+                            Alignment.DECIMAL,
+                            Alignment.DECIMAL,
+                            Alignment.DECIMAL,
+                        ],
                     )
-                    output += f"\n{i}. {round(pct.rank, 1)} - <@{player.id}> _(mu: {round(pct.mu, 1)}, sigma: {round(pct.sigma, 1)})_"
-            pass
-
+                    embed.add_field(name="", value=f"{code_block(table)}", inline=False)
+        embeds.append(embed)
         if config.ECONOMY_ENABLED:
             output += f"\n\n**{config.CURRENCY_NAME}**"
             top_10_player_currency: list[Player] = (
@@ -710,10 +750,6 @@ async def print_leaderboard():
             for i, player_currency in enumerate(top_10_player_currency, 1):
                 output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
 
-    output += "\n"
-    output += "\n(Ranks calculated using the formula: _mu - 3*sigma_)"
-    output += "\n(Leaderboard updates periodically)"
-    output += "\n(!disableleaderboard to hide yourself from the leaderboard)"
 
     if config.LEADERBOARD_CHANNEL:
         leaderboard_channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
@@ -730,14 +766,12 @@ async def print_leaderboard():
                         timestamp=discord.utils.utcnow(),
                     )
                     embed.set_footer(text="Last updated")
-                    await last_message.edit(embed=embed)
+                    await last_message.edit(embeds=embeds)
                     return
             except Exception as e:
                 _log.exception("[print_leaderboard] exception")
-            await send_message(
-                leaderboard_channel, embed_description=output, colour=Colour.blue()
-            )
-            return
+            finally:
+                await leaderboard_channel.send(embeds=embeds)
 
 
 def code_block(content: str, language: str = "autohotkey") -> str:

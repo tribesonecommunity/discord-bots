@@ -2692,15 +2692,6 @@ async def setgamecode(interaction: Interaction, code: str):
             )
             return
         ipg.code = code
-        ipg_players: list[InProgressGamePlayer] = (
-            session.query(InProgressGamePlayer)
-            .filter(
-                InProgressGamePlayer.in_progress_game_id == ipg.id,
-                InProgressGamePlayer.player_id
-                != interaction.user.id,  # don't send the code to the one who wants to send it out
-            )
-            .all()
-        )
         await interaction.response.defer(ephemeral=True)
         title: str = f"Lobby code for ({short_uuid(ipg.id)})"
         if ipg.channel_id and ipg.message_id:
@@ -2762,13 +2753,23 @@ async def setgamecode(interaction: Interaction, code: str):
             text=f"set by {interaction.user.display_name} ({interaction.user.name})"
         )
         coroutines = []
-        for ipg_player in ipg_players:
-            coroutines.append(
-                send_in_guild_message(
-                    interaction.guild, ipg_player.player_id, embed=embed
-                )
+        result = (
+            session.query(InProgressGamePlayer.player_id)
+            .filter(
+                InProgressGamePlayer.in_progress_game_id == ipg.id,
+                InProgressGamePlayer.player_id
+                != interaction.user.id,  # don't send the code to the one who wants to send it out
             )
-        if ipg_players:
+            .all()
+        )
+        ipg_player_ids: list[int] = (
+            [player_id[0] for player_id in result if player_id] if result else []
+        )
+        for player_id in ipg_player_ids:
+            coroutines.append(
+                send_in_guild_message(interaction.guild, player_id, embed=embed)
+            )
+        if ipg_player_ids:
             try:
                 await asyncio.gather(*coroutines)
             except:
@@ -3242,7 +3243,7 @@ def win_rate(wins, losses, ties):
 @bot.tree.command(
     name="stats", description="Privately displays your TrueSkill statistics"
 )
-async def stats(interaction: Interaction):
+async def stats(interaction: Interaction, category_name: Optional[str] | None):
     """
     Replies to the user with their TrueSkill statistics. Can be used both inside and out of a Guild
     """
@@ -3393,14 +3394,21 @@ async def stats(interaction: Interaction):
             f"{SIGMA_LOWER_UNICODE} (sigma) = the uncertainity of your Rating",
         )
         cols = []
+        conditions = []
+        conditions.append(PlayerCategoryTrueskill.player_id == player.id)
+        if category_name:
+            conditions.append(Category.name == category_name)
         player_category_trueskills: list[PlayerCategoryTrueskill] | None = (
             session.query(PlayerCategoryTrueskill)
-            .filter(PlayerCategoryTrueskill.player_id == player.id)
+            .join(Category)
+            .filter(*conditions)
+            .order_by(Category.name)
             .all()
         )
         # assume that if a guild uses categories, they will use them exclusively, i.e., no mixing categorized and uncategorized queues
         if player_category_trueskills:
-            for pct in player_category_trueskills:
+            num_pct = len(player_category_trueskills)
+            for i, pct in enumerate(player_category_trueskills):
                 category: Category | None = (
                     session.query(Category)
                     .filter(Category.id == pct.category_id)
@@ -3431,23 +3439,24 @@ async def stats(interaction: Interaction):
                 ]
                 cols = get_table_col(category_games)
                 table = table2ascii(
-                    header=["Last", "Win", "Loss", "Tie", "Sum", "%"],
+                    header=["Last", "W", "L", "T", "Total", "WR"],
                     body=cols,
                     first_col_heading=True,
-                    style=PresetStyle.minimalist,
+                    style=PresetStyle.thin_compact_rounded,
                     alignments=[
-                        Alignment.LEFT,
+                        Alignment.RIGHT,
                         Alignment.DECIMAL,
                         Alignment.DECIMAL,
                         Alignment.DECIMAL,
                         Alignment.DECIMAL,
-                        Alignment.DECIMAL,
+                        Alignment.RIGHT,
                     ],
                 )
                 description += code_block(table)
-                description += f"\n{trueskill_url}"
                 embed = Embed(title=title, description=description)
-                embed.set_footer(text=footer_text)
+                if i == (num_pct - 1):
+                    description += f"\n{trueskill_url}"
+                    embed.set_footer(text=footer_text)
                 embeds.append(embed)
         if not player_category_trueskills:
             # no categories defined, display their global trueskill stats
@@ -3488,6 +3497,34 @@ async def stats(interaction: Interaction):
             await interaction.response.send_message(embeds=embeds, ephemeral=True)
         except Exception:
             _log.exception(f"Caught exception trying to send stats message")
+
+
+@stats.autocomplete("category_name")
+async def stats_autocomplete(interaction: discord.Interaction, current: str):
+    choices = []
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        result = (
+            session.query(Category.name, PlayerCategoryTrueskill.player_id)
+            .join(PlayerCategoryTrueskill)
+            .filter(PlayerCategoryTrueskill.player_id == interaction.user.id)
+            .order_by(Category.name)
+            .limit(25)  # discord only supports up to 25 choices
+            .all()
+        )
+        _log.info(result)
+        category_names: list[str] = [r[0] for r in result] if result else []
+        _log.info(category_names)
+        for name in category_names:
+            if current in name:
+                choices.append(
+                    discord.app_commands.Choice(
+                        name=name,
+                        value=name,
+                    )
+                )
+    _log.info(choices)
+    return choices
 
 
 @bot.command()
