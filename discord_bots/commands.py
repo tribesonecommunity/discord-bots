@@ -1265,6 +1265,9 @@ async def autosub(ctx: Context, member: Member = None):
     assert message
     assert guild
 
+    if config.ADMIN_AUTOSUB and not await is_admin(ctx):
+            return
+
     player_in_game_id = member.id if member else message.author.id
     player_name = member.display_name if member else message.author.display_name
     ipg_player: InProgressGamePlayer | None = (
