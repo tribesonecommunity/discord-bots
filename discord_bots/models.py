@@ -868,6 +868,7 @@ class PlayerCategoryTrueskill:
     mu: float = field(metadata={"sa": Column(Float, nullable=False)})
     sigma: float = field(metadata={"sa": Column(Float, nullable=False)})
     rank: float = field(metadata={"sa": Column(Float, nullable=False)})
+    last_game_finished_at: datetime = field(metadata={"sa": Column(DateTime, nullable=True)})
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
