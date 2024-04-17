@@ -37,9 +37,11 @@ from .tasks import (
     queue_waitlist_task,
     schedule_task,
     vote_passed_waitlist_task,
+    apply_sigma_decay,
 )
 
 _log = logging.getLogger(__name__)
+
 
 async def create_seed_admins():
     with Session() as session:
@@ -82,7 +84,9 @@ async def on_app_command_error(
     else:
         # fallback case that responds to the interaction, since there always needs to be a response
         await interaction.response.send_message(
-            embed=Embed(description="Oops! Something went wrong ☹️", color=Colour.red()),
+            embed=Embed(
+                description="Oops! Something went wrong ☹️", color=Colour.red()
+            ),
             ephemeral=True,
         )
 
@@ -268,6 +272,8 @@ async def setup():
     vote_passed_waitlist_task.start()
     if config.ECONOMY_ENABLED:
         prediction_task.start()
+    if config.ENABLE_TRUESKILL_SIGMA_DECAY:
+        apply_sigma_decay.start()
 
 
 async def main():

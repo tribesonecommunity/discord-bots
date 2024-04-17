@@ -52,6 +52,7 @@ from .queues import AddPlayerQueueMessage, add_player_queue, waitlist_messages
 
 _log = logging.getLogger(__name__)
 
+
 async def add_players(session: sqlalchemy.orm.Session):
     """
     Handle adding players in a task that pulls messages off of a queue.
@@ -190,6 +191,7 @@ async def add_players(session: sqlalchemy.orm.Session):
                 guild_id=message.guild.id,
             )
 
+
 @tasks.loop(seconds=1)
 async def add_player_task():
     session: sqlalchemy.orm.Session
@@ -291,12 +293,14 @@ async def afk_timer_task():
                 ).delete()
                 session.commit()
 
+
 @tasks.loop(seconds=1800)
 async def leaderboard_task():
     """
     Periodically print the leaderboard
     """
     await print_leaderboard()
+
 
 @tasks.loop(minutes=1)
 async def map_rotation_task():
@@ -326,6 +330,7 @@ async def map_rotation_task():
                 if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
                     await update_next_map_to_map_after_next(rotation.id, True)
 
+
 @tasks.loop(seconds=5)
 async def prediction_task():
     """
@@ -334,10 +339,10 @@ async def prediction_task():
     """
     session = Session()
     in_progress_games: list[InProgressGame] | None = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.prediction_open == True)
-            .all()
-        )
+        session.query(InProgressGame)
+        .filter(InProgressGame.prediction_open == True)
+        .all()
+    )
     try:
         await EconomyCommands.update_embeds(None, in_progress_games)
     except Exception as e:
@@ -509,6 +514,7 @@ async def schedule_task():
     for n in range(7):
         await ScheduleUtils.rebuild_embed(bot.guilds[0], n)
 
+
 @schedule_task.before_loop
 async def delay_schedule_task():
     """
@@ -602,4 +608,32 @@ async def vote_passed_waitlist_task():
             VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id
         ).delete()
         session.delete(vpw)
+        session.commit()
+
+
+@tasks.loop(hours=24)
+async def apply_sigma_decay():
+    if not config.ENABLE_TRUESKILL_SIGMA_DECAY:
+        return
+    sigma_decay_cutoff = datetime.now(timezone.utc) - timedelta(
+        days=config.TRUESKILL_SIGMA_DECAY_GRACE_DAYS
+    )
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        # Find all player trueskill values with a last played game older than the decay grace period
+        player_category_trueskills = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(
+                sqlalchemy.and_(
+                    PlayerCategoryTrueskill.last_game_finished_at.is_not(None),
+                    PlayerCategoryTrueskill.last_game_finished_at < sigma_decay_cutoff,
+                )
+            )
+            .all()
+        )
+        for pct in player_category_trueskills:
+            pct.sigma = min(
+                pct.sigma + config.TRUESKILL_SIGMA_DECAY_DELTA,
+                config.DEFAULT_TRUESKILL_SIGMA,
+            )
         session.commit()
