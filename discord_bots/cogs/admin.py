@@ -104,10 +104,10 @@ class AdminCommands(BaseCog):
                         description=f"Could not find role: {role.name}",
                         colour=Colour.blue(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
-            
+
             session: SQLAlchemySession
             with Session() as session:
                 admin_role: AdminRole | None = (
@@ -118,17 +118,16 @@ class AdminCommands(BaseCog):
                 if admin_role:
                     await interaction.response.send_message(
                         embed=Embed(
-                            description="Role is already an admin",
-                            colour=Colour.blue()
+                            description="Role is already an admin", colour=Colour.blue()
                         ),
-                        ephemeral=True
+                        ephemeral=True,
                     )
                 else:
                     session.add(AdminRole(role.id))
                     session.commit()
                     await interaction.response.send_message(
                         embed=Embed(
-                            description=f"Added admin role: {role.name}", 
+                            description=f"Added admin role: {role.name}",
                             colour=Colour.green(),
                         )
                     )
@@ -324,7 +323,7 @@ class AdminCommands(BaseCog):
                 description="Check the logs",
                 colour=Colour.blue(),
             ),
-            ephemeral=True
+            ephemeral=True,
         )
 
     @group.command(name="listdbbackups", description="List database backups")
@@ -401,10 +400,10 @@ class AdminCommands(BaseCog):
                         description=f"Could not find role: {role.name}",
                         colour=Colour.blue(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
-            
+
             session: SQLAlchemySession
             with Session() as session:
                 admin_role = (
@@ -427,7 +426,7 @@ class AdminCommands(BaseCog):
                             description=f"Could not find admin role: {role.name}",
                             colour=Colour.blue(),
                         ),
-                        ephemeral=True
+                        ephemeral=True,
                     )
 
     @group.command(name="removecommand", description="Remove a custom command")
@@ -435,14 +434,16 @@ class AdminCommands(BaseCog):
     async def removecommand(self, interaction: Interaction, name: str):
         session: SQLAlchemySession
         with Session() as session:
-            exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
+            exists = (
+                session.query(CustomCommand).filter(CustomCommand.name == name).first()
+            )
             if not exists:
                 await interaction.response.send_message(
                     embed=Embed(
                         description="Could not find command with that name",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True                    
+                    ephemeral=True,
                 )
                 return
 
@@ -459,13 +460,15 @@ class AdminCommands(BaseCog):
     @group.command(name="removedbbackup", description="Remove a database backup")
     @app_commands.check(is_admin_app_command)
     async def removedbbackup(self, interaction: Interaction, db_filename: str):
-        if not db_filename.startswith(config.DB_NAME) or not db_filename.endswith(".db"):
+        if not db_filename.startswith(config.DB_NAME) or not db_filename.endswith(
+            ".db"
+        ):
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"Filename must be of the format {config.DB_NAME}_{{date}}.db",
                     colour=Colour.red(),
                 ),
-                ephemeral=True                
+                ephemeral=True,
             )
             return
 
@@ -478,7 +481,7 @@ class AdminCommands(BaseCog):
                     description=f"Failed to remove DB Backup {db_filename}",
                     colour=Colour.red(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
         else:
             await interaction.response.send_message(
@@ -498,7 +501,7 @@ class AdminCommands(BaseCog):
             )
         )
         os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
-    
+
     @group.command(name="unban", description="Unban player")
     @app_commands.check(is_admin_app_command)
     async def unban(self, interaction: Interaction, member: Member):
@@ -511,7 +514,7 @@ class AdminCommands(BaseCog):
                         description=f"{escape_markdown(member.name)} is not banned",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True                    
+                    ephemeral=True,
                 )
                 return
 
