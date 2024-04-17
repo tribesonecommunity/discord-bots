@@ -894,44 +894,43 @@ async def move_game_players(
                 elif discord_channel.name == in_progress_game.team1_name:
                     ds_voice_channel = discord_channel
 
+        # TODO: combine for loops into one for all players
         coroutines = []
         for player in team0_players:
             if player.move_enabled and be_voice_channel:
                 member: Member | None = guild.get_member(player.id)
                 if member:
                     member_voice: VoiceState | None = member.voice
-                    if member_voice:
-                        if member_voice.channel:
-                            try:
-                                coroutines.append(
-                                    member.move_to(
-                                        be_voice_channel,
-                                        reason=f"Game {game_id} started",
-                                    )
+                    if member_voice and member_voice.channel:
+                        try:
+                            coroutines.append(
+                                member.move_to(
+                                    be_voice_channel,
+                                    reason=f"Game {game_id} started",
                                 )
-                            except Exception:
-                                _log.exception(
-                                    f"Caught exception moving player to voice channel"
-                                )
+                            )
+                        except Exception:
+                            _log.exception(
+                                f"Caught exception moving player to voice channel"
+                            )
 
         for player in team1_players:
             if player.move_enabled and ds_voice_channel:
                 member: Member | None = guild.get_member(player.id)
                 if member:
                     member_voice: VoiceState | None = member.voice
-                    if member_voice:
-                        if member_voice.channel:
-                            try:
-                                coroutines.append(
-                                    member.move_to(
-                                        ds_voice_channel,
-                                        reason=f"Game {game_id} started",
-                                    )
+                    if member_voice and member_voice.channel:
+                        try:
+                            coroutines.append(
+                                member.move_to(
+                                    ds_voice_channel,
+                                    reason=f"Game {game_id} started",
                                 )
-                            except Exception:
-                                _log.exception(
-                                    f"Caught exception moving player to voice channel"
-                                )
+                            )
+                        except Exception:
+                            _log.exception(
+                                f"Caught exception moving player to voice channel"
+                            )
     # use gather to run the moves concurrently in the event loop
     # note: a member has to be in a voice channel already for them to be moved, else it throws an exception
     results = await asyncio.gather(*coroutines, return_exceptions=True)
@@ -981,7 +980,7 @@ async def move_game_players_lobby(
             )
             if isinstance(discord_channel, VoiceChannel):
                 members: list[Member] = discord_channel.members
-                if len(members) > 0:
+                if members:
                     for member in members:
                         try:
                             coroutines.append(

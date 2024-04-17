@@ -2226,6 +2226,7 @@ async def trueskill(ctx: Context):
     name="movegameplayers",
     description="Moves players in an in progress game to their respective voice channels",
 )
+@commands.guild_only()
 @commands.check(is_admin)
 async def movegameplayers(interaction: Interaction, game_id: str):
     """
