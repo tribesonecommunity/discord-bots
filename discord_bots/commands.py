@@ -1190,68 +1190,6 @@ async def add(ctx: Context, *args):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def addadmin(ctx: Context, member: Member):
-    message = ctx.message
-    session = ctx.session
-    player: Player | None = session.query(Player).filter(Player.id == member.id).first()
-    if not player:
-        session.add(
-            Player(
-                id=member.id,
-                name=member.name,
-                is_admin=True,
-            )
-        )
-        await send_message(
-            message.channel,
-            embed_description=f"{escape_markdown(member.name)} added to admins",
-            colour=Colour.green(),
-        )
-        session.commit()
-    else:
-        if player.is_admin:
-            await send_message(
-                message.channel,
-                embed_description=f"{escape_markdown(player.name)} is already an admin",
-                colour=Colour.red(),
-            )
-        else:
-            player.is_admin = True
-            session.commit()
-            await send_message(
-                message.channel,
-                embed_description=f"{escape_markdown(player.name)} added to admins",
-                colour=Colour.green(),
-            )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def addadminrole(ctx: Context, role_name: str):
-    message = ctx.message
-    if message.guild:
-        session = ctx.session
-        role_name_to_role_id: dict[str, int] = {
-            role.name.lower(): role.id for role in message.guild.roles
-        }
-        if role_name.lower() not in role_name_to_role_id:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find role: {role_name}",
-                colour=Colour.red(),
-            )
-            return
-        session.add(AdminRole(role_name_to_role_id[role_name.lower()]))
-        await send_message(
-            message.channel,
-            embed_description=f"Added admin role: {role_name}",
-            colour=Colour.green(),
-        )
-        session.commit()
-
-
-@bot.command()
 async def autosub(ctx: Context, member: Member = None):
     """
     Picks a person to sub at random
@@ -1471,45 +1409,6 @@ async def autosub(ctx: Context, member: Member = None):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def ban(ctx: Context, member: Member):
-    """TODO: remove player from queues"""
-    message = ctx.message
-    session = ctx.session
-    players = session.query(Player).filter(Player.id == member.id).all()
-    if len(players) == 0:
-        session.add(
-            Player(
-                id=member.id,
-                name=member.name,
-                is_banned=True,
-            )
-        )
-        await send_message(
-            message.channel,
-            embed_description=f"{escape_markdown(member.name)} banned",
-            colour=Colour.green(),
-        )
-        session.commit()
-    else:
-        player = players[0]
-        if player.is_banned:
-            await send_message(
-                message.channel,
-                embed_description=f"{escape_markdown(player.name)} is already banned",
-                colour=Colour.red(),
-            )
-        else:
-            player.is_banned = True
-            session.commit()
-            await send_message(
-                message.channel,
-                embed_description=f"{escape_markdown(player.name)} banned",
-                colour=Colour.green(),
-            )
-
-
-@bot.command()
 async def coinflip(ctx: Context):
     message = ctx.message
     result = "HEADS" if floor(random() * 2) == 0 else "TAILS"
@@ -1665,80 +1564,6 @@ async def commendstats(ctx: Context):
                 )
             except Exception:
                 pass
-
-
-@bot.tree.command(description="Initially configure the bot for this server")
-async def configure(interaction: Interaction):
-    session: sqlalchemy.orm.Session
-    with Session() as session:
-        guild = (
-            session.query(DiscordGuild)
-            .filter(DiscordGuild.discord_id == interaction.guild_id)
-            .first()
-        )
-        if guild:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Server already configured",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-        else:
-            guild = DiscordGuild(interaction.guild_id, interaction.guild.name)
-            session.add(guild)
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Server configured successfully!",
-                    colour=Colour.green(),
-                ),
-                ephemeral=True,
-            )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def createcommand(ctx: Context, name: str, *, output: str):
-    message = ctx.message
-    session: str = ctx.session
-    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
-    if exists is not None:
-        await send_message(
-            message.channel,
-            embed_description="A command with that name already exists",
-            colour=Colour.red(),
-        )
-        return
-
-    session.add(CustomCommand(name, output))
-    session.commit()
-
-    await send_message(
-        message.channel,
-        embed_description=f"Command `{name}` added",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def createdbbackup(ctx: Context):
-    message = ctx.message
-    date_string = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    copyfile(f"{config.DB_NAME}.db", f"{config.DB_NAME}_{date_string}.db")
-    await send_message(
-        message.channel,
-        embed_description=f"Backup made to {config.DB_NAME}_{date_string}.db",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def restart(ctx):
-    await ctx.send("Restarting bot... ")
-    os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
 
 
 @bot.command()
@@ -1984,29 +1809,6 @@ async def disablestats(ctx: Context):
     )
 
 
-@bot.command(usage="<command_name> <output>")
-async def editcommand(ctx: Context, name: str, *, output: str):
-    message = ctx.message
-    session = ctx.session
-    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
-    if exists is None:
-        await send_message(
-            message.channel,
-            embed_description="Could not find a command with that name",
-            colour=Colour.red(),
-        )
-        return
-
-    exists.output = output
-    session.commit()
-
-    await send_message(
-        message.channel,
-        embed_description=f"Command `{name}` updated",
-        colour=Colour.green(),
-    )
-
-
 @bot.command(usage="<game_id> <tie|be|ds>")
 @commands.check(is_admin)
 async def editgamewinner(ctx: Context, game_id: str, outcome: str):
@@ -2083,78 +1885,6 @@ async def enablestats(ctx: Context):
 @commands.check(is_admin)
 async def imagetest2(ctx: Context):
     await upload_stats_screenshot_imgkit_channel(ctx.channel, False)
-
-
-@bot.command()
-async def listadmins(ctx: Context):
-    message = ctx.message
-    output = "Admins:"
-    player: Player
-    for player in Session().query(Player).filter(Player.is_admin == True).all():
-        output += f"\n- {escape_markdown(player.name)}"
-
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
-async def listadminroles(ctx: Context):
-    message = ctx.message
-    output = "Admin roles:"
-    if not message.guild:
-        return
-
-    admin_role_ids = list(map(lambda x: x.role_id, Session().query(AdminRole).all()))
-    admin_role_names: list[str] = []
-
-    role_id_to_role_name: dict[int, str] = {
-        role.id: role.name for role in message.guild.roles
-    }
-
-    for admin_role_id in admin_role_ids:
-        if admin_role_id in role_id_to_role_name:
-            admin_role_names.append(role_id_to_role_name[admin_role_id])
-    output += f"\n{', '.join(admin_role_names)}"
-
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
-async def listbans(ctx: Context):
-    message = ctx.message
-    output = "Bans:"
-    session: sqlalchemy.orm.Session
-    with Session() as session:
-        for player in session.query(Player).filter(Player.is_banned == True):
-            output += f"\n- {escape_markdown(player.name)}"
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
-@commands.check(is_admin)
-async def listchannels(ctx: Context):
-    for channel in bot.get_all_channels():
-        _log.info(channel.id, channel)  # DEBUG, TRACE?
-
-    await send_message(
-        ctx.message.channel,
-        embed_description="Check the logs",
-        colour=Colour.blue(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def listdbbackups(ctx: Context):
-    message = ctx.message
-    output = "Backups:"
-    for filename in glob(f"{config.DB_NAME}_*.db"):
-        output += f"\n- {filename}"
-
-    await send_message(
-        message.channel,
-        embed_description=output,
-        colour=Colour.blue(),
-    )
 
 
 @bot.command()
@@ -2485,91 +2215,6 @@ async def pug(ctx: Context):
 
 @bot.command()
 @commands.check(is_admin)
-async def removeadmin(ctx: Context, member: Member):
-    message = ctx.message
-    session = ctx.session
-    players = session.query(Player).filter(Player.id == member.id).all()
-    if len(players) == 0 or not players[0].is_admin:
-        await send_message(
-            message.channel,
-            embed_description=f"{escape_markdown(member.name)} is not an admin",
-            colour=Colour.red(),
-        )
-        return
-
-    players[0].is_admin = False
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"{escape_markdown(member.name)} removed from admins",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def removeadminrole(ctx: Context, role_name: str):
-    message = ctx.message
-    if message.guild:
-        session = ctx.session
-        role_name_to_role_id: dict[str, int] = {
-            role.name.lower(): role.id for role in message.guild.roles
-        }
-        if role_name.lower() not in role_name_to_role_id:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find role: {role_name}",
-                colour=Colour.red(),
-            )
-            return
-        admin_role = (
-            session.query(AdminRole)
-            .filter(AdminRole.role_id == role_name_to_role_id[role_name.lower()])
-            .first()
-        )
-        if admin_role:
-            session.delete(admin_role)
-            await send_message(
-                message.channel,
-                embed_description=f"Removed admin role: {role_name}",
-                colour=Colour.green(),
-            )
-            session.commit()
-        else:
-            await send_message(
-                message.channel,
-                embed_description=f"Could not find admin role: {role_name}",
-                colour=Colour.red(),
-            )
-            return
-
-
-@bot.command()
-@commands.check(is_admin)
-async def removecommand(ctx: Context, name: str):
-    message = ctx.message
-    session = ctx.session
-    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
-    if not exists:
-        await send_message(
-            message.channel,
-            embed_description="Could not find command with that name",
-            colour=Colour.red(),
-        )
-        return
-
-    session.delete(exists)
-    session.commit()
-
-    await send_message(
-        message.channel,
-        embed_description=f"Command `{name}` removed",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
 async def removenotifications(ctx: Context):
     message = ctx.message
     session = ctx.session
@@ -2580,26 +2225,6 @@ async def removenotifications(ctx: Context):
     await send_message(
         message.channel,
         embed_description=f"All queue notifications removed",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def removedbbackup(ctx: Context, db_filename: str):
-    message = ctx.message
-    if not db_filename.startswith(config.DB_NAME) or not db_filename.endswith(".db"):
-        await send_message(
-            message.channel,
-            embed_description=f"Filename must be of the format {config.DB_NAME}_{{date}}.db",
-            colour=Colour.red(),
-        )
-        return
-
-    remove(db_filename)
-    await send_message(
-        message.channel,
-        embed_description=f"DB backup {db_filename} removed",
         colour=Colour.green(),
     )
 
@@ -3972,29 +3597,6 @@ async def sub(ctx: Context, member: Member):
     except:
         _log.exception("[autosub] Ignoring exception in asyncio.gather:")
     session.commit()
-
-
-@bot.command()
-@commands.check(is_admin)
-async def unban(ctx: Context, member: Member):
-    message = ctx.message
-    session = ctx.session
-    players = session.query(Player).filter(Player.id == member.id).all()
-    if len(players) == 0 or not players[0].is_banned:
-        await send_message(
-            message.channel,
-            embed_description=f"{escape_markdown(member.name)} is not banned",
-            colour=Colour.red(),
-        )
-        return
-
-    players[0].is_banned = False
-    session.commit()
-    await send_message(
-        message.channel,
-        embed_description=f"{escape_markdown(member.name)} unbanned",
-        colour=Colour.green(),
-    )
 
 
 @bot.command()

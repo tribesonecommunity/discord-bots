@@ -9,6 +9,7 @@ from discord.app_commands import AppCommandError, errors
 from discord.ext.commands import CommandError, Context, UserInputError
 
 import discord_bots.config as config
+from discord_bots.cogs.admin import AdminCommands
 from discord_bots.cogs.categories import CategoryCommands
 from discord_bots.cogs.economy import EconomyCommands
 from discord_bots.cogs.in_progress_game import InProgressGameCog
@@ -249,6 +250,7 @@ async def after_invoke(context: Context):
 
 
 async def setup():
+    await bot.add_cog(AdminCommands(bot))
     await bot.add_cog(CategoryCommands(bot))
     await bot.add_cog(RaffleCommands(bot))
     await bot.add_cog(RotationCommands(bot))
