@@ -169,4 +169,5 @@ STARTING_CURRENCY: int = _to_int(key="STARTING_CURRENCY", default=100)
 PREDICTION_TIMEOUT: int = _to_int(key="PREDICTION_TIMEOUT", default=300)
 CURRENCY_AWARD: int = _to_int(key="CURRENCY_AWARD", default=25)
 GAME_HISTORY_CHANNEL: int = _to_int(key="GAME_HISTORY_CHANNEL", required=True)
+ADMIN_AUTOSUB: bool = _to_bool(key="ADMIN_AUTOSUB", default=False)
 # TODO grouping here and in docs
