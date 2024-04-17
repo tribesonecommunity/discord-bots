@@ -611,7 +611,7 @@ async def vote_passed_waitlist_task():
         session.commit()
 
 
-@tasks.loop(hours=24)
+@tasks.loop(time=config.TRUESKILL_SIGMA_DECAY_JOB_SCHEDULED_TIME)
 async def apply_sigma_decay():
     if not config.ENABLE_TRUESKILL_SIGMA_DECAY:
         return
