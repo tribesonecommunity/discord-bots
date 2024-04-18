@@ -110,11 +110,11 @@ def _to_bool(
 def _to_time(
     key: str, required: bool = False, default: datetime.time | None = None
 ) -> datetime.time | None:
+    global CONFIG_IS_VALID
     value = os.getenv(key)
     if value is None and default is not None:
         return default
     if required and value is None:
-        global CONFIG_IS_VALID
         CONFIG_IS_VALID = False
         _log.error(f"{key} must be specified correctly, was '{value}'")
         return None
@@ -123,7 +123,6 @@ def _to_time(
         return datetime.time.fromisoformat(value or "")
     except:
         if required:
-            global CONFIG_IS_VALID
             CONFIG_IS_VALID = False
             _log.error(f"{key} must be specified correctly, was '{value}'")
         return None
