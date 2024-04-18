@@ -3,26 +3,20 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from glob import glob
 from shutil import copyfile
 from sqlalchemy.orm.session import Session as SQLAlchemySession
-from typing import List, Literal, Optional, TYPE_CHECKING
 
 from discord import (
     app_commands,
     Colour,
     Embed,
-    Guild,
-    HTTPException,
     Interaction,
     Member,
-    Object,
     Role,
 )
-from discord.ext import commands
-from discord.ext.commands import Bot, Cog, Context, Greedy
-from discord.ui.item import Item
+from discord.ext.commands import Bot
 from discord.utils import escape_markdown
 
 import discord_bots.config as config
@@ -36,12 +30,6 @@ from discord_bots.models import (
     Player,
     Session,
 )
-from discord_bots.utils import send_message
-
-
-if TYPE_CHECKING:
-    from typing import Any, Type
-
 
 _log = logging.getLogger(__name__)
 
@@ -49,12 +37,12 @@ _log = logging.getLogger(__name__)
 class AdminCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
-        self.bot: Bot = bot
 
-    group = app_commands.Group(name="admin", description="Admin related commands;")
+    group = app_commands.Group(name="admin", description="Admin related commands")
 
-    @group.command(name="addadmin", description="Add an admin")
+    @group.command(name="add", description="Add an admin")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Player to be made admin")
     async def addadmin(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
         with Session() as session:
@@ -96,6 +84,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="addrole", description="Add an admin role")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(role="Role to be made admin")
     async def addadminrole(self, interaction: Interaction, role: Role):
         if interaction.guild:
             if not role in interaction.guild.roles:
@@ -134,6 +123,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="ban", description="Bans player from queues")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Player to be banned")
     async def ban(self, interaction: Interaction, member: Member):
         """TODO: remove player from queues"""
         session: SQLAlchemySession
@@ -216,6 +206,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="createcommand", description="Create a custom command")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(name="Name of new command", output="Command output")
     async def createcommand(self, interaction: Interaction, name: str, *, output: str):
         session: SQLAlchemySession
         with Session() as session:
@@ -256,6 +247,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="editcommand", description="Edit a custom command")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(name="Name of existing custom command", output="New command output")
     async def editcommand(self, interaction: Interaction, name: str, *, output: str):
         session: SQLAlchemySession
         with Session() as session:
@@ -308,9 +300,6 @@ class AdminCommands(BaseCog):
                 colour=Colour.blue(),
             )
         )
-        await send_message(
-            message.channel, embed_description=output, colour=Colour.blue()
-        )
 
     @group.command(name="listchannels", description="List bot channels")
     @app_commands.check(is_admin_app_command)
@@ -337,7 +326,8 @@ class AdminCommands(BaseCog):
             embed=Embed(
                 description=output,
                 colour=Colour.blue(),
-            )
+            ),
+            ephemeral=True
         )
 
     @group.command(name="listroles", description="List admin roles")
@@ -366,8 +356,9 @@ class AdminCommands(BaseCog):
             embed=Embed(description=output, colour=Colour.blue())
         )
 
-    @group.command(name="removeadmin", description="Remove an admin")
+    @group.command(name="remove", description="Remove an admin")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Player to be removed as admin")
     async def removeadmin(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
         with Session() as session:
@@ -392,6 +383,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="removerole", description="Remove an admin role")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(role="Role to be removed as admin")
     async def removeadminrole(self, interaction: Interaction, role: Role):
         if interaction.guild:
             if not role in interaction.guild.roles:
@@ -431,6 +423,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="removecommand", description="Remove a custom command")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(name="Name of existing custom command")
     async def removecommand(self, interaction: Interaction, name: str):
         session: SQLAlchemySession
         with Session() as session:
@@ -459,6 +452,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="removedbbackup", description="Remove a database backup")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(db_filename="Name of backup file")
     async def removedbbackup(self, interaction: Interaction, db_filename: str):
         if not db_filename.startswith(config.DB_NAME) or not db_filename.endswith(
             ".db"
@@ -504,6 +498,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="unban", description="Unban player")
     @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Player to be unbanned")
     async def unban(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
         with Session() as session:
