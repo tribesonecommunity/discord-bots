@@ -2,12 +2,7 @@ import logging
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord import (
-    app_commands,
-    Colour,
-    Embed,
-    Interaction
-)
+from discord import app_commands, Colour, Embed, Interaction
 from discord.ext.commands import Bot
 
 from discord_bots.checks import is_admin_app_command
@@ -35,14 +30,16 @@ class CategoryCommands(BaseCog):
         session: SQLAlchemySession
         with Session() as session:
             try:
-                queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
+                queue: Queue = (
+                    session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
+                )
             except NoResultFound:
                 await interaction.response.send_message(
                     embed=Embed(
                         description=f"Could not find queue **{queue_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
             else:
                 queue.category_id = None
@@ -52,7 +49,7 @@ class CategoryCommands(BaseCog):
                         description=f"Queue **{queue.name}** category cleared",
                         colour=Colour.green(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
 
     @group.command(name="create", description="Create a new category")
@@ -68,7 +65,7 @@ class CategoryCommands(BaseCog):
                     description=f"Category **{name}** added",
                     colour=Colour.green(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
 
     @group.command(name="list", description="List categories")
@@ -84,7 +81,7 @@ class CategoryCommands(BaseCog):
                         description="_-- No categories-- _",
                         colour=Colour.blue(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -106,10 +103,7 @@ class CategoryCommands(BaseCog):
                     output += f" - _Queues: {', '.join(queue_names)}_\n\n"
 
             await interaction.response.send_message(
-                embed=Embed(
-                    description=output,
-                    colour=Colour.blue()
-                )
+                embed=Embed(description=output, colour=Colour.blue())
             )
 
     @group.command(name="remove", description="Remove an existing category")
@@ -128,7 +122,7 @@ class CategoryCommands(BaseCog):
                         description=f"Could not find category **{name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
             session.query(PlayerCategoryTrueskill).filter(
@@ -145,7 +139,9 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="setname", description="Set category name")
     @app_commands.check(is_admin_app_command)
-    @app_commands.describe(old_category_name="Existing category", new_category_name="New category name")
+    @app_commands.describe(
+        old_category_name="Existing category", new_category_name="New category name"
+    )
     async def setcategoryname(
         self, interaction: Interaction, old_category_name: str, new_category_name: str
     ):
@@ -162,7 +158,9 @@ class CategoryCommands(BaseCog):
         with Session() as session:
             try:
                 category: Category = (
-                    session.query(Category).filter(Category.name.ilike(category_name)).one()
+                    session.query(Category)
+                    .filter(Category.name.ilike(category_name))
+                    .one()
                 )
             except NoResultFound:
                 await interaction.response.send_message(
@@ -170,7 +168,7 @@ class CategoryCommands(BaseCog):
                         description=f"Could not find category **{category_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
             else:
@@ -191,7 +189,9 @@ class CategoryCommands(BaseCog):
         with Session() as session:
             try:
                 category: Category = (
-                    session.query(Category).filter(Category.name.ilike(category_name)).one()
+                    session.query(Category)
+                    .filter(Category.name.ilike(category_name))
+                    .one()
                 )
             except NoResultFound:
                 await interaction.response.send_message(
@@ -199,7 +199,7 @@ class CategoryCommands(BaseCog):
                         description=f"Could not find category **{category_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
             else:
@@ -214,8 +214,12 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="setqueue", description="Set category on queue")
     @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Existing queue", category_name="Existing category")
-    async def setqueuecategory(self, interaction: Interaction, queue_name: str, category_name: str):
+    @app_commands.describe(
+        queue_name="Existing queue", category_name="Existing category"
+    )
+    async def setqueuecategory(
+        self, interaction: Interaction, queue_name: str, category_name: str
+    ):
         session: SQLAlchemySession
         with Session() as session:
             try:
@@ -226,13 +230,15 @@ class CategoryCommands(BaseCog):
                         description=f"Could not find queue **{queue_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
             try:
                 category = (
-                    session.query(Category).filter(Category.name.ilike(category_name)).one()
+                    session.query(Category)
+                    .filter(Category.name.ilike(category_name))
+                    .one()
                 )
             except NoResultFound:
                 await interaction.response.send_message(
@@ -240,7 +246,7 @@ class CategoryCommands(BaseCog):
                         description=f"Could not find category **{category_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
