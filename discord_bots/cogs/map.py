@@ -56,7 +56,7 @@ class MapCommands(BaseCog):
                         description=f"Error adding map {full_name} ({short_name}). Does it already exist?",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
             else:
                 await interaction.response.send_message(
@@ -68,8 +68,12 @@ class MapCommands(BaseCog):
 
     @group.command(name="changegame", description="Change the map for a game")
     @app_commands.check(is_admin_app_command)
-    @app_commands.describe(game_id="In progress game id", short_name="Short name of map")
-    async def changegamemap(self, interaction: Interaction, game_id: str, short_name: str):
+    @app_commands.describe(
+        game_id="In progress game id", short_name="Short name of map"
+    )
+    async def changegamemap(
+        self, interaction: Interaction, game_id: str, short_name: str
+    ):
         """
         Change the map for a game
         TODO: tests
@@ -97,7 +101,7 @@ class MapCommands(BaseCog):
                         description=f"Could not find game: **{game_id}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -110,7 +114,7 @@ class MapCommands(BaseCog):
                         description=f"Could not find map: **{short_name}**. Add to map pool first.",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -124,10 +128,15 @@ class MapCommands(BaseCog):
                 )
             )
 
-    @group.command(name="changequeue", description="Change the next map for a queue (note: affects all queues sharing that rotation)")
+    @group.command(
+        name="changequeue",
+        description="Change the next map for a queue (note: affects all queues sharing that rotation)",
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.describe(queue_name="Name of queue", short_name="Short name of map")
-    async def changequeuemap(self, interaction: Interaction, queue_name: str, short_name: str):
+    async def changequeuemap(
+        self, interaction: Interaction, queue_name: str, short_name: str
+    ):
         """
         Change the next map for a queue (note: affects all queues sharing that rotation)
         TODO: tests
@@ -144,7 +153,7 @@ class MapCommands(BaseCog):
                         description=f"Could not find queue: **{queue_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -157,7 +166,7 @@ class MapCommands(BaseCog):
                         description=f"Could not find map: **{short_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -170,7 +179,7 @@ class MapCommands(BaseCog):
                         description=f"**{queue.name}** has not been assigned a rotation.\nPlease assign one with `/setqueuerotation`.",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -187,7 +196,7 @@ class MapCommands(BaseCog):
                         description=f"The rotation for **{queue.name}** doesn't have that map.\nPlease add it to the **{rotation.name}** rotation with `/addrotationmap`.",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -361,7 +370,7 @@ class MapCommands(BaseCog):
                         description=f"Could not find map **{short_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -381,7 +390,7 @@ class MapCommands(BaseCog):
                         description=error,
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
             else:
                 session.delete(map)
@@ -389,36 +398,28 @@ class MapCommands(BaseCog):
                 await interaction.response.send_message(
                     embed=Embed(
                         description=f"**{map.full_name} ({map.short_name})** removed from maps",
-                        colour=Colour.green()
+                        colour=Colour.green(),
                     )
                 )
-    
+
     @changequeuemap.autocomplete("queue_name")
-    async def queue_autocomplete(
-        self, interaction: Interaction, current: str
-    ):
+    async def queue_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
         with Session() as session:
-            queues: list[Queue] | None = (
-                session.query(Queue).limit(25).all()
-            )
+            queues: list[Queue] | None = session.query(Queue).limit(25).all()
             if queues:
                 for queue in queues:
                     if current in queue.name:
                         result.append(
-                            app_commands.Choice(
-                                name=queue.name, value=queue.name
-                            )
+                            app_commands.Choice(name=queue.name, value=queue.name)
                         )
         return result
 
     @changequeuemap.autocomplete("short_name")
     @changegamemap.autocomplete("short_name")
     @removemap.autocomplete("short_name")
-    async def map_autocomplete(
-        self, interaction: Interaction, current: str
-    ):
+    async def map_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
         with Session() as session:
@@ -436,9 +437,7 @@ class MapCommands(BaseCog):
         return result
 
     @changegamemap.autocomplete("game_id")
-    async def game_autocomplete(
-        self, interaction: Interaction, current: str
-    ):
+    async def game_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
         with Session() as session:
@@ -449,9 +448,6 @@ class MapCommands(BaseCog):
                 short_game_id = short_uuid(ipg.id)
                 if current in short_game_id:
                     result.append(
-                        app_commands.Choice(
-                            name=short_game_id, value=short_game_id
-                        )
+                        app_commands.Choice(name=short_game_id, value=short_game_id)
                     )
         return result
-
