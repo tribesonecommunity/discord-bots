@@ -21,7 +21,7 @@ class CategoryCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    group = app_commands.Group(name="category", description="Category related commands")
+    group = app_commands.Group(name="category", description="Category commands")
 
     @group.command(name="clearqueue", description="Remove category from queue")
     @app_commands.check(is_admin_app_command)
@@ -258,3 +258,48 @@ class CategoryCommands(BaseCog):
                     colour=Colour.green(),
                 )
             )
+
+    @createcategory.autocomplete("name")
+    @removecategory.autocomplete("name")
+    @setcategoryname.autocomplete("old_category_name")
+    @setcategoryrated.autocomplete("category_name")
+    @setcategoryunrated.autocomplete("category_name")
+    @setqueuecategory.autocomplete("category_name")
+    async def category_autocomplete(
+        self, interaction: Interaction, current: str
+    ):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            categories: list[Category] | None = (
+                session.query(Category).order_by(Category.name).limit(25).all()
+            )  # discord only supports up to 25 choices
+            for category in categories:
+                if current in category.name:
+                    result.append(
+                        app_commands.Choice(
+                            name=category.name, value=category.name
+                        )
+                    )
+        return result
+    
+    @setqueuecategory.autocomplete("queue_name")
+    @clearqueuecategory.autocomplete("queue_name")
+    async def queue_autocomplete(
+        self, interaction: Interaction, current: str
+    ):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            queues: list[Queue] | None = (
+                session.query(Queue).limit(25).all()
+            )
+            if queues:
+                for queue in queues:
+                    if current in queue.name:
+                        result.append(
+                            app_commands.Choice(
+                                name=queue.name, value=queue.name
+                            )
+                        )
+        return result

@@ -38,7 +38,7 @@ class AdminCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    group = app_commands.Group(name="admin", description="Admin related commands")
+    group = app_commands.Group(name="admin", description="Admin commands")
 
     @group.command(name="add", description="Add an admin")
     @app_commands.check(is_admin_app_command)
@@ -274,7 +274,7 @@ class AdminCommands(BaseCog):
             )
         )
 
-    @group.command(name="listadmins", description="List admin users")
+    @group.command(name="list", description="List admin users")
     async def listadmins(self, interaction: Interaction):
         output = "Admins:"
         session: SQLAlchemySession
