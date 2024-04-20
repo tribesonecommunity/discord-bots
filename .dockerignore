@@ -2,6 +2,7 @@ build/
 discord_bots.egg-info/
 dist/
 .venv/
+.vscode/
 .env.example
 .env
 .gitignore
