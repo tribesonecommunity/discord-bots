@@ -278,156 +278,225 @@ class QueueCommands(BaseCog):
                 for queue_role in (
                     session.query(QueueRole).filter(QueueRole.queue_id == queue.id).all()
                 ):
-                    role: Role = interaction.guild.get_role(queue_role.role_id)
+                    role = interaction.guild.get_role(queue_role.role_id)
                     if role:
                         queue_role_names.append(role.name)
                     else:
                         queue_role_names.append(str(queue_role.role_id))
                 output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
-            await self.send_info_message(output)
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=output,
+                    colour=Colour.blue()
+                )
+            )
 
-    @command()
-    @check(is_admin)
-    async def lockqueue(self, ctx: Context, queue_name: str):
+    @group.command(name="lock", description="Prevent players from adding to a queue")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(queue_name="Name of queue")
+    async def lockqueue(self, interaction: Interaction, queue_name: str):
         """
         Prevent players from adding to a queue
         """
-        session = ctx.session
-        queue: Queue | None = (
-            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
-        )
-        if not queue:
-            await self.send_error_message(f"Could not find queue: {queue_name}")
-            return
+        session: SQLAlchemySession
+        with Session() as session:
+            queue: Queue | None = (
+                session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+            )
+            if not queue:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find queue: {queue_name}",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True
+                )
+                return
 
-        queue.is_locked = True
-        session.commit()
-        await self.send_success_message(f"Queue **{queue.name}** locked")
+            queue.is_locked = True
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Queue **{queue.name}** locked",
+                    colour=Colour.green(),
+                )
+            )
 
-    @command()
-    @check(is_admin)
-    async def mockqueue(self, ctx: Context, queue_name: str, count: int):
-        message = ctx.message
+    @group.command(name="mock", description="Helper test method for adding random players to queues")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(queue_name="Name of queue", count="Number of people to add")
+    async def mockqueue(self, interaction: Interaction, queue_name: str, count: int):
         """
         Helper test method for adding random players to queues
 
         This will send PMs to players, create voice channels, etc. so be careful
         """
-        if message.author.id not in [
+        if interaction.user.id not in [
             115204465589616646,
             347125254050676738,
             508003755220926464,
             133700743201816577,
+            649029546749853706,
         ]:
-            await self.send_error_message("Only special people can use this command")
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Only special people can use this command",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True
+            )
             return
 
-        session = ctx.session
-        players_from_last_30_days = (
-            session.query(Player)
-            .join(FinishedGamePlayer, FinishedGamePlayer.player_id == Player.id)
-            .join(FinishedGame, FinishedGame.id == FinishedGamePlayer.finished_game_id)
-            .filter(
-                FinishedGame.finished_at
-                > datetime.now(timezone.utc) - timedelta(days=30),
-            )
-            .order_by(FinishedGame.finished_at.desc())  # type: ignore
-            .all()
-        )
-        queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-        # This throws an error if people haven't played in 30 days
-        for player in numpy.random.choice(
-            players_from_last_30_days, size=int(count), replace=False
-        ):
-            if isinstance(message.channel, TextChannel) and message.guild:
-                add_player_queue.put(
-                    AddPlayerQueueMessage(
-                        player.id,
-                        player.name,
-                        [queue.id],
-                        False,
-                        message.channel,
-                        message.guild,
-                    )
+        session: SQLAlchemySession
+        with Session() as session:
+            players_from_last_30_days = (
+                session.query(Player)
+                .join(FinishedGamePlayer, FinishedGamePlayer.player_id == Player.id)
+                .join(FinishedGame, FinishedGame.id == FinishedGamePlayer.finished_game_id)
+                .filter(
+                    FinishedGame.finished_at
+                    > datetime.now(timezone.utc) - timedelta(days=30),
                 )
-                player.last_activity_at = datetime.now(timezone.utc)
-                session.add(player)
-                session.commit()
+                .order_by(FinishedGame.finished_at.desc())  # type: ignore
+                .all()
+            )
+            queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+            if not queue:
+                await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Queue {queue_name} not found",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True
+            )
+                return
+            # This throws an error if people haven't played in 30 days
+            for player in numpy.random.choice(
+                players_from_last_30_days, size=int(count), replace=False
+            ):
+                if isinstance(interaction.channel, TextChannel) and interaction.guild:
+                    add_player_queue.put(
+                        AddPlayerQueueMessage(
+                            player.id,
+                            player.name,
+                            [queue.id],
+                            False,
+                            interaction.channel,
+                            interaction.guild,
+                        )
+                    )
+                    player.last_activity_at = datetime.now(timezone.utc)
+                    session.add(player)
+                    session.commit()
 
-        await self.send_success_message(
-            f"Added **{count}** players to **{queue.name}**"
-        )
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Added **{count}** players to **{queue.name}**",
+                    colour=Colour.green()
+                )
+            )
 
-    @command()
-    @check(is_admin)
-    async def removequeue(self, ctx: Context, queue_name: str):
+    @group.command(name="remove", description="Remove a queue")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(queue_name="Name of queue")
+    async def removequeue(self, interaction: Interaction, queue_name: str):
         """
         Remove a queue
         """
-        session = ctx.session
-
-        queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-        if queue:
-            games_in_progress = (
-                session.query(InProgressGame)
-                .filter(InProgressGame.queue_id == queue.id)
-                .all()
-            )
-            if len(games_in_progress) > 0:
-                await self.send_error_message(
-                    f"Cannot remove queue with game in progress: {queue.name}"
+        session: SQLAlchemySession
+        with Session() as session:
+            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+            if queue:
+                games_in_progress: list[InProgressGame] = (
+                    session.query(InProgressGame)
+                    .filter(InProgressGame.queue_id == queue.id)
+                    .all()
                 )
-                return
+                if len(games_in_progress) > 0:
+                    await interaction.response.send_message(
+                        embed=Embed(
+                            description=f"Cannot remove queue with game in progress: {queue.name}",
+                            colour=Colour.red(),
+                        ),
+                        ephemeral=True
+                    )
+                    return
+                else:
+                    session.delete(queue)
+                    session.commit()
+                    await interaction.response.send_message(
+                        embed=Embed(
+                            description=f"Queue removed: {queue.name}",
+                            colour=Colour.green(),
+                        )
+                    )
             else:
-                session.delete(queue)
-                session.commit()
-                await self.send_success_message(f"Queue removed: {queue.name}")
-        else:
-            await self.send_error_message(f"Queue not found: {queue_name}")
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Queue not found: {queue_name}",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True
+                )
 
-    @command()
-    @check(is_admin)
-    async def removequeuerole(self, ctx: Context, queue_name: str, role_name: str):
+    @group.command(name="removerole", description="Remove a discord role from a queue")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(queue_name="Name of queue", role="Discord role")
+    async def removequeuerole(self, interaction: Interaction, queue_name: str, role: Role):
         """
         Remove a discord role from a queue
         """
-        message = ctx.message
-        session = ctx.session
-        queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-        if not queue:
-            await self.send_error_message(f"Could not find queue: {queue_name}")
-            return
-        if message.guild:
-            role_name_to_role_id: dict[str, int] = {
-                role.name.lower(): role.id for role in message.guild.roles
-            }
-            if role_name.lower() not in role_name_to_role_id:
-                # In case a queue role was deleted from the server
-                queue_role_by_role_id = session.query(QueueRole).filter(
-                    QueueRole.queue_id == queue.id,
-                    QueueRole.role_id == role_name,
+        session: SQLAlchemySession
+        with Session() as session:
+            queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+            if not queue:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find queue: {queue_name}",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True
                 )
-                if queue_role_by_role_id:
-                    session.query(QueueRole).filter(
+                return
+            if interaction.guild:
+                if not role in interaction.guild.roles:
+                     # In case a queue role was deleted from the server
+                    queue_role_by_role_id = session.query(QueueRole).filter(
                         QueueRole.queue_id == queue.id,
-                        QueueRole.role_id == role_name,
-                    ).delete()
-                    session.commit()
-                    await self.send_success_message(
-                        f"Removed role {role_name} from queue {queue.name}"
+                        QueueRole.role_id == role.name,
+                    )
+                    if queue_role_by_role_id:
+                        session.query(QueueRole).filter(
+                            QueueRole.queue_id == queue.id,
+                            QueueRole.role_id == role.name,
+                        ).delete()
+                        session.commit()
+                        await interaction.response.send_message(
+                            embed=Embed(
+                                description=f"Removed role {role.name} from queue {queue.name}",
+                                colour=Colour.green()
+                            )
+                        )
+                        return
+                    await interaction.response.send_message(
+                        embed=Embed(
+                            description=f"Could not find role: {role.name}",
+                            colour=Colour.red(),
+                        ),
+                        ephemeral=True,
                     )
                     return
-
-                await self.send_error_message(f"Could not find role: {role_name}")
-                return
-            session.query(QueueRole).filter(
-                QueueRole.queue_id == queue.id,
-                QueueRole.role_id == role_name_to_role_id[role_name.lower()],
-            ).delete()
-            await self.send_success_message(
-                f"Removed role {role_name} from queue {queue.name}"
-            )
-            session.commit()
+                session.query(QueueRole).filter(
+                    QueueRole.queue_id == queue.id,
+                    QueueRole.role_id == role.id,
+                ).delete()
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Removed role {role.name} from queue {queue.name}",
+                        colour=Colour.green(),
+                    )
+                )
+                session.commit()
 
     @command()
     @check(is_admin)
@@ -727,6 +796,9 @@ class QueueCommands(BaseCog):
     @clearqueue.autocomplete("queue_name")
     @clearqueuerange.autocomplete("queue_name")
     @isolatequeue.autocomplete("queue_name")
+    @lockqueue.autocomplete("queue_name")
+    @mockqueue.autocomplete("queue_name")
+    @removequeue.autocomplete("queue_name")
     async def queue_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
