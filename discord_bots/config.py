@@ -133,6 +133,7 @@ SEED_ADMIN_IDS: list[int] = list(
 )
 ENABLE_VOICE_MOVE: bool = _to_bool(key="ENABLE_VOICE_MOVE", default=False)
 DEFAULT_VOICE_MOVE: bool = _to_bool(key="DEFAULT_VOICE_MOVE", default=False)
+VOICE_MOVE_LOBBY: int = _to_int(key="VOICE_MOVE_LOBBY", required=False)
 ALLOW_VULGAR_NAMES: bool = _to_bool(key="ALLOW_VULGAR_NAMES", default=False)
 ENABLE_DEBUG: bool = _to_bool(key="ENABLE_DEBUG", default=False)
 ENABLE_RAFFLE: bool = _to_bool(key="ENABLE_RAFFLE", default=False)

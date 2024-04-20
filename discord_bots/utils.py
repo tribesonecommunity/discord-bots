@@ -1,4 +1,5 @@
 # Misc helper functions
+import asyncio
 import itertools
 import logging
 import math
@@ -20,6 +21,8 @@ from discord import (
     Message,
     PartialMessage,
     TextChannel,
+    VoiceChannel,
+    VoiceState
 )
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -39,6 +42,7 @@ from discord_bots.models import (
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
+    InProgressGameChannel,
     InProgressGamePlayer,
     Map,
     MapVote,
@@ -825,3 +829,173 @@ def get_team_name_diff(
         else "> \n** **"  # creates an empty quote
     )
     return team0_diff_str, team1_diff_str
+
+async def move_game_players(
+    game_id: str, interaction: Interaction | None = None, guild: Guild | None = None
+):
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        message: Message | None = None
+        if interaction:
+            message = interaction.message
+            guild = interaction.guild
+        elif guild:
+            message = None
+        else:
+            raise Exception("No Interaction or Guild on _movegameplayers")
+
+        in_progress_game = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id.startswith(game_id))
+            .first()
+        )
+        if not in_progress_game:
+            if message:
+                await send_message(
+                    message.channel,
+                    embed_description=f"Could not find game: {game_id}",
+                    colour=Colour.red(),
+                )
+                return
+            return
+
+        team0_ipg_players: list[InProgressGamePlayer] = session.query(
+            InProgressGamePlayer
+        ).filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        team1_ipg_players: list[InProgressGamePlayer] = session.query(
+            InProgressGamePlayer
+        ).filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        team0_player_ids = set(map(lambda x: x.player_id, team0_ipg_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_ipg_players))
+        team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+        team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+
+        be_voice_channel: VoiceChannel | None = None
+        ds_voice_channel: VoiceChannel | None = None
+        ipg_channels: list[InProgressGameChannel] | None = (
+            session.query(InProgressGameChannel)
+            .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
+            .all()
+        )
+        for ipg_channel in ipg_channels or []:
+            discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
+                ipg_channel.channel_id
+            )
+            if isinstance(discord_channel, VoiceChannel):
+                # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
+                if discord_channel.name == in_progress_game.team0_name:
+                    be_voice_channel = discord_channel
+                elif discord_channel.name == in_progress_game.team1_name:
+                    ds_voice_channel = discord_channel
+
+        # TODO: combine for loops into one for all players
+        coroutines = []
+        for player in team0_players:
+            if player.move_enabled and be_voice_channel:
+                member: Member | None = guild.get_member(player.id)
+                if member:
+                    member_voice: VoiceState | None = member.voice
+                    if member_voice and member_voice.channel:
+                        try:
+                            coroutines.append(
+                                member.move_to(
+                                    be_voice_channel,
+                                    reason=f"Game {game_id} started",
+                                )
+                            )
+                        except Exception:
+                            _log.exception(
+                                f"Caught exception moving player to voice channel"
+                            )
+
+        for player in team1_players:
+            if player.move_enabled and ds_voice_channel:
+                member: Member | None = guild.get_member(player.id)
+                if member:
+                    member_voice: VoiceState | None = member.voice
+                    if member_voice and member_voice.channel:
+                        try:
+                            coroutines.append(
+                                member.move_to(
+                                    ds_voice_channel,
+                                    reason=f"Game {game_id} started",
+                                )
+                            )
+                        except Exception:
+                            _log.exception(
+                                f"Caught exception moving player to voice channel"
+                            )
+    # use gather to run the moves concurrently in the event loop
+    # note: a member has to be in a voice channel already for them to be moved, else it throws an exception
+    results = await asyncio.gather(*coroutines, return_exceptions=True)
+    for result in results:
+        # results should be empty unless an exception occured when moving a player
+        if isinstance(result, BaseException):
+            _log.exception("Ignored exception when moving a gameplayer:")
+
+async def move_game_players_lobby(
+    game_id: str, guild: Guild
+):
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        in_progress_game: InProgressGame | None = (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == game_id)
+            .first()
+        )
+        if not in_progress_game:
+            return
+        
+        queue: Queue | None = (
+            session.query(Queue)
+            .filter(Queue.id == in_progress_game.queue_id)
+            .first()
+        )
+        if not queue or not queue.move_enabled:
+            return
+        
+        voice_lobby: discord.abc.GuildChannel | None = guild.get_channel(
+                config.VOICE_MOVE_LOBBY
+        )
+        if not isinstance(voice_lobby, VoiceChannel) or not voice_lobby:
+            _log.exception("VOICE_MOVE_LOBBY not found")
+            return
+
+        ipg_channels: list[InProgressGameChannel] | None = (
+                session.query(InProgressGameChannel)
+                .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
+                .all()
+            )
+        
+        coroutines = []
+        for ipg_channel in ipg_channels or []:
+            discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
+                ipg_channel.channel_id
+            )
+            if isinstance(discord_channel, VoiceChannel):
+                members: list[Member] = discord_channel.members
+                if members:
+                    for member in members:
+                        try:
+                            coroutines.append(
+                                member.move_to(
+                                    voice_lobby,
+                                    reason=f"Game {short_uuid(game_id)} finished",
+                                )
+                            )
+                        except Exception:
+                            _log.exception(
+                                    f"Caught exception moving player to voice lobby"
+                                )
+    
+    results = await asyncio.gather(*coroutines, return_exceptions=True)
+    for result in results:
+        # results should be empty unless an exception occured when moving a player
+        if isinstance(result, BaseException):
+            _log.exception("Ignored exception when moving a gameplayer to lobby:")
