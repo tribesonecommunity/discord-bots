@@ -133,9 +133,9 @@ class MapCommands(BaseCog):
         description="Change the next map for a queue (note: affects all queues sharing that rotation)",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue", short_name="Short name of map")
+    @app_commands.describe(queue="Name of queue", short_name="Short name of map")
     async def changequeuemap(
-        self, interaction: Interaction, queue_name: str, short_name: str
+        self, interaction: Interaction, queue: str, short_name: str
     ):
         """
         Change the next map for a queue (note: affects all queues sharing that rotation)
@@ -402,7 +402,7 @@ class MapCommands(BaseCog):
                     )
                 )
 
-    @changequeuemap.autocomplete("queue_name")
+    @changequeuemap.autocomplete("queue")
     async def queue_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import os
 import sys
@@ -521,3 +519,25 @@ class AdminCommands(BaseCog):
                     colour=Colour.green(),
                 )
             )
+
+    @editcommand.autocomplete("name")
+    @removecommand.autocomplete("name")
+    async def command_autocomplete(
+        self, interaction: Interaction, current: str
+    ):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            commands: list[CustomCommand] | None = (
+                session.query(CustomCommand).order_by(CustomCommand.name).limit(25).all()
+            )  # discord only supports up to 25 choices
+            if commands:
+                for command in commands:
+                    if current in command.name:
+                        result.append(
+                            app_commands.Choice(
+                                name=command.name, value=command.name
+                            )
+                        )
+        return result
+    
