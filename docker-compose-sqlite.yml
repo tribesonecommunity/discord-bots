@@ -43,6 +43,12 @@ services:
         source: ./scripts
         target: /tribesbot/scripts
       - type: bind
+        source: ./alembic.ini
+        target: /tribesbot/alembic.ini
+      - type: bind
+        source: ./alembic
+        target: /tribesbot/alembic
+      - type: bind
         source: ./tribes.db
         target: /tribesbot/tribes.db
     command: "bash startup.sh"
