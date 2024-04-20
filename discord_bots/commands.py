@@ -29,6 +29,7 @@ from discord import (
     Message,
     TextChannel,
     VoiceChannel,
+    VoiceState
 )
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -61,6 +62,7 @@ from discord_bots.utils import (
     update_next_map_to_map_after_next,
     upload_stats_screenshot_imgkit_channel,
     win_probability,
+    move_game_players
 )
 
 from .bot import bot
@@ -531,7 +533,7 @@ async def create_game(
             and be_voice_channel
             and ds_voice_channel
         ):
-            await _movegameplayers(short_game_id, None, guild)
+            await move_game_players(short_game_id, None, guild)
             await send_message(
                 channel,
                 embed_description=f"Players moved to voice channels for game {short_game_id}",
@@ -1953,131 +1955,44 @@ async def trueskill(ctx: Context):
     )
 
 
-async def _movegameplayers(game_id: str, ctx: Context = None, guild: Guild = None):
-    session: sqlalchemy.orm.Session
-    with Session() as session:
-        message: Message | None = None
-        if ctx:
-            message = ctx.message
-            guild = ctx.guild
-        elif guild:
-            message = None
-        else:
-            raise Exception("No Context or Guild on _movegameplayers")
-
-        in_progress_game = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.id.startswith(game_id))
-            .first()
-        )
-        if not in_progress_game:
-            if message:
-                await send_message(
-                    message.channel,
-                    embed_description=f"Could not find game: {game_id}",
-                    colour=Colour.red(),
-                )
-                return
-            return
-
-        team0_ipg_players: list[InProgressGamePlayer] = session.query(
-            InProgressGamePlayer
-        ).filter(
-            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
-            InProgressGamePlayer.team == 0,
-        )
-        team1_ipg_players: list[InProgressGamePlayer] = session.query(
-            InProgressGamePlayer
-        ).filter(
-            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
-            InProgressGamePlayer.team == 1,
-        )
-        team0_player_ids = set(map(lambda x: x.player_id, team0_ipg_players))
-        team1_player_ids = set(map(lambda x: x.player_id, team1_ipg_players))
-        team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
-        team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
-
-        be_voice_channel: discord.VoiceChannel | None = None
-        ds_voice_channel: discord.VoiceChannel | None = None
-        ipg_channels: list[InProgressGameChannel] | None = (
-            session.query(InProgressGameChannel)
-            .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
-            .all()
-        )
-        for ipg_channel in ipg_channels or []:
-            discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
-                ipg_channel.channel_id
-            )
-            if isinstance(discord_channel, discord.VoiceChannel):
-                # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
-                if discord_channel.name == in_progress_game.team0_name:
-                    be_voice_channel = discord_channel
-                elif discord_channel.name == in_progress_game.team1_name:
-                    ds_voice_channel = discord_channel
-
-        coroutines = []
-        for player in team0_players:
-            if player.move_enabled and be_voice_channel:
-                member: Member | None = guild.get_member(player.id)
-                if member:
-                    try:
-                        coroutines.append(
-                            member.move_to(
-                                be_voice_channel,
-                                reason=f"Game {game_id} started",
-                            )
-                        )
-                    except Exception:
-                        _log.exception(
-                            f"Caught exception moving player to voice channel"
-                        )
-
-        for player in team1_players:
-            if player.move_enabled and ds_voice_channel:
-                member: Member | None = guild.get_member(player.id)
-                if member:
-                    try:
-                        coroutines.append(
-                            member.move_to(
-                                ds_voice_channel,
-                                reason=f"Game {game_id} started",
-                            )
-                        )
-                    except Exception:
-                        _log.exception(
-                            f"Caught exception moving player to voice channel"
-                        )
-    # use gather to run the moves concurrently in the event loop
-    # note: a member has to be in a voice channel already for them to be moved, else it throws an exception
-    results = await asyncio.gather(*coroutines, return_exceptions=True)
-    for result in results:
-        # results should be empty unless an exception occured when moving a player
-        if isinstance(result, BaseException):
-            _log.exception("Ignored exception when moving a gameplayer:")
-
-
-@bot.command(usage="<game_id>")
+@bot.tree.command(
+    name="movegameplayers",
+    description="Moves players in an in progress game to their respective voice channels",
+)
+@commands.guild_only()
 @commands.check(is_admin)
-async def movegameplayers(ctx: Context, game_id: str):
+async def movegameplayers(interaction: Interaction, game_id: str):
     """
     Move players in a given in-progress game to the correct voice channels
     """
-    message = ctx.message
+    assert interaction.guild
 
     if not config.ENABLE_VOICE_MOVE:
-        await send_message(
-            message.channel,
-            embed_description="Voice movement is disabled",
-            colour=Colour.red(),
+        await interaction.response.send_message(
+            embed=Embed(
+                description="Voice movement is disabled",
+                colour=Colour.red(),
+            ),
+            ephemeral=True,
         )
         return
     else:
-        await _movegameplayers(game_id, ctx)
-        await send_message(
-            message.channel,
-            embed_description=f"Players moved to voice channels for game {game_id}",
-            colour=Colour.green(),
-        )
+        try:
+            await move_game_players(game_id, interaction)
+        except Exception:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Failed to move players to voice channels for game {game_id}",
+                    colour=Colour.red(),
+                ),
+            )
+        else:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Players moved to voice channels for game {game_id}",
+                    colour=Colour.blue(),
+                ),
+            )
 
 
 @bot.command()
@@ -3364,7 +3279,7 @@ async def _rebalance_game(
     short_game_id: str = short_uuid(game.id)
     if config.ENABLE_VOICE_MOVE:
         if queue.move_enabled:
-            await _movegameplayers(short_game_id, None, message.guild)
+            await move_game_players(short_game_id, None, message.guild)
             await send_message(
                 message.channel,
                 embed_description=f"Players moved to new team voice channels for game {short_game_id}",

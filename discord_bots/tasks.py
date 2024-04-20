@@ -23,6 +23,7 @@ from discord_bots.utils import (
     print_leaderboard,
     send_message,
     update_next_map_to_map_after_next,
+    move_game_players_lobby
 )
 
 from .bot import bot
@@ -451,7 +452,9 @@ async def queue_waitlist_task():
                     channel.delete() for channel in ipg_discord_channels
                 ]
                 try:
-                    asyncio.gather(*channel_delete_coroutines)
+                    if config.ENABLE_VOICE_MOVE and config.VOICE_MOVE_LOBBY:
+                        await move_game_players_lobby(queue_waitlist.in_progress_game_id, guild)
+                    await asyncio.gather(*channel_delete_coroutines)
                 except:
                     _log.exception(
                         f"[queue_waitlist_task] Failed to delete in_progress_game channels {ipg_discord_channels} from guild {guild.id}"
