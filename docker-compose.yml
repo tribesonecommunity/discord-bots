@@ -16,9 +16,11 @@ services:
     volumes:
       - "tribesbot-db:/var/lib/postgresql/data"
     ports:
-      - "5432:5432"
+      - "$POSTGRES_PORT:$POSTGRES_PORT"
     env_file:
       - .env
+    command: -p $POSTGRES_PORT
+    
   tribesbot:
     depends_on:
       - db
