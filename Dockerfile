@@ -19,6 +19,14 @@ RUN useradd --system --create-home --home-dir /tribesbot -u 999 -g tribesbot tri
 
 FROM usersetup as requirements
 WORKDIR /tribesbot
+
+# Copying .env directly into the container is not fully tested and may
+# potentially have security implications. However, the file may be
+# necessary for doing certain types of maintenance with alembic et al.
+# Comment this next line out if you don't want Docker rebuilding the
+# image every time you modify .env.
+COPY .env .
+
 USER tribesbot
 COPY requirements.txt .
 COPY setup.py .
