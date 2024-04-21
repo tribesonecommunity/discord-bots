@@ -1,362 +1,585 @@
-import discord
-from discord.ext.commands import Bot, Context, check, command
+import logging
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord_bots.checks import is_admin
+from discord import (
+    app_commands,
+    Colour,
+    Embed,
+    Interaction,
+)
+from discord.ext.commands import Bot, Context, check, command
+
+from discord_bots.checks import is_admin_app_command, is_admin
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import Map, Queue, Rotation, RotationMap
+from discord_bots.models import Map, Queue, Rotation, RotationMap, Session
 from discord_bots.utils import update_next_map_to_map_after_next
+
+_log = logging.getLogger(__name__)
 
 
 class RotationCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    @command()
-    @check(is_admin)
-    async def addrotation(self, ctx: Context, rotation_name: str):
+    group = app_commands.Group(name="rotation", description="Rotation commands")
+
+    @group.command(name="add", description="Add a rotation to the rotation pool")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(rotation_name="Existing rotation")
+    async def addrotation(self, interaction: Interaction, rotation_name: str):
         """
         Add a rotation to the rotation pool
         """
-        session = ctx.session
+        session: SQLAlchemySession
+        with Session() as session:
+            try:
+                session.add(Rotation(name=rotation_name))
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Error adding rotation {rotation_name}). Does it already exist?",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Rotation **{rotation_name}** added",
+                        colour=Colour.green(),
+                    )
+                )
 
-        try:
-            session.add(Rotation(name=rotation_name))
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-            await self.send_error_message(
-                f"Error adding rotation {rotation_name}). Does it already exist?"
-            )
-        else:
-            await self.send_success_message(f"Rotation **{rotation_name}** added")
-
-    @command()
-    @check(is_admin)
+    @group.command(
+        name="addmap",
+        description="Add a map to a rotation at a specific ordinal (position)",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(
+        rotation_name="Existing rotation",
+        map_short_name="Existing map",
+        ordinal="Map ordinal",
+    )
     async def addrotationmap(
-        self, ctx: Context, rotation_name: str, map_short_name: str, ordinal: int
+        self,
+        interaction: Interaction,
+        rotation_name: str,
+        map_short_name: str,
+        ordinal: int,
     ):
         """
         Add a map to a rotation at a specific ordinal (position)
         """
-        session = ctx.session
-
         if ordinal < 1:
-            await self.send_error_message("Ordinal must be a positive number")
-            return
-
-        try:
-            rotation = (
-                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
-            )
-        except NoResultFound:
-            await self.send_error_message(
-                f"Could not find rotation **{rotation_name}**"
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Ordinal must be a positive number",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
             )
             return
 
-        try:
-            map = session.query(Map).filter(Map.short_name.ilike(map_short_name)).one()
-        except NoResultFound:
-            await self.send_error_message(f"Could not find map **{map_short_name}**")
-            return
-
-        # logic for organizing ordinals.  ordinals are kept unique and consecutive.
-        # we insert a map directly at an ordinal and increment every one after that.
-        rotation_maps = (
-            session.query(RotationMap)
-            .join(Rotation, RotationMap.rotation_id == rotation.id)
-            .order_by(RotationMap.ordinal.asc())
-            .all()
-        )
-
-        if ordinal > len(rotation_maps):
-            ordinal = len(rotation_maps) + 1
-        else:
-            for rotation_map in rotation_maps[ordinal - 1 :]:
-                rotation_map.ordinal += 1
-
-        is_next = True if not rotation_maps else False
-
-        try:
-            session.add(
-                RotationMap(
-                    rotation_id=rotation.id,
-                    map_id=map.id,
-                    ordinal=ordinal,
-                    is_next=is_next,
+        session: SQLAlchemySession
+        with Session() as session:
+            try:
+                rotation = (
+                    session.query(Rotation)
+                    .filter(Rotation.name.ilike(rotation_name))
+                    .one()
                 )
-            )
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-            await self.send_error_message(
-                f"Error adding {map_short_name} to {rotation_name} at ordinal {ordinal}"
-            )
-        else:
-            await self.send_success_message(
-                f"{map.short_name} added to {rotation.name} at ordinal {ordinal}"
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find rotation **{rotation_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                map = (
+                    session.query(Map)
+                    .filter(Map.short_name.ilike(map_short_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map **{map_short_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            # logic for organizing ordinals.  ordinals are kept unique and consecutive.
+            # we insert a map directly at an ordinal and increment every one after that.
+            rotation_maps = (
+                session.query(RotationMap)
+                .join(Rotation, RotationMap.rotation_id == rotation.id)
+                .order_by(RotationMap.ordinal.asc())
+                .all()
             )
 
-    @command()
-    async def listrotations(self, ctx: Context):
+            if ordinal > len(rotation_maps):
+                ordinal = len(rotation_maps) + 1
+            else:
+                for rotation_map in rotation_maps[ordinal - 1 :]:
+                    rotation_map.ordinal += 1
+
+            is_next = True if not rotation_maps else False
+
+            try:
+                session.add(
+                    RotationMap(
+                        rotation_id=rotation.id,
+                        map_id=map.id,
+                        ordinal=ordinal,
+                        is_next=is_next,
+                    )
+                )
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Error adding {map_short_name} to {rotation_name} at ordinal {ordinal}",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"{map.short_name} added to {rotation.name} at ordinal {ordinal}",
+                        colour=Colour.green(),
+                    )
+                )
+
+    @group.command(name="list", description="List all rotations in the rotation pool")
+    async def listrotations(self, interaction: Interaction):
         """
         List all rotations in the rotation pool
         """
-        session = ctx.session
-
-        rotations: list[Rotation] | None = (
-            session.query(Rotation).order_by(Rotation.created_at.asc()).all()
-        )
-        if not rotations:
-            await self.send_info_message("_-- No Rotations-- _")
-            return
-
-        output = ""
-
-        for rotation in rotations:
-            output += f"### {rotation.name}\n"
-
-            map_names = [
-                x[0]
-                for x in (
-                    session.query(Map.short_name)
-                    .join(RotationMap, RotationMap.map_id == Map.id)
-                    .filter(RotationMap.rotation_id == rotation.id)
-                    .order_by(RotationMap.ordinal.asc())
-                    .all()
+        session: SQLAlchemySession
+        with Session() as session:
+            rotations: list[Rotation] | None = (
+                session.query(Rotation).order_by(Rotation.created_at.asc()).all()
+            )
+            if not rotations:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="_-- No Rotations-- _", colour=Colour.blue()
+                    )
                 )
-            ]
-            if not map_names:
-                output += f" - Maps:  None\n"
-            else:
-                output += f" - Maps:  {', '.join(map_names)}\n"
+                return
 
-            queue_names = [
-                x[0]
-                for x in (
-                    session.query(Queue.name)
-                    .filter(Queue.rotation_id == rotation.id)
-                    .order_by(Queue.ordinal.asc())
-                    .all()
-                )
-            ]
-            if not queue_names:
-                output += f" - Queues:  None\n"
-            else:
-                output += f" - Queues:  {', '.join(queue_names)}\n"
+            output = ""
 
-        await self.send_info_message(output)
+            for rotation in rotations:
+                output += f"### {rotation.name}\n"
 
-    @command()
-    @check(is_admin)
-    async def removerotation(self, ctx: Context, rotation_name: str):
+                map_names = [
+                    x[0]
+                    for x in (
+                        session.query(Map.short_name)
+                        .join(RotationMap, RotationMap.map_id == Map.id)
+                        .filter(RotationMap.rotation_id == rotation.id)
+                        .order_by(RotationMap.ordinal.asc())
+                        .all()
+                    )
+                ]
+                if not map_names:
+                    output += f" - Maps:  None\n"
+                else:
+                    output += f" - Maps:  {', '.join(map_names)}\n"
+
+                queue_names = [
+                    x[0]
+                    for x in (
+                        session.query(Queue.name)
+                        .filter(Queue.rotation_id == rotation.id)
+                        .order_by(Queue.ordinal.asc())
+                        .all()
+                    )
+                ]
+                if not queue_names:
+                    output += f" - Queues:  None\n"
+                else:
+                    output += f" - Queues:  {', '.join(queue_names)}\n"
+
+            await interaction.response.send_message(
+                embed=Embed(description=output, colour=Colour.blue())
+            )
+
+    @group.command(
+        name="remove", description="Remove a rotation from the rotation pool"
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(rotation_name="Existing rotation")
+    async def removerotation(self, interaction: Interaction, rotation_name: str):
         """
         Remove a rotation from the rotation pool
         TODO: Add confirmation for deleting rotation still associated with a queue
         """
-        session = ctx.session
+        session: SQLAlchemySession
+        with Session() as session:
+            try:
+                rotation = (
+                    session.query(Rotation)
+                    .filter(Rotation.name.ilike(rotation_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find rotation **{rotation_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        try:
-            rotation = (
-                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
+            session.delete(rotation)
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Rotation **{rotation.name}** removed",
+                    colour=Colour.green(),
+                )
             )
-        except NoResultFound:
-            await self.send_error_message(
-                f"Could not find rotation **{rotation_name}**"
-            )
-            return
 
-        session.delete(rotation)
-        session.commit()
-        await self.send_success_message(f"Rotation **{rotation.name}** removed")
-
-    @command()
-    @check(is_admin)
+    @group.command(name="removemap", description="Remove a map from a rotation")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(
+        rotation_name="Existing rotation", map_short_name="Existing map"
+    )
     async def removerotationmap(
-        self, ctx: Context, rotation_name: str, map_short_name: str
+        self, interaction: Interaction, rotation_name: str, map_short_name: str
     ):
         """
         Remove a map from a rotation
         """
-        session = ctx.session
+        session: SQLAlchemySession
+        with Session() as session:
+            try:
+                rotation = (
+                    session.query(Rotation)
+                    .filter(Rotation.name.ilike(rotation_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find rotation **{rotation_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        try:
-            rotation = (
-                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
+            try:
+                map = (
+                    session.query(Map)
+                    .filter(Map.short_name.ilike(map_short_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map **{map_short_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            rotation_map = (
+                session.query(RotationMap)
+                .filter(
+                    rotation.id == RotationMap.rotation_id, map.id == RotationMap.map_id
+                )
+                .first()
             )
-        except NoResultFound:
-            await self.send_error_message(
-                f"Could not find rotation **{rotation_name}**"
+            if not rotation_map:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map **{map.short_name}** in rotation **{rotation.name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            if rotation_map.is_next:
+                await update_next_map_to_map_after_next(rotation.id, True)
+
+            # adjust the rest of the ordinals in the rotation
+            rotation_maps = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .order_by(RotationMap.ordinal.asc())
+                .all()
             )
-            return
+            for entry in rotation_maps[rotation_map.ordinal :]:
+                entry.ordinal -= 1
 
-        try:
-            map = session.query(Map).filter(Map.short_name.ilike(map_short_name)).one()
-        except NoResultFound:
-            await self.send_error_message(f"Could not find map **{map_short_name}**")
-            return
-
-        rotation_map = (
-            session.query(RotationMap)
-            .filter(
-                rotation.id == RotationMap.rotation_id, map.id == RotationMap.map_id
+            session.delete(rotation_map)
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"**{map.short_name}** removed from rotation **{rotation.name}**",
+                    colour=Colour.green(),
+                )
             )
-            .first()
-        )
-        if not rotation_map:
-            await self.send_error_message(
-                f"Could not find map **{map.short_name}** in rotation **{rotation.name}**"
-            )
-            return
 
-        if rotation_map.is_next:
-            await update_next_map_to_map_after_next(rotation.id, True)
-
-        # adjust the rest of the ordinals in the rotation
-        rotation_maps = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation.id)
-            .order_by(RotationMap.ordinal.asc())
-            .all()
-        )
-        for entry in rotation_maps[rotation_map.ordinal :]:
-            entry.ordinal -= 1
-
-        session.delete(rotation_map)
-        session.commit()
-        await self.send_success_message(
-            f"**{map.short_name}** removed from rotation **{rotation.name}**"
-        )
-
-    @command()
-    @check(is_admin)
+    @group.command(
+        name="setmapordinal",
+        description="Set the ordinal (position) for a map in a rotation",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(
+        rotation_name="Existing rotation",
+        map_short_name="Existing map",
+        new_ordinal="New map ordinal",
+    )
     async def setrotationmapordinal(
-        self, ctx: Context, rotation_name: str, map_short_name: str, new_ordinal: int
+        self,
+        interaction: Interaction,
+        rotation_name: str,
+        map_short_name: str,
+        new_ordinal: int,
     ):
         """
         Set the ordinal (position) for a map in a rotation
         """
-        session = ctx.session
+        session: SQLAlchemySession
+        with Session() as session:
+            if new_ordinal < 1:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Ordinal must be a positive number",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        if new_ordinal < 1:
-            await self.send_error_message("Ordinal must be a positive number")
-            return
+            try:
+                rotation = (
+                    session.query(Rotation)
+                    .filter(Rotation.name.ilike(rotation_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find rotation **{rotation_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        try:
-            rotation = (
-                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
-            )
-        except NoResultFound:
-            await self.send_error_message(
-                f"Could not find rotation **{rotation_name}**"
-            )
-            return
+            try:
+                map = (
+                    session.query(Map)
+                    .filter(Map.short_name.ilike(map_short_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map **{map_short_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        try:
-            map = session.query(Map).filter(Map.short_name.ilike(map_short_name)).one()
-        except NoResultFound:
-            await self.send_error_message(f"Could not find map **{map_short_name}**")
-            return
+            try:
+                rotation_map_to_set = (
+                    session.query(RotationMap)
+                    .filter(RotationMap.rotation_id == rotation.id)
+                    .filter(RotationMap.map_id == map.id)
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Map **{map.short_name}** is not in rotation **{rotation.name}**\nPlease add it with `!addrotationmap`.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        try:
-            rotation_map_to_set = (
+            # logic for organizing ordinals.  ordinals are kept unique and consecutive.
+            current_ordinal = rotation_map_to_set.ordinal
+
+            if new_ordinal == current_ordinal:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Map **{map.short_name}** in rotation **{rotation.name}** is already set to ordinal **{new_ordinal}**.",
+                        colour=Colour.blue(),
+                    )
+                )
+                return
+
+            rotation_maps = (
                 session.query(RotationMap)
-                .filter(RotationMap.rotation_id == rotation.id)
-                .filter(RotationMap.map_id == map.id)
-                .one()
+                .join(Rotation, RotationMap.rotation_id == rotation.id)
+                .order_by(RotationMap.ordinal.asc())
+                .all()
             )
-        except NoResultFound:
-            await self.send_error_message(
-                f"Map **{map.short_name}** is not in rotation **{rotation.name}**\nPlease add it with `!addrotationmap`."
+
+            if new_ordinal > len(rotation_maps):
+                new_ordinal = len(rotation_maps)
+
+            if new_ordinal > current_ordinal:
+                for rotation_map in rotation_maps[current_ordinal:new_ordinal]:
+                    rotation_map.ordinal -= 1
+            else:
+                for rotation_map in rotation_maps[
+                    new_ordinal - 1 : current_ordinal - 1
+                ]:
+                    rotation_map.ordinal += 1
+
+            rotation_map_to_set.ordinal = new_ordinal
+
+            session.commit()
+
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Map **{map.short_name}** in rotation **{rotation.name}** set to ordinal **{rotation_map_to_set.ordinal}**.",
+                    colour=Colour.green(),
+                )
             )
-            return
 
-        # logic for organizing ordinals.  ordinals are kept unique and consecutive.
-        current_ordinal = rotation_map_to_set.ordinal
-
-        if new_ordinal == current_ordinal:
-            await self.send_info_message(
-                f"Map **{map.short_name}** in rotation **{rotation.name}** is already set to ordinal **{new_ordinal}**."
-            )
-            return
-
-        rotation_maps = (
-            session.query(RotationMap)
-            .join(Rotation, RotationMap.rotation_id == rotation.id)
-            .order_by(RotationMap.ordinal.asc())
-            .all()
-        )
-
-        if new_ordinal > len(rotation_maps):
-            new_ordinal = len(rotation_maps)
-
-        if new_ordinal > current_ordinal:
-            for rotation_map in rotation_maps[current_ordinal:new_ordinal]:
-                rotation_map.ordinal -= 1
-        else:
-            for rotation_map in rotation_maps[new_ordinal - 1 : current_ordinal - 1]:
-                rotation_map.ordinal += 1
-
-        rotation_map_to_set.ordinal = new_ordinal
-
-        session.commit()
-
-        await self.send_success_message(
-            f"Map **{map.short_name}** in rotation **{rotation.name}** set to ordinal **{rotation_map_to_set.ordinal}**."
-        )
-
-    @command()
-    @check(is_admin)
+    @group.command(name="setname", description="Set rotation name")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(
+        old_rotation_name="Existing rotation", new_rotation_name="New rotation name"
+    )
     async def setrotationname(
-        self, ctx: Context, old_rotation_name: str, new_rotation_name: str
+        self, interaction: Interaction, old_rotation_name: str, new_rotation_name: str
     ):
         """
         Set rotation name
         """
-        await self.setname(ctx, Rotation, old_rotation_name, new_rotation_name)
+        await self.setname(interaction, Rotation, old_rotation_name, new_rotation_name)
 
-    @command()
-    @check(is_admin)
-    async def setrotationrandom(self, ctx: Context, rotation_name: str):
+    @group.command(name="setrandom", description="Chooses rotation's maps at random")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(rotation_name="Existing rotation")
+    async def setrotationrandom(self, interaction: Interaction, rotation_name: str):
         """
         Chooses rotation's maps at random
         """
-        session = ctx.session
-
-        rotation: Rotation | None = (
-            session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).first()
-        )
-        if not rotation:
-            await self.send_error_message(
-                f"Could not find rotation **{rotation_name}**"
+        session: SQLAlchemySession
+        with Session() as session:
+            rotation: Rotation | None = (
+                session.query(Rotation)
+                .filter(Rotation.name.ilike(rotation_name))
+                .first()
             )
-            return
+            if not rotation:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find rotation **{rotation_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        rotation.is_random = True
-        session.commit()
-        await self.send_success_message(f"**{rotation.name}** rotation set to random")
+            rotation.is_random = True
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"**{rotation.name}** rotation set to random",
+                    colour=Colour.green(),
+                )
+            )
 
-    @command()
-    @check(is_admin)
-    async def unsetrotationrandom(self, ctx: Context, rotation_name: str):
+    @group.command(name="unsetrandom", description="Chooses rotation's maps in order")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(rotation_name="Existing rotation")
+    async def unsetrotationrandom(self, interaction: Interaction, rotation_name: str):
         """
         Chooses rotation's maps in order
         """
-        session = ctx.session
-
-        rotation: Rotation | None = (
-            session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).first()
-        )
-        if not rotation:
-            await self.send_error_message(
-                f"Could not find rotation **{rotation_name}**"
+        session: SQLAlchemySession
+        with Session() as session:
+            rotation: Rotation | None = (
+                session.query(Rotation)
+                .filter(Rotation.name.ilike(rotation_name))
+                .first()
             )
-            return
+            if not rotation:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find rotation **{rotation_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        rotation.is_random = False
-        session.commit()
-        await self.send_success_message(
-            f"**{rotation.name}** rotation unset from random"
-        )
+            rotation.is_random = False
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"**{rotation.name}** rotation unset from random",
+                    colour=Colour.green(),
+                )
+            )
+
+    @addrotationmap.autocomplete("map_short_name")
+    @removerotationmap.autocomplete("map_short_name")
+    @setrotationmapordinal.autocomplete("map_short_name")
+    async def map_autocomplete(self, interaction: Interaction, current: str):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            maps: list[Map] | None = (
+                session.query(Map).order_by(Map.full_name).limit(25).all()
+            )
+            if maps:
+                for map in maps:
+                    if current in map.short_name:
+                        result.append(
+                            app_commands.Choice(
+                                name=map.full_name, value=map.short_name
+                            )
+                        )
+        return result
+
+    @addrotation.autocomplete("rotation_name")
+    @addrotationmap.autocomplete("rotation_name")
+    @removerotation.autocomplete("rotation_name")
+    @removerotationmap.autocomplete("rotation_name")
+    @setrotationmapordinal.autocomplete("rotation_name")
+    @setrotationname.autocomplete("old_rotation_name")
+    @setrotationrandom.autocomplete("rotation_name")
+    @unsetrotationrandom.autocomplete("rotation_name")
+    async def rotation_autocomplete(self, interaction: Interaction, current: str):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            rotations: list[Rotation] | None = (
+                session.query(Rotation).order_by(Rotation.name).limit(25).all()
+            )
+            if rotations:
+                for rotation in rotations:
+                    if current in rotation.name:
+                        result.append(
+                            app_commands.Choice(name=rotation.name, value=rotation.name)
+                        )
+        return result
