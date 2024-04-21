@@ -380,7 +380,7 @@ class QueueCommands(BaseCog):
         """
         Enables automatic moving of people in game when queue pops
         """
-        session = ctx.session
+        session: SQLAlchemySession = ctx.session
 
         if not ENABLE_VOICE_MOVE:
             await self.send_error_message("Voice movement is disabled")
@@ -394,9 +394,14 @@ class QueueCommands(BaseCog):
 
         queue.move_enabled = enabled_option
         session.commit()
-        await self.send_success_message(
-            f"Player moving enabled on queue **{queue_name}**"
-        )
+        if enabled_option:
+            await self.send_success_message(
+                f"Player moving enabled on queue **{queue_name}**"
+            )
+        else:
+            await self.send_success_message(
+                f"Player moving disabled on queue **{queue_name}**"
+            )
 
     @command()
     @check(is_admin)

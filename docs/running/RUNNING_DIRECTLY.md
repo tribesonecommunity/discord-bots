@@ -13,28 +13,26 @@ simpler, you can run the bot on your server or local system.
 
 ### System dependencies
 
-You will need Postgres dev tools installed in order to be able to install the
-`psycopg2` Python dependency; these are also useful to be able to e.g. `psql` to
-your database.
+You will need a couple of specific system packages installed:
+* `libpq` as a dependency of the `psycopg2` pip package
+* `libjpeg-dev` as a dependency of the `Pillow` pip package
+  * (this is only here as a dependency of scipy, which is only used in the plotting script and not the running app)
 
-You can do this on various operating syste
+You can install these on various OSes as described below:
 
-Postgres is the new preferred way of doing development. To install `psycopg2`
-you'll need to install `libpq`.
-
-#### Ubuntu
+#### Ubuntu (or Ubuntu WSL)
 ```
-sudo apt-get install libpq-dev
+sudo apt-get install libpq-dev libjpeg-dev
 ```
 
 #### Arch linux
 ```
-pacman -S postgresql-libs
+pacman -S postgresql-libs libjpeg-turbo
 ```
 
 #### MacOS
 ```
-brew install postgresql
+brew install postgresql jpeg
 ```
 
 ### Python dependencies
