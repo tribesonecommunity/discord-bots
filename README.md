@@ -22,6 +22,9 @@ for info on how to host and run the bot for your Discord server.
 See the [command reference](./docs/BOT_COMMANDS.md) for the full set of commands
 you can use with the bot when installed.
 
+## Scripts
+See the [scripts reference](./docs/SCRIPTS.md) for more information on the scripts provided, separate from the main bot functionality.
+
 ## Development
 
 See [local dev docs](./docs/LOCAL_DEVELOPMENT.md) for info on how to develop and

@@ -249,6 +249,7 @@ def print_ratings_change(
         tuple[Player, PlayerCategoryTrueskill | None, PlayerCategoryTrueskill | None]
     ]
 ) -> None:
+    # TODO: write to csv instead of printing as a table
     entries = new_rating_entries.copy()
     # sort by new rating, then old rating, then player-id
     entries.sort(
@@ -259,7 +260,6 @@ def print_ratings_change(
         ),
         reverse=True,
     )
-    output = "id;name;old_rating;new_rating;old_mu;new_mu;old_sigma;new_sigma\n"
     cols = []
     for entry in entries:
         col = []
@@ -267,10 +267,6 @@ def print_ratings_change(
         old_rating = entry[1]
         new_rating = entry[2]
         escaped_name = player.name.replace('"', "\\")
-        delta_rating = 0
-        delta_mu = 0
-        delta_sigma = 0
-        output += f'"{escaped_name}", '
         if old_rating is None:
             old_rating = default_rating
         if new_rating is None:
