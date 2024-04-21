@@ -407,7 +407,7 @@ class MapCommands(BaseCog):
         result = []
         session: SQLAlchemySession
         with Session() as session:
-            queues: list[Queue] | None = session.query(Queue).limit(25).all()
+            queues: list[Queue] | None = session.query(Queue).order_by(Queue.name).limit(25).all()
             if queues:
                 for queue in queues:
                     if current in queue.name:
@@ -442,12 +442,13 @@ class MapCommands(BaseCog):
         session: SQLAlchemySession
         with Session() as session:
             in_progress_games: list[InProgressGame] | None = (
-                session.query(InProgressGame).limit(25).all()
+                session.query(InProgressGame).order_by(short_uuid(InProgressGame.id)).limit(25).all()
             )  # discord only supports up to 25 choices
-            for ipg in in_progress_games:
-                short_game_id = short_uuid(ipg.id)
-                if current in short_game_id:
-                    result.append(
-                        app_commands.Choice(name=short_game_id, value=short_game_id)
-                    )
+            if in_progress_games:
+                for ipg in in_progress_games:
+                    short_game_id = short_uuid(ipg.id)
+                    if current in short_game_id:
+                        result.append(
+                            app_commands.Choice(name=short_game_id, value=short_game_id)
+                        )
         return result

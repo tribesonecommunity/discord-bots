@@ -274,13 +274,14 @@ class CategoryCommands(BaseCog):
             categories: list[Category] | None = (
                 session.query(Category).order_by(Category.name).limit(25).all()
             )  # discord only supports up to 25 choices
-            for category in categories:
-                if current in category.name:
-                    result.append(
-                        app_commands.Choice(
-                            name=category.name, value=category.name
+            if categories:
+                for category in categories:
+                    if current in category.name:
+                        result.append(
+                            app_commands.Choice(
+                                name=category.name, value=category.name
+                            )
                         )
-                    )
         return result
     
     @setqueuecategory.autocomplete("queue_name")
@@ -292,7 +293,7 @@ class CategoryCommands(BaseCog):
         session: SQLAlchemySession
         with Session() as session:
             queues: list[Queue] | None = (
-                session.query(Queue).limit(25).all()
+                session.query(Queue).order_by(Queue.name).limit(25).all()
             )
             if queues:
                 for queue in queues:
