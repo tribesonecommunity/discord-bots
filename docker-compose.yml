@@ -16,9 +16,11 @@ services:
     volumes:
       - "tribesbot-db:/var/lib/postgresql/data"
     ports:
-      - "5432:5432"
+      - "$POSTGRES_PORT:$POSTGRES_PORT"
     env_file:
       - .env
+    command: -p $POSTGRES_PORT
+    
   tribesbot:
     depends_on:
       - db
@@ -36,6 +38,12 @@ services:
       - type: bind
         source: ./scripts
         target: /tribesbot/scripts
+      - type: bind
+        source: ./alembic.ini
+        target: /tribesbot/alembic.ini
+      - type: bind
+        source: ./alembic
+        target: /tribesbot/alembic
     command: "bash startup.sh"
 
 
