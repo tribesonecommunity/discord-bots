@@ -3,12 +3,12 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Literal
 
 from discord import Colour, Embed, Interaction, app_commands
-from discord.ext.commands import Bot, Context, check, command
+from discord.ext.commands import Bot
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
-from discord_bots.checks import is_admin, is_admin_app_command
+from discord_bots.checks import is_admin_app_command
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import MAP_VOTE_THRESHOLD
 from discord_bots.models import (
