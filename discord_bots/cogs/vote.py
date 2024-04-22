@@ -678,7 +678,7 @@ class VoteCommands(BaseCog):
                 )
 
     @unvotemap.autocomplete("map_name")
-    @votemap.autocomplete("map_name")
+    # @votemap.autocomplete("map_name")
     async def map_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
@@ -696,8 +696,7 @@ class VoteCommands(BaseCog):
                         )
         return result
 
-    @votemap.autocomplete("queue_name")
-    @voteskip.autocomplete("queue_name")
+    # @voteskip.autocomplete("queue_name")
     async def queue_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
