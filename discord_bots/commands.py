@@ -1206,7 +1206,7 @@ async def autosub(ctx: Context, member: Member = None):
     assert guild
 
     if config.ADMIN_AUTOSUB and not await is_admin(ctx):
-            return
+        return
 
     player_in_game_id = member.id if member else message.author.id
     player_name = member.display_name if member else message.author.display_name
@@ -2126,54 +2126,6 @@ async def resetleaderboardchannel(interaction: Interaction):
 #         embed_description=f"Delay between games set to {RE_ADD_DELAY}",
 #         colour=Colour.green(),
 #     )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def setbias(ctx: Context, member: Member, amount: float):
-    if amount < -100 or amount > 100:
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Amount must be between -100 and 100",
-            colour=Colour.red(),
-        )
-        return
-    await send_message(
-        ctx.message.channel,
-        embed_description=f"Team bias for {member.name} set to `{amount}%`",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def setcaptainbias(ctx: Context, member: Member, amount: float):
-    if amount < -100 or amount > 100:
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Amount must be between -100 and 100",
-            colour=Colour.red(),
-        )
-        return
-    await send_message(
-        ctx.message.channel,
-        embed_description=f"Captain bias for {member.name} set to `{amount}%`",
-        colour=Colour.green(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def setcommandprefix(ctx: Context, prefix: str):
-    # TODO move to db-config
-    message = ctx.message
-    global COMMAND_PREFIX
-    COMMAND_PREFIX = prefix
-    await send_message(
-        message.channel,
-        embed_description=f"Command prefix set to {COMMAND_PREFIX}",
-        colour=Colour.green(),
-    )
 
 
 @bot.tree.command(

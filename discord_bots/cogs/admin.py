@@ -245,7 +245,9 @@ class AdminCommands(BaseCog):
 
     @group.command(name="editcommand", description="Edit a custom command")
     @app_commands.check(is_admin_app_command)
-    @app_commands.describe(name="Name of existing custom command", output="New command output")
+    @app_commands.describe(
+        name="Name of existing custom command", output="New command output"
+    )
     async def editcommand(self, interaction: Interaction, name: str, *, output: str):
         session: SQLAlchemySession
         with Session() as session:
@@ -325,7 +327,7 @@ class AdminCommands(BaseCog):
                 description=output,
                 colour=Colour.blue(),
             ),
-            ephemeral=True
+            ephemeral=True,
         )
 
     @group.command(name="listroles", description="List admin roles")
@@ -494,6 +496,64 @@ class AdminCommands(BaseCog):
         )
         os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
 
+    @group.command(name="setbias", description="Set team bias")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Member to bias", amount="Bias value")
+    async def setbias(self, interaction: Interaction, member: Member, amount: float):
+        if amount < -100 or amount > 100:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Amount must be between -100 and 100",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            embed=Embed(
+                description=f"Team bias for {member.name} set to `{amount}%`",
+                colour=Colour.green(),
+            )
+        )
+
+    @group.command(name="setcaptainbias", description="Set captain bias")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Member to bias", amount="Bias value")
+    async def setcaptainbias(
+        self, interaction: Interaction, member: Member, amount: float
+    ):
+        if amount < -100 or amount > 100:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Amount must be between -100 and 100",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            embed=Embed(
+                description=f"Captain bias for {member.name} set to `{amount}%`",
+                colour=Colour.green(),
+            )
+        )
+
+    @group.command(
+        name="setcommandprefix", description="Sets the prefix for context commands"
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(prefix="New command prefix")
+    async def setcommandprefix(self, interaction: Interaction, prefix: str):
+        # TODO move to db-config
+        global COMMAND_PREFIX
+        COMMAND_PREFIX = prefix
+        await interaction.response.send_message(
+            embed=Embed(
+                description=f"Command prefix set to {COMMAND_PREFIX}",
+                colour=Colour.green(),
+            )
+        )
+
     @group.command(name="unban", description="Unban player")
     @app_commands.check(is_admin_app_command)
     @app_commands.describe(member="Player to be unbanned")
@@ -522,22 +582,20 @@ class AdminCommands(BaseCog):
 
     @editcommand.autocomplete("name")
     @removecommand.autocomplete("name")
-    async def command_autocomplete(
-        self, interaction: Interaction, current: str
-    ):
+    async def command_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
         with Session() as session:
             commands: list[CustomCommand] | None = (
-                session.query(CustomCommand).order_by(CustomCommand.name).limit(25).all()
+                session.query(CustomCommand)
+                .order_by(CustomCommand.name)
+                .limit(25)
+                .all()
             )  # discord only supports up to 25 choices
             if commands:
                 for command in commands:
                     if current in command.name:
                         result.append(
-                            app_commands.Choice(
-                                name=command.name, value=command.name
-                            )
+                            app_commands.Choice(name=command.name, value=command.name)
                         )
         return result
-    
