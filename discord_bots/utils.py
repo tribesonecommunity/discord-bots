@@ -709,7 +709,6 @@ async def print_leaderboard():
                         FinishedGame.started_at
                         > (datetime.now(timezone.utc) - timedelta(days=30))
                     )
-                    # .filter(FinishedGame.started_at > (func.now() - func.cast(concat(30, ' DAYS'), INTERVAL)))
                     .filter(FinishedGame.category_name == category.name)
                     .group_by(FinishedGamePlayer.player_id)
                     .having(func.count() >= category.min_games_for_leaderboard)
