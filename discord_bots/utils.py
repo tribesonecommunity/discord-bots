@@ -517,7 +517,7 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
 async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
     """
     :is_verbose: specifies if we want to see queues affected in the bot response.
-                 currently passing in False for when game pops, True for everything else.
+        currently passing in False for when game pops, True for everything else.
     """
     session: sqlalchemy.orm.Session
     with Session() as session:
