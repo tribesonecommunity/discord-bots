@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from discord import Colour, Embed, Interaction, Member, Role, TextChannel, app_commands
+from discord import Colour, Embed, Interaction, Member, app_commands
 from discord.ext.commands import Bot
 from discord.utils import escape_markdown
 from numpy import std
