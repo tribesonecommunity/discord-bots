@@ -82,6 +82,7 @@ class AdminRole:
 class Category:
     """
     A category is a segmentation of trueskill - for example rated vs unrated, regions, game types (CTF, Arena, Bomb, etc.)
+    :min_games_for_leaderboard: The minimum number of games someone needs to play in the last 30 days to appear on the leaderboard.
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -95,6 +96,10 @@ class Category:
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
+    )
+    min_games_for_leaderboard: int = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
     )
     id: str = field(
         init=False,
