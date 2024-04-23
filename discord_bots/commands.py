@@ -29,7 +29,7 @@ from discord import (
     Message,
     TextChannel,
     VoiceChannel,
-    VoiceState,
+    VoiceState
 )
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -55,7 +55,6 @@ from discord_bots.utils import (
     create_in_progress_game_embed,
     get_team_name_diff,
     mean,
-    move_game_players,
     print_leaderboard,
     send_in_guild_message,
     send_message,
@@ -63,11 +62,12 @@ from discord_bots.utils import (
     update_next_map_to_map_after_next,
     upload_stats_screenshot_imgkit_channel,
     win_probability,
+    move_game_players
 )
 
 from .bot import bot
 from .cogs.economy import EconomyCommands
-from .cogs.in_progress_game import InProgressGameCommands, InProgressGameView
+from .cogs.in_progress_game import InProgressGameCog, InProgressGameView
 from .models import (
     AdminRole,
     Category,
@@ -500,7 +500,7 @@ async def create_game(
         in_progress_game_cog = bot.get_cog("InProgressGameCog")
         if (
             in_progress_game_cog is not None
-            and isinstance(in_progress_game_cog, InProgressGameCommands)
+            and isinstance(in_progress_game_cog, InProgressGameCog)
             and match_channel
         ):
             message = await match_channel.send(
@@ -1192,6 +1192,68 @@ async def add(ctx: Context, *args):
 
 
 @bot.command()
+@commands.check(is_admin)
+async def addadmin(ctx: Context, member: Member):
+    message = ctx.message
+    session = ctx.session
+    player: Player | None = session.query(Player).filter(Player.id == member.id).first()
+    if not player:
+        session.add(
+            Player(
+                id=member.id,
+                name=member.name,
+                is_admin=True,
+            )
+        )
+        await send_message(
+            message.channel,
+            embed_description=f"{escape_markdown(member.name)} added to admins",
+            colour=Colour.green(),
+        )
+        session.commit()
+    else:
+        if player.is_admin:
+            await send_message(
+                message.channel,
+                embed_description=f"{escape_markdown(player.name)} is already an admin",
+                colour=Colour.red(),
+            )
+        else:
+            player.is_admin = True
+            session.commit()
+            await send_message(
+                message.channel,
+                embed_description=f"{escape_markdown(player.name)} added to admins",
+                colour=Colour.green(),
+            )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def addadminrole(ctx: Context, role_name: str):
+    message = ctx.message
+    if message.guild:
+        session = ctx.session
+        role_name_to_role_id: dict[str, int] = {
+            role.name.lower(): role.id for role in message.guild.roles
+        }
+        if role_name.lower() not in role_name_to_role_id:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find role: {role_name}",
+                colour=Colour.red(),
+            )
+            return
+        session.add(AdminRole(role_name_to_role_id[role_name.lower()]))
+        await send_message(
+            message.channel,
+            embed_description=f"Added admin role: {role_name}",
+            colour=Colour.green(),
+        )
+        session.commit()
+
+
+@bot.command()
 async def autosub(ctx: Context, member: Member = None):
     """
     Picks a person to sub at random
@@ -1206,7 +1268,7 @@ async def autosub(ctx: Context, member: Member = None):
     assert guild
 
     if config.ADMIN_AUTOSUB and not await is_admin(ctx):
-        return
+            return
 
     player_in_game_id = member.id if member else message.author.id
     player_name = member.display_name if member else message.author.display_name
@@ -1414,6 +1476,45 @@ async def autosub(ctx: Context, member: Member = None):
 
 
 @bot.command()
+@commands.check(is_admin)
+async def ban(ctx: Context, member: Member):
+    """TODO: remove player from queues"""
+    message = ctx.message
+    session = ctx.session
+    players = session.query(Player).filter(Player.id == member.id).all()
+    if len(players) == 0:
+        session.add(
+            Player(
+                id=member.id,
+                name=member.name,
+                is_banned=True,
+            )
+        )
+        await send_message(
+            message.channel,
+            embed_description=f"{escape_markdown(member.name)} banned",
+            colour=Colour.green(),
+        )
+        session.commit()
+    else:
+        player = players[0]
+        if player.is_banned:
+            await send_message(
+                message.channel,
+                embed_description=f"{escape_markdown(player.name)} is already banned",
+                colour=Colour.red(),
+            )
+        else:
+            player.is_banned = True
+            session.commit()
+            await send_message(
+                message.channel,
+                embed_description=f"{escape_markdown(player.name)} banned",
+                colour=Colour.green(),
+            )
+
+
+@bot.command()
 async def coinflip(ctx: Context):
     message = ctx.message
     result = "HEADS" if floor(random() * 2) == 0 else "TAILS"
@@ -1569,6 +1670,127 @@ async def commendstats(ctx: Context):
                 )
             except Exception:
                 pass
+
+
+@bot.tree.command(description="Initially configure the bot for this server")
+async def configure(interaction: Interaction):
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        guild = (
+            session.query(DiscordGuild)
+            .filter(DiscordGuild.discord_id == interaction.guild_id)
+            .first()
+        )
+        if guild:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Server already configured",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+        else:
+            guild = DiscordGuild(interaction.guild_id, interaction.guild.name)
+            session.add(guild)
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Server configured successfully!",
+                    colour=Colour.green(),
+                ),
+                ephemeral=True,
+            )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def createcommand(ctx: Context, name: str, *, output: str):
+    message = ctx.message
+    session: str = ctx.session
+    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
+    if exists is not None:
+        await send_message(
+            message.channel,
+            embed_description="A command with that name already exists",
+            colour=Colour.red(),
+        )
+        return
+
+    session.add(CustomCommand(name, output))
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Command `{name}` added",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def createdbbackup(ctx: Context):
+    message = ctx.message
+    date_string = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    copyfile(f"{config.DB_NAME}.db", f"{config.DB_NAME}_{date_string}.db")
+    await send_message(
+        message.channel,
+        embed_description=f"Backup made to {config.DB_NAME}_{date_string}.db",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def restart(ctx):
+    await ctx.send("Restarting bot... ")
+    os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
+
+
+@bot.command()
+@commands.check(is_admin)
+async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
+    message = ctx.message
+    """
+    Manually adjust a player's trueskill rating downward by a percentage
+    """
+    if not decay_amount_percent.endswith("%"):
+        await send_message(
+            message.channel,
+            embed_description="Decay amount must end with %",
+            colour=Colour.red(),
+        )
+        return
+
+    decay_amount = int(decay_amount_percent[:-1])
+    if decay_amount < 1 or decay_amount > 100:
+        await send_message(
+            message.channel,
+            embed_description="Decay amount must be between 1-100",
+            colour=Colour.red(),
+        )
+        return
+
+    session = ctx.session
+    player: Player = (
+        session.query(Player).filter(Player.id == message.mentions[0].id).first()
+    )
+    rated_trueskill_mu_before = player.rated_trueskill_mu
+    rated_trueskill_mu_after = player.rated_trueskill_mu * (100 - decay_amount) / 100
+    player.rated_trueskill_mu = rated_trueskill_mu_after
+    await send_message(
+        message.channel,
+        embed_description=f"{escape_markdown(member.name)} decayed by {decay_amount}%",
+        colour=Colour.green(),
+    )
+    session.add(
+        PlayerDecay(
+            player.id,
+            decay_amount,
+            rated_trueskill_mu_before=rated_trueskill_mu_before,
+            rated_trueskill_mu_after=rated_trueskill_mu_after,
+        )
+    )
+    session.commit()
 
 
 @bot.command(name="del")
@@ -1767,6 +1989,29 @@ async def disablestats(ctx: Context):
     )
 
 
+@bot.command(usage="<command_name> <output>")
+async def editcommand(ctx: Context, name: str, *, output: str):
+    message = ctx.message
+    session = ctx.session
+    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
+    if exists is None:
+        await send_message(
+            message.channel,
+            embed_description="Could not find a command with that name",
+            colour=Colour.red(),
+        )
+        return
+
+    exists.output = output
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Command `{name}` updated",
+        colour=Colour.green(),
+    )
+
+
 @bot.command(usage="<game_id> <tie|be|ds>")
 @commands.check(is_admin)
 async def editgamewinner(ctx: Context, game_id: str, outcome: str):
@@ -1846,6 +2091,78 @@ async def imagetest2(ctx: Context):
 
 
 @bot.command()
+async def listadmins(ctx: Context):
+    message = ctx.message
+    output = "Admins:"
+    player: Player
+    for player in Session().query(Player).filter(Player.is_admin == True).all():
+        output += f"\n- {escape_markdown(player.name)}"
+
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
+@bot.command()
+async def listadminroles(ctx: Context):
+    message = ctx.message
+    output = "Admin roles:"
+    if not message.guild:
+        return
+
+    admin_role_ids = list(map(lambda x: x.role_id, Session().query(AdminRole).all()))
+    admin_role_names: list[str] = []
+
+    role_id_to_role_name: dict[int, str] = {
+        role.id: role.name for role in message.guild.roles
+    }
+
+    for admin_role_id in admin_role_ids:
+        if admin_role_id in role_id_to_role_name:
+            admin_role_names.append(role_id_to_role_name[admin_role_id])
+    output += f"\n{', '.join(admin_role_names)}"
+
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
+@bot.command()
+async def listbans(ctx: Context):
+    message = ctx.message
+    output = "Bans:"
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        for player in session.query(Player).filter(Player.is_banned == True):
+            output += f"\n- {escape_markdown(player.name)}"
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
+@bot.command()
+@commands.check(is_admin)
+async def listchannels(ctx: Context):
+    for channel in bot.get_all_channels():
+        _log.info(channel.id, channel)  # DEBUG, TRACE?
+
+    await send_message(
+        ctx.message.channel,
+        embed_description="Check the logs",
+        colour=Colour.blue(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def listdbbackups(ctx: Context):
+    message = ctx.message
+    output = "Backups:"
+    for filename in glob(f"{config.DB_NAME}_*.db"):
+        output += f"\n- {filename}"
+
+    await send_message(
+        message.channel,
+        embed_description=output,
+        colour=Colour.blue(),
+    )
+
+
+@bot.command()
 async def listnotifications(ctx: Context):
     message = ctx.message
     session = ctx.session
@@ -1862,6 +2179,22 @@ async def listnotifications(ctx: Context):
 
 
 @bot.command()
+@commands.check(is_admin)
+async def listplayerdecays(ctx: Context, member: Member):
+    message = ctx.message
+    session = ctx.session
+    player = session.query(Player).filter(Player.id == member.id).first()
+    player_decays: list[PlayerDecay] = session.query(PlayerDecay).filter(
+        PlayerDecay.player_id == player.id
+    )
+    output = f"Decays for {escape_markdown(player.name)}:"
+    for player_decay in player_decays:
+        output += f"\n- {player_decay.decayed_at.strftime('%Y-%m-%d')} - Amount: {player_decay.decay_percentage}%"
+
+    await send_message(message.channel, embed_description=output, colour=Colour.blue())
+
+
+@bot.command()
 async def lt(ctx: Context):
     query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132:28006&port=28006"
     await ctx.message.channel.send(query_url)
@@ -1873,6 +2206,23 @@ async def lt(ctx: Context):
     cropped.save(ntf.name)
     await ctx.message.channel.send(file=discord.File(ntf.name))
     ntf.close()
+
+
+@bot.command()
+async def trueskill(ctx: Context):
+    description = ""
+    description += "**mu (μ)**: The average skill of the gamer"
+    description += "\n**sigma (σ)**: The degree of uncertainty in the gamer's skill"
+    description += "\n**Reference**: https://www.microsoft.com/en-us/research/project/trueskill-ranking-system"
+    description += "\n**Implementation**: https://trueskill.org/"
+    embed_thumbnail = "https://www.microsoft.com/en-us/research/uploads/prod/2016/02/trueskill-skilldia.jpg"
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description=description,
+        embed_thumbnail=embed_thumbnail,
+        embed_title="Trueskill",
+        colour=Colour.blue(),
+    )
 
 
 @bot.tree.command(
@@ -2053,6 +2403,91 @@ async def pug(ctx: Context):
 
 @bot.command()
 @commands.check(is_admin)
+async def removeadmin(ctx: Context, member: Member):
+    message = ctx.message
+    session = ctx.session
+    players = session.query(Player).filter(Player.id == member.id).all()
+    if len(players) == 0 or not players[0].is_admin:
+        await send_message(
+            message.channel,
+            embed_description=f"{escape_markdown(member.name)} is not an admin",
+            colour=Colour.red(),
+        )
+        return
+
+    players[0].is_admin = False
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"{escape_markdown(member.name)} removed from admins",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def removeadminrole(ctx: Context, role_name: str):
+    message = ctx.message
+    if message.guild:
+        session = ctx.session
+        role_name_to_role_id: dict[str, int] = {
+            role.name.lower(): role.id for role in message.guild.roles
+        }
+        if role_name.lower() not in role_name_to_role_id:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find role: {role_name}",
+                colour=Colour.red(),
+            )
+            return
+        admin_role = (
+            session.query(AdminRole)
+            .filter(AdminRole.role_id == role_name_to_role_id[role_name.lower()])
+            .first()
+        )
+        if admin_role:
+            session.delete(admin_role)
+            await send_message(
+                message.channel,
+                embed_description=f"Removed admin role: {role_name}",
+                colour=Colour.green(),
+            )
+            session.commit()
+        else:
+            await send_message(
+                message.channel,
+                embed_description=f"Could not find admin role: {role_name}",
+                colour=Colour.red(),
+            )
+            return
+
+
+@bot.command()
+@commands.check(is_admin)
+async def removecommand(ctx: Context, name: str):
+    message = ctx.message
+    session = ctx.session
+    exists = session.query(CustomCommand).filter(CustomCommand.name == name).first()
+    if not exists:
+        await send_message(
+            message.channel,
+            embed_description="Could not find command with that name",
+            colour=Colour.red(),
+        )
+        return
+
+    session.delete(exists)
+    session.commit()
+
+    await send_message(
+        message.channel,
+        embed_description=f"Command `{name}` removed",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
 async def removenotifications(ctx: Context):
     message = ctx.message
     session = ctx.session
@@ -2063,6 +2498,26 @@ async def removenotifications(ctx: Context):
     await send_message(
         message.channel,
         embed_description=f"All queue notifications removed",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def removedbbackup(ctx: Context, db_filename: str):
+    message = ctx.message
+    if not db_filename.startswith(config.DB_NAME) or not db_filename.endswith(".db"):
+        await send_message(
+            message.channel,
+            embed_description=f"Filename must be of the format {config.DB_NAME}_{{date}}.db",
+            colour=Colour.red(),
+        )
+        return
+
+    remove(db_filename)
+    await send_message(
+        message.channel,
+        embed_description=f"DB backup {db_filename} removed",
         colour=Colour.green(),
     )
 
@@ -2114,6 +2569,23 @@ async def resetleaderboardchannel(interaction: Interaction):
         )
 
 
+@bot.command()
+@commands.check(is_admin)
+async def resetplayertrueskill(ctx: Context, member: Member):
+    message = ctx.message
+    session = ctx.session
+    player: Player = session.query(Player).filter(Player.id == member.id).first()
+    player.rated_trueskill_mu = config.DEFAULT_TRUESKILL_MU
+    player.rated_trueskill_sigma = config.DEFAULT_TRUESKILL_SIGMA
+    session.commit()
+    session.close()
+    await send_message(
+        message.channel,
+        embed_description=f"{escape_markdown(member.name)} trueskill reset.",
+        colour=Colour.green(),
+    )
+
+
 # TODO: Re-enable when configs are stored in the db
 # @bot.command()
 # @commands.check(is_admin)
@@ -2126,6 +2598,54 @@ async def resetleaderboardchannel(interaction: Interaction):
 #         embed_description=f"Delay between games set to {RE_ADD_DELAY}",
 #         colour=Colour.green(),
 #     )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def setbias(ctx: Context, member: Member, amount: float):
+    if amount < -100 or amount > 100:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Amount must be between -100 and 100",
+            colour=Colour.red(),
+        )
+        return
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Team bias for {member.name} set to `{amount}%`",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def setcaptainbias(ctx: Context, member: Member, amount: float):
+    if amount < -100 or amount > 100:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Amount must be between -100 and 100",
+            colour=Colour.red(),
+        )
+        return
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Captain bias for {member.name} set to `{amount}%`",
+        colour=Colour.green(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def setcommandprefix(ctx: Context, prefix: str):
+    # TODO move to db-config
+    message = ctx.message
+    global COMMAND_PREFIX
+    COMMAND_PREFIX = prefix
+    await send_message(
+        message.channel,
+        embed_description=f"Command prefix set to {COMMAND_PREFIX}",
+        colour=Colour.green(),
+    )
 
 
 @bot.tree.command(
@@ -2309,6 +2829,31 @@ async def setmoveenabled(ctx: Context, enabled_option: bool = True):
 
 
 @bot.command()
+@commands.check(is_admin)
+async def setsigma(ctx: Context, member: Member, sigma: float):
+    if sigma < 1 or sigma > 8.33:
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Amount must be between 1 and 8.33",
+            colour=Colour.red(),
+        )
+        return
+
+    session = ctx.session
+    player: Player = session.query(Player).filter(Player.id == member.id).first()
+    sigma_before = player.rated_trueskill_sigma
+    player.rated_trueskill_sigma = sigma
+    session.commit()
+    session.close()
+
+    await send_message(
+        ctx.message.channel,
+        embed_description=f"Sigma for **{member.name}** changed from **{round(sigma_before, 4)}** to **{sigma}**",
+        colour=Colour.blue(),
+    )
+
+
+@bot.command()
 async def showgame(ctx: Context, game_id: str):
     message = ctx.message
     session = ctx.session
@@ -2469,6 +3014,80 @@ async def showgamedebug(ctx: Context, game_id: str):
             #     embed_description=game_str,
             #     colour=Colour.blue(),
             # )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def showsigma(ctx: Context, member: Member):
+    """
+    Returns the player's base sigma
+    """
+    session = ctx.session
+    player: Player = session.query(Player).filter(Player.id == member.id).first()
+    output = embed_title = (
+        f"**{member.name}'s** sigma: **{round(player.rated_trueskill_sigma, 4)}**"
+    )
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description=output,
+        # embed_title=f"{member.name} sigma:",
+        colour=Colour.blue(),
+    )
+
+
+@bot.command()
+@commands.check(is_admin)
+async def showtrueskillnormdist(ctx: Context, queue_name: str):
+    """
+    Print the normal distribution of the trueskill in a given queue.
+
+    Useful for setting queue mu ranges
+    """
+    session = ctx.session
+    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    if not queue:
+        await send_message(
+            channel=ctx.message.channel,
+            embed_description=f"Could not find queue: **{queue_name}**",
+            colour=Colour.red(),
+        )
+        return
+
+    trueskill_mus = []
+    if queue.category_id:
+        player_category_trueskills: List[PlayerCategoryTrueskill] = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(
+                PlayerCategoryTrueskill.category_id == queue.category_id,
+            )
+            .all()
+        )
+        trueskill_mus = [pct.mu for pct in player_category_trueskills]
+    else:
+        players = session.query(Player).filter(Player.finished_game_players.any()).all()
+        trueskill_mus = [p.rated_trueskill_mu for p in players]
+
+    std_dev = std(trueskill_mus)
+    average = mean(trueskill_mus)
+    output = []
+    output.append(f"**Data points**: {len(trueskill_mus)}")
+    output.append(f"**Mean**: {round(average, 2)}")
+    output.append(f"**Stddev**: {round(std_dev, 2)}\n")
+    output.append(f"**2%** (+2σ): {round(average + 2 * std_dev, 2)}")
+    output.append(f"**7%** (+1.5σ): {round(average + 1.5 * std_dev, 2)}")
+    output.append(f"**16%** (+1σ): {round(average + 1 * std_dev, 2)}")
+    output.append(f"**31%** (+0.5σ): {round(average + 0.5 * std_dev, 2)}")
+    output.append(f"**50%** (0σ): {round(average, 2)}")
+    output.append(f"**69%** (-0.5σ): {round(average - 0.5 * std_dev, 2)}")
+    output.append(f"**84%** (-1σ): {round(average - 1 * std_dev, 2)}")
+    output.append(f"**93%** (-1.5σ): {round(average - 1.5 * std_dev, 2)}")
+    output.append(f"**98%** (+2σ): {round(average - 2 * std_dev, 2)}")
+
+    await send_message(
+        channel=ctx.message.channel,
+        embed_description="\n".join(output),
+        colour=Colour.blue(),
+    )
 
 
 @bot.command()
@@ -3271,6 +3890,29 @@ async def sub(ctx: Context, member: Member):
     except:
         _log.exception("[autosub] Ignoring exception in asyncio.gather:")
     session.commit()
+
+
+@bot.command()
+@commands.check(is_admin)
+async def unban(ctx: Context, member: Member):
+    message = ctx.message
+    session = ctx.session
+    players = session.query(Player).filter(Player.id == member.id).all()
+    if len(players) == 0 or not players[0].is_banned:
+        await send_message(
+            message.channel,
+            embed_description=f"{escape_markdown(member.name)} is not banned",
+            colour=Colour.red(),
+        )
+        return
+
+    players[0].is_banned = False
+    session.commit()
+    await send_message(
+        message.channel,
+        embed_description=f"{escape_markdown(member.name)} unbanned",
+        colour=Colour.green(),
+    )
 
 
 @bot.command()

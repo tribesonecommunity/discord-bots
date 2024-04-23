@@ -9,16 +9,14 @@ from discord.app_commands import AppCommandError, errors
 from discord.ext.commands import CommandError, Context, UserInputError
 
 import discord_bots.config as config
-from discord_bots.cogs.admin import AdminCommands
 from discord_bots.cogs.categories import CategoryCommands
 from discord_bots.cogs.economy import EconomyCommands
-from discord_bots.cogs.in_progress_game import InProgressGameCommands
+from discord_bots.cogs.in_progress_game import InProgressGameCog
 from discord_bots.cogs.map import MapCommands
 from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
 from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.schedule import ScheduleCommands, ScheduleUtils
-from discord_bots.cogs.trueskill import TrueskillCommands
 from discord_bots.cogs.vote import VoteCommands
 
 from .bot import bot
@@ -251,17 +249,15 @@ async def after_invoke(context: Context):
 
 
 async def setup():
-    await bot.add_cog(AdminCommands(bot))
     await bot.add_cog(CategoryCommands(bot))
-    await bot.add_cog(EconomyCommands(bot))
-    await bot.add_cog(InProgressGameCommands(bot))
-    await bot.add_cog(MapCommands(bot))
-    await bot.add_cog(QueueCommands(bot))
     await bot.add_cog(RaffleCommands(bot))
     await bot.add_cog(RotationCommands(bot))
-    await bot.add_cog(ScheduleCommands(bot))
-    await bot.add_cog(TrueskillCommands(bot))
+    await bot.add_cog(MapCommands(bot))
+    await bot.add_cog(QueueCommands(bot))
     await bot.add_cog(VoteCommands(bot))
+    await bot.add_cog(EconomyCommands(bot))
+    await bot.add_cog(InProgressGameCog(bot))
+    await bot.add_cog(ScheduleCommands(bot))
     add_player_task.start()
     afk_timer_task.start()
     leaderboard_task.start()

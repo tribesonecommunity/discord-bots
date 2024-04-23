@@ -3,25 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from sqlalchemy.orm.session import Session as SQLAlchemySession
-from trueskill import Rating, rate
 from typing import TYPE_CHECKING, Literal, Optional
 
-from discord import (
-    app_commands,
-    ButtonStyle,
-    Client,
-    Colour,
-    Embed,
-    Interaction,
-    Member,
-    Message,
-    Role,
-    TextChannel,
-)
-from discord.abc import GuildChannel
+import discord
 from discord.ext import commands
-from discord.ui import button, Button
+from trueskill import Rating, rate
 
 from discord_bots import config
 from discord_bots.checks import is_admin_app_command
@@ -54,21 +40,20 @@ from discord_bots.utils import (
 )
 
 if TYPE_CHECKING:
+    import sqlalchemy.orm
     from discord.ext.commands import Bot
 
 
 _log = logging.getLogger(__name__)
 _lock = asyncio.Lock()
 
-class InProgressGameCommands(commands.Cog):
+class InProgressGameCog(commands.Cog):
     def __init__(self, bot: Bot):
         self.bot: Bot = bot
         self.views: list[InProgressGameView] = []
 
-    group = app_commands.Group(name="game", description="Game commands")
-
     async def cog_load(self) -> None:
-        session: SQLAlchemySession
+        session: sqlalchemy.orm.Session
         with Session() as session:
             in_progress_games: list[InProgressGame] = session.query(
                 InProgressGame
@@ -87,7 +72,7 @@ class InProgressGameCommands(commands.Cog):
 
     def get_player_and_in_progress_game(
         self,
-        session: SQLAlchemySession,
+        session: sqlalchemy.orm.Session,
         player_id: int,
         game_id: Optional[str] = None,
     ) -> tuple[InProgressGamePlayer, InProgressGame] | None:
@@ -126,30 +111,49 @@ class InProgressGameCommands(commands.Cog):
                 return None
         return game_player, in_progress_game
 
-    @group.command(
+    @discord.app_commands.command(
         name="finishgame", description="Ends the current game you are in"
     )
-    @app_commands.describe(outcome="win, loss, or tie")
-    @app_commands.guild_only()
+    @discord.app_commands.describe(outcome="win, loss, or tie")
+    @discord.app_commands.guild_only()
     async def finishgame(
         self,
-        interaction: Interaction,
+        interaction: discord.Interaction,
         outcome: Literal["win", "loss", "tie"],
     ):
         await self.finishgame_callback(interaction, outcome)
 
-    @group.command(
+    @discord.app_commands.command(
         name="cancelgame", description="Cancels the specified game"
     )
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(game_id="In progress game ID")
-    @app_commands.guild_only()
-    async def cancelgame(self, interaction: Interaction, game_id: str):
+    @discord.app_commands.check(is_admin_app_command)
+    @discord.app_commands.guild_only()
+    async def cancelgame(self, interaction: discord.Interaction, game_id: str):
         await self.cancelgame_callback(interaction, game_id)
+
+    @cancelgame.autocomplete("game_id")
+    async def cancelgame_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ):
+        result = []
+        session: sqlalchemy.orm.Session
+        with Session() as session:
+            in_progress_games: list[InProgressGame] | None = (
+                session.query(InProgressGame).limit(25).all()
+            )  # discord only supports up to 25 choices
+            for ipg in in_progress_games:
+                short_game_id = short_uuid(ipg.id)
+                if current in short_game_id:
+                    result.append(
+                        discord.app_commands.Choice(
+                            name=short_game_id, value=short_game_id
+                        )
+                    )
+        return result
 
     async def finishgame_callback(
         self,
-        interaction: Interaction,
+        interaction: discord.Interaction,
         outcome: Literal["win", "loss", "tie"],
         game_id: Optional[str] = None,
     ) -> bool:
@@ -157,21 +161,21 @@ class InProgressGameCommands(commands.Cog):
             await interaction.response.defer(ephemeral=True)
         if _lock.locked():
             await interaction.followup.send(
-                embed=Embed(
+                embed=discord.Embed(
                     description="⏳ A **Finish** is already in progress, please wait...",
-                    color=Colour.yellow(),
+                    color=discord.Color.yellow(),
                 ),
                 ephemeral=True,
             )
         async with _lock:
-            session: SQLAlchemySession
+            session: sqlalchemy.orm.Session
             with Session() as session:
                 result = self.get_player_and_in_progress_game(
                     session, interaction.user.id, game_id
                 )
                 if result is None:
-                    embed = Embed(
-                        color=Colour.red(),
+                    embed = discord.Embed(
+                        color=discord.Colour.red(),
                     )
                     embed.description = "❌ You are not in this game"
                     await interaction.followup.send(
@@ -184,9 +188,9 @@ class InProgressGameCommands(commands.Cog):
                 game: InProgressGame = result[1]
                 confirmation_buttons = ConfirmationView(interaction.user.id)
                 confirmation_buttons.message = await interaction.followup.send(
-                    embed=Embed(
+                    embed=discord.Embed(
                         description=f"⚠️ Are you sure you want to **Finish** game **{short_uuid(game.id)}** as a **{outcome}**?⚠️",
-                        color=Colour.yellow(),
+                        color=discord.Colour.yellow(),
                     ),
                     view=confirmation_buttons,
                     ephemeral=True,
@@ -201,20 +205,20 @@ class InProgressGameCommands(commands.Cog):
                 return is_finished
 
     async def cancelgame_callback(
-        self, interaction: Interaction, game_id: str
+        self, interaction: discord.Interaction, game_id: str
     ) -> bool:
         if not interaction.response.is_done():
             await interaction.response.defer(ephemeral=True)
         if _lock.locked():
             await interaction.followup.send(
-                embed=Embed(
+                embed=discord.Embed(
                     description="⏳ A **Cancel** is already in progress, please wait...",
-                    color=Colour.yellow(),
+                    color=discord.Color.yellow(),
                 ),
                 ephemeral=True,
             )
         async with _lock:
-            session: SQLAlchemySession
+            session: sqlalchemy.orm.Session
             with Session() as session:
                 game = (
                     session.query(InProgressGame)
@@ -223,18 +227,18 @@ class InProgressGameCommands(commands.Cog):
                 )
                 if not game:
                     await interaction.followup.send(
-                        embed=Embed(
+                        embed=discord.Embed(
                             description=f"❌ Game {short_uuid(game_id)} does not exist",
-                            colour=Colour.red(),
+                            colour=discord.Colour.red(),
                         ),
                         ephemeral=True,
                     )
                     return False
                 confirmation_buttons = ConfirmationView(interaction.user.id)
                 confirmation_buttons.message = await interaction.followup.send(
-                    embed=Embed(
+                    embed=discord.Embed(
                         description=f"⚠️ Are you sure you want to **Cancel** game **{short_uuid(game.id)}**?⚠️",
-                        color=Colour.yellow(),
+                        color=discord.Colour.yellow(),
                     ),
                     view=confirmation_buttons,
                     ephemeral=True,
@@ -250,8 +254,8 @@ class InProgressGameCommands(commands.Cog):
 
     async def finish_in_progress_game(
         self,
-        session: SQLAlchemySession,
-        interaction: Interaction,
+        session: sqlalchemy.orm.Session,
+        interaction: discord.Interaction,
         outcome: Literal["win", "loss", "tie"],
         game_player: InProgressGamePlayer,
         in_progress_game: InProgressGame,
@@ -267,9 +271,9 @@ class InProgressGameCommands(commands.Cog):
                 f"Could not find queue with id {in_progress_game.queue_id} for in_progress_game with id {in_progress_game.id}"
             )
             await interaction.followup.send(
-                embed=Embed(
+                embed=discord.Embed(
                     description="Oops, something went wrong...☹️️",
-                    color=Colour.red(),
+                    color=discord.Colour.red(),
                 ),
                 ephemeral=True,
             )
@@ -349,9 +353,9 @@ class InProgressGameCommands(commands.Cog):
                     f"Could not find category with id {queue.category_id} for queue with id {queue.id}"
                 )
                 await interaction.followup.send(
-                    embed=Embed(
+                    embed=discord.Embed(
                         description="Something went wrong, please contact the server owner",
-                        color=Colour.red(),
+                        color=discord.Colour.red(),
                     ),
                     ephemeral=True,
                 )
@@ -494,13 +498,13 @@ class InProgressGameCommands(commands.Cog):
             interaction.guild.id,
             (interaction.user.name, interaction.user.display_name),
         )
-        game_history_message: Message
+        game_history_message: discord.Message
         if config.GAME_HISTORY_CHANNEL:
-            game_history_channel: GuildChannel | None = (
+            game_history_channel: discord.abc.GuildChannel | None = (
                 interaction.guild.get_channel(config.GAME_HISTORY_CHANNEL)
             )
             if game_history_channel and isinstance(
-                game_history_channel, TextChannel
+                game_history_channel, discord.TextChannel
             ):
                 game_history_message = await game_history_channel.send(
                     embed=finished_game_embed
@@ -513,27 +517,27 @@ class InProgressGameCommands(commands.Cog):
             finished_game_embed.description = game_history_message.jump_url
         if config.CHANNEL_ID:
             main_channel = interaction.guild.get_channel(config.CHANNEL_ID)
-            if isinstance(main_channel, TextChannel):
+            if isinstance(main_channel, discord.TextChannel):
                 await main_channel.send(embed=finished_game_embed)
         return True
 
     async def cancel_in_progress_game(
         self,
-        session: SQLAlchemySession,
-        interaction: Interaction,
+        session: sqlalchemy.orm.Session,
+        interaction: discord.Interaction,
         game: InProgressGame,
     ):
         assert interaction.guild
         cancelled_game_embed = create_cancelled_game_embed(
             session, game, interaction.user.name
         )
-        game_history_message: Message
+        game_history_message: discord.Message
         if config.GAME_HISTORY_CHANNEL:
             game_history_channel = interaction.guild.get_channel(
                 config.GAME_HISTORY_CHANNEL
             )
             if game_history_channel and isinstance(
-                game_history_channel, TextChannel
+                game_history_channel, discord.TextChannel
             ):
                 game_history_message = await game_history_channel.send(
                     embed=cancelled_game_embed
@@ -543,10 +547,10 @@ class InProgressGameCommands(commands.Cog):
             cancelled_game_embed.description = game_history_message.jump_url
 
         if config.CHANNEL_ID and interaction.guild:
-            main_channel: GuildChannel | None = (
+            main_channel: discord.abc.GuildChannel | None = (
                 interaction.guild.get_channel(config.CHANNEL_ID)
             )
-            if main_channel and isinstance(main_channel, TextChannel):
+            if main_channel and isinstance(main_channel, discord.TextChannel):
                 await main_channel.send(embed=cancelled_game_embed)
                 if config.ECONOMY_ENABLED:
                     try:
@@ -560,24 +564,24 @@ class InProgressGameCommands(commands.Cog):
                     except ValueError:
                         # Raised if there are no predictions on this game
                         await main_channel.send(
-                            embed=Embed(
+                            embed=discord.Embed(
                                 description="No predictions to be refunded",
-                                colour=Colour.blue(),
+                                colour=discord.Colour.blue(),
                             )
                         )
                     except Exception:
                         _log.exception("Predictions failed to refund")
                         await main_channel.send(
-                            embed=Embed(
+                            embed=discord.Embed(
                                 description=f"Predictions failed to refund",
-                                colour=Colour.red(),
+                                colour=discord.Colour.red(),
                             )
                         )
                     else:
                         await main_channel.send(
-                            embed=Embed(
+                            embed=discord.Embed(
                                 description="Predictions refunded",
-                                colour=Colour.blue(),
+                                colour=discord.Colour.blue(),
                             )
                         )
 
@@ -591,7 +595,7 @@ class InProgressGameCommands(commands.Cog):
                 await move_game_players_lobby(game.id, interaction.guild)
             except Exception:
                 _log.exception("Ignored exception when moving a gameplayer to lobby:")
-
+        
         for ipg_channel in session.query(InProgressGameChannel).filter(
             InProgressGameChannel.in_progress_game_id == game.id
         ):
@@ -603,40 +607,19 @@ class InProgressGameCommands(commands.Cog):
         session.query(InProgressGame).filter(InProgressGame.id == game.id).delete()
         return True
 
-    @cancelgame.autocomplete("game_id")
-    async def cancelgame_autocomplete(
-        self, interaction: Interaction, current: str
-    ):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            in_progress_games: list[InProgressGame] | None = (
-                session.query(InProgressGame).limit(25).all()
-            )  # discord only supports up to 25 choices
-            if in_progress_games:
-                for ipg in in_progress_games:
-                    short_game_id = short_uuid(ipg.id)
-                    if current in short_game_id:
-                        result.append(
-                            app_commands.Choice(
-                                name=short_game_id, value=short_game_id
-                            )
-                        )
-        return result
-
 
 class InProgressGameView(BaseView):
-    def __init__(self, game_id: str, cog: InProgressGameCommands):
+    def __init__(self, game_id: str, cog: InProgressGameCog):
         super().__init__(timeout=None)
         self.game_id: str = game_id
         self.is_game_finished: bool = False
         self.cog = cog
 
-    async def interaction_check(self, interaction: Interaction[Client]):
+    async def interaction_check(self, interaction: discord.Interaction[discord.Client]):
         if self.is_game_finished:
-            embed = Embed(
+            embed = discord.Embed(
                 description="❌ This game has already been finished",
-                colour=Colour.red(),
+                color=discord.Color.red(),
             )
             if not interaction.response.is_done():
                 await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -645,14 +628,14 @@ class InProgressGameView(BaseView):
             return False
         return True
 
-    @button(
+    @discord.ui.button(
         label="Win",
-        style=ButtonStyle.primary,
+        style=discord.ButtonStyle.primary,
         custom_id="in_progress_game_view:win",
         emoji="🥇",
     )
     async def win_button(
-        self, interaction: Interaction, button: Button
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
         self.is_game_finished = await self.cog.finishgame_callback(
             interaction, "win", self.game_id
@@ -661,14 +644,14 @@ class InProgressGameView(BaseView):
             await self.disable_buttons(interaction)
             self.stop()
 
-    @button(
+    @discord.ui.button(
         label="Loss",
-        style=ButtonStyle.primary,
+        style=discord.ButtonStyle.primary,
         custom_id="in_progress_game_view:loss",
         emoji="🥈",
     )
     async def loss_button(
-        self, interaction: Interaction, button: Button
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
         self.is_game_finished = await self.cog.finishgame_callback(
             interaction, "loss", self.game_id
@@ -677,14 +660,14 @@ class InProgressGameView(BaseView):
             await self.disable_buttons(interaction)
             self.stop()
 
-    @button(
+    @discord.ui.button(
         label="Tie",
-        style=ButtonStyle.primary,
+        style=discord.ButtonStyle.primary,
         custom_id="in_progress_game_view:tie",
         emoji="🤞",
     )
     async def tie_button(
-        self, interaction: Interaction, button: Button
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
         self.is_game_finished = await self.cog.finishgame_callback(
             interaction, "tie", self.game_id
@@ -693,13 +676,13 @@ class InProgressGameView(BaseView):
             await self.disable_buttons(interaction)
             self.stop()
 
-    @button(
+    @discord.ui.button(
         label="Cancel",
-        style=ButtonStyle.red,
+        style=discord.ButtonStyle.red,
         custom_id="in_progress_game_view:cancel",
     )
     async def cancel_button(
-        self, interaction: Interaction, button: Button
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
         if not await is_admin_app_command(interaction):
             return

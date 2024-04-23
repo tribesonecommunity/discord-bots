@@ -1,21 +1,14 @@
 import logging
-import numpy
 from datetime import datetime, timedelta, timezone
+
+import numpy
+from discord import TextChannel
+from discord.ext.commands import Bot, Context, check, command
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord import (
-    app_commands,
-    Colour,
-    Embed,
-    Interaction,
-    Role,
-    TextChannel,
-)
-from discord.ext.commands import Bot
-
-from discord_bots.checks import is_admin_app_command
+from discord_bots.checks import is_admin
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     CURRENCY_AWARD,
@@ -35,7 +28,6 @@ from discord_bots.models import (
     QueueRole,
     Rotation,
     RotationMap,
-    Session,
 )
 from discord_bots.queues import AddPlayerQueueMessage, add_player_queue
 
@@ -46,1020 +38,602 @@ class QueueCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    group = app_commands.Group(name="queue", description="Queue commands")
-
-    @group.command(name="addrole", description="Associate a discord role with a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue", role="Discord role")
-    async def addqueuerole(self, interaction: Interaction, queue_name: str, role: Role):
+    @command()
+    @check(is_admin)
+    async def addqueuerole(self, ctx: Context, queue_name: str, role_name: str):
         """
         Associate a discord role with a queue
         """
-        if interaction.guild:
-            if not role in interaction.guild.roles:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find role: {role.name}",
-                        colour=Colour.blue(),
-                    ),
-                    ephemeral=True,
-                )
+        message = ctx.message
+        session = ctx.session
+        queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if not queue:
+            await self.send_error_message(f"Could not find queue: {queue_name}")
+            return
+        if message.guild:
+            role_name_to_role_id: dict[str, int] = {
+                role.name.lower(): role.id for role in message.guild.roles
+            }
+            if role_name.lower() not in role_name_to_role_id:
+                await self.send_error_message(f"Could not find role: {role_name}")
                 return
+            session.add(QueueRole(queue.id, role_name_to_role_id[role_name.lower()]))
+            await self.send_success_message(
+                f"Added role {role_name} to queue {queue.name}"
+            )
+            session.commit()
 
-        session: SQLAlchemySession
-        with Session() as session:
-            queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-            else:
-                session.add(QueueRole(queue.id, role.id))
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Added role {role.name} to queue {queue.name}",
-                        colour=Colour.green(),
-                    )
-                )
-
-    @group.command(name="clear", description="Clear all players out of a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue")
-    async def clearqueue(self, interaction: Interaction, queue_name: str):
+    @command()
+    @check(is_admin)
+    async def clearqueue(self, ctx: Context, queue_name: str):
         """
         Clear all players out of a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        session = ctx.session
+        queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
 
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        if not queue:
+            await self.send_error_message(f"Could not find queue: {queue_name}")
+            return
+        session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).delete()
+        session.commit()
 
-            session.query(QueuePlayer).filter(QueuePlayer.queue_id == queue.id).delete()
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Queue cleared: {queue.name}",
-                    colour=Colour.green(),
-                )
-            )
+        await self.send_success_message(f"Queue cleared: {queue.name}")
 
-    @group.command(name="clearrange", description="Clear the mu range for a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue")
-    async def clearqueuerange(self, interaction: Interaction, queue_name: str):
+    @command()
+    @check(is_admin)
+    async def clearqueuerange(self, ctx: Context, queue_name: str):
         """
         Clear the mu range for a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                queue.mu_min = None
-                queue.mu_max = None
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue.name} range cleared",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue not found: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
+        session = ctx.session
+        queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if queue:
+            queue.mu_min = None
+            queue.mu_max = None
+            session.commit()
+            await self.send_success_message(f"Queue {queue.name} range cleared")
+        else:
+            await self.send_error_message(f"Queue not found: {queue_name}")
 
-    @group.command(name="create", description="Create a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue", size="Size of queue")
-    async def createqueue(self, interaction: Interaction, queue_name: str, size: int):
+    @command()
+    @check(is_admin)
+    async def createqueue(self, ctx: Context, queue_name: str, queue_size: int):
         """
         Create a queue
         """
-        vote_threshold: int = round(float(size) * 2 / 3)
-        queue = Queue(name=queue_name, size=size, vote_threshold=vote_threshold)
 
-        session: SQLAlchemySession
-        with Session() as session:
-            try:
-                session.add(queue)
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue created: {queue.name}",
-                        colour=Colour.green(),
-                    )
-                )
-            except IntegrityError:
-                session.rollback()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="A queue already exists with that name",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
+        vote_threshold: int = round(float(queue_size) * 2 / 3)
+        queue = Queue(name=queue_name, size=queue_size, vote_threshold=vote_threshold)
+        session = ctx.session
 
-    @group.command(name="isolate", description="Isolate a queue (no auto-adds)")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue")
-    async def isolatequeue(self, interaction: Interaction, queue_name: str):
+        try:
+            session.add(queue)
+            session.commit()
+            await self.send_success_message(f"Queue created: {queue.name}")
+        except IntegrityError:
+            session.rollback()
+            await self.send_error_message("A queue already exists with that name")
+
+    @command()
+    @check(is_admin)
+    async def isolatequeue(self, ctx: Context, queue_name: str):
         """
         Isolate a queue (no auto-adds)
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                queue.is_isolated = True
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue.name} is now isolated (no auto-adds)",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue not found: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
+        session = ctx.session
+        queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if queue:
+            queue.is_isolated = True
+            session.commit()
+            await self.send_success_message(
+                f"Queue {queue.name} is now isolated (no auto-adds)"
+            )
+        else:
+            await self.send_error_message(f"Queue not found: {queue_name}")
 
-    @group.command(
-        name="list", description="List all queues with their category and rotation"
-    )
-    async def listqueues(self, interaction: Interaction):
+    @command()
+    async def listqueues(self, ctx: Context):
         """
         List all queues with their category and rotation
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queues: list[Queue] | None = session.query(Queue).all()
-            if not queues:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="No queues found",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        session = ctx.session
 
-            output = ""
-            for queue in queues:
-                if queue.is_locked:
-                    output += f"### {queue.name} [locked]\n"
-                else:
-                    output += f"### {queue.name}\n"
+        queues: list[Queue] | None = session.query(Queue).all()
+        if not queues:
+            await self.send_error_message("No queues found")
+            return
 
-                output += "- Category: "
-                category_name: str | None = (
-                    session.query(Category.name)
-                    .filter(Category.id == queue.category_id)
-                    .scalar()
-                )
-                if category_name:
-                    output += f"{category_name}\n"
-                else:
-                    output += "None\n"
+        output = ""
+        for queue in queues:
+            if queue.is_locked:
+                output += f"### {queue.name} [locked]\n"
+            else:
+                output += f"### {queue.name}\n"
 
-                output += "- Rotation: "
-                rotation_name: str | None = (
-                    session.query(Rotation.name)
-                    .filter(Rotation.id == queue.rotation_id)
-                    .scalar()
-                )
-                if rotation_name:
-                    output += f"{rotation_name}\n"
-                else:
-                    output += "None\n"
-
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=output,
-                    colour=Colour.blue(),
-                )
+            output += "- Category: "
+            category_name: str | None = (
+                session.query(Category.name)
+                .filter(Category.id == queue.category_id)
+                .scalar()
             )
+            if category_name:
+                output += f"{category_name}\n"
+            else:
+                output += "None\n"
 
-    @group.command(
-        name="listroles",
-        description="List all queues and their associated discord roles",
-    )
-    async def listqueueroles(self, interaction: Interaction):
+            output += "- Rotation: "
+            rotation_name: str | None = (
+                session.query(Rotation.name)
+                .filter(Rotation.id == queue.rotation_id)
+                .scalar()
+            )
+            if rotation_name:
+                output += f"{rotation_name}\n"
+            else:
+                output += "None\n"
+
+        await self.send_info_message(output)
+
+    @command()
+    async def listqueueroles(self, ctx: Context):
         """
         List all queues and their associated discord roles
         """
-        if not interaction.guild:
+        message = ctx.message
+        if not message.guild:
             return
 
         output = "Queues:\n"
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue
-            for i, queue in enumerate(session.query(Queue).all()):
-                queue_role_names: list[str] = []
-                queue_role: QueueRole
-                for queue_role in (
-                    session.query(QueueRole)
-                    .filter(QueueRole.queue_id == queue.id)
-                    .all()
-                ):
-                    role = interaction.guild.get_role(queue_role.role_id)
-                    if role:
-                        queue_role_names.append(role.name)
-                    else:
-                        queue_role_names.append(str(queue_role.role_id))
-                output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
-            await interaction.response.send_message(
-                embed=Embed(description=output, colour=Colour.blue())
-            )
+        session = ctx.session
+        queue: Queue
+        for i, queue in enumerate(session.query(Queue).all()):
+            queue_role_names: list[str] = []
+            queue_role: QueueRole
+            for queue_role in (
+                session.query(QueueRole).filter(QueueRole.queue_id == queue.id).all()
+            ):
+                role = message.guild.get_role(queue_role.role_id)
+                if role:
+                    queue_role_names.append(role.name)
+                else:
+                    queue_role_names.append(str(queue_role.role_id))
+            output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
+        await self.send_info_message(output)
 
-    @group.command(name="lock", description="Prevent players from adding to a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue")
-    async def lockqueue(self, interaction: Interaction, queue_name: str):
+    @command()
+    @check(is_admin)
+    async def lockqueue(self, ctx: Context, queue_name: str):
         """
         Prevent players from adding to a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue | None = (
-                session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
-            )
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        session = ctx.session
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+        )
+        if not queue:
+            await self.send_error_message(f"Could not find queue: {queue_name}")
+            return
 
-            queue.is_locked = True
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Queue **{queue.name}** locked",
-                    colour=Colour.green(),
-                )
-            )
+        queue.is_locked = True
+        session.commit()
+        await self.send_success_message(f"Queue **{queue.name}** locked")
 
-    @group.command(
-        name="mock",
-        description="Helper test method for adding random players to queues",
-    )
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue", count="Number of people to add")
-    async def mockqueue(self, interaction: Interaction, queue_name: str, count: int):
+    @command()
+    @check(is_admin)
+    async def mockqueue(self, ctx: Context, queue_name: str, count: int):
+        message = ctx.message
         """
         Helper test method for adding random players to queues
 
         This will send PMs to players, create voice channels, etc. so be careful
         """
-        if interaction.user.id not in [
+        if message.author.id not in [
             115204465589616646,
             347125254050676738,
             508003755220926464,
             133700743201816577,
-            649029546749853706,
         ]:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Only special people can use this command",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
+            await self.send_error_message("Only special people can use this command")
             return
 
-        session: SQLAlchemySession
-        with Session() as session:
-            players_from_last_30_days = (
-                session.query(Player)
-                .join(FinishedGamePlayer, FinishedGamePlayer.player_id == Player.id)
-                .join(
-                    FinishedGame, FinishedGame.id == FinishedGamePlayer.finished_game_id
-                )
-                .filter(
-                    FinishedGame.finished_at
-                    > datetime.now(timezone.utc) - timedelta(days=30),
-                )
-                .order_by(FinishedGame.finished_at.desc())  # type: ignore
-                .all()
+        session = ctx.session
+        players_from_last_30_days = (
+            session.query(Player)
+            .join(FinishedGamePlayer, FinishedGamePlayer.player_id == Player.id)
+            .join(FinishedGame, FinishedGame.id == FinishedGamePlayer.finished_game_id)
+            .filter(
+                FinishedGame.finished_at
+                > datetime.now(timezone.utc) - timedelta(days=30),
             )
-            queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue_name} not found",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-            # This throws an error if people haven't played in 30 days
-            for player in numpy.random.choice(
-                players_from_last_30_days, size=int(count), replace=False
-            ):
-                if isinstance(interaction.channel, TextChannel) and interaction.guild:
-                    add_player_queue.put(
-                        AddPlayerQueueMessage(
-                            player.id,
-                            player.name,
-                            [queue.id],
-                            False,
-                            interaction.channel,
-                            interaction.guild,
-                        )
+            .order_by(FinishedGame.finished_at.desc())  # type: ignore
+            .all()
+        )
+        queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        # This throws an error if people haven't played in 30 days
+        for player in numpy.random.choice(
+            players_from_last_30_days, size=int(count), replace=False
+        ):
+            if isinstance(message.channel, TextChannel) and message.guild:
+                add_player_queue.put(
+                    AddPlayerQueueMessage(
+                        player.id,
+                        player.name,
+                        [queue.id],
+                        False,
+                        message.channel,
+                        message.guild,
                     )
-                    player.last_activity_at = datetime.now(timezone.utc)
-                    session.add(player)
-                    session.commit()
-
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Added **{count}** players to **{queue.name}**",
-                    colour=Colour.green(),
                 )
-            )
+                player.last_activity_at = datetime.now(timezone.utc)
+                session.add(player)
+                session.commit()
 
-    @group.command(name="remove", description="Remove a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue")
-    async def removequeue(self, interaction: Interaction, queue_name: str):
+        await self.send_success_message(
+            f"Added **{count}** players to **{queue.name}**"
+        )
+
+    @command()
+    @check(is_admin)
+    async def removequeue(self, ctx: Context, queue_name: str):
         """
         Remove a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                games_in_progress: list[InProgressGame] = (
-                    session.query(InProgressGame)
-                    .filter(InProgressGame.queue_id == queue.id)
-                    .all()
-                )
-                if len(games_in_progress) > 0:
-                    await interaction.response.send_message(
-                        embed=Embed(
-                            description=f"Cannot remove queue with game in progress: {queue.name}",
-                            colour=Colour.red(),
-                        ),
-                        ephemeral=True,
-                    )
-                    return
-                else:
-                    session.delete(queue)
-                    session.commit()
-                    await interaction.response.send_message(
-                        embed=Embed(
-                            description=f"Queue removed: {queue.name}",
-                            colour=Colour.green(),
-                        )
-                    )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue not found: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
+        session = ctx.session
 
-    @group.command(name="removerole", description="Remove a discord role from a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue", role="Discord role")
-    async def removequeuerole(
-        self, interaction: Interaction, queue_name: str, role: Role
-    ):
+        queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if queue:
+            games_in_progress = (
+                session.query(InProgressGame)
+                .filter(InProgressGame.queue_id == queue.id)
+                .all()
+            )
+            if len(games_in_progress) > 0:
+                await self.send_error_message(
+                    f"Cannot remove queue with game in progress: {queue.name}"
+                )
+                return
+            else:
+                session.delete(queue)
+                session.commit()
+                await self.send_success_message(f"Queue removed: {queue.name}")
+        else:
+            await self.send_error_message(f"Queue not found: {queue_name}")
+
+    @command()
+    @check(is_admin)
+    async def removequeuerole(self, ctx: Context, queue_name: str, role_name: str):
         """
         Remove a discord role from a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
+        message = ctx.message
+        session = ctx.session
+        queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if not queue:
+            await self.send_error_message(f"Could not find queue: {queue_name}")
+            return
+        if message.guild:
+            role_name_to_role_id: dict[str, int] = {
+                role.name.lower(): role.id for role in message.guild.roles
+            }
+            if role_name.lower() not in role_name_to_role_id:
+                # In case a queue role was deleted from the server
+                queue_role_by_role_id = session.query(QueueRole).filter(
+                    QueueRole.queue_id == queue.id,
+                    QueueRole.role_id == role_name,
                 )
-                return
-            if interaction.guild:
-                if not role in interaction.guild.roles:
-                    # In case a queue role was deleted from the server
-                    queue_role_by_role_id = session.query(QueueRole).filter(
+                if queue_role_by_role_id:
+                    session.query(QueueRole).filter(
                         QueueRole.queue_id == queue.id,
-                        QueueRole.role_id == role.name,
-                    )
-                    if queue_role_by_role_id:
-                        session.query(QueueRole).filter(
-                            QueueRole.queue_id == queue.id,
-                            QueueRole.role_id == role.name,
-                        ).delete()
-                        session.commit()
-                        await interaction.response.send_message(
-                            embed=Embed(
-                                description=f"Removed role {role.name} from queue {queue.name}",
-                                colour=Colour.green(),
-                            )
-                        )
-                        return
-                    await interaction.response.send_message(
-                        embed=Embed(
-                            description=f"Could not find role: {role.name}",
-                            colour=Colour.red(),
-                        ),
-                        ephemeral=True,
+                        QueueRole.role_id == role_name,
+                    ).delete()
+                    session.commit()
+                    await self.send_success_message(
+                        f"Removed role {role_name} from queue {queue.name}"
                     )
                     return
-                session.query(QueueRole).filter(
-                    QueueRole.queue_id == queue.id,
-                    QueueRole.role_id == role.id,
-                ).delete()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Removed role {role.name} from queue {queue.name}",
-                        colour=Colour.green(),
-                    )
-                )
-                session.commit()
 
-    @group.command(
-        name="currencyaward",
-        description="Set how much currency is awarded for games in queue",
-    )
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(
-        queue_name="Name of queue", award="Currency value to be awarded"
-    )
+                await self.send_error_message(f"Could not find role: {role_name}")
+                return
+            session.query(QueueRole).filter(
+                QueueRole.queue_id == queue.id,
+                QueueRole.role_id == role_name_to_role_id[role_name.lower()],
+            ).delete()
+            await self.send_success_message(
+                f"Removed role {role_name} from queue {queue.name}"
+            )
+            session.commit()
+
+    @command()
+    @check(is_admin)
     async def setqueuecurrencyaward(
-        self, interaction: Interaction, queue_name: str, award: int = CURRENCY_AWARD
+        self, ctx: Context, queue_name: str, currency_award: int = CURRENCY_AWARD
     ):
         """
         Set how much currency is awarded for games in queue.\nSet to default if no value provided.
         """
+        session: SQLAlchemySession = ctx.session
+
         if not ECONOMY_ENABLED:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Player economy is disabled",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
+            await self.send_error_message("Player economy is disabled")
             return
 
-        session: SQLAlchemySession
-        with Session() as session:
-            try:
-                queue: Queue = (
-                    session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
-                )
-            except NoResultFound:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue **{queue_name}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            queue.currency_award = award
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"**{queue_name}** award set to {award} {CURRENCY_NAME}",
-                    colour=Colour.green(),
-                )
+        try:
+            queue: Queue = (
+                session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
             )
+        except NoResultFound:
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
+            return
 
-    @group.command(
-        name="moveenabled",
-        description="Enables automatic moving of people in game when queue pops",
-    )
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(
-        queue_name="Name of queue", enabled_option="Is queue move enabled"
-    )
+        queue.currency_award = currency_award
+        session.commit()
+        await self.send_success_message(
+            f"**{queue_name}** award set to {currency_award} {CURRENCY_NAME}"
+        )
+
+    @command()
+    @check(is_admin)
     async def setqueuemoveenabled(
-        self, interaction: Interaction, queue_name: str, enabled_option: bool
+        self, ctx: Context, queue_name: str, enabled_option: bool
     ):
         """
         Enables automatic moving of people in game when queue pops
         """
+        session: SQLAlchemySession = ctx.session
+
         if not ENABLE_VOICE_MOVE:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Voice movement is disabled",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
+            await self.send_error_message("Voice movement is disabled")
             return
 
-        session: SQLAlchemySession
-        with Session() as session:
-            try:
-                queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
-            except NoResultFound:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue **{queue_name}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        try:
+            queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
+        except NoResultFound:
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
+            return
 
-            queue.move_enabled = enabled_option
-            session.commit()
-            if enabled_option:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Player moving enabled on queue **{queue_name}**",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Player moving disabled on queue **{queue_name}**",
-                        colour=Colour.green(),
-                    )
-                )
+        queue.move_enabled = enabled_option
+        session.commit()
+        if enabled_option:
+            await self.send_success_message(
+                f"Player moving enabled on queue **{queue_name}**"
+            )
+        else:
+            await self.send_success_message(
+                f"Player moving disabled on queue **{queue_name}**"
+            )
 
-    @group.command(name="setname", description="Set queue name")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(
-        old_queue_name="Name of existing queue", new_queue_name="New name of queue"
-    )
+    @command()
+    @check(is_admin)
     async def setqueuename(
-        self, interaction: Interaction, old_queue_name: str, new_queue_name: str
+        self, ctx: Context, old_queue_name: str, new_queue_name: str
     ):
         """
         Set queue name
         """
-        await self.setname(interaction, Queue, old_queue_name, new_queue_name)
+        await self.setname(ctx, Queue, old_queue_name, new_queue_name)
 
-    @group.command(name="setordinal", description="Set queue ordinal")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue", ordinal="Queue ordinal")
-    async def setqueueordinal(
-        self, interaction: Interaction, queue_name: str, ordinal: int
-    ):
+    @command()
+    @check(is_admin)
+    async def setqueueordinal(self, ctx: Context, queue_name: str, ordinal: int):
         """
         Set queue ordinal
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                queue.ordinal = ordinal
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue.name} ordinal set to {ordinal}",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue not found: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
+        session = ctx.session
+        queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if queue:
+            queue.ordinal = ordinal
+            session.commit()
+            await self.send_success_message(
+                f"Queue {queue.name} ordinal set to {ordinal}"
+            )
+        else:
+            await self.send_error_message(f"Queue not found: {queue_name}")
 
-    @group.command(name="setrange", description="Set the mu range for a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(
-        queue_name="Name of queue", min="Minimum mu", max="Maximum mu"
-    )
+    @command()
+    @check(is_admin)
     async def setqueuerange(
-        self, interaction: Interaction, queue_name: str, min: float, max: float
+        self, ctx: Context, queue_name: str, min: float, max: float
     ):
         """
         Set the mu range for a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                queue.mu_min = min
-                queue.mu_max = max
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue.name} range set to [{min}, {max}]",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue not found: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
+        session = ctx.session
+        queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if queue:
+            queue.mu_min = min
+            queue.mu_max = max
+            session.commit()
+            await self.send_success_message(
+                f"Queue {queue.name} range set to [{min}, {max}]"
+            )
+        else:
+            await self.send_error_message(f"Queue not found: {queue_name}")
 
-    @group.command(name="setrotation", description="Assign a map rotation to a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue", rotation_name="Name of rotation")
-    async def setqueuerotation(
-        self, interaction: Interaction, queue_name: str, rotation_name: str
-    ):
+    @command()
+    @check(is_admin)
+    async def setqueuerotation(self, ctx: Context, queue_name: str, rotation_name: str):
         """
         Assign a map rotation to a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            try:
-                queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
-            except NoResultFound:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue **{queue_name}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        session = ctx.session
 
-            try:
-                rotation = (
-                    session.query(Rotation)
-                    .filter(Rotation.name.ilike(rotation_name))
-                    .one()
-                )
-            except NoResultFound:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find rotation **{rotation_name}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        try:
+            queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
+        except NoResultFound:
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
+            return
 
-            queue.rotation_id = rotation.id
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Rotation for **{queue.name}** set to **{rotation.name}**",
-                    colour=Colour.green(),
-                )
+        try:
+            rotation = (
+                session.query(Rotation).filter(Rotation.name.ilike(rotation_name)).one()
             )
+        except NoResultFound:
+            await self.send_error_message(
+                f"Could not find rotation **{rotation_name}**"
+            )
+            return
 
-    @group.command(
-        name="setsize",
-        description="Set the number of players to pop a queue.  Also updates queue vote threshold.",
-    )
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue", queue_size="Queue size")
-    async def setqueuesize(
-        self, interaction: Interaction, queue_name: str, queue_size: int
-    ):
+        queue.rotation_id = rotation.id
+        session.commit()
+        await self.send_success_message(
+            f"Rotation for **{queue.name}** set to **{rotation.name}**"
+        )
+
+    @command()
+    @check(is_admin)
+    async def setqueuesize(self, ctx: Context, queue_name: str, queue_size: int):
         """
         Set the number of players to pop a queue.  Also updates queue vote threshold.
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue | None = (
-                session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
-            )
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue **{queue_name}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        session = ctx.session
 
-            queue.size = queue_size
-            queue.vote_threshold = round(float(queue_size) * 2 / 3)
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Queue size updated to **{queue.size}**",
-                    colour=Colour.green(),
-                )
-            )
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+        )
+        if not queue:
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
+            return
 
-    @group.command(name="setsweaty", description="Make a queue sweaty")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue")
-    async def setqueuesweaty(self, interaction: Interaction, queue_name: str):
+        queue.size = queue_size
+        queue.vote_threshold = round(float(queue_size) * 2 / 3)
+        session.commit()
+        await self.send_success_message(f"Queue size updated to **{queue.size}**")
+
+    @command()
+    @check(is_admin)
+    async def setqueuesweaty(self, ctx: Context, queue_name: str):
         """
         Make a queue sweaty
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                queue.is_sweaty = True
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue.name} is now sweaty",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue not found: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
+        session = ctx.session
+        queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if queue:
+            queue.is_sweaty = True
+            session.commit()
+            await self.send_success_message(f"Queue {queue.name} is now sweaty")
+        else:
+            await self.send_error_message(f"Queue not found: {queue_name}")
 
-    @group.command(
-        name="setvotethreshold", description="Set the vote threshold for a queue"
-    )
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue", vote_threshold="Vote threshold")
+    @command()
+    @check(is_admin)
     async def setqueuevotethreshold(
-        self, interaction: Interaction, queue_name: str, vote_threshold: int
+        self, ctx: Context, queue_name: str, vote_threshold: int
     ):
         """
         Set the vote threshold for a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue | None = (
-                session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
-            )
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        session = ctx.session
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+        )
+        if not queue:
+            await self.send_error_message(f"Could not find queue: {queue_name}")
+            return
 
-            queue.vote_threshold = vote_threshold
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Vote threshold for **{queue.name}** set to **{queue.vote_threshold}**",
-                    colour=Colour.green(),
-                )
-            )
+        queue.vote_threshold = vote_threshold
+        session.commit()
+        await self.send_success_message(
+            f"Vote threshold for **{queue.name}** set to **{queue.vote_threshold}**"
+        )
 
-    @group.command(name="showrange", description="Show the mu range for a queue")
-    @app_commands.describe(queue_name="Name of queue")
-    async def showqueuerange(self, interaction: Interaction, queue_name: str):
+    @command()
+    async def showqueuerange(self, ctx: Context, queue_name: str):
         """
         Show the mu range for a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Queue range: [{queue.mu_min}, {queue.mu_max}]",
-                    colour=Colour.blue(),
-                )
-            )
+        session = ctx.session
+        queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if not queue:
+            await self.send_error_message(f"Could not find queue: {queue_name}")
+            return
+        await self.send_info_message(f"Queue range: [{queue.mu_min}, {queue.mu_max}]")
 
-    @group.command(
-        name="showrotation", description="Show the map rotation assigned to a queue"
-    )
-    @app_commands.describe(queue_name="Name of queue")
-    async def showqueuerotation(self, interaction: Interaction, queue_name: str):
+    @command()
+    async def showqueuerotation(self, ctx: Context, queue_name: str):
         """
         Show the map rotation assigned to a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue | None = (
-                session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+        session = ctx.session
+
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+        )
+        if not queue:
+            await self.send_error_message(f"Could not find queue **{queue_name}**")
+            return
+
+        rotation: Rotation | None = (
+            session.query(Rotation).filter(Rotation.id == queue.rotation_id).first()
+        )
+        if not rotation:
+            await self.send_error_message(
+                f"Queue **{queue.name}** has not been assigned a rotation"
             )
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue **{queue_name}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+            return
 
-            rotation: Rotation | None = (
-                session.query(Rotation).filter(Rotation.id == queue.rotation_id).first()
+        map_names = [
+            x[0]
+            for x in (
+                session.query(Map.short_name)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .order_by(RotationMap.ordinal.asc())
+                .all()
             )
-            if not rotation:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue **{queue.name}** has not been assigned a rotation",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        ]
 
-            map_names = [
-                x[0]
-                for x in (
-                    session.query(Map.short_name)
-                    .join(RotationMap, RotationMap.map_id == Map.id)
-                    .filter(RotationMap.rotation_id == rotation.id)
-                    .order_by(RotationMap.ordinal.asc())
-                    .all()
-                )
-            ]
+        if not map_names:
+            map_names = ["None"]
 
-            if not map_names:
-                map_names = ["None"]
+        output = f"**{queue.name}** is assigned to **{rotation.name}**\n"
+        output += f"- _Maps: {', '.join(map_names)}_"
+        await self.send_info_message(output)
 
-            output = f"**{queue.name}** is assigned to **{rotation.name}**\n"
-            output += f"- _Maps: {', '.join(map_names)}_"
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=output,
-                    colour=Colour.blue(),
-                )
-            )
-
-    @group.command(
-        name="unisolate",
-        description="Unisolate a queue (rated, map rotation, auto-adds)",
-    )
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue")
-    async def unisolatequeue(self, interaction: Interaction, queue_name: str):
+    @command()
+    @check(is_admin)
+    async def unisolatequeue(self, ctx: Context, queue_name: str):
         """
         Unisolate a queue (rated, map rotation, auto-adds)
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                queue.is_isolated = False
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue.name} is now unisolated",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue not found: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
+        session = ctx.session
+        queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if queue:
+            queue.is_isolated = False
+            session.commit()
+            await self.send_success_message(f"Queue {queue.name} is now unisolated")
+        else:
+            await self.send_error_message(f"Queue not found: {queue_name}")
 
-    @group.command(name="unlock", description="Allow players to add to a queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue")
-    async def unlockqueue(self, interaction: Interaction, queue_name: str):
+    @command()
+    @check(is_admin)
+    async def unlockqueue(self, ctx: Context, queue_name: str):
         """
         Allow players to add to a queue
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue | None = (
-                session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
-            )
-            if not queue:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
+        session = ctx.session
+        queue: Queue | None = (
+            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+        )
+        if not queue:
+            await self.send_error_message(f"Could not find queue: {queue_name}")
+            return
 
-            queue.is_locked = False
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Queue **{queue.name}** unlocked",
-                    colour=Colour.green(),
-                )
-            )
+        queue.is_locked = False
+        session.commit()
+        await self.send_success_message(f"Queue **{queue.name}** unlocked")
 
-    @group.command(name="unsetsweaty", description="Make a queue not sweaty")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(queue_name="Name of queue")
-    async def unsetqueuesweaty(self, interaction: Interaction, queue_name: str):
+    @command()
+    @check(is_admin)
+    async def unsetqueuesweaty(self, ctx: Context, queue_name: str):
         """
         Make a queue not sweaty
         """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                queue.is_sweaty = False
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue.name} is no longer sweaty",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue not found: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-
-    @addqueuerole.autocomplete("queue_name")
-    @clearqueue.autocomplete("queue_name")
-    @clearqueuerange.autocomplete("queue_name")
-    @isolatequeue.autocomplete("queue_name")
-    @lockqueue.autocomplete("queue_name")
-    @mockqueue.autocomplete("queue_name")
-    @removequeue.autocomplete("queue_name")
-    @removequeuerole.autocomplete("queue_name")
-    @setqueuecurrencyaward.autocomplete("queue_name")
-    @setqueuemoveenabled.autocomplete("queue_name")
-    @setqueuename.autocomplete("old_queue_name")
-    @setqueueordinal.autocomplete("queue_name")
-    @setqueuerange.autocomplete("queue_name")
-    @setqueuerotation.autocomplete("queue_name")
-    @setqueuesize.autocomplete("queue_name")
-    @setqueuesweaty.autocomplete("queue_name")
-    @setqueuevotethreshold.autocomplete("queue_name")
-    @showqueuerange.autocomplete("queue_name")
-    @showqueuerotation.autocomplete("queue_name")
-    @unisolatequeue.autocomplete("queue_name")
-    @unlockqueue.autocomplete("queue_name")
-    @unsetqueuesweaty.autocomplete("queue_name")
-    async def queue_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            queues: list[Queue] | None = (
-                session.query(Queue).order_by(Queue.name).limit(25).all()
-            )
-            if queues:
-                for queue in queues:
-                    if current in queue.name:
-                        result.append(
-                            app_commands.Choice(name=queue.name, value=queue.name)
-                        )
-        return result
-
-    @setqueuerotation.autocomplete("rotation_name")
-    async def rotation_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            rotations: list[Rotation] | None = (
-                session.query(Rotation).order_by(Rotation.name).limit(25).all()
-            )
-            if rotations:
-                for rotation in rotations:
-                    if current in rotation.name:
-                        result.append(
-                            app_commands.Choice(name=rotation.name, value=rotation.name)
-                        )
-        return result
+        session = ctx.session
+        queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+        if queue:
+            queue.is_sweaty = False
+            session.commit()
+            await self.send_success_message(f"Queue {queue.name} is no longer sweaty")
+        else:
+            await self.send_error_message(f"Queue not found: {queue_name}")

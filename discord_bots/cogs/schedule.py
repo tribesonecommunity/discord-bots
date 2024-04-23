@@ -1,15 +1,11 @@
 import asyncio
 import logging
-import pytz
 import re
 from datetime import date, datetime, time, timedelta
-from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
 
 import discord
-
+import pytz
 from discord import (
-    app_commands,
     ButtonStyle,
     Client,
     Colour,
@@ -20,10 +16,13 @@ from discord import (
     SelectOption,
     TextChannel,
     TextStyle,
+    app_commands,
 )
 from discord.ext.commands import Bot
 from discord.ui import Button, Select, TextInput, View
 from discord.utils import get
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 import discord_bots.config as config
 from discord_bots.checks import is_admin_app_command
@@ -62,9 +61,7 @@ class ScheduleCommands(BaseCog):
         for view in self.views:
             view.stop()
 
-    group = app_commands.Group(name="schedule", description="Schedule commands")
-
-    @group.command(
+    @app_commands.command(
         name="createschedule",
         description="Create a daily schedule for up to three times",
     )
@@ -97,7 +94,7 @@ class ScheduleCommands(BaseCog):
                 view=view, ephemeral=True, delete_after=10
             )
 
-    @group.command(name="deleteschedule", description="Delete the schedule")
+    @app_commands.command(name="deleteschedule", description="Delete the schedule")
     @app_commands.check(is_admin_app_command)
     @app_commands.guild_only()
     async def deleteschedule(self, interaction: Interaction):

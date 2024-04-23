@@ -146,8 +146,8 @@ LEADERBOARD_CHANNEL = _to_int(key="LEADERBOARD_CHANNEL")
 RE_ADD_DELAY: int = _to_int(key="RE_ADD_DELAY", default=30)
 REQUIRE_ADD_TARGET: bool = _to_bool(key="REQUIRE_ADD_TARGET", default=False)
 COMMAND_PREFIX: str = _to_str(key="COMMAND_PREFIX", default="!")
-DEFAULT_TRUESKILL_MU: float = _to_float(key="DEFAULT_TRUESKILL_MU", default=25)
-DEFAULT_TRUESKILL_SIGMA: float = _to_float(
+DEFAULT_TRUESKILL_MU = _to_float(key="DEFAULT_TRUESKILL_MU", default=25)
+DEFAULT_TRUESKILL_SIGMA = _to_float(
     key="DEFAULT_TRUESKILL_SIGMA", default=DEFAULT_TRUESKILL_MU / 3
 )
 AFK_TIME_MINUTES: int = _to_int(key="AFK_TIME_MINUTES", default=45)

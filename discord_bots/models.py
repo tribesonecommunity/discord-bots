@@ -940,7 +940,7 @@ class Queue:
         default=0,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
     )
-    category_id: str | None = field(
+    category_id: str = field(
         default=None,
         metadata={
             "sa": Column(
