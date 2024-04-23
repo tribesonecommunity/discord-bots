@@ -3446,9 +3446,9 @@ async def stats(interaction: Interaction, category_name: Optional[str] | None):
                     header=["Last", "W", "L", "T", "Total", "WR"],
                     body=cols,
                     first_col_heading=True,
-                    style=PresetStyle.thin_compact_rounded,
+                    style=PresetStyle.plain,
                     alignments=[
-                        Alignment.RIGHT,
+                        Alignment.LEFT,
                         Alignment.DECIMAL,
                         Alignment.DECIMAL,
                         Alignment.DECIMAL,
@@ -3480,7 +3480,7 @@ async def stats(interaction: Interaction, category_name: Optional[str] | None):
                 header=["Period", "Wins", "Losses", "Ties", "Total", "Win %"],
                 body=cols,
                 first_col_heading=True,
-                style=PresetStyle.minimalist,
+                style=PresetStyle.plain,
                 alignments=[
                     Alignment.LEFT,
                     Alignment.DECIMAL,

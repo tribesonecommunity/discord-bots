@@ -168,3 +168,29 @@ class CategoryCommands(BaseCog):
         await self.send_success_message(
             f"Queue **{queue.name}** set to category **{category.name}**"
         )
+
+    @command()
+    @check(is_admin)
+    async def setmingamesforleaderboard(
+        self, ctx: Context, min_num_games: int, category_name: str
+    ):
+        if min_num_games < 0:
+            await self.send_error_message(
+                f"The minimum number of games must be non-negative"
+            )
+            return
+
+        session = ctx.session
+        category: Category | None = (
+            session.query(Category).filter(Category.name.ilike(category_name)).one()
+        )
+        if not category:
+            await self.send_error_message(
+                f"Could not find category **{category_name}**"
+            )
+            return
+        category.min_games_for_leaderboard = min_num_games
+        session.commit()
+        await self.send_success_message(
+            f"The minimum number of games required to appear on the leaderboard for category **{category.name}** is now **{min_num_games}**"
+        )
