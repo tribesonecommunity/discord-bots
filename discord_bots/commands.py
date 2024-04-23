@@ -29,7 +29,7 @@ from discord import (
     Message,
     TextChannel,
     VoiceChannel,
-    VoiceState
+    VoiceState,
 )
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -55,6 +55,7 @@ from discord_bots.utils import (
     create_in_progress_game_embed,
     get_team_name_diff,
     mean,
+    move_game_players,
     print_leaderboard,
     send_in_guild_message,
     send_message,
@@ -62,12 +63,11 @@ from discord_bots.utils import (
     update_next_map_to_map_after_next,
     upload_stats_screenshot_imgkit_channel,
     win_probability,
-    move_game_players
 )
 
 from .bot import bot
 from .cogs.economy import EconomyCommands
-from .cogs.in_progress_game import InProgressGameCog, InProgressGameView
+from .cogs.in_progress_game import InProgressGameCommands, InProgressGameView
 from .models import (
     AdminRole,
     Category,
@@ -500,7 +500,7 @@ async def create_game(
         in_progress_game_cog = bot.get_cog("InProgressGameCog")
         if (
             in_progress_game_cog is not None
-            and isinstance(in_progress_game_cog, InProgressGameCog)
+            and isinstance(in_progress_game_cog, InProgressGameCommands)
             and match_channel
         ):
             message = await match_channel.send(
@@ -1571,53 +1571,6 @@ async def commendstats(ctx: Context):
                 pass
 
 
-@bot.command()
-@commands.check(is_admin)
-async def decayplayer(ctx: Context, member: Member, decay_amount_percent: str):
-    message = ctx.message
-    """
-    Manually adjust a player's trueskill rating downward by a percentage
-    """
-    if not decay_amount_percent.endswith("%"):
-        await send_message(
-            message.channel,
-            embed_description="Decay amount must end with %",
-            colour=Colour.red(),
-        )
-        return
-
-    decay_amount = int(decay_amount_percent[:-1])
-    if decay_amount < 1 or decay_amount > 100:
-        await send_message(
-            message.channel,
-            embed_description="Decay amount must be between 1-100",
-            colour=Colour.red(),
-        )
-        return
-
-    session = ctx.session
-    player: Player = (
-        session.query(Player).filter(Player.id == message.mentions[0].id).first()
-    )
-    rated_trueskill_mu_before = player.rated_trueskill_mu
-    rated_trueskill_mu_after = player.rated_trueskill_mu * (100 - decay_amount) / 100
-    player.rated_trueskill_mu = rated_trueskill_mu_after
-    await send_message(
-        message.channel,
-        embed_description=f"{escape_markdown(member.name)} decayed by {decay_amount}%",
-        colour=Colour.green(),
-    )
-    session.add(
-        PlayerDecay(
-            player.id,
-            decay_amount,
-            rated_trueskill_mu_before=rated_trueskill_mu_before,
-            rated_trueskill_mu_after=rated_trueskill_mu_after,
-        )
-    )
-    session.commit()
-
-
 @bot.command(name="del")
 async def del_(ctx: Context, *args):
     """
@@ -1909,22 +1862,6 @@ async def listnotifications(ctx: Context):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def listplayerdecays(ctx: Context, member: Member):
-    message = ctx.message
-    session = ctx.session
-    player = session.query(Player).filter(Player.id == member.id).first()
-    player_decays: list[PlayerDecay] = session.query(PlayerDecay).filter(
-        PlayerDecay.player_id == player.id
-    )
-    output = f"Decays for {escape_markdown(player.name)}:"
-    for player_decay in player_decays:
-        output += f"\n- {player_decay.decayed_at.strftime('%Y-%m-%d')} - Amount: {player_decay.decay_percentage}%"
-
-    await send_message(message.channel, embed_description=output, colour=Colour.blue())
-
-
-@bot.command()
 async def lt(ctx: Context):
     query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132:28006&port=28006"
     await ctx.message.channel.send(query_url)
@@ -1936,23 +1873,6 @@ async def lt(ctx: Context):
     cropped.save(ntf.name)
     await ctx.message.channel.send(file=discord.File(ntf.name))
     ntf.close()
-
-
-@bot.command()
-async def trueskill(ctx: Context):
-    description = ""
-    description += "**mu (μ)**: The average skill of the gamer"
-    description += "\n**sigma (σ)**: The degree of uncertainty in the gamer's skill"
-    description += "\n**Reference**: https://www.microsoft.com/en-us/research/project/trueskill-ranking-system"
-    description += "\n**Implementation**: https://trueskill.org/"
-    embed_thumbnail = "https://www.microsoft.com/en-us/research/uploads/prod/2016/02/trueskill-skilldia.jpg"
-    await send_message(
-        channel=ctx.message.channel,
-        embed_description=description,
-        embed_thumbnail=embed_thumbnail,
-        embed_title="Trueskill",
-        colour=Colour.blue(),
-    )
 
 
 @bot.tree.command(
@@ -2192,23 +2112,6 @@ async def resetleaderboardchannel(interaction: Interaction):
                 colour=Colour.green(),
             )
         )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def resetplayertrueskill(ctx: Context, member: Member):
-    message = ctx.message
-    session = ctx.session
-    player: Player = session.query(Player).filter(Player.id == member.id).first()
-    player.rated_trueskill_mu = config.DEFAULT_TRUESKILL_MU
-    player.rated_trueskill_sigma = config.DEFAULT_TRUESKILL_SIGMA
-    session.commit()
-    session.close()
-    await send_message(
-        message.channel,
-        embed_description=f"{escape_markdown(member.name)} trueskill reset.",
-        colour=Colour.green(),
-    )
 
 
 # TODO: Re-enable when configs are stored in the db
@@ -2454,31 +2357,6 @@ async def setmoveenabled(ctx: Context, enabled_option: bool = True):
 
 
 @bot.command()
-@commands.check(is_admin)
-async def setsigma(ctx: Context, member: Member, sigma: float):
-    if sigma < 1 or sigma > 8.33:
-        await send_message(
-            ctx.message.channel,
-            embed_description=f"Amount must be between 1 and 8.33",
-            colour=Colour.red(),
-        )
-        return
-
-    session = ctx.session
-    player: Player = session.query(Player).filter(Player.id == member.id).first()
-    sigma_before = player.rated_trueskill_sigma
-    player.rated_trueskill_sigma = sigma
-    session.commit()
-    session.close()
-
-    await send_message(
-        ctx.message.channel,
-        embed_description=f"Sigma for **{member.name}** changed from **{round(sigma_before, 4)}** to **{sigma}**",
-        colour=Colour.blue(),
-    )
-
-
-@bot.command()
 async def showgame(ctx: Context, game_id: str):
     message = ctx.message
     session = ctx.session
@@ -2639,80 +2517,6 @@ async def showgamedebug(ctx: Context, game_id: str):
             #     embed_description=game_str,
             #     colour=Colour.blue(),
             # )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def showsigma(ctx: Context, member: Member):
-    """
-    Returns the player's base sigma
-    """
-    session = ctx.session
-    player: Player = session.query(Player).filter(Player.id == member.id).first()
-    output = embed_title = (
-        f"**{member.name}'s** sigma: **{round(player.rated_trueskill_sigma, 4)}**"
-    )
-    await send_message(
-        channel=ctx.message.channel,
-        embed_description=output,
-        # embed_title=f"{member.name} sigma:",
-        colour=Colour.blue(),
-    )
-
-
-@bot.command()
-@commands.check(is_admin)
-async def showtrueskillnormdist(ctx: Context, queue_name: str):
-    """
-    Print the normal distribution of the trueskill in a given queue.
-
-    Useful for setting queue mu ranges
-    """
-    session = ctx.session
-    queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-    if not queue:
-        await send_message(
-            channel=ctx.message.channel,
-            embed_description=f"Could not find queue: **{queue_name}**",
-            colour=Colour.red(),
-        )
-        return
-
-    trueskill_mus = []
-    if queue.category_id:
-        player_category_trueskills: List[PlayerCategoryTrueskill] = (
-            session.query(PlayerCategoryTrueskill)
-            .filter(
-                PlayerCategoryTrueskill.category_id == queue.category_id,
-            )
-            .all()
-        )
-        trueskill_mus = [pct.mu for pct in player_category_trueskills]
-    else:
-        players = session.query(Player).filter(Player.finished_game_players.any()).all()
-        trueskill_mus = [p.rated_trueskill_mu for p in players]
-
-    std_dev = std(trueskill_mus)
-    average = mean(trueskill_mus)
-    output = []
-    output.append(f"**Data points**: {len(trueskill_mus)}")
-    output.append(f"**Mean**: {round(average, 2)}")
-    output.append(f"**Stddev**: {round(std_dev, 2)}\n")
-    output.append(f"**2%** (+2σ): {round(average + 2 * std_dev, 2)}")
-    output.append(f"**7%** (+1.5σ): {round(average + 1.5 * std_dev, 2)}")
-    output.append(f"**16%** (+1σ): {round(average + 1 * std_dev, 2)}")
-    output.append(f"**31%** (+0.5σ): {round(average + 0.5 * std_dev, 2)}")
-    output.append(f"**50%** (0σ): {round(average, 2)}")
-    output.append(f"**69%** (-0.5σ): {round(average - 0.5 * std_dev, 2)}")
-    output.append(f"**84%** (-1σ): {round(average - 1 * std_dev, 2)}")
-    output.append(f"**93%** (-1.5σ): {round(average - 1.5 * std_dev, 2)}")
-    output.append(f"**98%** (+2σ): {round(average - 2 * std_dev, 2)}")
-
-    await send_message(
-        channel=ctx.message.channel,
-        embed_description="\n".join(output),
-        colour=Colour.blue(),
-    )
 
 
 @bot.command()

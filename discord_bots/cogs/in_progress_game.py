@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 _lock = asyncio.Lock()
 
-class InProgressGameCog(commands.Cog):
+class InProgressGameCommands(commands.Cog):
     def __init__(self, bot: Bot):
         self.bot: Bot = bot
         self.views: list[InProgressGameView] = []
@@ -591,7 +591,7 @@ class InProgressGameCog(commands.Cog):
                 await move_game_players_lobby(game.id, interaction.guild)
             except Exception:
                 _log.exception("Ignored exception when moving a gameplayer to lobby:")
-        
+
         for ipg_channel in session.query(InProgressGameChannel).filter(
             InProgressGameChannel.in_progress_game_id == game.id
         ):
@@ -602,7 +602,7 @@ class InProgressGameCog(commands.Cog):
             session.delete(ipg_channel)
         session.query(InProgressGame).filter(InProgressGame.id == game.id).delete()
         return True
-    
+
     @cancelgame.autocomplete("game_id")
     async def cancelgame_autocomplete(
         self, interaction: Interaction, current: str
@@ -626,7 +626,7 @@ class InProgressGameCog(commands.Cog):
 
 
 class InProgressGameView(BaseView):
-    def __init__(self, game_id: str, cog: InProgressGameCog):
+    def __init__(self, game_id: str, cog: InProgressGameCommands):
         super().__init__(timeout=None)
         self.game_id: str = game_id
         self.is_game_finished: bool = False
