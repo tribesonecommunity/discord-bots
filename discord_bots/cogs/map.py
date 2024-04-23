@@ -1,8 +1,18 @@
-from discord.ext.commands import Bot, Context, check, command
+import logging
+from sqlalchemy.orm.session import Session as SQLAlchemySession
+
+from discord import (
+    app_commands,
+    Colour,
+    Embed,
+    Interaction,
+)
+
+from discord.ext.commands import Bot
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 
-from discord_bots.checks import is_admin
+from discord_bots.checks import is_admin_app_command
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
     FinishedGame,
@@ -12,161 +22,231 @@ from discord_bots.models import (
     Queue,
     Rotation,
     RotationMap,
+    Session,
 )
-from discord_bots.utils import send_message
+from discord_bots.utils import short_uuid
+
+_log = logging.getLogger(__name__)
 
 
 class MapCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    @command()
-    @check(is_admin)
-    async def addmap(self, ctx: Context, map_full_name: str, map_short_name: str):
+    group = app_commands.Group(name="map", description="Map commands")
+
+    @group.command(name="add", description="Add a map to the map pool")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(full_name="Long name of map", short_name="Short name of map")
+    async def addmap(self, interaction: Interaction, full_name: str, short_name: str):
         """
         Add a map to the map pool
         """
-        session = ctx.session
-        map_short_name = map_short_name.upper()
+        session: SQLAlchemySession
+        short_name = short_name.upper()
 
-        try:
-            session.add(Map(map_full_name, map_short_name))
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-            await self.send_error_message(
-                f"Error adding map {map_full_name} ({map_short_name}). Does it already exist?"
-            )
-        else:
-            await self.send_success_message(
-                f"**{map_full_name} ({map_short_name})** added to maps"
-            )
+        with Session() as session:
+            try:
+                session.add(Map(full_name, short_name))
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Error adding map {full_name} ({short_name}). Does it already exist?",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"**{full_name} ({short_name})** added to maps",
+                        colour=Colour.green(),
+                    )
+                )
 
-    @command()
-    @check(is_admin)
-    async def changegamemap(self, ctx: Context, game_id: str, map_short_name: str):
+    @group.command(name="changegame", description="Change the map for a game")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(
+        game_id="In progress game id", short_name="Short name of map"
+    )
+    async def changegamemap(
+        self, interaction: Interaction, game_id: str, short_name: str
+    ):
         """
         Change the map for a game
         TODO: tests
         """
-        session = ctx.session
-
-        ipg = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.id.startswith(game_id))
-            .first()
-        )
-        finished_game = (
-            session.query(FinishedGame)
-            .filter(FinishedGame.game_id.startswith(game_id))
-            .first()
-        )
-        if ipg:
-            game = ipg
-        elif finished_game:
-            game = finished_game
-        else:
-            await self.send_error_message(f"Could not find game: **{game_id}**")
-            return
-
-        map: Map | None = (
-            session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()
-        )
-        if not map:
-            await self.send_error_message(
-                f"Could not find map: **{map_short_name}**. Add to map pool first."
+        session: SQLAlchemySession
+        with Session() as session:
+            ipg = (
+                session.query(InProgressGame)
+                .filter(InProgressGame.id.startswith(game_id))
+                .first()
             )
-            return
+            finished_game = (
+                session.query(FinishedGame)
+                .filter(FinishedGame.game_id.startswith(game_id))
+                .first()
+            )
+            game: InProgressGame | FinishedGame
+            if ipg:
+                game = ipg
+            elif finished_game:
+                game = finished_game
+            else:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find game: **{game_id}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        game.map_full_name = map.full_name
-        game.map_short_name = map.short_name
-        session.commit()
-        await self.send_success_message(
-            f"Map for game **{game_id}** changed to **{map.short_name}**"
-        )
+            map: Map | None = (
+                session.query(Map).filter(Map.short_name.ilike(short_name)).first()
+            )
+            if not map:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map: **{short_name}**. Add to map pool first.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-    @command()
-    @check(is_admin)
-    async def changequeuemap(self, ctx: Context, queue_name: str, map_short_name: str):
+            game.map_full_name = map.full_name
+            game.map_short_name = map.short_name
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Map for game **{game_id}** changed to **{map.short_name}**",
+                    colour=Colour.green(),
+                )
+            )
+
+    @group.command(
+        name="changequeue",
+        description="Change the next map for a queue (note: affects all queues sharing that rotation)",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(queue="Name of queue", short_name="Short name of map")
+    async def changequeuemap(
+        self, interaction: Interaction, queue: str, short_name: str
+    ):
         """
         Change the next map for a queue (note: affects all queues sharing that rotation)
         TODO: tests
         """
 
-        session = ctx.session
-
-        queue: Queue | None = (
-            session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
-        )
-        if not queue:
-            await self.send_error_message(f"Could not find queue: **{queue_name}**")
-            return
-
-        map: Map | None = (
-            session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()
-        )
-        if not map:
-            await self.send_error_message(f"Could not find map: **{map_short_name}**")
-            return
-
-        rotation: Rotation | None = (
-            session.query(Rotation).filter(queue.rotation_id == Rotation.id).first()
-        )
-        if not rotation:
-            await self.send_error_message(
-                f"**{queue.name}** has not been assigned a rotation.\nPlease assign one with `!setqueuerotation`."
+        session: SQLAlchemySession
+        with Session() as session:
+            queue: Queue | None = (
+                session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
             )
-            return
+            if not queue:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find queue: **{queue_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        next_rotation_map: RotationMap | None = (
-            session.query(RotationMap)
-            .filter(
-                RotationMap.rotation_id == rotation.id, RotationMap.map_id == map.id
+            map: Map | None = (
+                session.query(Map).filter(Map.short_name.ilike(short_name)).first()
             )
-            .first()
-        )
-        if not next_rotation_map:
-            await self.send_error_message(
-                f"The rotation for **{queue.name}** doesn't have that map.\nPlease add it to the **{rotation.name}** rotation with `!addrotationmap`."
+            if not map:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map: **{short_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            rotation: Rotation | None = (
+                session.query(Rotation).filter(queue.rotation_id == Rotation.id).first()
             )
-            return
+            if not rotation:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"**{queue.name}** has not been assigned a rotation.\nPlease assign one with `/setqueuerotation`.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        session.query(RotationMap).filter(
-            RotationMap.rotation_id == rotation.id
-        ).filter(RotationMap.is_next == True).update({"is_next": False})
-        next_rotation_map.is_next = True
-        session.commit()
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(
+                    RotationMap.rotation_id == rotation.id, RotationMap.map_id == map.id
+                )
+                .first()
+            )
+            if not next_rotation_map:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"The rotation for **{queue.name}** doesn't have that map.\nPlease add it to the **{rotation.name}** rotation with `/addrotationmap`.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        output = f"**{queue.name}** next map changed to **{map.short_name}**"
-        affected_queues = (
-            session.query(Queue.name)
-            .filter(Queue.rotation_id == rotation.id)
-            .filter(Queue.name != queue.name)
-            .all()
-        )
-        if affected_queues:
-            output += "\n\nQueues also affected:"
-            for name_tuple in affected_queues:
-                output += f"\n- {name_tuple[0]}"
+            session.query(RotationMap).filter(
+                RotationMap.rotation_id == rotation.id
+            ).filter(RotationMap.is_next == True).update({"is_next": False})
+            next_rotation_map.is_next = True
+            session.commit()
 
-        await self.send_success_message(output)
+            output = f"**{queue.name}** next map changed to **{map.short_name}**"
+            affected_queues = (
+                session.query(Queue.name)
+                .filter(Queue.rotation_id == rotation.id)
+                .filter(Queue.name != queue.name)
+                .all()
+            )
+            if affected_queues:
+                output += "\n\nQueues also affected:"
+                for name_tuple in affected_queues:
+                    output += f"\n- {name_tuple[0]}"
 
-    @command()
-    async def listmaps(self, ctx: Context):
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=output,
+                    colour=Colour.green(),
+                )
+            )
+
+    @group.command(name="list", description="List all maps in the map pool")
+    async def listmaps(self, interaction: Interaction):
         """
         List all maps in the map pool
         """
-        session = ctx.session
-        maps = session.query(Map).order_by(Map.created_at.asc()).all()
+        session: SQLAlchemySession
+        with Session() as session:
+            maps = session.query(Map).order_by(Map.created_at.asc()).all()
 
-        if not maps:
-            output = "_-- No Maps --_"
-        else:
-            output = ""
-            for map in maps:
-                output += f"- {map.full_name} ({map.short_name})\n"
+            if not maps:
+                output = "_-- No Maps --_"
+            else:
+                output = ""
+                for map in maps:
+                    output += f"- {map.full_name} ({map.short_name})\n"
 
-        await self.send_info_message(output)
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=output,
+                    colour=Colour.blue(),
+                )
+            )
 
     # broken commands
 
@@ -273,35 +353,102 @@ class MapCommands(BaseCog):
     #         colour=Colour.green(),
     #     )
 
-    @command()
-    @check(is_admin)
-    async def removemap(self, ctx: Context, map_short_name: str):
+    @group.command(name="remove", description="Remove a map from the map pool")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(short_name="Short name of map")
+    async def removemap(self, interaction: Interaction, short_name: str):
         """
         Remove a map from the map pool
         """
-        session = ctx.session
+        session: SQLAlchemySession
+        with Session() as session:
+            try:
+                map = session.query(Map).filter(Map.short_name.ilike(short_name)).one()
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map **{short_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        try:
-            map = session.query(Map).filter(Map.short_name.ilike(map_short_name)).one()
-        except NoResultFound:
-            await self.send_error_message(f"Could not find map **{map_short_name}**")
-            return
-
-        map_rotations = (
-            session.query(Rotation)
-            .join(RotationMap, RotationMap.rotation_id == Rotation.id)
-            .filter(RotationMap.map_id == map.id)
-            .all()
-        )
-
-        if map_rotations:
-            error = f"Please remove map from rotation first.\n\n**{map.short_name}** belongs to the following rotations:"
-            for map_rotation in map_rotations:
-                error += f"\n- {map_rotation.name}"
-            await self.send_error_message(error)
-        else:
-            session.delete(map)
-            session.commit()
-            await self.send_success_message(
-                f"**{map.full_name} ({map.short_name})** removed from maps"
+            map_rotations = (
+                session.query(Rotation)
+                .join(RotationMap, RotationMap.rotation_id == Rotation.id)
+                .filter(RotationMap.map_id == map.id)
+                .all()
             )
+
+            if map_rotations:
+                error = f"Please remove map from rotation first.\n\n**{map.short_name}** belongs to the following rotations:"
+                for map_rotation in map_rotations:
+                    error += f"\n- {map_rotation.name}"
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=error,
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                session.delete(map)
+                session.commit()
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"**{map.full_name} ({map.short_name})** removed from maps",
+                        colour=Colour.green(),
+                    )
+                )
+
+    @changequeuemap.autocomplete("queue")
+    async def queue_autocomplete(self, interaction: Interaction, current: str):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            queues: list[Queue] | None = session.query(Queue).order_by(Queue.name).limit(25).all()
+            if queues:
+                for queue in queues:
+                    if current in queue.name:
+                        result.append(
+                            app_commands.Choice(name=queue.name, value=queue.name)
+                        )
+        return result
+
+    @changequeuemap.autocomplete("short_name")
+    @changegamemap.autocomplete("short_name")
+    @removemap.autocomplete("short_name")
+    async def map_autocomplete(self, interaction: Interaction, current: str):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            maps: list[Map] | None = (
+                session.query(Map).order_by(Map.full_name).limit(25).all()
+            )
+            if maps:
+                for map in maps:
+                    if current in map.short_name:
+                        result.append(
+                            app_commands.Choice(
+                                name=map.full_name, value=map.short_name
+                            )
+                        )
+        return result
+
+    @changegamemap.autocomplete("game_id")
+    async def game_autocomplete(self, interaction: Interaction, current: str):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            in_progress_games: list[InProgressGame] | None = (
+                session.query(InProgressGame).order_by(short_uuid(InProgressGame.id)).limit(25).all()
+            )  # discord only supports up to 25 choices
+            if in_progress_games:
+                for ipg in in_progress_games:
+                    short_game_id = short_uuid(ipg.id)
+                    if current in short_game_id:
+                        result.append(
+                            app_commands.Choice(name=short_game_id, value=short_game_id)
+                        )
+        return result

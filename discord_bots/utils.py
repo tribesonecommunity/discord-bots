@@ -676,6 +676,7 @@ async def send_message(
         _log.exception("[send_message] Ignoring exception:")
     return message
 
+
 async def print_leaderboard():
     output = "**Leaderboard**"  # TODO: remove output str, it's not used anymore
     embeds = []
@@ -774,13 +775,10 @@ async def print_leaderboard():
         if config.ECONOMY_ENABLED:
             output += f"\n\n**{config.CURRENCY_NAME}**"
             top_10_player_currency: list[Player] = (
-                session.query(Player)
-                .order_by(Player.currency.desc())
-                .limit(10)
+                session.query(Player).order_by(Player.currency.desc()).limit(10)
             )
             for i, player_currency in enumerate(top_10_player_currency, 1):
                 output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
-
 
     if config.LEADERBOARD_CHANNEL:
         # TODO: merge with new leaderboard style
@@ -854,6 +852,7 @@ def get_team_name_diff(
         else "> \n** **"  # creates an empty quote
     )
     return team0_diff_str, team1_diff_str
+
 
 async def move_game_players(
     game_id: str, interaction: Interaction | None = None, guild: Guild | None = None
@@ -964,39 +963,34 @@ async def move_game_players(
         if isinstance(result, BaseException):
             _log.exception("Ignored exception when moving a gameplayer:")
 
-async def move_game_players_lobby(
-    game_id: str, guild: Guild
-):
+
+async def move_game_players_lobby(game_id: str, guild: Guild):
     session: sqlalchemy.orm.Session
     with Session() as session:
         in_progress_game: InProgressGame | None = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.id == game_id)
-            .first()
+            session.query(InProgressGame).filter(InProgressGame.id == game_id).first()
         )
         if not in_progress_game:
             return
 
         queue: Queue | None = (
-            session.query(Queue)
-            .filter(Queue.id == in_progress_game.queue_id)
-            .first()
+            session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
         )
         if not queue or not queue.move_enabled:
             return
 
         voice_lobby: discord.abc.GuildChannel | None = guild.get_channel(
-                config.VOICE_MOVE_LOBBY
+            config.VOICE_MOVE_LOBBY
         )
         if not isinstance(voice_lobby, VoiceChannel) or not voice_lobby:
             _log.exception("VOICE_MOVE_LOBBY not found")
             return
 
         ipg_channels: list[InProgressGameChannel] | None = (
-                session.query(InProgressGameChannel)
-                .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
-                .all()
-            )
+            session.query(InProgressGameChannel)
+            .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
+            .all()
+        )
 
         coroutines = []
         for ipg_channel in ipg_channels or []:
@@ -1016,8 +1010,8 @@ async def move_game_players_lobby(
                             )
                         except Exception:
                             _log.exception(
-                                    f"Caught exception moving player to voice lobby"
-                                )
+                                f"Caught exception moving player to voice lobby"
+                            )
 
     results = await asyncio.gather(*coroutines, return_exceptions=True)
     for result in results:
