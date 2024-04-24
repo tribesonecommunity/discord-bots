@@ -6,7 +6,7 @@ import math
 import os
 import statistics
 from datetime import datetime, timedelta, timezone
-from typing import Literal, Optional
+from typing import Optional
 
 import discord
 import imgkit
@@ -22,18 +22,17 @@ from discord import (
     PartialMessage,
     TextChannel,
     VoiceChannel,
-    VoiceState
+    VoiceState,
 )
-from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.member import Member
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from table2ascii import Alignment, Merge, PresetStyle, table2ascii
-from trueskill import Rating, global_env, rate
+from trueskill import Rating, global_env
 
 import discord_bots.config as config
 from discord_bots.bot import bot
@@ -678,7 +677,7 @@ async def send_message(
     return message
 
 async def print_leaderboard():
-    output = "**Leaderboard**"
+    output = "**Leaderboard**"  # TODO: remove output str, it's not used anymore
     embeds = []
     embed = discord.Embed(
         title="Leaderboard",
@@ -700,8 +699,25 @@ async def print_leaderboard():
         if len(categories) > 0:
             for i, category in enumerate(categories):
                 output += f"\n_{category.name}_"
+                subquery = (
+                    session.query(FinishedGamePlayer.player_id)
+                    .join(
+                        FinishedGame,
+                        FinishedGame.id == FinishedGamePlayer.finished_game_id,
+                    )
+                    .filter(
+                        FinishedGame.started_at
+                        > (datetime.now(timezone.utc) - timedelta(days=30))
+                    )
+                    .filter(FinishedGame.category_name == category.name)
+                    .group_by(FinishedGamePlayer.player_id)
+                    .having(func.count() >= category.min_games_for_leaderboard)
+                    .subquery()
+                )
                 top_10_pcts: list[PlayerCategoryTrueskill] | None = (
                     session.query(PlayerCategoryTrueskill)
+                    .join(Player, Player.id == PlayerCategoryTrueskill.player_id)
+                    .filter(PlayerCategoryTrueskill.player_id.in_(select(subquery)))
                     .filter(PlayerCategoryTrueskill.category_id == category.id)
                     .order_by(PlayerCategoryTrueskill.rank.desc())
                     .limit(10)
@@ -725,6 +741,16 @@ async def print_leaderboard():
                                 round(pct.sigma, 1),
                             ]
                             cols.append(col)
+                    if category.min_games_for_leaderboard > 0:
+                        cols.append(
+                            [
+                                f"Minimum of {category.min_games_for_leaderboard} {'games' if category.min_games_for_leaderboard > 1 else 'game'} played in the last 30 days",
+                                Merge.LEFT,
+                                Merge.LEFT,
+                                Merge.LEFT,
+                                Merge.LEFT,
+                            ]
+                        )
                     table = table2ascii(
                         header=[
                             category.name,
@@ -757,6 +783,7 @@ async def print_leaderboard():
 
 
     if config.LEADERBOARD_CHANNEL:
+        # TODO: merge with new leaderboard style
         leaderboard_channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
         if leaderboard_channel and isinstance(leaderboard_channel, TextChannel):
             try:
@@ -768,7 +795,7 @@ async def print_leaderboard():
                     await last_message.edit(embeds=embeds)
                     return
             except Exception as e:
-                _log.exception("[print_leaderboard] exception")
+                pass
             await leaderboard_channel.send(embeds=embeds)
 
 
@@ -949,7 +976,7 @@ async def move_game_players_lobby(
         )
         if not in_progress_game:
             return
-        
+
         queue: Queue | None = (
             session.query(Queue)
             .filter(Queue.id == in_progress_game.queue_id)
@@ -957,7 +984,7 @@ async def move_game_players_lobby(
         )
         if not queue or not queue.move_enabled:
             return
-        
+
         voice_lobby: discord.abc.GuildChannel | None = guild.get_channel(
                 config.VOICE_MOVE_LOBBY
         )
@@ -970,7 +997,7 @@ async def move_game_players_lobby(
                 .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
                 .all()
             )
-        
+
         coroutines = []
         for ipg_channel in ipg_channels or []:
             discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
@@ -991,7 +1018,7 @@ async def move_game_players_lobby(
                             _log.exception(
                                     f"Caught exception moving player to voice lobby"
                                 )
-    
+
     results = await asyncio.gather(*coroutines, return_exceptions=True)
     for result in results:
         # results should be empty unless an exception occured when moving a player
