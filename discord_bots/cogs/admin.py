@@ -2,7 +2,6 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
-from glob import glob
 from shutil import copyfile
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
@@ -272,88 +271,6 @@ class AdminCommands(BaseCog):
                 description=f"Command `{name}` updated",
                 colour=Colour.green(),
             )
-        )
-
-    @group.command(name="list", description="List admin users")
-    async def listadmins(self, interaction: Interaction):
-        output = "Admins:"
-        session: SQLAlchemySession
-        with Session() as session:
-            player: Player
-            for player in session.query(Player).filter(Player.is_admin == True).all():
-                output += f"\n- {escape_markdown(player.name)}"
-
-        await interaction.response.send_message(
-            embed=Embed(description=output, colour=Colour.blue())
-        )
-
-    @group.command(name="listbans", description="List banned players")
-    async def listbans(self, interaction: Interaction):
-        output = "Bans:"
-        session: SQLAlchemySession
-        with Session() as session:
-            for player in session.query(Player).filter(Player.is_banned == True):
-                output += f"\n- {escape_markdown(player.name)}"
-        await interaction.response.send_message(
-            embed=Embed(
-                description=output,
-                colour=Colour.blue(),
-            )
-        )
-
-    @group.command(name="listchannels", description="List bot channels")
-    @app_commands.check(is_admin_app_command)
-    async def listchannels(self, interaction: Interaction):
-        for channel in bot.get_all_channels():
-            _log.info(channel.id, channel)  # DEBUG, TRACE?
-
-        await interaction.response.send_message(
-            embed=Embed(
-                description="Check the logs",
-                colour=Colour.blue(),
-            ),
-            ephemeral=True,
-        )
-
-    @group.command(name="listdbbackups", description="List database backups")
-    @app_commands.check(is_admin_app_command)
-    async def listdbbackups(self, interaction: Interaction):
-        output = "Backups:"
-        for filename in glob(f"{config.DB_NAME}_*.db"):
-            output += f"\n- {filename}"
-
-        await interaction.response.send_message(
-            embed=Embed(
-                description=output,
-                colour=Colour.blue(),
-            ),
-            ephemeral=True,
-        )
-
-    @group.command(name="listroles", description="List admin roles")
-    async def listadminroles(self, interaction: Interaction):
-        output = "Admin roles:"
-        session: SQLAlchemySession
-        if not interaction.guild:
-            return
-
-        with Session() as session:
-            admin_role_ids = list(
-                map(lambda x: x.role_id, session.query(AdminRole).all())
-            )
-        admin_role_names: list[str] = []
-
-        role_id_to_role_name: dict[int, str] = {
-            role.id: role.name for role in interaction.guild.roles
-        }
-
-        for admin_role_id in admin_role_ids:
-            if admin_role_id in role_id_to_role_name:
-                admin_role_names.append(role_id_to_role_name[admin_role_id])
-        output += f"\n{', '.join(admin_role_names)}"
-
-        await interaction.response.send_message(
-            embed=Embed(description=output, colour=Colour.blue())
         )
 
     @group.command(name="remove", description="Remove an admin")

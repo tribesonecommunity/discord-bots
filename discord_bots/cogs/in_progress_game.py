@@ -3,12 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from sqlalchemy.orm.session import Session as SQLAlchemySession
-from trueskill import Rating, rate
 from typing import TYPE_CHECKING, Literal, Optional
 
 from discord import (
-    app_commands,
     ButtonStyle,
     Client,
     Colour,
@@ -18,10 +15,13 @@ from discord import (
     Message,
     Role,
     TextChannel,
+    app_commands,
 )
 from discord.abc import GuildChannel
 from discord.ext import commands
-from discord.ui import button, Button
+from discord.ui import Button, button
+from sqlalchemy.orm.session import Session as SQLAlchemySession
+from trueskill import Rating, rate
 
 from discord_bots import config
 from discord_bots.checks import is_admin_app_command
@@ -47,10 +47,13 @@ from discord_bots.models import (
 from discord_bots.utils import (
     create_cancelled_game_embed,
     create_finished_game_embed,
+    get_guild_partial_message,
+    move_game_players,
+    move_game_players_lobby,
+    send_in_guild_message,
     short_uuid,
     upload_stats_screenshot_imgkit_channel,
     upload_stats_screenshot_imgkit_interaction,
-    move_game_players_lobby
 )
 
 if TYPE_CHECKING:
@@ -59,6 +62,7 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 _lock = asyncio.Lock()
+
 
 class InProgressGameCommands(commands.Cog):
     def __init__(self, bot: Bot):
@@ -126,9 +130,144 @@ class InProgressGameCommands(commands.Cog):
                 return None
         return game_player, in_progress_game
 
-    @group.command(
-        name="finishgame", description="Ends the current game you are in"
-    )
+    @group.command(name="cancel", description="Cancels the specified game")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(game_id="In progress game ID")
+    @app_commands.guild_only()
+    async def cancelgame(self, interaction: Interaction, game_id: str):
+        await self.cancelgame_callback(interaction, game_id)
+
+    async def cancelgame_callback(self, interaction: Interaction, game_id: str) -> bool:
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
+        if _lock.locked():
+            await interaction.followup.send(
+                embed=Embed(
+                    description="⏳ A **Cancel** is already in progress, please wait...",
+                    color=Colour.yellow(),
+                ),
+                ephemeral=True,
+            )
+        async with _lock:
+            session: SQLAlchemySession
+            with Session() as session:
+                game = (
+                    session.query(InProgressGame)
+                    .filter(InProgressGame.id.startswith(game_id))
+                    .first()
+                )
+                if not game:
+                    await interaction.followup.send(
+                        embed=Embed(
+                            description=f"❌ Game {short_uuid(game_id)} does not exist",
+                            colour=Colour.red(),
+                        ),
+                        ephemeral=True,
+                    )
+                    return False
+                confirmation_buttons = ConfirmationView(interaction.user.id)
+                confirmation_buttons.message = await interaction.followup.send(
+                    embed=Embed(
+                        description=f"⚠️ Are you sure you want to **Cancel** game **{short_uuid(game.id)}**?⚠️",
+                        color=Colour.yellow(),
+                    ),
+                    view=confirmation_buttons,
+                    ephemeral=True,
+                )
+                await confirmation_buttons.wait()
+                if not confirmation_buttons.value:
+                    return False
+                is_game_finished = await self.cancel_in_progress_game(
+                    session, interaction, game
+                )
+                session.commit()
+                return is_game_finished
+
+    async def cancel_in_progress_game(
+        self,
+        session: SQLAlchemySession,
+        interaction: Interaction,
+        game: InProgressGame,
+    ):
+        assert interaction.guild
+        cancelled_game_embed = create_cancelled_game_embed(
+            session, game, interaction.user.name
+        )
+        game_history_message: Message
+        if config.GAME_HISTORY_CHANNEL:
+            game_history_channel = interaction.guild.get_channel(
+                config.GAME_HISTORY_CHANNEL
+            )
+            if game_history_channel and isinstance(game_history_channel, TextChannel):
+                game_history_message = await game_history_channel.send(
+                    embed=cancelled_game_embed
+                )
+
+        if game_history_message is not None:
+            cancelled_game_embed.description = game_history_message.jump_url
+
+        if config.CHANNEL_ID and interaction.guild:
+            main_channel: GuildChannel | None = interaction.guild.get_channel(
+                config.CHANNEL_ID
+            )
+            if main_channel and isinstance(main_channel, TextChannel):
+                await main_channel.send(embed=cancelled_game_embed)
+                if config.ECONOMY_ENABLED:
+                    try:
+                        economy_cog = self.bot.get_cog("EconomyCommands")
+                        if economy_cog is not None and isinstance(
+                            economy_cog, EconomyCommands
+                        ):
+                            await economy_cog.cancel_predictions(game.id)
+                        else:
+                            _log.warning("Could not get EconomyCommands cog")
+                    except ValueError:
+                        # Raised if there are no predictions on this game
+                        await main_channel.send(
+                            embed=Embed(
+                                description="No predictions to be refunded",
+                                colour=Colour.blue(),
+                            )
+                        )
+                    except Exception:
+                        _log.exception("Predictions failed to refund")
+                        await main_channel.send(
+                            embed=Embed(
+                                description=f"Predictions failed to refund",
+                                colour=Colour.red(),
+                            )
+                        )
+                    else:
+                        await main_channel.send(
+                            embed=Embed(
+                                description="Predictions refunded",
+                                colour=Colour.blue(),
+                            )
+                        )
+
+        session.query(InProgressGamePlayer).filter(
+            InProgressGamePlayer.in_progress_game_id == game.id
+        ).delete()
+        session.commit()  # if you remove this commit, then there is a chance for the DB to lockup if someone types a message at the same time
+
+        if config.ENABLE_VOICE_MOVE and config.VOICE_MOVE_LOBBY:
+            try:
+                await move_game_players_lobby(game.id, interaction.guild)
+            except Exception:
+                _log.exception("Ignored exception when moving a gameplayer to lobby:")
+
+        for ipg_channel in session.query(InProgressGameChannel).filter(
+            InProgressGameChannel.in_progress_game_id == game.id
+        ):
+            if interaction.guild:
+                guild_channel = interaction.guild.get_channel(ipg_channel.channel_id)
+                if guild_channel:
+                    await guild_channel.delete()
+            session.delete(ipg_channel)
+        session.query(InProgressGame).filter(InProgressGame.id == game.id).delete()
+        return True
+
+    @group.command(name="finish", description="Ends the current game you are in")
     @app_commands.describe(outcome="win, loss, or tie")
     @app_commands.guild_only()
     async def finishgame(
@@ -137,15 +276,6 @@ class InProgressGameCommands(commands.Cog):
         outcome: Literal["win", "loss", "tie"],
     ):
         await self.finishgame_callback(interaction, outcome)
-
-    @group.command(
-        name="cancelgame", description="Cancels the specified game"
-    )
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(game_id="In progress game ID")
-    @app_commands.guild_only()
-    async def cancelgame(self, interaction: Interaction, game_id: str):
-        await self.cancelgame_callback(interaction, game_id)
 
     async def finishgame_callback(
         self,
@@ -199,54 +329,6 @@ class InProgressGameCommands(commands.Cog):
                 )
                 session.commit()
                 return is_finished
-
-    async def cancelgame_callback(
-        self, interaction: Interaction, game_id: str
-    ) -> bool:
-        if not interaction.response.is_done():
-            await interaction.response.defer(ephemeral=True)
-        if _lock.locked():
-            await interaction.followup.send(
-                embed=Embed(
-                    description="⏳ A **Cancel** is already in progress, please wait...",
-                    color=Colour.yellow(),
-                ),
-                ephemeral=True,
-            )
-        async with _lock:
-            session: SQLAlchemySession
-            with Session() as session:
-                game = (
-                    session.query(InProgressGame)
-                    .filter(InProgressGame.id.startswith(game_id))
-                    .first()
-                )
-                if not game:
-                    await interaction.followup.send(
-                        embed=Embed(
-                            description=f"❌ Game {short_uuid(game_id)} does not exist",
-                            colour=Colour.red(),
-                        ),
-                        ephemeral=True,
-                    )
-                    return False
-                confirmation_buttons = ConfirmationView(interaction.user.id)
-                confirmation_buttons.message = await interaction.followup.send(
-                    embed=Embed(
-                        description=f"⚠️ Are you sure you want to **Cancel** game **{short_uuid(game.id)}**?⚠️",
-                        color=Colour.yellow(),
-                    ),
-                    view=confirmation_buttons,
-                    ephemeral=True,
-                )
-                await confirmation_buttons.wait()
-                if not confirmation_buttons.value:
-                    return False
-                is_game_finished = await self.cancel_in_progress_game(
-                    session, interaction, game
-                )
-                session.commit()
-                return is_game_finished
 
     async def finish_in_progress_game(
         self,
@@ -496,12 +578,10 @@ class InProgressGameCommands(commands.Cog):
         )
         game_history_message: Message
         if config.GAME_HISTORY_CHANNEL:
-            game_history_channel: GuildChannel | None = (
-                interaction.guild.get_channel(config.GAME_HISTORY_CHANNEL)
+            game_history_channel: GuildChannel | None = interaction.guild.get_channel(
+                config.GAME_HISTORY_CHANNEL
             )
-            if game_history_channel and isinstance(
-                game_history_channel, TextChannel
-            ):
+            if game_history_channel and isinstance(game_history_channel, TextChannel):
                 game_history_message = await game_history_channel.send(
                     embed=finished_game_embed
                 )
@@ -517,96 +597,196 @@ class InProgressGameCommands(commands.Cog):
                 await main_channel.send(embed=finished_game_embed)
         return True
 
-    async def cancel_in_progress_game(
-        self,
-        session: SQLAlchemySession,
-        interaction: Interaction,
-        game: InProgressGame,
-    ):
+    @group.command(
+        name="moveplayers",
+        description="Moves players in an in progress game to their respective voice channels",
+    )
+    @app_commands.guild_only()
+    @app_commands.check(is_admin_app_command)
+    async def movegameplayers(self, interaction: Interaction, game_id: str):
+        """
+        Move players in a given in-progress game to the correct voice channels
+        """
         assert interaction.guild
-        cancelled_game_embed = create_cancelled_game_embed(
-            session, game, interaction.user.name
-        )
-        game_history_message: Message
-        if config.GAME_HISTORY_CHANNEL:
-            game_history_channel = interaction.guild.get_channel(
-                config.GAME_HISTORY_CHANNEL
+
+        if not config.ENABLE_VOICE_MOVE:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Voice movement is disabled",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
             )
-            if game_history_channel and isinstance(
-                game_history_channel, TextChannel
-            ):
-                game_history_message = await game_history_channel.send(
-                    embed=cancelled_game_embed
+            return
+        else:
+            try:
+                await move_game_players(game_id, interaction)
+            except Exception:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Failed to move players to voice channels for game {game_id}",
+                        colour=Colour.red(),
+                    ),
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Players moved to voice channels for game {game_id}",
+                        colour=Colour.blue(),
+                    ),
                 )
 
-        if game_history_message is not None:
-            cancelled_game_embed.description = game_history_message.jump_url
-
-        if config.CHANNEL_ID and interaction.guild:
-            main_channel: GuildChannel | None = (
-                interaction.guild.get_channel(config.CHANNEL_ID)
+    @group.command(name="setcode", description="Sets lobby code for your current game")
+    @app_commands.guild_only()
+    @app_commands.describe(code="Game lobby code")
+    async def setgamecode(self, interaction: Interaction, code: str):
+        assert interaction.guild
+        session: SQLAlchemySession
+        with Session() as session:
+            ipgp = (
+                session.query(InProgressGamePlayer)
+                .filter(InProgressGamePlayer.player_id == interaction.user.id)
+                .first()
             )
-            if main_channel and isinstance(main_channel, TextChannel):
-                await main_channel.send(embed=cancelled_game_embed)
-                if config.ECONOMY_ENABLED:
+            if not ipgp:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="You must be in game to set the game code!",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            ipg = (
+                session.query(InProgressGame)
+                .filter(InProgressGame.id == ipgp.in_progress_game_id)
+                .first()
+            )
+            if not ipg:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="You must be in game to set the game code!",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            if ipg.code == code:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="This is already the current game code!",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            ipg.code = code
+            await interaction.response.defer(ephemeral=True)
+            title: str = f"Lobby code for ({short_uuid(ipg.id)})"
+            if ipg.channel_id and ipg.message_id:
+                partial_message = get_guild_partial_message(
+                    interaction.guild, ipg.channel_id, ipg.message_id
+                )
+                channel = interaction.guild.get_channel(ipg.channel_id)
+                if isinstance(channel, TextChannel):
                     try:
-                        economy_cog = self.bot.get_cog("EconomyCommands")
-                        if economy_cog is not None and isinstance(
-                            economy_cog, EconomyCommands
-                        ):
-                            await economy_cog.cancel_predictions(game.id)
-                        else:
-                            _log.warning("Could not get EconomyCommands cog")
-                    except ValueError:
-                        # Raised if there are no predictions on this game
-                        await main_channel.send(
-                            embed=Embed(
-                                description="No predictions to be refunded",
-                                colour=Colour.blue(),
-                            )
+                        message: Message = await channel.fetch_message(ipg.message_id)
+                        if len(message.embeds) > 0:
+                            embed: Embed = message.embeds[0]
+                            replaced_code = False
+                            for i, field in enumerate(embed.fields):
+                                if field.name == "🔢 Game Code":
+                                    field.value = f"`{code}`"
+                                    embed.set_field_at(
+                                        i,
+                                        name="🔢 Game Code",
+                                        value=f"`{code}`",
+                                        inline=True,
+                                    )
+                                    replaced_code = True
+                                    break
+                            if not replaced_code:
+                                last = embed.fields[-1]
+                                if (
+                                    last.name == ""
+                                    and last.value == ""
+                                    and last.inline == True
+                                ):
+                                    embed.remove_field(-1)
+                                embed.add_field(
+                                    name="🔢 Game Code", value=f"`{code}`", inline=True
+                                )
+                                embed_fields_len = (
+                                    len(embed.fields) - 3
+                                )  # subtract team0, team1, and "newline" fields
+                                if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
+                                    # embeds are allowed 3 "columns" per "row"
+                                    # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
+                                    embed.add_field(name="", value="", inline=True)
+                            await message.edit(embed=embed)
+                    except:
+                        _log.exception(
+                            f"[setgamecode] Failed to get message with guild_id={interaction.guild_id}, channel_id={ipg.channel_id}, message_id={ipg.message_id}:"
                         )
-                    except Exception:
-                        _log.exception("Predictions failed to refund")
-                        await main_channel.send(
-                            embed=Embed(
-                                description=f"Predictions failed to refund",
-                                colour=Colour.red(),
-                            )
-                        )
-                    else:
-                        await main_channel.send(
-                            embed=Embed(
-                                description="Predictions refunded",
-                                colour=Colour.blue(),
-                            )
-                        )
+                if partial_message:
+                    title = f"Lobby code for {partial_message.jump_url}"
 
-        session.query(InProgressGamePlayer).filter(
-            InProgressGamePlayer.in_progress_game_id == game.id
-        ).delete()
-        session.commit()  # if you remove this commit, then there is a chance for the DB to lockup if someone types a message at the same time
-
-        if config.ENABLE_VOICE_MOVE and config.VOICE_MOVE_LOBBY:
-            try:
-                await move_game_players_lobby(game.id, interaction.guild)
-            except Exception:
-                _log.exception("Ignored exception when moving a gameplayer to lobby:")
-
-        for ipg_channel in session.query(InProgressGameChannel).filter(
-            InProgressGameChannel.in_progress_game_id == game.id
-        ):
-            if interaction.guild:
-                guild_channel = interaction.guild.get_channel(ipg_channel.channel_id)
-                if guild_channel:
-                    await guild_channel.delete()
-            session.delete(ipg_channel)
-        session.query(InProgressGame).filter(InProgressGame.id == game.id).delete()
-        return True
+            embed = Embed(
+                title=title,
+                description=f"`{code}`",
+                colour=Colour.green(),
+            )
+            embed.set_footer(
+                text=f"set by {interaction.user.display_name} ({interaction.user.name})"
+            )
+            coroutines = []
+            result = (
+                session.query(InProgressGamePlayer.player_id)
+                .filter(
+                    InProgressGamePlayer.in_progress_game_id == ipg.id,
+                    InProgressGamePlayer.player_id
+                    != interaction.user.id,  # don't send the code to the one who wants to send it out
+                )
+                .all()
+            )
+            ipg_player_ids: list[int] = (
+                [player_id[0] for player_id in result if player_id] if result else []
+            )
+            for player_id in ipg_player_ids:
+                coroutines.append(
+                    send_in_guild_message(interaction.guild, player_id, embed=embed)
+                )
+            if ipg_player_ids:
+                try:
+                    await asyncio.gather(*coroutines)
+                except:
+                    _log.exception(
+                        "[setgamecode] Ignoring exception in asyncio.gather:"
+                    )
+                else:
+                    await interaction.followup.send(
+                        embed=Embed(
+                            description="Lobby code sent to each player",
+                            colour=Colour.blue(),
+                        ),
+                        ephemeral=True,
+                    )
+            else:
+                _log.warn("No in_progress_game_players to send a lobby code to")
+                await interaction.followup.send(
+                    embed=Embed(
+                        description="There are no in-game players to send this lobby code to!",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+            session.commit()
 
     @cancelgame.autocomplete("game_id")
-    async def cancelgame_autocomplete(
-        self, interaction: Interaction, current: str
-    ):
+    @movegameplayers.autocomplete("game_id")
+    async def game_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
         with Session() as session:
@@ -618,9 +798,7 @@ class InProgressGameCommands(commands.Cog):
                     short_game_id = short_uuid(ipg.id)
                     if current in short_game_id:
                         result.append(
-                            app_commands.Choice(
-                                name=short_game_id, value=short_game_id
-                            )
+                            app_commands.Choice(name=short_game_id, value=short_game_id)
                         )
         return result
 
@@ -651,9 +829,7 @@ class InProgressGameView(BaseView):
         custom_id="in_progress_game_view:win",
         emoji="🥇",
     )
-    async def win_button(
-        self, interaction: Interaction, button: Button
-    ):
+    async def win_button(self, interaction: Interaction, button: Button):
         self.is_game_finished = await self.cog.finishgame_callback(
             interaction, "win", self.game_id
         )
@@ -667,9 +843,7 @@ class InProgressGameView(BaseView):
         custom_id="in_progress_game_view:loss",
         emoji="🥈",
     )
-    async def loss_button(
-        self, interaction: Interaction, button: Button
-    ):
+    async def loss_button(self, interaction: Interaction, button: Button):
         self.is_game_finished = await self.cog.finishgame_callback(
             interaction, "loss", self.game_id
         )
@@ -683,9 +857,7 @@ class InProgressGameView(BaseView):
         custom_id="in_progress_game_view:tie",
         emoji="🤞",
     )
-    async def tie_button(
-        self, interaction: Interaction, button: Button
-    ):
+    async def tie_button(self, interaction: Interaction, button: Button):
         self.is_game_finished = await self.cog.finishgame_callback(
             interaction, "tie", self.game_id
         )
@@ -698,9 +870,7 @@ class InProgressGameView(BaseView):
         style=ButtonStyle.red,
         custom_id="in_progress_game_view:cancel",
     )
-    async def cancel_button(
-        self, interaction: Interaction, button: Button
-    ):
+    async def cancel_button(self, interaction: Interaction, button: Button):
         if not await is_admin_app_command(interaction):
             return
         self.is_game_finished = await self.cog.cancelgame_callback(

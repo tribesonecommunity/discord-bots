@@ -225,29 +225,6 @@ class MapCommands(BaseCog):
                 )
             )
 
-    @group.command(name="list", description="List all maps in the map pool")
-    async def listmaps(self, interaction: Interaction):
-        """
-        List all maps in the map pool
-        """
-        session: SQLAlchemySession
-        with Session() as session:
-            maps = session.query(Map).order_by(Map.created_at.asc()).all()
-
-            if not maps:
-                output = "_-- No Maps --_"
-            else:
-                output = ""
-                for map in maps:
-                    output += f"- {map.full_name} ({map.short_name})\n"
-
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=output,
-                    colour=Colour.blue(),
-                )
-            )
-
     # broken commands
 
     # TODO: update to !map <queue_name>

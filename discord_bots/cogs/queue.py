@@ -206,95 +206,6 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(
-        name="list", description="List all queues with their category and rotation"
-    )
-    async def listqueues(self, interaction: Interaction):
-        """
-        List all queues with their category and rotation
-        """
-        session: SQLAlchemySession
-        with Session() as session:
-            queues: list[Queue] | None = session.query(Queue).all()
-            if not queues:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="No queues found",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            output = ""
-            for queue in queues:
-                if queue.is_locked:
-                    output += f"### {queue.name} [locked]\n"
-                else:
-                    output += f"### {queue.name}\n"
-
-                output += "- Category: "
-                category_name: str | None = (
-                    session.query(Category.name)
-                    .filter(Category.id == queue.category_id)
-                    .scalar()
-                )
-                if category_name:
-                    output += f"{category_name}\n"
-                else:
-                    output += "None\n"
-
-                output += "- Rotation: "
-                rotation_name: str | None = (
-                    session.query(Rotation.name)
-                    .filter(Rotation.id == queue.rotation_id)
-                    .scalar()
-                )
-                if rotation_name:
-                    output += f"{rotation_name}\n"
-                else:
-                    output += "None\n"
-
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=output,
-                    colour=Colour.blue(),
-                )
-            )
-
-    @group.command(
-        name="listroles",
-        description="List all queues and their associated discord roles",
-    )
-    async def listqueueroles(self, interaction: Interaction):
-        """
-        List all queues and their associated discord roles
-        """
-        if not interaction.guild:
-            return
-
-        output = "Queues:\n"
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue
-            for i, queue in enumerate(session.query(Queue).all()):
-                queue_role_names: list[str] = []
-                queue_role: QueueRole
-                for queue_role in (
-                    session.query(QueueRole)
-                    .filter(QueueRole.queue_id == queue.id)
-                    .all()
-                ):
-                    role = interaction.guild.get_role(queue_role.role_id)
-                    if role:
-                        queue_role_names.append(role.name)
-                    else:
-                        queue_role_names.append(str(queue_role.role_id))
-                output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
-            await interaction.response.send_message(
-                embed=Embed(description=output, colour=Colour.blue())
-            )
-
     @group.command(name="lock", description="Prevent players from adding to a queue")
     @app_commands.check(is_admin_app_command)
     @app_commands.describe(queue_name="Name of queue")
@@ -508,6 +419,53 @@ class QueueCommands(BaseCog):
                     )
                 )
                 session.commit()
+
+    @group.command(name="setcategory", description="Set category on queue")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(
+        queue_name="Existing queue", category_name="Existing category"
+    )
+    async def setqueuecategory(
+        self, interaction: Interaction, queue_name: str, category_name: str
+    ):
+        session: SQLAlchemySession
+        with Session() as session:
+            try:
+                queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find queue **{queue_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                category = (
+                    session.query(Category)
+                    .filter(Category.name.ilike(category_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find category **{category_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            queue.category_id = category.id
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Queue **{queue.name}** set to category **{category.name}**",
+                    colour=Colour.green(),
+                )
+            )
 
     @group.command(
         name="currencyaward",
@@ -1011,6 +969,22 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
+    @setqueuecategory.autocomplete("category_name")
+    async def category_autocomplete(self, interaction: Interaction, current: str):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            categories: list[Category] | None = (
+                session.query(Category).order_by(Category.name).limit(25).all()
+            )  # discord only supports up to 25 choices
+            if categories:
+                for category in categories:
+                    if current in category.name:
+                        result.append(
+                            app_commands.Choice(name=category.name, value=category.name)
+                        )
+        return result
+
     @addqueuerole.autocomplete("queue_name")
     @clearqueue.autocomplete("queue_name")
     @clearqueuerange.autocomplete("queue_name")
@@ -1019,6 +993,7 @@ class QueueCommands(BaseCog):
     @mockqueue.autocomplete("queue_name")
     @removequeue.autocomplete("queue_name")
     @removequeuerole.autocomplete("queue_name")
+    @setqueuecategory.autocomplete("queue_name")
     @setqueuecurrencyaward.autocomplete("queue_name")
     @setqueuemoveenabled.autocomplete("queue_name")
     @setqueuename.autocomplete("old_queue_name")

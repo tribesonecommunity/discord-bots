@@ -1,18 +1,13 @@
 import logging
+
+from discord import Colour, Embed, Interaction, app_commands
+from discord.ext.commands import Bot
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord import app_commands, Colour, Embed, Interaction
-from discord.ext.commands import Bot
-
 from discord_bots.checks import is_admin_app_command
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import (
-    Category,
-    PlayerCategoryTrueskill,
-    Queue,
-    Session,
-)
+from discord_bots.models import Category, PlayerCategoryTrueskill, Queue, Session
 
 _log = logging.getLogger(__name__)
 
@@ -66,44 +61,6 @@ class CategoryCommands(BaseCog):
                     colour=Colour.green(),
                 ),
                 ephemeral=True,
-            )
-
-    @group.command(name="list", description="List categories")
-    async def listcategories(self, interaction: Interaction):
-        session: SQLAlchemySession
-        with Session() as session:
-            categories: list[Category] | None = (
-                session.query(Category).order_by(Category.created_at.asc()).all()
-            )
-            if not categories:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="_-- No categories-- _",
-                        colour=Colour.blue(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            output = ""
-            for category in categories:
-                output += f"- **{category.name}**\n"
-                queue_names = [
-                    x[0]
-                    for x in (
-                        session.query(Queue.name)
-                        .filter(Queue.category_id == category.id)
-                        .order_by(Queue.ordinal.asc())
-                        .all()
-                    )
-                ]
-                if not queue_names:
-                    output += f" - _Queues: None_\n\n"
-                else:
-                    output += f" - _Queues: {', '.join(queue_names)}_\n\n"
-
-            await interaction.response.send_message(
-                embed=Embed(description=output, colour=Colour.blue())
             )
 
     @group.command(name="remove", description="Remove an existing category")
@@ -212,58 +169,20 @@ class CategoryCommands(BaseCog):
                     )
                 )
 
-    @group.command(name="setqueue", description="Set category on queue")
+    @group.command(
+        name="setminleaderboardgames",
+        description="Set minimum number of games to be on the category leaderboard",
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.describe(
-        queue_name="Existing queue", category_name="Existing category"
+        category_name="Existing category",
+        min_num_games="Games required to show on the leaderboard",
     )
-    async def setqueuecategory(
-        self, interaction: Interaction, queue_name: str, category_name: str
-    ):
-        session: SQLAlchemySession
-        with Session() as session:
-            try:
-                queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
-            except NoResultFound:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue **{queue_name}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            try:
-                category = (
-                    session.query(Category)
-                    .filter(Category.name.ilike(category_name))
-                    .one()
-                )
-            except NoResultFound:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find category **{category_name}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            queue.category_id = category.id
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Queue **{queue.name}** set to category **{category.name}**",
-                    colour=Colour.green(),
-                )
-            )
-
-    @group.command(name="setminleaderboardgames", description="Set minimum number of games to be on the category leaderboard")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.describe(category_name="Existing category",min_num_games="Games required to show on the leaderboard")
     async def setmingamesforleaderboard(
-        self, interaction: Interaction, category_name: str, min_num_games: int, 
+        self,
+        interaction: Interaction,
+        category_name: str,
+        min_num_games: int,
     ):
         if min_num_games < 0:
             await interaction.response.send_message(
@@ -271,7 +190,7 @@ class CategoryCommands(BaseCog):
                     description=f"The minimum number of games must be non-negative",
                     colour=Colour.red(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
@@ -286,7 +205,7 @@ class CategoryCommands(BaseCog):
                         description=f"Could not find category **{category_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
             category.min_games_for_leaderboard = min_num_games
@@ -297,17 +216,14 @@ class CategoryCommands(BaseCog):
                 colour=Colour.green(),
             )
         )
-        
+
     @createcategory.autocomplete("name")
     @removecategory.autocomplete("name")
     @setcategoryname.autocomplete("old_category_name")
     @setcategoryrated.autocomplete("category_name")
     @setcategoryunrated.autocomplete("category_name")
-    @setqueuecategory.autocomplete("category_name")
     @setmingamesforleaderboard.autocomplete("category_name")
-    async def category_autocomplete(
-        self, interaction: Interaction, current: str
-    ):
+    async def category_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
         with Session() as session:
@@ -318,17 +234,12 @@ class CategoryCommands(BaseCog):
                 for category in categories:
                     if current in category.name:
                         result.append(
-                            app_commands.Choice(
-                                name=category.name, value=category.name
-                            )
+                            app_commands.Choice(name=category.name, value=category.name)
                         )
         return result
-    
-    @setqueuecategory.autocomplete("queue_name")
+
     @clearqueuecategory.autocomplete("queue_name")
-    async def queue_autocomplete(
-        self, interaction: Interaction, current: str
-    ):
+    async def queue_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
         with Session() as session:
@@ -339,8 +250,6 @@ class CategoryCommands(BaseCog):
                 for queue in queues:
                     if current in queue.name:
                         result.append(
-                            app_commands.Choice(
-                                name=queue.name, value=queue.name
-                            )
+                            app_commands.Choice(name=queue.name, value=queue.name)
                         )
         return result

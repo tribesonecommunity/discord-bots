@@ -162,62 +162,6 @@ class RotationCommands(BaseCog):
                     )
                 )
 
-    @group.command(name="list", description="List all rotations in the rotation pool")
-    async def listrotations(self, interaction: Interaction):
-        """
-        List all rotations in the rotation pool
-        """
-        session: SQLAlchemySession
-        with Session() as session:
-            rotations: list[Rotation] | None = (
-                session.query(Rotation).order_by(Rotation.created_at.asc()).all()
-            )
-            if not rotations:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="_-- No Rotations-- _", colour=Colour.blue()
-                    )
-                )
-                return
-
-            output = ""
-
-            for rotation in rotations:
-                output += f"### {rotation.name}\n"
-
-                map_names = [
-                    x[0]
-                    for x in (
-                        session.query(Map.short_name)
-                        .join(RotationMap, RotationMap.map_id == Map.id)
-                        .filter(RotationMap.rotation_id == rotation.id)
-                        .order_by(RotationMap.ordinal.asc())
-                        .all()
-                    )
-                ]
-                if not map_names:
-                    output += f" - Maps:  None\n"
-                else:
-                    output += f" - Maps:  {', '.join(map_names)}\n"
-
-                queue_names = [
-                    x[0]
-                    for x in (
-                        session.query(Queue.name)
-                        .filter(Queue.rotation_id == rotation.id)
-                        .order_by(Queue.ordinal.asc())
-                        .all()
-                    )
-                ]
-                if not queue_names:
-                    output += f" - Queues:  None\n"
-                else:
-                    output += f" - Queues:  {', '.join(queue_names)}\n"
-
-            await interaction.response.send_message(
-                embed=Embed(description=output, colour=Colour.blue())
-            )
-
     @group.command(
         name="remove", description="Remove a rotation from the rotation pool"
     )
