@@ -643,6 +643,6 @@ async def apply_sigma_decay():
         for (pct, category) in pct_data:
             pct.sigma = min(
                 pct.sigma + category.sigma_decay_amount,
-                config.DEFAULT_TRUESKILL_SIGMA,
+                config.DEFAULT_TRUESKILL_SIGMA * category.sigma_decay_max_decay_proportion,
             )
         session.commit()

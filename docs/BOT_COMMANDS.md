@@ -12,8 +12,7 @@ CategoryCommands:
   setcategoryunrated
   setqueuecategory
   setmingamesforleaderboard       
-  setcategorysigmadecayamount     
-  setcategorysigmadecaygracedays  
+  setcategorysigmadecay   Configure sigma decay settings for the category
 MapCommands:
   addmap                  Add a map to the map pool
   changegamemap           Change the map for a game

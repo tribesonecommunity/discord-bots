@@ -84,6 +84,9 @@ class Category:
     """
     A category is a segmentation of trueskill - for example rated vs unrated, regions, game types (CTF, Arena, Bomb, etc.)
     :min_games_for_leaderboard: The minimum number of games someone needs to play in the last 30 days to appear on the leaderboard.
+    :sigma_decay_amount: The amount to decay a player's sigma by every day after the grace period.
+    :sigma_decay_grace_days: The number of days before the sigma starts decaying.
+    :sigma_decay_max_decay_proportion: The maximum proportion of the default sigma a player may decay to. E.g. 1.0 would indicate full decay back to the default is possible
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -109,6 +112,10 @@ class Category:
     sigma_decay_grace_days: int = field(
         default=0,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    sigma_decay_max_decay_proportion: float = field(
+        default=0.5,
+        metadata={"sa": Column(Float, nullable=False, server_default=text("1.0"))},
     )
     id: str = field(
         init=False,

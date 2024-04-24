@@ -85,8 +85,10 @@ class CategoryCommands(BaseCog):
         output = ""
         output += f"**{category.name}**\n"
         output += f"- _Rated: {category.is_rated}_\n"
-        output += f"- _Sigma decay amount: {category.sigma_decay_amount}_\n"
-        output += f"- _Sigma decay grace days: {category.sigma_decay_grace_days}_\n"
+        output += "- _Sigma decay settings:_\n"
+        output += f" - _Decay amount: {category.sigma_decay_amount}_\n"
+        output += f" - _Grace days: {category.sigma_decay_grace_days}_\n"
+        output += f" - _Max decay proportion: {category.sigma_decay_max_decay_proportion}_\n"
         output += f"- _Minimum games for leaderboard: {category.min_games_for_leaderboard}_\n"
         queue_names = [
             x[0]
@@ -229,11 +231,13 @@ class CategoryCommands(BaseCog):
 
     @command()
     @check(is_admin)
-    async def setcategorysigmadecayamount(
+    async def setcategorysigmadecay(
         self,
         ctx: Context,
         name: str,
         sigma_decay_amount: float,
+        sigma_decay_grace_days: int,
+        sigma_decay_max_decay_proportion: float,
     ) -> None:
         """
         Set the amount of sigma decay per day for a given category
@@ -247,33 +251,12 @@ class CategoryCommands(BaseCog):
             await self.send_error_message(f"Could not find category **{name}**")
             return
         category.sigma_decay_amount = sigma_decay_amount
-        session.commit()
-        await self.send_success_message(
-            f"Sigma decay amount for category **{category.name}** is now **{sigma_decay_amount}**"
-        )
-        pass
-
-    @command()
-    @check(is_admin)
-    async def setcategorysigmadecaygracedays(
-        self,
-        ctx: Context,
-        name: str,
-        sigma_decay_grace_days: int,
-    ) -> None:
-        """
-        Set the number of days of inactivity before a player will have sigma decay applied
-        """
-        session = ctx.session
-        try:
-            category: Category = (
-                session.query(Category).filter(Category.name.ilike(name)).one()
-            )
-        except NoResultFound:
-            await self.send_error_message(f"Could not find category **{name}**")
-            return
         category.sigma_decay_grace_days = sigma_decay_grace_days
+        category.sigma_decay_max_decay_proportion = sigma_decay_max_decay_proportion
         session.commit()
-        await self.send_success_message(
-            f"Sigma decay grace days config for category **{category.name}** is now **{sigma_decay_grace_days} days**"
-        )
+
+        output = "Sigma decay settings updated for **{category.name}**:\n"
+        output += f"- Decay amount: {sigma_decay_amount}\n"
+        output += f"- Grace days: {sigma_decay_grace_days}\n"
+        output += f"- Max decay proportion: {sigma_decay_max_decay_proportion}\n"
+        await self.send_success_message(output)

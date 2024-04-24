@@ -34,6 +34,14 @@ def upgrade():
                 nullable=False,
             )
         )
+        batch_op.add_column(
+            sa.Column(
+                "sigma_decay_max_decay_proportion",
+                sa.Float(),
+                server_default=sa.text("1.0"),
+                nullable=False,
+            )
+        )
 
 
 def downgrade():
