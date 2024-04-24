@@ -255,7 +255,7 @@ class CategoryCommands(BaseCog):
         category.sigma_decay_max_decay_proportion = sigma_decay_max_decay_proportion
         session.commit()
 
-        output = "Sigma decay settings updated for **{category.name}**:\n"
+        output = f"Sigma decay settings updated for **{category.name}**:\n"
         output += f"- Decay amount: {sigma_decay_amount}\n"
         output += f"- Grace days: {sigma_decay_grace_days}\n"
         output += f"- Max decay proportion: {sigma_decay_max_decay_proportion}\n"
