@@ -102,6 +102,14 @@ class Category:
         default=0,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
     )
+    sigma_decay_amount: float = field(
+        default=0.0,
+        metadata={"sa": Column(Float, nullable=False, server_default=text("0.0"))},
+    )
+    sigma_decay_grace_days: int = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
