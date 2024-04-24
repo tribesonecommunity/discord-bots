@@ -1,8 +1,8 @@
 """add last finished game timestamp to player_category_trueskill
 
-Revision ID: 6ec201ec28d3
-Revises: 677c768bdcb5
-Create Date: 2024-04-17 21:10:57.679064
+Revision ID: 8942dc29fa48
+Revises: 6e92fde2c396
+Create Date: 2024-04-24 16:48:26.700096
 
 """
 from alembic import op
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "6ec201ec28d3"
-down_revision = "677c768bdcb5"
+revision = "8942dc29fa48"
+down_revision = "6e92fde2c396"
 branch_labels = None
 depends_on = None
 
@@ -32,3 +32,4 @@ def downgrade():
             batch_op.f("ix_player_category_trueskill_last_game_finished_at"),
         )
         batch_op.drop_column("last_game_finished_at")
+

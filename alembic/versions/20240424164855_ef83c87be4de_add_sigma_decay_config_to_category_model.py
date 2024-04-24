@@ -1,8 +1,8 @@
 """add sigma decay config to Category model
 
-Revision ID: f7e1c836041e
-Revises: 950bfa890620
-Create Date: 2024-04-24 12:49:57.504768
+Revision ID: ef83c87be4de
+Revises: 8942dc29fa48
+Create Date: 2024-04-24 16:48:55.275178
 
 """
 from alembic import op
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "f7e1c836041e"
-down_revision = "950bfa890620"
+revision = "ef83c87be4de"
+down_revision = "8942dc29fa48"
 branch_labels = None
 depends_on = None
 
