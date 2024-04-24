@@ -617,32 +617,32 @@ async def apply_sigma_decay():
     session: sqlalchemy.orm.Session
     with Session() as session:
         # Lookup all categories to calculate sigma cutoffs
-        # TODO: If we kill off SQLite we can do this calculation inside the main query using INTERVAL
+        # TODO: If we kill off SQLite we can use INTERVAL to check a time range and have a single join between Category and PlayerCategoryTrueskill
         time_now = datetime.now(timezone.utc)
         categories = session.query(Category).all()
-        sigma_decay_cutoffs = {
-            category.id: time_now - timedelta(
-                days=category.sigma_decay_grace_days
-            )
+        category_details = {
+            category.id: {
+                'category': category,
+                'cutoff': time_now - timedelta(
+                    days=category.sigma_decay_grace_days
+                )
+            }
             for category in categories
         }
 
         # Find all player trueskill values with a last played game older than the decay grace period
-        pct_data = (
+        player_category_trueskills = (
             session
-            .query(PlayerCategoryTrueskill, Category)
-            .join(Category, Category.id == PlayerCategoryTrueskill.category_id)
-            .filter(
-                sqlalchemy.and_(
-                    PlayerCategoryTrueskill.last_game_finished_at.is_not(None),
-                    PlayerCategoryTrueskill.last_game_finished_at < sigma_decay_cutoffs[Category.id],
-                )
-            )
+            .query(PlayerCategoryTrueskill)
+            .filter(PlayerCategoryTrueskill.last_game_finished_at.is_not(None))
             .all()
         )
-        for (pct, category) in pct_data:
-            pct.sigma = min(
-                pct.sigma + category.sigma_decay_amount,
-                config.DEFAULT_TRUESKILL_SIGMA * category.sigma_decay_max_decay_proportion,
-            )
+        for pct in player_category_trueskills:
+            # If the last game for this PCT was before the cutoff, apply the decay
+            if pct.last_game_finished_at.replace(tzinfo=timezone.utc) < category_details[pct.category_id]['cutoff']:
+                category = category_details[pct.category_id]['category']
+                pct.sigma = min(
+                    pct.sigma + category.sigma_decay_amount,
+                    config.DEFAULT_TRUESKILL_SIGMA * category.sigma_decay_max_decay_proportion,
+                )
         session.commit()
