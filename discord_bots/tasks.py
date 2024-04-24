@@ -30,6 +30,7 @@ from .bot import bot
 from .cogs.economy import EconomyCommands
 from .commands import add_player_to_queue, create_game, is_in_game
 from .models import (
+    Category,
     InProgressGame,
     InProgressGameChannel,
     MapVote,
@@ -615,25 +616,35 @@ async def vote_passed_waitlist_task():
 async def apply_sigma_decay():
     if not config.ENABLE_TRUESKILL_SIGMA_DECAY:
         return
-    sigma_decay_cutoff = datetime.now(timezone.utc) - timedelta(
-        days=config.TRUESKILL_SIGMA_DECAY_GRACE_DAYS
-    )
     session: sqlalchemy.orm.Session
     with Session() as session:
+        # Lookup all categories to calculate sigma cutoffs
+        # TODO: If we kill off SQLite we can do this calculation inside the main query using INTERVAL
+        time_now = datetime.now(timezone.utc)
+        categories = session.query(Category).all()
+        sigma_decay_cutoffs = {
+            category.id: time_now - timedelta(
+                days=category.sigma_decay_grace_days
+            )
+            for category in categories
+        }
+
         # Find all player trueskill values with a last played game older than the decay grace period
-        player_category_trueskills = (
-            session.query(PlayerCategoryTrueskill)
+        pct_data = (
+            session
+            .query(PlayerCategoryTrueskill, Category)
+            .join(Category, Category.id == PlayerCategoryTrueskill.category_id)
             .filter(
                 sqlalchemy.and_(
                     PlayerCategoryTrueskill.last_game_finished_at.is_not(None),
-                    PlayerCategoryTrueskill.last_game_finished_at < sigma_decay_cutoff,
+                    PlayerCategoryTrueskill.last_game_finished_at < sigma_decay_cutoffs[Category.id],
                 )
             )
             .all()
         )
-        for pct in player_category_trueskills:
+        for (pct, category) in pct_data:
             pct.sigma = min(
-                pct.sigma + config.TRUESKILL_SIGMA_DECAY_DELTA,
+                pct.sigma + category.sigma_decay_amount,
                 config.DEFAULT_TRUESKILL_SIGMA,
             )
         session.commit()
