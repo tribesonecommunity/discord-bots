@@ -432,6 +432,7 @@ class InProgressGameCog(commands.Cog):
                     pct.mu = trueskill_rating.mu
                     pct.sigma = trueskill_rating.sigma
                     pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
+                    pct.last_game_finished_at = game_finished_at
                 else:
                     session.add(
                         PlayerCategoryTrueskill(
