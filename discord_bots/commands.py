@@ -3273,6 +3273,7 @@ async def mapstats(interaction: Interaction, category_name: Optional[str] = None
             session.query(Map)
             .join(RotationMap, RotationMap.map_id == Map.id)
             .filter(RotationMap.rotation_id.in_(rotation_ids))
+            .order_by(Map.full_name)
             .all()
         )
         if not maps:
@@ -3319,7 +3320,6 @@ async def mapstats(interaction: Interaction, category_name: Optional[str] = None
         }
         cols = []
         for m in maps:
-
             def map_stats(finished_games: list[FinishedGame]):
                 wins = [
                     fg
@@ -3386,7 +3386,7 @@ async def globalmapstats(
     # Explicitly does not use a discord.Embed, due to the limit of the Embed length (Note: this won't look pretty on mobile)
     session: sqlalchemy.orm.Session
     with Session() as session:
-        maps: list[Map] | None = session.query(Map).all()
+        maps: list[Map] | None = session.query(Map).order_by(Map.full_name).all()
 
         def map_stats(finished_games: list[FinishedGame]):
             team0_wins = [fg for fg in finished_games if fg.winning_team == 0]
@@ -3416,7 +3416,6 @@ async def globalmapstats(
                     len(finished_games),
                 ]
             )
-
     table = table2ascii(
         header=["Map", "Team0", "Team1", "Ties", "Total"],
         body=cols,
