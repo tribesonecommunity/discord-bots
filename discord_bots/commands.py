@@ -3239,15 +3239,218 @@ async def status(ctx: Context, *args):
         )
 
 
+@bot.tree.command(
+    name="mapstats",
+    description="For a given category, privately displays your winrate per map",
+)
+@discord.app_commands.rename(category_name="category")
+@discord.app_commands.describe(category_name="Optional name of a specific category")
+async def mapstats(interaction: Interaction, category_name: Optional[str] = None):
+    # TODO: merge with /stats by making this a subcommand
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        if category_name:
+            category: Category | None = (
+                session.query(Category).filter(Category.name == category_name).one()
+            )
+            # get the queues for each category, since rotations are per queue and not per category
+            queues: list[Queue] | None = (
+                session.query(Queue).filter(Queue.category_id == category.id).all()
+            )
+        else:
+            queues: list[Queue] | None = session.query(Queue).all()
+        if not queues:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description=f"Could not find any queues",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        rotation_ids = [queue.rotation_id for queue in queues]
+        maps: list[Map] | None = (
+            session.query(Map)
+            .join(RotationMap, RotationMap.map_id == Map.id)
+            .filter(RotationMap.rotation_id.in_(rotation_ids))
+            .all()
+        )
+        if not maps:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description=f"Could not find any maps for category '{category_name}'",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        fgps: List[FinishedGamePlayer] | None = (
+            session.query(FinishedGamePlayer)
+            .filter(FinishedGamePlayer.player_id == interaction.user.id)
+            .all()
+        )
+        if not fgps:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description=f"You have not played any games",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        finished_game_ids: List[str] | None = [fgp.finished_game_id for fgp in fgps]
+        conditions = [FinishedGame.id.in_(finished_game_ids)]
+        if category_name:
+            conditions.append(FinishedGame.category_name == category_name)
+        fgs: List[FinishedGame] | None = (
+            session.query(FinishedGame).filter(*conditions).all()
+        )
+        if not fgs:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    description=f"Could not find any finished games for you",
+                    color=discord.Color.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        fgps_by_finished_game_id: dict[str, FinishedGamePlayer] = {
+            fgp.finished_game_id: fgp for fgp in fgps
+        }
+        cols = []
+        for m in maps:
+
+            def map_stats(finished_games: list[FinishedGame]):
+                wins = [
+                    fg
+                    for fg in finished_games
+                    if fg.winning_team == fgps_by_finished_game_id[fg.id].team
+                ]
+                losses = [
+                    fg
+                    for fg in finished_games
+                    if fg.winning_team != fgps_by_finished_game_id[fg.id].team
+                    and fg.winning_team != -1
+                ]
+                ties = [fg for fg in finished_games if fg.winning_team == -1]
+                return len(wins), len(losses), len(ties)
+
+            fgs_for_map = [fg for fg in fgs if fg.map_full_name == m.full_name]
+            num_games = len(fgs_for_map)
+            if num_games <= 0:
+                continue
+            wins, losses, ties = map_stats(fgs_for_map)
+            win_rate = wins / max(num_games, 1)
+            cols.append(
+                [
+                    m.full_name,
+                    f"{wins}",
+                    f"{losses}",
+                    f"{ties}",
+                    num_games,
+                    f"{round(100 * win_rate, 1)}%",
+                ]
+            )
+    table = table2ascii(
+        header=["Map", "W", "L", "T", "Total", "WR"],
+        body=cols,
+        style=PresetStyle.plain,
+        first_col_heading=True,
+        alignments=[
+            Alignment.LEFT,
+            Alignment.DECIMAL,
+            Alignment.DECIMAL,
+            Alignment.DECIMAL,
+            Alignment.DECIMAL,
+            Alignment.RIGHT,
+        ],
+    )
+    if category_name:
+        title = f"{interaction.user.display_name} Map Stats for {category_name}"
+    else:
+        title = f"{interaction.user.display_name} Overall Map Stats"
+    embed = discord.Embed(title=title, description=code_block(table))
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(
+    name="globalmapstats", description="Displays global statistics for each map"
+)
+@discord.app_commands.rename(category_name="category")
+@discord.app_commands.describe(category_name="Optional name of a specific category")
+async def globalmapstats(
+    interaction: discord.Interaction, category_name: Optional[str] = None
+):
+    # Explicitly does not use a discord.Embed, due to the limit of the Embed length (Note: this won't look pretty on mobile)
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        maps: list[Map] | None = session.query(Map).all()
+
+        def map_stats(finished_games: list[FinishedGame]):
+            team0_wins = [fg for fg in finished_games if fg.winning_team == 0]
+            team1_wins = [fg for fg in finished_games if fg.winning_team == 1]
+            ties = [fg for fg in finished_games if fg.winning_team == -1]
+            return len(team0_wins), len(team1_wins), len(ties)
+
+        cols = []
+        for m in maps:
+            conditions = [FinishedGame.map_full_name == m.full_name]
+            if category_name:
+                conditions.append(FinishedGame.category_name == category_name)
+            finished_games = session.query(FinishedGame).filter(*conditions).all()
+            num_games = len(finished_games)
+            if num_games <= 0:
+                continue
+            team0_wins, team1_wins, ties = map_stats(finished_games)
+            team0_win_rate = team0_wins / max(num_games, 1)
+            team1_win_rate = team1_wins / max(num_games, 1)
+            tie_rate = ties / max(num_games, 1)
+            cols.append(
+                [
+                    m.full_name,
+                    f"{team0_wins} ({round(team0_win_rate * 100, 1)}%)",
+                    f"{team1_wins} ({round(team1_win_rate * 100, 1)}%)",
+                    f"{ties} ({round(tie_rate * 100, 1)}%)",
+                    len(finished_games),
+                ]
+            )
+
+    table = table2ascii(
+        header=["Map", "Team0", "Team1", "Ties", "Total"],
+        body=cols,
+        style=PresetStyle.plain,
+        first_col_heading=True,
+        alignments=[
+            Alignment.LEFT,
+            Alignment.RIGHT,
+            Alignment.RIGHT,
+            Alignment.RIGHT,
+            Alignment.RIGHT,
+        ],
+    )
+    if category_name:
+        content = f"Global Map Stats for **{category_name}**"
+    else:
+        content = "Global Map Stats"
+    content += f"\n{code_block(table)}"
+    await interaction.response.send_message(
+        content=content
+    )  # TODO: consider making this ephemeral, or giving the option to choose
+
+
 def win_rate(wins, losses, ties):
     denominator = max(wins + losses + ties, 1)
-    return round(100 * (wins + 0.5 * ties) / denominator, 1)
+    return round(
+        100 * (wins + 0.5 * ties) / denominator, 1
+    )  # why are ties counted as half a win?
 
 
 @bot.tree.command(
     name="stats", description="Privately displays your TrueSkill statistics"
 )
-async def stats(interaction: Interaction, category_name: Optional[str] | None):
+@discord.app_commands.rename(category_name="category")
+@discord.app_commands.describe(category_name="Name of the category")
+async def stats(interaction: Interaction, category_name: Optional[str] = None):
     """
     Replies to the user with their TrueSkill statistics. Can be used both inside and out of a Guild
     """
@@ -3376,7 +3579,7 @@ async def stats(interaction: Interaction, category_name: Optional[str] | None):
             for num_days in [7, 30, 90, 365, -1]:
                 wins, losses, ties = wins_losses_ties_last_ndays(games, num_days)
                 num_wins, num_losses, num_ties = len(wins), len(losses), len(ties)
-                winrate = round(win_rate(num_wins, num_losses, num_ties))
+                winrate = round(win_rate(num_wins, num_losses, num_ties), 1)
                 col = [
                     "Total" if num_days == -1 else f"{num_days}D",
                     len(wins),
@@ -3504,7 +3707,11 @@ async def stats(interaction: Interaction, category_name: Optional[str] | None):
 
 
 @stats.autocomplete("category_name")
-async def stats_autocomplete(interaction: discord.Interaction, current: str):
+@mapstats.autocomplete("category_name")
+async def category_name_autocomplete_with_user_id(
+    interaction: discord.Interaction, current: str
+):
+    # useful for when you want to filter the categories based on the ones the author has games played in
     choices = []
     session: sqlalchemy.orm.Session
     with Session() as session:
@@ -3516,9 +3723,7 @@ async def stats_autocomplete(interaction: discord.Interaction, current: str):
             .limit(25)  # discord only supports up to 25 choices
             .all()
         )
-        _log.info(result)
         category_names: list[str] = [r[0] for r in result] if result else []
-        _log.info(category_names)
         for name in category_names:
             if current in name:
                 choices.append(
@@ -3527,7 +3732,59 @@ async def stats_autocomplete(interaction: discord.Interaction, current: str):
                         value=name,
                     )
                 )
-    _log.info(choices)
+    return choices
+
+
+@globalmapstats.autocomplete("category_name")
+async def category_name_autocomplete_without_user_id(
+    interaction: discord.Interaction, current: str
+):
+    # useful for when you want all of the categories, regardless of whether the user has played games in them
+    choices = []
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        categories: list[Category] | None = (
+            session.query(Category)
+            .order_by(Category.name)
+            .limit(25)  # discord only supports up to 25 choices
+            .all()
+        )
+        if categories:
+            for category in categories:
+                if current in category.name:
+                    choices.append(
+                        discord.app_commands.Choice(
+                            name=category.name,
+                            value=category.name,
+                        )
+                    )
+    return choices
+
+
+def category_name_autocomplete(current: str, user_id: Optional[int] = None):
+    choices = []
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        conditions = []
+        if user_id:
+            conditions.append(PlayerCategoryTrueskill.player_id == user_id)
+        result = (
+            session.query(Category.name, PlayerCategoryTrueskill.player_id)
+            .join(PlayerCategoryTrueskill)
+            .filter(*conditions)
+            .order_by(Category.name)
+            .limit(25)  # discord only supports up to 25 choices
+            .all()
+        )
+        category_names: list[str] = [r[0] for r in result] if result else []
+        for name in category_names:
+            if current in name:
+                choices.append(
+                    discord.app_commands.Choice(
+                        name=name,
+                        value=name,
+                    )
+                )
     return choices
 
 
