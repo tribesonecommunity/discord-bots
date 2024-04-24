@@ -73,6 +73,38 @@ class CategoryCommands(BaseCog):
         await self.send_info_message(output)
 
     @command()
+    async def showcategory(self, ctx: Context, name: str):
+        session = ctx.session
+        try:
+            category: Category = (
+                session.query(Category).filter(Category.name.ilike(name)).one()
+            )
+        except NoResultFound:
+            await self.send_error_message(f"Could not find category **{name}**")
+            return
+        output = ""
+        output += f"**{category.name}**\n"
+        output += f"- _Rated: {category.is_rated}_\n"
+        output += f"- _Sigma decay amount: {category.sigma_decay_amount}_\n"
+        output += f"- _Sigma decay grace days: {category.sigma_decay_grace_days}_\n"
+        output += f"- _Minimum games for leaderboard: {category.min_games_for_leaderboard}_\n"
+        queue_names = [
+            x[0]
+            for x in (
+                session.query(Queue.name)
+                .filter(Queue.category_id == category.id)
+                .order_by(Queue.ordinal.asc())
+                .all()
+            )
+        ]
+        if not queue_names:
+            output += f"- _Queues: None_\n\n"
+        else:
+            output += f"- _Queues: {', '.join(queue_names)}_\n\n"
+
+        await self.send_info_message(output)
+
+    @command()
     @check(is_admin)
     async def removecategory(self, ctx: Context, name: str):
         session: sqlalchemy.orm.Session = ctx.session
@@ -193,4 +225,55 @@ class CategoryCommands(BaseCog):
         session.commit()
         await self.send_success_message(
             f"The minimum number of games required to appear on the leaderboard for category **{category.name}** is now **{min_num_games}**"
+        )
+
+    @command()
+    @check(is_admin)
+    async def setcategorysigmadecayamount(
+        self,
+        ctx: Context,
+        name: str,
+        sigma_decay_amount: float,
+    ) -> None:
+        """
+        Set the amount of sigma decay per day for a given category
+        """
+        session = ctx.session
+        try:
+            category: Category = (
+                session.query(Category).filter(Category.name.ilike(name)).one()
+            )
+        except NoResultFound:
+            await self.send_error_message(f"Could not find category **{name}**")
+            return
+        category.sigma_decay_amount = sigma_decay_amount
+        session.commit()
+        await self.send_success_message(
+            f"Sigma decay amount for category **{category.name}** is now **{sigma_decay_amount}**"
+        )
+        pass
+
+    @command()
+    @check(is_admin)
+    async def setcategorysigmadecaygracedays(
+        self,
+        ctx: Context,
+        name: str,
+        sigma_decay_grace_days: int,
+    ) -> None:
+        """
+        Set the number of days of inactivity before a player will have sigma decay applied
+        """
+        session = ctx.session
+        try:
+            category: Category = (
+                session.query(Category).filter(Category.name.ilike(name)).one()
+            )
+        except NoResultFound:
+            await self.send_error_message(f"Could not find category **{name}**")
+            return
+        category.sigma_decay_grace_days = sigma_decay_grace_days
+        session.commit()
+        await self.send_success_message(
+            f"Sigma decay grace days config for category **{category.name}** is now **{sigma_decay_grace_days} days**"
         )

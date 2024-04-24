@@ -5,11 +5,15 @@ CategoryCommands:
   clearqueuecategory
   createcategory
   listcategories
+  showcategory            
   removecategory
   setcategoryname
   setcategoryrated
   setcategoryunrated
   setqueuecategory
+  setmingamesforleaderboard       
+  setcategorysigmadecayamount     
+  setcategorysigmadecaygracedays  
 MapCommands:
   addmap                  Add a map to the map pool
   changegamemap           Change the map for a game
