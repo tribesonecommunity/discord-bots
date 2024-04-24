@@ -3369,7 +3369,9 @@ async def mapstats(interaction: Interaction, category_name: Optional[str] = None
         title = f"{interaction.user.display_name} Map Stats for {category_name}"
     else:
         title = f"{interaction.user.display_name} Overall Map Stats"
-    embed = discord.Embed(title=title, description=code_block(table))
+    embed = discord.Embed(
+        title=title, description=code_block(table), color=discord.Color.blue()
+    )
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
