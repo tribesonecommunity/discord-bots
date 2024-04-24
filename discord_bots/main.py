@@ -272,8 +272,7 @@ async def setup():
     vote_passed_waitlist_task.start()
     if config.ECONOMY_ENABLED:
         prediction_task.start()
-    if config.ENABLE_TRUESKILL_SIGMA_DECAY:
-        apply_sigma_decay.start()
+    apply_sigma_decay.start()
 
 
 async def main():

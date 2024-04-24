@@ -172,9 +172,6 @@ DEFAULT_TRUESKILL_MU = _to_float(key="DEFAULT_TRUESKILL_MU", default=25)
 DEFAULT_TRUESKILL_SIGMA = _to_float(
     key="DEFAULT_TRUESKILL_SIGMA", default=DEFAULT_TRUESKILL_MU / 3
 )
-ENABLE_TRUESKILL_SIGMA_DECAY: bool = _to_bool(key="ENABLE_TRUESKILL_SIGMA_DECAY", default=False)
-TRUESKILL_SIGMA_DECAY_DELTA: float = _to_float(key="TRUESKILL_SIGMA_DECAY_DELTA", default=0.05)
-TRUESKILL_SIGMA_DECAY_GRACE_DAYS: int = _to_int(key="TRUESKILL_SIGMA_DECAY_GRACE_DAYS", default=1)
 TRUESKILL_SIGMA_DECAY_JOB_SCHEDULED_TIME: datetime.time = _to_time(key="TRUESKILL_SIGMA_DECAY_JOB_SCHEDULED_TIME", default=datetime.time(0, 0, tzinfo=datetime.timezone.utc))
 AFK_TIME_MINUTES: int = _to_int(key="AFK_TIME_MINUTES", default=45)
 MAP_ROTATION_MINUTES: int = _to_int(key="MAP_ROTATION_MINUTES", default=60)
