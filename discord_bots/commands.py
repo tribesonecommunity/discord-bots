@@ -3340,7 +3340,7 @@ async def mapstats(interaction: Interaction, category_name: Optional[str] = None
             if num_games <= 0:
                 continue
             wins, losses, ties = map_stats(fgs_for_map)
-            win_rate = wins / max(num_games, 1)
+            wr = win_rate(wins, losses, ties)
             cols.append(
                 [
                     m.full_name,
@@ -3348,7 +3348,7 @@ async def mapstats(interaction: Interaction, category_name: Optional[str] = None
                     f"{losses}",
                     f"{ties}",
                     num_games,
-                    f"{round(100 * win_rate, 1)}%",
+                    f"{wr}%",
                 ]
             )
     table = table2ascii(
@@ -3404,29 +3404,32 @@ async def globalmapstats(
             if num_games <= 0:
                 continue
             team0_wins, team1_wins, ties = map_stats(finished_games)
-            team0_win_rate = team0_wins / max(num_games, 1)
-            team1_win_rate = team1_wins / max(num_games, 1)
-            tie_rate = ties / max(num_games, 1)
+            team0_win_rate = win_rate(team0_wins, team1_wins, ties)
+            team1_win_rate = win_rate(team1_wins, team0_wins, ties)
             cols.append(
                 [
                     m.full_name,
-                    f"{team0_wins} ({round(team0_win_rate * 100, 1)}%)",
-                    f"{team1_wins} ({round(team1_win_rate * 100, 1)}%)",
-                    f"{ties} ({round(tie_rate * 100, 1)}%)",
+                    team0_wins,
+                    f"{team0_win_rate}%",
+                    team1_wins,
+                    f"{team1_win_rate}%",
+                    ties,
                     len(finished_games),
                 ]
             )
     table = table2ascii(
-        header=["Map", "Team0", "Team1", "Ties", "Total"],
+        header=["Map", "Team0", "WR", "Team1", "WR", "Ties", "Total"],
         body=cols,
         style=PresetStyle.plain,
         first_col_heading=True,
         alignments=[
             Alignment.LEFT,
+            Alignment.DECIMAL,
             Alignment.RIGHT,
+            Alignment.DECIMAL,
             Alignment.RIGHT,
-            Alignment.RIGHT,
-            Alignment.RIGHT,
+            Alignment.DECIMAL,
+            Alignment.DECIMAL,
         ],
     )
     if category_name:
