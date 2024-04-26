@@ -107,7 +107,7 @@ class Category:
     )
     sigma_decay_amount: float = field(
         default=0.0,
-        metadata={"sa": Column(Float, nullable=False, server_default=text("0.0"))},
+        metadata={"sa": Column(Float, nullable=False, server_default=text("0.02"))},
     )
     sigma_decay_grace_days: int = field(
         default=0,
