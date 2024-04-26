@@ -43,6 +43,30 @@ class CategoryCommands(BaseCog):
         session.commit()
         await self.send_success_message(f"Category **{name}** added")
 
+    def _buildCategoryOutput(self, ctx: Context, category: Category) -> str:
+        output = ""
+        output += f"**{category.name}**\n"
+        output += f"- _Rated: {category.is_rated}_\n"
+        output += "- _Sigma decay settings:_\n"
+        output += f" - _Decay amount: {category.sigma_decay_amount}_\n"
+        output += f" - _Grace days: {category.sigma_decay_grace_days}_\n"
+        output += f" - _Max decay proportion: {category.sigma_decay_max_decay_proportion}_\n"
+        output += f"- _Minimum games for leaderboard: {category.min_games_for_leaderboard}_\n"
+        queue_names = [
+            x[0]
+            for x in (
+                ctx.session.query(Queue.name)
+                .filter(Queue.category_id == category.id)
+                .order_by(Queue.ordinal.asc())
+                .all()
+            )
+        ]
+        if not queue_names:
+            output += f"- _Queues: None_\n\n"
+        else:
+            output += f"- _Queues: {', '.join(queue_names)}_\n\n"
+        return output
+
     @command()
     async def listcategories(self, ctx: Context):
         session = ctx.session
@@ -53,22 +77,11 @@ class CategoryCommands(BaseCog):
             await self.send_info_message("_-- No categories-- _")
             return
 
-        output = ""
-        for category in categories:
-            output += f"- **{category.name}**\n"
-            queue_names = [
-                x[0]
-                for x in (
-                    session.query(Queue.name)
-                    .filter(Queue.category_id == category.id)
-                    .order_by(Queue.ordinal.asc())
-                    .all()
-                )
-            ]
-            if not queue_names:
-                output += f" - _Queues: None_\n\n"
-            else:
-                output += f" - _Queues: {', '.join(queue_names)}_\n\n"
+        output = "\n".join(
+            self._buildCategoryOutput(ctx, category) 
+            for category 
+            in categories
+        )
 
         await self.send_info_message(output)
 
@@ -82,29 +95,8 @@ class CategoryCommands(BaseCog):
         except NoResultFound:
             await self.send_error_message(f"Could not find category **{name}**")
             return
-        output = ""
-        output += f"**{category.name}**\n"
-        output += f"- _Rated: {category.is_rated}_\n"
-        output += "- _Sigma decay settings:_\n"
-        output += f" - _Decay amount: {category.sigma_decay_amount}_\n"
-        output += f" - _Grace days: {category.sigma_decay_grace_days}_\n"
-        output += f" - _Max decay proportion: {category.sigma_decay_max_decay_proportion}_\n"
-        output += f"- _Minimum games for leaderboard: {category.min_games_for_leaderboard}_\n"
-        queue_names = [
-            x[0]
-            for x in (
-                session.query(Queue.name)
-                .filter(Queue.category_id == category.id)
-                .order_by(Queue.ordinal.asc())
-                .all()
-            )
-        ]
-        if not queue_names:
-            output += f"- _Queues: None_\n\n"
-        else:
-            output += f"- _Queues: {', '.join(queue_names)}_\n\n"
 
-        await self.send_info_message(output)
+        await self.send_info_message(self._buildCategoryOutput(ctx, category))
 
     @command()
     @check(is_admin)
