@@ -90,11 +90,11 @@ async def on_app_command_error(
         return
     else:
         if interaction.command:
-            _log.error(
+            _log.exception(
                 f"[on_app_command_error]: {error}, command: {interaction.command.name}"
             )
         else:
-            _log.error(f"[on_app_command_error]: {error}")
+            _log.exception(f"[on_app_command_error]: {error}")
 
 
 @bot.event
