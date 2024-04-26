@@ -37,7 +37,7 @@ from .tasks import (
     queue_waitlist_task,
     schedule_task,
     vote_passed_waitlist_task,
-    apply_sigma_decay,
+    sigma_decay_task,
 )
 
 _log = logging.getLogger(__name__)
@@ -272,7 +272,7 @@ async def setup():
     vote_passed_waitlist_task.start()
     if config.ECONOMY_ENABLED:
         prediction_task.start()
-    apply_sigma_decay.start()
+    sigma_decay_task.start()
 
 
 async def main():

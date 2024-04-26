@@ -613,13 +613,13 @@ async def vote_passed_waitlist_task():
 
 
 @tasks.loop(time=config.TRUESKILL_SIGMA_DECAY_JOB_SCHEDULED_TIME)
-async def apply_sigma_decay():
+async def sigma_decay_task():
     session: sqlalchemy.orm.Session
     with Session() as session:
         # Lookup all categories to calculate sigma cutoffs
         # TODO: If we kill off SQLite we can use INTERVAL to check a time range and have a single join between Category and PlayerCategoryTrueskill
         time_now = datetime.now(timezone.utc)
-        categories = session.query(Category).all()
+        categories = session.query(Category).filter(Category.sigma_decay_amount != 0.0).all()
         category_details = {
             category.id: {
                 'category': category,
@@ -634,7 +634,12 @@ async def apply_sigma_decay():
         player_category_trueskills = (
             session
             .query(PlayerCategoryTrueskill)
-            .filter(PlayerCategoryTrueskill.last_game_finished_at.is_not(None))
+            .filter(
+                sqlalchemy.and_(
+                    PlayerCategoryTrueskill.last_game_finished_at.is_not(None),
+                    PlayerCategoryTrueskill.category_id.in_(category_details.keys())
+                )
+            )
             .all()
         )
         for pct in player_category_trueskills:
