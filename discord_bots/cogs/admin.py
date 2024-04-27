@@ -84,7 +84,7 @@ class AdminCommands(BaseCog):
                     await interaction.response.send_message(
                         embed=Embed(
                             description=f"{escape_markdown(player.name)} added to admins",
-                            colour=Colour.red(),
+                            colour=Colour.green(),
                         )
                     )
 
