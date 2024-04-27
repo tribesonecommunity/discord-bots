@@ -24,7 +24,7 @@ from discord.ui import Button, Modal, TextInput, View
 from discord.utils import get
 
 from discord_bots.bot import bot
-from discord_bots.checks import economy_enabled, is_admin_app_command
+from discord_bots.checks import economy_enabled, is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     CHANNEL_ID,
@@ -85,6 +85,7 @@ class EconomyCommands(BaseCog):
     )
     @app_commands.check(economy_enabled)
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(member="Discord member", add_value="Currency to be added")
     async def addcurrency(
         self, interaction: Interaction, member: Member, add_value: int
@@ -429,6 +430,7 @@ class EconomyCommands(BaseCog):
         name="donate", description=f"Donate {CURRENCY_NAME} to another player"
     )
     @app_commands.check(economy_enabled)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(member="Discord member", donation_value="Currency value to donate")
     async def donatecurrency(
         self, interaction: Interaction, member: Member, donation_value: int
@@ -766,6 +768,7 @@ class EconomyCommands(BaseCog):
         name="show", description=f"Show how many {CURRENCY_NAME} you have"
     )
     @app_commands.check(economy_enabled)
+    @app_commands.check(is_command_channel)
     async def showcurrency(self, interaction: Interaction):
         session: SQLAlchemySession
         with Session() as session:

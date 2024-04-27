@@ -15,7 +15,7 @@ from discord import (
 )
 from discord.ext.commands import Bot
 
-from discord_bots.checks import is_admin_app_command
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     CURRENCY_AWARD,
@@ -50,6 +50,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="addrole", description="Associate a discord role with a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", role="Discord role")
     async def addqueuerole(self, interaction: Interaction, queue_name: str, role: Role):
         """
@@ -90,6 +91,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="clear", description="Clear all players out of a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def clearqueue(self, interaction: Interaction, queue_name: str):
         """
@@ -120,6 +122,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="clearrange", description="Clear the mu range for a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def clearqueuerange(self, interaction: Interaction, queue_name: str):
         """
@@ -149,6 +152,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="create", description="Create a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", size="Size of queue")
     async def createqueue(self, interaction: Interaction, queue_name: str, size: int):
         """
@@ -180,6 +184,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="isolate", description="Isolate a queue (no auto-adds)")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def isolatequeue(self, interaction: Interaction, queue_name: str):
         """
@@ -208,6 +213,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="lock", description="Prevent players from adding to a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def lockqueue(self, interaction: Interaction, queue_name: str):
         """
@@ -242,6 +248,7 @@ class QueueCommands(BaseCog):
         description="Helper test method for adding random players to queues",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", count="Number of people to add")
     async def mockqueue(self, interaction: Interaction, queue_name: str, count: int):
         """
@@ -318,6 +325,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="remove", description="Remove a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def removequeue(self, interaction: Interaction, queue_name: str):
         """
@@ -361,6 +369,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="removerole", description="Remove a discord role from a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", role="Discord role")
     async def removequeuerole(
         self, interaction: Interaction, queue_name: str, role: Role
@@ -422,6 +431,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="setcategory", description="Set category on queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         queue_name="Existing queue", category_name="Existing category"
     )
@@ -472,6 +482,7 @@ class QueueCommands(BaseCog):
         description="Set how much currency is awarded for games in queue",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         queue_name="Name of queue", award="Currency value to be awarded"
     )
@@ -521,6 +532,7 @@ class QueueCommands(BaseCog):
         description="Enables automatic moving of people in game when queue pops",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         queue_name="Name of queue", enabled_option="Is queue move enabled"
     )
@@ -573,6 +585,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="setname", description="Set queue name")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         old_queue_name="Name of existing queue", new_queue_name="New name of queue"
     )
@@ -586,6 +599,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="setordinal", description="Set queue ordinal")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", ordinal="Queue ordinal")
     async def setqueueordinal(
         self, interaction: Interaction, queue_name: str, ordinal: int
@@ -616,6 +630,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="setrange", description="Set the mu range for a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         queue_name="Name of queue", min="Minimum mu", max="Maximum mu"
     )
@@ -649,6 +664,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="setrotation", description="Assign a map rotation to a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", rotation_name="Name of rotation")
     async def setqueuerotation(
         self, interaction: Interaction, queue_name: str, rotation_name: str
@@ -700,6 +716,7 @@ class QueueCommands(BaseCog):
         description="Set the number of players to pop a queue.  Also updates queue vote threshold.",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", queue_size="Queue size")
     async def setqueuesize(
         self, interaction: Interaction, queue_name: str, queue_size: int
@@ -734,6 +751,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="setsweaty", description="Make a queue sweaty")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def setqueuesweaty(self, interaction: Interaction, queue_name: str):
         """
@@ -764,6 +782,7 @@ class QueueCommands(BaseCog):
         name="setvotethreshold", description="Set the vote threshold for a queue"
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", vote_threshold="Vote threshold")
     async def setqueuevotethreshold(
         self, interaction: Interaction, queue_name: str, vote_threshold: int
@@ -796,6 +815,7 @@ class QueueCommands(BaseCog):
             )
 
     @group.command(name="showrange", description="Show the mu range for a queue")
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def showqueuerange(self, interaction: Interaction, queue_name: str):
         """
@@ -823,6 +843,7 @@ class QueueCommands(BaseCog):
     @group.command(
         name="showrotation", description="Show the map rotation assigned to a queue"
     )
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def showqueuerotation(self, interaction: Interaction, queue_name: str):
         """
@@ -884,6 +905,7 @@ class QueueCommands(BaseCog):
         description="Unisolate a queue (rated, map rotation, auto-adds)",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def unisolatequeue(self, interaction: Interaction, queue_name: str):
         """
@@ -912,6 +934,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="unlock", description="Allow players to add to a queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def unlockqueue(self, interaction: Interaction, queue_name: str):
         """
@@ -943,6 +966,7 @@ class QueueCommands(BaseCog):
 
     @group.command(name="unsetsweaty", description="Make a queue not sweaty")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def unsetqueuesweaty(self, interaction: Interaction, queue_name: str):
         """

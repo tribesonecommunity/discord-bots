@@ -24,7 +24,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from trueskill import Rating, rate
 
 from discord_bots import config
-from discord_bots.checks import is_admin_app_command
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseView
 from discord_bots.cogs.confirmation import ConfirmationView
 from discord_bots.cogs.economy import EconomyCommands
@@ -132,6 +132,7 @@ class InProgressGameCommands(commands.Cog):
 
     @group.command(name="cancel", description="Cancels the specified game")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(game_id="In progress game ID")
     @app_commands.guild_only()
     async def cancelgame(self, interaction: Interaction, game_id: str):
@@ -268,6 +269,7 @@ class InProgressGameCommands(commands.Cog):
         return True
 
     @group.command(name="finish", description="Ends the current game you are in")
+    @app_commands.check(is_command_channel)
     @app_commands.describe(outcome="win, loss, or tie")
     @app_commands.guild_only()
     async def finishgame(
@@ -603,6 +605,7 @@ class InProgressGameCommands(commands.Cog):
     )
     @app_commands.guild_only()
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     async def movegameplayers(self, interaction: Interaction, game_id: str):
         """
         Move players in a given in-progress game to the correct voice channels
@@ -637,6 +640,7 @@ class InProgressGameCommands(commands.Cog):
                 )
 
     @group.command(name="setcode", description="Sets lobby code for your current game")
+    @app_commands.check(is_command_channel)
     @app_commands.guild_only()
     @app_commands.describe(code="Game lobby code")
     async def setgamecode(self, interaction: Interaction, code: str):

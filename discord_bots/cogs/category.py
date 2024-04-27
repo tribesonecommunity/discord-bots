@@ -5,7 +5,7 @@ from discord.ext.commands import Bot
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord_bots.checks import is_admin_app_command
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Category, PlayerCategoryTrueskill, Queue, Session
 
@@ -20,6 +20,7 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="clearqueue", description="Remove category from queue")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of existing queue")
     async def clearqueuecategory(self, interaction: Interaction, queue_name: str):
         session: SQLAlchemySession
@@ -49,6 +50,7 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="create", description="Create a new category")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(name="Name of new category")
     async def createcategory(self, interaction: Interaction, name: str):
         session: SQLAlchemySession
@@ -65,6 +67,7 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="remove", description="Remove an existing category")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(name="Category to be removed")
     async def removecategory(self, interaction: Interaction, name: str):
         session: SQLAlchemySession
@@ -96,6 +99,7 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="setname", description="Set category name")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         old_category_name="Existing category", new_category_name="New category name"
     )
@@ -109,6 +113,7 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="setrated", description="Set category rated")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(category_name="Existing category")
     async def setcategoryrated(self, interaction: Interaction, category_name: str):
         session: SQLAlchemySession
@@ -140,6 +145,7 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="setunrated", description="Set category unrated")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(category_name="Existing category")
     async def setcategoryunrated(self, interaction: Interaction, category_name: str):
         session: SQLAlchemySession
@@ -174,6 +180,7 @@ class CategoryCommands(BaseCog):
         description="Set minimum number of games to be on the category leaderboard",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         category_name="Existing category",
         min_num_games="Games required to show on the leaderboard",

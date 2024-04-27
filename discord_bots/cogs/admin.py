@@ -19,7 +19,7 @@ from discord.utils import escape_markdown
 
 import discord_bots.config as config
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin_app_command
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
     AdminRole,
@@ -47,6 +47,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="add", description="Add an admin")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be made admin")
     async def addadmin(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
@@ -89,6 +90,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="addrole", description="Add an admin role")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(role="Role to be made admin")
     async def addadminrole(self, interaction: Interaction, role: Role):
         if interaction.guild:
@@ -128,6 +130,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="ban", description="Bans player from queues")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be banned")
     async def ban(self, interaction: Interaction, member: Member):
         """TODO: remove player from queues"""
@@ -172,6 +175,7 @@ class AdminCommands(BaseCog):
         name="configure", description="Initially configure the bot for this server"
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     async def configure(self, interaction: Interaction):
         if interaction.guild:
             session: SQLAlchemySession
@@ -211,6 +215,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="createcommand", description="Create a custom command")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(name="Name of new command", output="Command output")
     async def createcommand(self, interaction: Interaction, name: str, *, output: str):
         session: SQLAlchemySession
@@ -239,6 +244,7 @@ class AdminCommands(BaseCog):
         name="createdbbackup", description="Creates a backup of the database"
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     async def createdbbackup(self, interaction: Interaction):
         date_string = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         copyfile(f"{config.DB_NAME}.db", f"{config.DB_NAME}_{date_string}.db")
@@ -252,6 +258,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="deletegame", description="Deletes a finished game")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(game_id="Finished game id")
     async def deletegame(self, interaction: Interaction, game_id: str):
         session: SQLAlchemySession
@@ -286,6 +293,7 @@ class AdminCommands(BaseCog):
         name="delplayer", description="Admin command to delete player from all queues"
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be removed from queues")
     async def delplayer(
         self,
@@ -345,6 +353,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="editcommand", description="Edit a custom command")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         name="Name of existing custom command", output="New command output"
     )
@@ -378,6 +387,7 @@ class AdminCommands(BaseCog):
         name="editgamewinner", description="Edit the winner of a finished game"
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(game_id="Finished game id", outcome="<tie|be|ds>")
     async def editgamewinner(
         self,
@@ -430,6 +440,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="remove", description="Remove an admin")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be removed as admin")
     async def removeadmin(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
@@ -455,6 +466,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="removerole", description="Remove an admin role")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(role="Role to be removed as admin")
     async def removeadminrole(self, interaction: Interaction, role: Role):
         if interaction.guild:
@@ -495,6 +507,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="removecommand", description="Remove a custom command")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(name="Name of existing custom command")
     async def removecommand(self, interaction: Interaction, name: str):
         session: SQLAlchemySession
@@ -524,6 +537,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="removedbbackup", description="Remove a database backup")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(db_filename="Name of backup file")
     async def removedbbackup(self, interaction: Interaction, db_filename: str):
         if not db_filename.startswith(config.DB_NAME) or not db_filename.endswith(
@@ -559,6 +573,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="restart", description="Restart the bot")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     async def restart(self, interaction: Interaction):
         await interaction.response.send_message(
             embed=Embed(
@@ -570,6 +585,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="setbias", description="Set team bias")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(member="Member to bias", amount="Bias value")
     async def setbias(self, interaction: Interaction, member: Member, amount: float):
         if amount < -100 or amount > 100:
@@ -590,6 +606,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="setcaptainbias", description="Set captain bias")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(member="Member to bias", amount="Bias value")
     async def setcaptainbias(
         self, interaction: Interaction, member: Member, amount: float
@@ -614,6 +631,7 @@ class AdminCommands(BaseCog):
         name="setcommandprefix", description="Sets the prefix for context commands"
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(prefix="New command prefix")
     async def setcommandprefix(self, interaction: Interaction, prefix: str):
         # TODO move to db-config
@@ -628,6 +646,7 @@ class AdminCommands(BaseCog):
 
     @group.command(name="unban", description="Unban player")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be unbanned")
     async def unban(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession

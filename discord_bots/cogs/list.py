@@ -7,7 +7,7 @@ from discord.utils import escape_markdown
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin_app_command
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import DB_NAME
 from discord_bots.models import (
@@ -33,6 +33,7 @@ class ListCommands(BaseCog):
     group = app_commands.Group(name="list", description="List commands")
 
     @group.command(name="admin", description="List admin users")
+    @app_commands.check(is_command_channel)
     async def listadmins(self, interaction: Interaction):
         output = "Admins:"
         session: SQLAlchemySession
@@ -46,6 +47,7 @@ class ListCommands(BaseCog):
         )
 
     @group.command(name="adminrole", description="List admin roles")
+    @app_commands.check(is_command_channel)
     async def listadminroles(self, interaction: Interaction):
         output = "Admin roles:"
         session: SQLAlchemySession
@@ -72,6 +74,7 @@ class ListCommands(BaseCog):
         )
 
     @group.command(name="ban", description="List banned players")
+    @app_commands.check(is_command_channel)
     async def listbans(self, interaction: Interaction):
         output = "Bans:"
         session: SQLAlchemySession
@@ -86,6 +89,7 @@ class ListCommands(BaseCog):
         )
 
     @group.command(name="category", description="List categories")
+    @app_commands.check(is_command_channel)
     async def listcategories(self, interaction: Interaction):
         session: SQLAlchemySession
         with Session() as session:
@@ -125,6 +129,7 @@ class ListCommands(BaseCog):
 
     @group.command(name="channel", description="List bot channels")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     async def listchannels(self, interaction: Interaction):
         for channel in bot.get_all_channels():
             _log.info(channel.id, channel)  # DEBUG, TRACE?
@@ -139,6 +144,7 @@ class ListCommands(BaseCog):
 
     @group.command(name="dbbackup", description="List database backups")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     async def listdbbackups(self, interaction: Interaction):
         output = "Backups:"
         for filename in glob(f"{DB_NAME}_*.db"):
@@ -153,6 +159,7 @@ class ListCommands(BaseCog):
         )
 
     @group.command(name="map", description="List all maps in the map pool")
+    @app_commands.check(is_command_channel)
     async def listmaps(self, interaction: Interaction):
         """
         List all maps in the map pool
@@ -176,6 +183,7 @@ class ListCommands(BaseCog):
             )
 
     @group.command(name="notification", description="List your notifications")
+    @app_commands.check(is_command_channel)
     async def listnotifications(self, interaction: Interaction):
         output = "Queue notifications:"
         session: SQLAlchemySession
@@ -206,6 +214,7 @@ class ListCommands(BaseCog):
     @group.command(
         name="queue", description="List all queues with their category and rotation"
     )
+    @app_commands.check(is_command_channel)
     async def listqueues(self, interaction: Interaction):
         """
         List all queues with their category and rotation
@@ -263,6 +272,7 @@ class ListCommands(BaseCog):
         name="queuerole",
         description="List all queues and their associated discord roles",
     )
+    @app_commands.check(is_command_channel)
     async def listqueueroles(self, interaction: Interaction):
         """
         List all queues and their associated discord roles
@@ -295,6 +305,7 @@ class ListCommands(BaseCog):
     @group.command(
         name="rotation", description="List all rotations in the rotation pool"
     )
+    @app_commands.check(is_command_channel)
     async def listrotations(self, interaction: Interaction):
         """
         List all rotations in the rotation pool

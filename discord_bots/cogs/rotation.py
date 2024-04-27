@@ -11,7 +11,7 @@ from discord import (
 )
 from discord.ext.commands import Bot, Context, check, command
 
-from discord_bots.checks import is_admin_app_command, is_admin
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Map, Queue, Rotation, RotationMap, Session
 from discord_bots.utils import update_next_map_to_map_after_next
@@ -27,6 +27,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="add", description="Add a rotation to the rotation pool")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(rotation_name="Existing rotation")
     async def addrotation(self, interaction: Interaction, rotation_name: str):
         """
@@ -59,6 +60,7 @@ class RotationCommands(BaseCog):
         description="Add a map to a rotation at a specific ordinal (position)",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
         map_short_name="Existing map",
@@ -166,6 +168,7 @@ class RotationCommands(BaseCog):
         name="remove", description="Remove a rotation from the rotation pool"
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(rotation_name="Existing rotation")
     async def removerotation(self, interaction: Interaction, rotation_name: str):
         """
@@ -201,6 +204,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="removemap", description="Remove a map from a rotation")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         rotation_name="Existing rotation", map_short_name="Existing map"
     )
@@ -288,6 +292,7 @@ class RotationCommands(BaseCog):
         description="Set the ordinal (position) for a map in a rotation",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
         map_short_name="Existing map",
@@ -408,6 +413,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="setname", description="Set rotation name")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         old_rotation_name="Existing rotation", new_rotation_name="New rotation name"
     )
@@ -421,6 +427,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="setrandom", description="Chooses rotation's maps at random")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(rotation_name="Existing rotation")
     async def setrotationrandom(self, interaction: Interaction, rotation_name: str):
         """
@@ -454,6 +461,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="unsetrandom", description="Chooses rotation's maps in order")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(rotation_name="Existing rotation")
     async def unsetrotationrandom(self, interaction: Interaction, rotation_name: str):
         """

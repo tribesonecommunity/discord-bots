@@ -26,7 +26,7 @@ from discord.ui import Button, Select, TextInput, View
 from discord.utils import get
 
 import discord_bots.config as config
-from discord_bots.checks import is_admin_app_command
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
     DiscordChannel,
@@ -69,6 +69,7 @@ class ScheduleCommands(BaseCog):
         description="Create a daily schedule for up to three times",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.guild_only()
     async def createschedule(self, interaction: Interaction):
         """
@@ -99,6 +100,7 @@ class ScheduleCommands(BaseCog):
 
     @group.command(name="deleteschedule", description="Delete the schedule")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.guild_only()
     async def deleteschedule(self, interaction: Interaction):
         """

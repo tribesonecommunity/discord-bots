@@ -12,7 +12,7 @@ from discord.ext.commands import Bot
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 
-from discord_bots.checks import is_admin_app_command
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
     FinishedGame,
@@ -37,6 +37,7 @@ class MapCommands(BaseCog):
 
     @group.command(name="add", description="Add a map to the map pool")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(full_name="Long name of map", short_name="Short name of map")
     async def addmap(self, interaction: Interaction, full_name: str, short_name: str):
         """
@@ -68,6 +69,7 @@ class MapCommands(BaseCog):
 
     @group.command(name="changegame", description="Change the map for a game")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(
         game_id="In progress game id", short_name="Short name of map"
     )
@@ -133,9 +135,10 @@ class MapCommands(BaseCog):
         description="Change the next map for a queue (note: affects all queues sharing that rotation)",
     )
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue="Name of queue", short_name="Short name of map")
     async def changequeuemap(
-        self, interaction: Interaction, queue: str, short_name: str
+        self, interaction: Interaction, queue_name: str, short_name: str
     ):
         """
         Change the next map for a queue (note: affects all queues sharing that rotation)
@@ -332,6 +335,7 @@ class MapCommands(BaseCog):
 
     @group.command(name="remove", description="Remove a map from the map pool")
     @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
     @app_commands.describe(short_name="Short name of map")
     async def removemap(self, interaction: Interaction, short_name: str):
         """
@@ -379,7 +383,7 @@ class MapCommands(BaseCog):
                     )
                 )
 
-    @changequeuemap.autocomplete("queue")
+    @changequeuemap.autocomplete("queue_name")
     async def queue_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession

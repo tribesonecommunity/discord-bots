@@ -4,6 +4,7 @@ from discord import Colour, Embed, Interaction, app_commands
 from discord.ext.commands import Bot
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
+from discord_bots.checks import is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Queue, QueueNotification, Session
 
@@ -17,6 +18,7 @@ class ListCommands(BaseCog):
     group = app_commands.Group(name="notify", description="Notification commands")
 
     @group.command(name="add", description="Set a notification for queue")
+    @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Queue to be notified", size="Notification size")
     async def notify(self, interaction: Interaction, queue_name: str, size: int):
         if size <= 0:
@@ -58,6 +60,7 @@ class ListCommands(BaseCog):
             session.commit()
 
     @group.command(name="remove", description="Remove all your notifications")
+    @app_commands.check(is_command_channel)
     async def removenotifications(self, interaction: Interaction):
         session: SQLAlchemySession
         with Session() as session:

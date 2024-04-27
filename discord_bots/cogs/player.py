@@ -11,6 +11,7 @@ from discord import (
 )
 from discord.ext.commands import Bot
 
+from discord_bots.checks import is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import ENABLE_VOICE_MOVE
 from discord_bots.models import (
@@ -28,6 +29,7 @@ class PlayerCommands(BaseCog):
     group = app_commands.Group(name="player", description="Player commands")
 
     @group.command(name="toggleleaderboard", description="Enable/disable showing on leaderbaord")
+    @app_commands.check(is_command_channel)
     @app_commands.describe(option="True/False")
     async def toggleleaderboard(self, interaction: Interaction, option: bool):
         session: SQLAlchemySession
@@ -63,6 +65,7 @@ class PlayerCommands(BaseCog):
             )
     
     @group.command(name="togglestats", description="Enable/disable player stats")
+    @app_commands.check(is_command_channel)
     @app_commands.describe(option="True/False")
     async def togglestats(self, interaction: Interaction, option: bool):
         session: SQLAlchemySession
@@ -98,6 +101,7 @@ class PlayerCommands(BaseCog):
             )
     
     @group.command(name="togglevoicemove", description="Enable/disable voice movement")
+    @app_commands.check(is_command_channel)
     @app_commands.describe(option="True/False")
     async def togglevoicemove(self, interaction: Interaction, option: bool):
         if not ENABLE_VOICE_MOVE:
