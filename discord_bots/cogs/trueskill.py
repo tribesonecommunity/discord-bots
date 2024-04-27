@@ -11,7 +11,7 @@ from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import DEFAULT_TRUESKILL_MU, DEFAULT_TRUESKILL_SIGMA
 from discord_bots.models import Player, PlayerCategoryTrueskill, Queue, Session
-from discord_bots.utils import mean
+from discord_bots.utils import mean, print_leaderboard
 
 _log = logging.getLogger(__name__)
 
@@ -180,6 +180,11 @@ class TrueskillCommands(BaseCog):
                 colour=Colour.blue(),
             )
         )
+
+    @group.command(name="testleaderboard", description="Test print the leaderboard")
+    @app_commands.check(is_command_channel)
+    async def testleaderboard(self, interaction: Interaction):
+        await print_leaderboard()
 
     @showtrueskillnormdist.autocomplete("queue_name")
     async def queue_autocomplete(self, interaction: Interaction, current: str):

@@ -532,7 +532,10 @@ class CommonCommands(BaseCog):
             # )
 
     @stats.autocomplete("category_name")
-    async def stats_autocomplete(self, interaction: Interaction, current: str):
+    async def category_autocomplete_with_user_id(
+        self, interaction: Interaction, current: str
+    ):
+        # useful for when you want to filter the categories based on the ones the author has games played in
         choices = []
         session: SQLAlchemySession
         with Session() as session:
@@ -544,9 +547,7 @@ class CommonCommands(BaseCog):
                 .limit(25)  # discord only supports up to 25 choices
                 .all()
             )
-            _log.info(result)
             category_names: list[str] = [r[0] for r in result] if result else []
-            _log.info(category_names)
             for name in category_names:
                 if current in name:
                     choices.append(
@@ -555,7 +556,6 @@ class CommonCommands(BaseCog):
                             value=name,
                         )
                     )
-        _log.info(choices)
         return choices
 
     async def queue_autocomplete(self, interaction: Interaction, current: str):

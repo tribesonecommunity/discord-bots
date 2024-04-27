@@ -1,4 +1,6 @@
 import logging
+from table2ascii import Alignment, PresetStyle, table2ascii
+from typing import List, Optional
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord import (
@@ -15,16 +17,19 @@ from sqlalchemy.orm.exc import NoResultFound
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
+    Category,
     FinishedGame,
+    FinishedGamePlayer,
     InProgressGame,
     Map,
     MapVote,
+    PlayerCategoryTrueskill,
     Queue,
     Rotation,
     RotationMap,
     Session,
 )
-from discord_bots.utils import short_uuid
+from discord_bots.utils import code_block, short_uuid, win_rate
 
 _log = logging.getLogger(__name__)
 
@@ -136,7 +141,7 @@ class MapCommands(BaseCog):
     )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(queue="Name of queue", short_name="Short name of map")
+    @app_commands.describe(queue_name="Name of queue", short_name="Short name of map")
     async def changequeuemap(
         self, interaction: Interaction, queue_name: str, short_name: str
     ):
@@ -382,6 +387,259 @@ class MapCommands(BaseCog):
                         colour=Colour.green(),
                     )
                 )
+
+    @group.command(
+        name="stats",
+        description="For a given category, privately displays your winrate per map",
+    )
+    @app_commands.rename(category_name="category")
+    @app_commands.describe(category_name="Optional name of a specific category")
+    async def mapstats(self, interaction: Interaction, category_name: Optional[str] = None):
+        # TODO: merge with /stats by making this a subcommand
+        session: SQLAlchemySession
+        with Session() as session:
+            if category_name:
+                category: Category | None = (
+                    session.query(Category).filter(Category.name == category_name).one()
+                )
+                # get the queues for each category, since rotations are per queue and not per category
+                queues: list[Queue] | None = (
+                    session.query(Queue).filter(Queue.category_id == category.id).all()
+                )
+            else:
+                queues: list[Queue] | None = session.query(Queue).all()
+            if not queues:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find any queues",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            rotation_ids = [queue.rotation_id for queue in queues]
+            maps: list[Map] | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(RotationMap.rotation_id.in_(rotation_ids))
+                .order_by(Map.full_name)
+                .all()
+            )
+            if not maps:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find any maps for category '{category_name}'",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            fgps: List[FinishedGamePlayer] | None = (
+                session.query(FinishedGamePlayer)
+                .filter(FinishedGamePlayer.player_id == interaction.user.id)
+                .all()
+            )
+            if not fgps:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"You have not played any games",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            finished_game_ids: List[str] | None = [fgp.finished_game_id for fgp in fgps]
+            conditions = [FinishedGame.id.in_(finished_game_ids)]
+            if category_name:
+                conditions.append(FinishedGame.category_name == category_name)
+            fgs: List[FinishedGame] | None = (
+                session.query(FinishedGame).filter(*conditions).all()
+            )
+            if not fgs:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find any finished games for you",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            fgps_by_finished_game_id: dict[str, FinishedGamePlayer] = {
+                fgp.finished_game_id: fgp for fgp in fgps
+            }
+            cols = []
+            for m in maps:
+                def map_stats(finished_games: list[FinishedGame]):
+                    wins = [
+                        fg
+                        for fg in finished_games
+                        if fg.winning_team == fgps_by_finished_game_id[fg.id].team
+                    ]
+                    losses = [
+                        fg
+                        for fg in finished_games
+                        if fg.winning_team != fgps_by_finished_game_id[fg.id].team
+                        and fg.winning_team != -1
+                    ]
+                    ties = [fg for fg in finished_games if fg.winning_team == -1]
+                    return len(wins), len(losses), len(ties)
+
+                fgs_for_map = [fg for fg in fgs if fg.map_full_name == m.full_name]
+                num_games = len(fgs_for_map)
+                if num_games <= 0:
+                    continue
+                wins, losses, ties = map_stats(fgs_for_map)
+                wr = win_rate(wins, losses, ties)
+                cols.append(
+                    [
+                        m.full_name,
+                        f"{wins}",
+                        f"{losses}",
+                        f"{ties}",
+                        num_games,
+                        f"{wr}%",
+                    ]
+                )
+        table = table2ascii(
+            header=["Map", "W", "L", "T", "Total", "WR"],
+            body=cols,
+            style=PresetStyle.plain,
+            first_col_heading=True,
+            alignments=[
+                Alignment.LEFT,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+                Alignment.RIGHT,
+            ],
+        )
+        if category_name:
+            title = f"{interaction.user.display_name} Map Stats for {category_name}"
+        else:
+            title = f"{interaction.user.display_name} Overall Map Stats"
+        embed = Embed(
+            title=title, description=code_block(table), colour=Colour.blue()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @group.command(
+        name="globalmapstats", description="Displays global statistics for each map"
+    )
+    @app_commands.rename(category_name="category")
+    @app_commands.describe(category_name="Optional name of a specific category")
+    async def globalmapstats(
+        self, interaction: Interaction, category_name: Optional[str] = None
+    ):
+        # Explicitly does not use a discord.Embed, due to the limit of the Embed length (Note: this won't look pretty on mobile)
+        session: SQLAlchemySession
+        with Session() as session:
+            maps: list[Map] | None = session.query(Map).order_by(Map.full_name).all()
+
+            def map_stats(finished_games: list[FinishedGame]):
+                team0_wins = [fg for fg in finished_games if fg.winning_team == 0]
+                team1_wins = [fg for fg in finished_games if fg.winning_team == 1]
+                ties = [fg for fg in finished_games if fg.winning_team == -1]
+                return len(team0_wins), len(team1_wins), len(ties)
+
+            cols = []
+            for m in maps:
+                conditions = [FinishedGame.map_full_name == m.full_name]
+                if category_name:
+                    conditions.append(FinishedGame.category_name == category_name)
+                finished_games = session.query(FinishedGame).filter(*conditions).all()
+                num_games = len(finished_games)
+                if num_games <= 0:
+                    continue
+                team0_wins, team1_wins, ties = map_stats(finished_games)
+                team0_win_rate = win_rate(team0_wins, team1_wins, ties)
+                team1_win_rate = win_rate(team1_wins, team0_wins, ties)
+                cols.append(
+                    [
+                        m.full_name,
+                        team0_wins,
+                        f"{team0_win_rate}%",
+                        team1_wins,
+                        f"{team1_win_rate}%",
+                        ties,
+                        len(finished_games),
+                    ]
+                )
+        table = table2ascii(
+            header=["Map", "Team0", "WR", "Team1", "WR", "Ties", "Total"],
+            body=cols,
+            style=PresetStyle.plain,
+            first_col_heading=True,
+            alignments=[
+                Alignment.LEFT,
+                Alignment.DECIMAL,
+                Alignment.RIGHT,
+                Alignment.DECIMAL,
+                Alignment.RIGHT,
+                Alignment.DECIMAL,
+                Alignment.DECIMAL,
+            ],
+        )
+        if category_name:
+            content = f"Global Map Stats for **{category_name}**"
+        else:
+            content = "Global Map Stats"
+        content += f"\n{code_block(table)}"
+        await interaction.response.send_message(
+            content=content
+        )  # TODO: consider making this ephemeral, or giving the option to choose
+
+    @mapstats.autocomplete("category_name")
+    async def category_autocomplete_with_user_id(
+        self, interaction: Interaction, current: str
+    ):
+        # useful for when you want to filter the categories based on the ones the author has games played in
+        choices = []
+        session: SQLAlchemySession
+        with Session() as session:
+            result = (
+                session.query(Category.name, PlayerCategoryTrueskill.player_id)
+                .join(PlayerCategoryTrueskill)
+                .filter(PlayerCategoryTrueskill.player_id == interaction.user.id)
+                .order_by(Category.name)
+                .limit(25)  # discord only supports up to 25 choices
+                .all()
+            )
+            category_names: list[str] = [r[0] for r in result] if result else []
+            for name in category_names:
+                if current in name:
+                    choices.append(
+                        app_commands.Choice(
+                            name=name,
+                            value=name,
+                        )
+                    )
+        return choices
+
+    @globalmapstats.autocomplete("category_name")
+    async def category_name_autocomplete_without_user_id(
+        self, interaction: Interaction, current: str
+    ):
+        # useful for when you want all of the categories, regardless of whether the user has played games in them
+        choices = []
+        session: SQLAlchemySession
+        with Session() as session:
+            categories: list[Category] | None = (
+                session.query(Category)
+                .order_by(Category.name)
+                .limit(25)  # discord only supports up to 25 choices
+                .all()
+            )
+            if categories:
+                for category in categories:
+                    if current in category.name:
+                        choices.append(
+                            app_commands.Choice(
+                                name=category.name,
+                                value=category.name,
+                            )
+                        )
+        return choices
 
     @changequeuemap.autocomplete("queue_name")
     async def queue_autocomplete(self, interaction: Interaction, current: str):

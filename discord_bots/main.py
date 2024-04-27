@@ -100,6 +100,7 @@ async def on_app_command_error(
         await interaction.response.send_message(
             embed=Embed(description="Oops! Something went wrong ☹️", color=Colour.red()),
             ephemeral=True,
+        )
 
 
 @bot.event

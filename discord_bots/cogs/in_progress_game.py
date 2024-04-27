@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Literal, Optional
 
 from discord import (
+    AllowedMentions,
     ButtonStyle,
     Client,
     Colour,
@@ -48,12 +49,20 @@ from discord_bots.utils import (
     create_cancelled_game_embed,
     create_finished_game_embed,
     get_guild_partial_message,
+    get_n_best_finished_game_teams,
+    get_n_worst_finished_game_teams,
     move_game_players,
     move_game_players_lobby,
     send_in_guild_message,
     short_uuid,
     upload_stats_screenshot_imgkit_channel,
     upload_stats_screenshot_imgkit_interaction,
+    finished_game_str,
+    mock_finished_game_teams_str,
+    in_progress_game_str,
+    get_n_best_teams,
+    get_n_worst_teams,
+    mock_teams_str,
 )
 
 if TYPE_CHECKING:
@@ -267,6 +276,75 @@ class InProgressGameCommands(commands.Cog):
             session.delete(ipg_channel)
         session.query(InProgressGame).filter(InProgressGame.id == game.id).delete()
         return True
+
+    @group.command(
+        name="history",
+        description="Privately displays your game history",
+    )
+    @app_commands.check(is_command_channel)
+    @app_commands.guild_only()
+    async def gamehistory(self, interaction: Interaction, count: int):
+        assert interaction.guild
+        if count > 10:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Count cannot exceed 10",
+                    color=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        elif count < 1:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Count cannot be less than 1",
+                    color=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        session: SQLAlchemySession
+        with Session() as session:
+            finished_games: list[FinishedGame]
+            finished_games = (
+                session.query(FinishedGame)
+                .join(
+                    FinishedGamePlayer,
+                    FinishedGamePlayer.finished_game_id == FinishedGame.id,
+                )
+                .filter(FinishedGamePlayer.player_id == interaction.user.id)
+                .order_by(FinishedGame.finished_at.desc())
+                .limit(count)
+                .all()
+            )
+            if not finished_games:
+                await interaction.followup.send(
+                    embed=Embed(
+                        description=f"{interaction.user.mention} has not played any games",
+                    ),
+                    ephemeral=True,
+                    allowed_mentions=AllowedMentions.none(),
+                )
+                return
+
+            embeds = []
+            finished_games.reverse()  # show most recent games last
+            for finished_game in finished_games:
+                # TODO: bold the callers name to make their name easier to see in the embed
+                embed: Embed = create_finished_game_embed(
+                    session, finished_game.id, interaction.guild.id
+                )
+                embed.timestamp = finished_game.finished_at
+                embeds.append(embed)
+
+            await interaction.followup.send(
+                content=f"Last {count} games for {interaction.user.mention}",
+                embeds=embeds,
+                ephemeral=True,
+                allowed_mentions=AllowedMentions.none(),
+            )
 
     @group.command(name="finish", description="Ends the current game you are in")
     @app_commands.check(is_command_channel)
@@ -787,6 +865,178 @@ class InProgressGameCommands(commands.Cog):
                     ephemeral=True,
                 )
             session.commit()
+
+    @group.command(name="show", description="Show game details")
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(game_id="Finished game id")
+    async def showgame(self, interaction: Interaction, game_id: str):
+        session: SQLAlchemySession
+        with Session() as session:
+            finished_game = (
+                session.query(FinishedGame)
+                .filter(FinishedGame.game_id.startswith(game_id))
+                .first()
+            )
+            if not finished_game:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find game: {game_id}",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True
+                )
+                return
+
+        game_str = finished_game_str(finished_game)
+        await interaction.response.send_message(
+            embed=Embed(
+                description=game_str,
+                colour=Colour.blue(),
+            )
+        )
+
+    @group.command(name="showdebug", description="Show game details")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(game_id="Finished game id")
+    async def showgamedebug(self, interaction: Interaction, game_id: str):
+        player_id = interaction.user.id
+
+        session: SQLAlchemySession
+        with Session() as session:
+            finished_game = (
+                session.query(FinishedGame)
+                .filter(FinishedGame.game_id.startswith(game_id))
+                .first()
+            )
+            if finished_game:
+                game_str = finished_game_str(finished_game, debug=True)
+                fgps: list[FinishedGamePlayer] = (
+                    session.query(FinishedGamePlayer)
+                    .filter(FinishedGamePlayer.finished_game_id == finished_game.id)
+                    .all()
+                )
+                player_ids: list[int] = [fgp.player_id for fgp in fgps]
+                best_teams = get_n_best_finished_game_teams(
+                    fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 7
+                )
+                worst_teams = get_n_worst_finished_game_teams(
+                    fgps, (len(fgps) + 1) // 2, finished_game.is_rated, 1
+                )
+                game_str += "\n**Most even team combinations:**"
+                for i, (_, best_team) in enumerate(best_teams):
+                    # Every two pairings is the same
+                    if i % 2 == 0:
+                        continue
+                    team0_players = best_team[: len(best_team) // 2]
+                    team1_players = best_team[len(best_team) // 2 :]
+                    game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
+                game_str += "\n\n**Least even team combination:**"
+                for _, worst_team in worst_teams:
+                    team0_players = worst_team[: len(worst_team) // 2]
+                    team1_players = worst_team[len(worst_team) // 2 :]
+                    game_str += f"\n{mock_finished_game_teams_str(team0_players, team1_players, finished_game.is_rated)}"
+                # await send_message(
+                #     message.channel,
+                #     embed_description=game_str,
+                #     colour=Colour.blue(),
+                # )
+                if interaction.guild:
+                    player_id = interaction.user.id
+                    member_: Member | None = interaction.guild.get_member(player_id)
+                    await interaction.response.send_message(
+                        embed=Embed(
+                            description="Stats sent to DM",
+                            colour=Colour.blue(),
+                        )
+                    )
+                    if member_:
+                        try:
+                            await member_.send(
+                                embed=Embed(
+                                    description=game_str,
+                                    colour=Colour.blue(),
+                                ),
+                            )
+                        except Exception:
+                            pass
+
+            else:
+                in_progress_game: InProgressGame | None = (
+                    session.query(InProgressGame)
+                    .filter(InProgressGame.id.startswith(game_id))
+                    .first()
+                )
+                if not in_progress_game:
+                    await interaction.response.send_message(
+                        embed=Embed(
+                            description=f"Could not find game: {game_id}",
+                            colour=Colour.red(),
+                        ),
+                        ephemeral=True
+                    )
+                    return
+                else:
+                    game_str = in_progress_game_str(in_progress_game, debug=True)
+                    queue: Queue = (
+                        session.query(Queue)
+                        .filter(Queue.id == in_progress_game.queue_id)
+                        .first()
+                    )
+                    igps: list[InProgressGamePlayer] = (
+                        session.query(InProgressGamePlayer)
+                        .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
+                        .all()
+                    )
+                    player_ids: list[int] = [igp.player_id for igp in igps]
+                    players: list[Player] = (
+                        session.query(Player).filter(Player.id.in_(player_ids)).all()
+                    )
+                    best_teams = get_n_best_teams(
+                        players, (len(players) + 1) // 2, queue.is_rated, 5
+                    )
+                    worst_teams = get_n_worst_teams(
+                        players, (len(players) + 1) // 2, queue.is_rated, 1
+                    )
+                    game_str += "\n**Most even team combinations:**"
+                    for _, best_team in best_teams:
+                        team0_players = best_team[: len(best_team) // 2]
+                        team1_players = best_team[len(best_team) // 2 :]
+                        game_str += (
+                            f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
+                        )
+                    game_str += "\n\n**Least even team combination:**"
+                    for _, worst_team in worst_teams:
+                        team0_players = worst_team[: len(worst_team) // 2]
+                        team1_players = worst_team[len(worst_team) // 2 :]
+                        game_str += (
+                            f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
+                        )
+                    if interaction.guild:
+                        player_id = interaction.user.id
+                        member_: Member | None = interaction.guild.get_member(player_id)
+                        await interaction.response.send_message(
+                            embed=Embed(
+                                description="Stats sent to DM",
+                                colour=Colour.blue(),
+                            )
+                        )
+                        if member_:
+                            try:
+                                await member_.send(
+                                    embed=Embed(
+                                        description=game_str,
+                                        colour=Colour.blue(),
+                                    ),
+                                )
+                            except Exception:
+                                pass
+
+                    # await send_message(
+                    #     message.channel,
+                    #     embed_description=game_str,
+                    #     colour=Colour.blue(),
+                    # )
 
     @cancelgame.autocomplete("game_id")
     @movegameplayers.autocomplete("game_id")
