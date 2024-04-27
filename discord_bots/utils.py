@@ -26,6 +26,7 @@ from discord import (
 )
 from discord.ext.commands.context import Context
 from discord.member import Member
+from discord.utils import escape_markdown
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -60,6 +61,133 @@ _log = logging.getLogger(__name__)
 MU_LOWER_UNICODE = "\u03BC"
 SIGMA_LOWER_UNICODE = "\u03C3"
 DELTA_UPPER_UNICODE = "\u03B4"
+
+
+def is_in_game(player_id: int) -> bool:
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        return get_player_game(player_id, session) is not None
+
+
+def get_player_game(player_id: int, session=None) -> InProgressGame | None:
+    """
+    Find the game a player is currently in
+
+    :session: Pass in a session if you want to do something with the game that
+    gets returned
+    """
+    should_close = False
+    if not session:
+        should_close = True
+        session = (
+            Session()
+        )  # TODO: this session has the potential to not be closed, replace with context manager
+    ipg_player = (
+        session.query(InProgressGamePlayer)
+        .join(InProgressGame)
+        .filter(InProgressGamePlayer.player_id == player_id)
+        .first()
+    )
+    if ipg_player:
+        if should_close:
+            session.close()
+        return (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == ipg_player.in_progress_game_id)
+            .first()
+        )
+    else:
+        if should_close:
+            session.close()
+        return None
+    
+
+def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
+    """
+    Helper method to pretty print a finished game
+    """
+    output = ""
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        short_game_id = short_uuid(finished_game.game_id)
+        team0_fg_players: list[FinishedGamePlayer] = (
+            session.query(FinishedGamePlayer)
+            .filter(
+                FinishedGamePlayer.finished_game_id == finished_game.id,
+                FinishedGamePlayer.team == 0,
+            )
+            .all()
+        )
+        team1_fg_players: list[FinishedGamePlayer] = (
+            session.query(FinishedGamePlayer)
+            .filter(
+                FinishedGamePlayer.finished_game_id == finished_game.id,
+                FinishedGamePlayer.team == 1,
+            )
+            .all()
+        )
+
+        if config.SHOW_TRUESKILL:
+            output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id}) (mu: {round(finished_game.average_trueskill, 2)})"
+        else:
+            output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id})"
+
+        team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
+        team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_fg_players}
+        team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_fg_players}
+        team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+        team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+        if debug:
+            team0_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team0_players
+                    ]
+                )
+            )
+            team1_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team1_players
+                    ]
+                )
+            )
+        else:
+            team0_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team0_players])
+            )
+            team1_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team1_players])
+            )
+        team0_win_prob = round(100 * finished_game.win_probability, 1)
+        team1_win_prob = round(100 - team0_win_prob, 1)
+        team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
+        team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
+
+        if finished_game.winning_team == 0:
+            output += f"\n**{team0_str}**"
+            output += f"\n{team1_str}"
+        elif finished_game.winning_team == 1:
+            output += f"\n{team0_str}"
+            output += f"\n**{team1_str}**"
+        else:
+            output += f"\n{team0_str}"
+            output += f"\n{team1_str}"
+        delta: timedelta = datetime.now(
+            timezone.utc
+        ) - finished_game.finished_at.replace(tzinfo=timezone.utc)
+        if delta.days > 0:
+            output += f"\n@ {delta.days} days ago\n"
+        elif delta.seconds > 3600:
+            hours_ago = delta.seconds // 3600
+            output += f"\n@ {hours_ago} hours ago\n"
+        else:
+            minutes_ago = delta.seconds // 60
+            output += f"\n@ {minutes_ago} minutes ago\n"
+        return output
 
 
 # Convenience mean function that can handle lists of 0 or 1 length

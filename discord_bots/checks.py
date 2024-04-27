@@ -6,9 +6,27 @@ from discord.ext.commands.context import Context
 
 from discord_bots.utils import send_message
 
-from .config import ECONOMY_ENABLED
+from .config import CHANNEL_ID, ECONOMY_ENABLED
 from .models import AdminRole, Player, Session
 
+
+async def economy_enabled(interaction: Interaction) -> bool:
+    """
+    Check to wrap functions that require player economy to be enabled
+    """
+
+    if not interaction:
+        return False
+
+    if not ECONOMY_ENABLED:
+        await interaction.response.send_message(
+            "Player economy is disabled",
+            ephemeral=True
+        )
+        return False
+    else:
+        return True
+    
 
 async def is_admin(ctx: Context):
     """
@@ -90,23 +108,50 @@ async def is_admin_app_command(interaction: Interaction) -> bool:
             return False
 
 
-async def economy_enabled(interaction: Interaction) -> bool:
+async def is_command_channel(interaction: Interaction) -> bool:
     """
-    Check to wrap functions that require player economy to be enabled
+    Check that interactions are performed from the command channel
     """
-
-    if not interaction:
+    if not interaction.channel:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Interactions must be performed from the command channel",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                embed=Embed(
+                    description="Interactions must be performed from the command channel",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True
+            )
         return False
-
-    if not ECONOMY_ENABLED:
-        await interaction.response.send_message(
-            "Player economy is disabled",
-            ephemeral=True
-        )
-        return False
-    else:
+    
+    if interaction.channel.id == CHANNEL_ID:
         return True
-
+    else:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Interactions must be performed from the command channel",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                embed=Embed(
+                    description="Interactions must be performed from the command channel",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True
+            )
+        return False
+    
 
 class HasName(Protocol):
     name: str

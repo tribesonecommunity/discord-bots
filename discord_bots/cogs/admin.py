@@ -4,6 +4,7 @@ import sys
 from datetime import datetime, timezone
 from shutil import copyfile
 from sqlalchemy.orm.session import Session as SQLAlchemySession
+from typing import List, Literal
 
 from discord import (
     app_commands,
@@ -24,9 +25,16 @@ from discord_bots.models import (
     AdminRole,
     CustomCommand,
     DiscordGuild,
+    FinishedGame,
+    FinishedGamePlayer,
     Player,
+    Queue,
+    QueuePlayer,
+    QueueWaitlist,
+    QueueWaitlistPlayer,
     Session,
 )
+from discord_bots.utils import finished_game_str
 
 _log = logging.getLogger(__name__)
 
@@ -242,6 +250,99 @@ class AdminCommands(BaseCog):
             ephemeral=True,
         )
 
+    @group.command(name="deletegame", description="Deletes a finished game")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(game_id="Finished game id")
+    async def deletegame(self, interaction: Interaction, game_id: str):
+        session: SQLAlchemySession
+        with Session() as session:
+            finished_game: FinishedGame | None = (
+                session.query(FinishedGame)
+                .filter(FinishedGame.game_id.startswith(game_id))
+                .first()
+            )
+            if not finished_game:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find game: {game_id}",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            session.query(FinishedGamePlayer).filter(
+                FinishedGamePlayer.finished_game_id == finished_game.id
+            ).delete()
+            session.delete(finished_game)
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Game: **{finished_game.game_id}** deleted",
+                    colour=Colour.green(),
+                )
+            )
+
+    @group.command(
+        name="delplayer", description="Admin command to delete player from all queues"
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Player to be removed from queues")
+    async def delplayer(
+        self,
+        interaction: Interaction,
+        member: Member,
+    ):
+        """
+        Admin command to delete player from all queues
+        """
+        session: SQLAlchemySession
+        with Session() as session:
+            queues: List[Queue] = (
+                session.query(Queue)
+                .join(QueuePlayer)
+                .filter(QueuePlayer.player_id == member.id)
+                .order_by(Queue.created_at.asc())
+                .all()
+            )  # type: ignore
+            for queue in queues:
+                session.query(QueuePlayer).filter(
+                    QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id
+                ).delete()
+                # TODO: Test this part
+                queue_waitlist: QueueWaitlist | None = (
+                    session.query(QueueWaitlist)
+                    .filter(
+                        QueueWaitlist.queue_id == queue.id,
+                    )
+                    .first()
+                )
+                if queue_waitlist:
+                    session.query(QueueWaitlistPlayer).filter(
+                        QueueWaitlistPlayer.player_id == member.id,
+                        QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
+                    ).delete()
+
+            queue_statuses = []
+            queue: Queue
+            for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
+                queue_players = (
+                    session.query(QueuePlayer)
+                    .filter(QueuePlayer.queue_id == queue.id)
+                    .all()
+                )
+                queue_statuses.append(
+                    f"{queue.name} [{len(queue_players)}/{queue.size}]"
+                )
+            session.commit()
+
+        await interaction.response.send_message(
+            embed=Embed(
+                title=f"{escape_markdown(member.name)} removed from: {', '.join([queue.name for queue in queues])}",
+                description=" ".join(queue_statuses),
+                colour=Colour.green(),
+            )
+        )
+
     @group.command(name="editcommand", description="Edit a custom command")
     @app_commands.check(is_admin_app_command)
     @app_commands.describe(
@@ -269,6 +370,60 @@ class AdminCommands(BaseCog):
         await interaction.response.send_message(
             embed=Embed(
                 description=f"Command `{name}` updated",
+                colour=Colour.green(),
+            )
+        )
+
+    @group.command(
+        name="editgamewinner", description="Edit the winner of a finished game"
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(game_id="Finished game id", outcome="<tie|be|ds>")
+    async def editgamewinner(
+        self,
+        interaction: Interaction,
+        game_id: str,
+        outcome: Literal["Tie", "BE", "DS"],
+    ):
+        session: SQLAlchemySession
+        with Session() as session:
+            game: FinishedGame | None = (
+                session.query(FinishedGame)
+                .filter(FinishedGame.game_id.startswith(game_id))
+                .first()
+            )
+            if not game:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find game: {game_id}",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            outcome_lower = outcome.lower()
+            if outcome_lower == "tie":
+                game.winning_team = -1
+            elif outcome_lower == "be":
+                game.winning_team = 0
+            elif outcome_lower == "ds":
+                game.winning_team = 1
+            else:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Outcome must be tie, be, or ds",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            session.add(game)
+            session.commit()
+        await interaction.response.send_message(
+            embed=Embed(
+                description=f"Game {game_id} outcome changed:\n\n"
+                + finished_game_str(game),
                 colour=Colour.green(),
             )
         )

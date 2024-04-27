@@ -2,15 +2,16 @@ import logging
 from bisect import bisect
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from sqlalchemy.orm.session import Session as SQLAlchemySession
+from table2ascii import Alignment, PresetStyle, table2ascii
+from trueskill import Rating
 from typing import List, Optional
 
 from discord import Colour, Embed, Interaction, TextChannel, app_commands
 from discord.ext.commands import Bot
-from sqlalchemy.orm.session import Session as SQLAlchemySession
-from table2ascii import Alignment, PresetStyle, table2ascii
-from trueskill import Rating
 
 from discord_bots.bot import bot
+from discord_bots.checks import is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     DEFAULT_RAFFLE_VALUE,
@@ -52,6 +53,7 @@ class CommonCommands(BaseCog):
     @app_commands.command(
         name="resetleaderboardchannel", description="Resets & updates the leaderboards"
     )
+    @app_commands.check(is_command_channel)
     async def resetleaderboardchannel(self, interaction: Interaction):
         if not LEADERBOARD_CHANNEL:
             await interaction.response.send_message(
@@ -87,6 +89,7 @@ class CommonCommands(BaseCog):
     @app_commands.command(
         name="stats", description="Privately displays your TrueSkill statistics"
     )
+    @app_commands.check(is_command_channel)
     @app_commands.describe(category_name="Category to show stats for")
     async def stats(
         self, interaction: Interaction, category_name: Optional[str] | None
@@ -361,28 +364,15 @@ class CommonCommands(BaseCog):
                 _log.exception(f"Caught exception trying to send stats message")
 
     @app_commands.command(name="status", description="Display queue status")
-    async def status(
-        self,
-        interaction: Interaction,
-        queue_1: Optional[int] | None,
-        queue_2: Optional[int] | None,
-        queue_3: Optional[int] | None,
-        queue_4: Optional[int] | None,
-        queue_5: Optional[int] | None,
-    ):
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(queues="Space separated list of queue ordinals")
+    async def status(self, interaction: Interaction, queues: Optional[str] | None):
         assert interaction.guild
 
-        args: List[int] = []
-        if queue_1:
-            args.append(queue_1)
-        if queue_2:
-            args.append(queue_2)
-        if queue_3:
-            args.append(queue_3)
-        if queue_4:
-            args.append(queue_4)
-        if queue_5:
-            args.append(queue_5)
+        args: List[str] = []
+        if queues:
+            for queue in queues.split(" "):
+                args.append(queue)
 
         await interaction.response.defer()
 
@@ -568,11 +558,6 @@ class CommonCommands(BaseCog):
         _log.info(choices)
         return choices
 
-    @status.autocomplete("queue_1")
-    @status.autocomplete("queue_2")
-    @status.autocomplete("queue_3")
-    @status.autocomplete("queue_4")
-    @status.autocomplete("queue_5")
     async def queue_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession
