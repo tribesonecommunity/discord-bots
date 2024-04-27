@@ -15,13 +15,7 @@ from discord.ext.commands import Bot
 
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import (
-    Map,
-    Player, 
-    Rotation, 
-    RotationMap, 
-    Session
-)
+from discord_bots.models import Map, Player, Rotation, RotationMap, Session
 
 strings = [
     "Don't give up!",
@@ -83,7 +77,9 @@ class RaffleCommands(BaseCog):
 
     group = app_commands.Group(name="raffle", description="Raffle commands")
 
-    @group.command(name="showtickets", description="Displays how many raffle tickets you have")
+    @group.command(
+        name="showtickets", description="Displays how many raffle tickets you have"
+    )
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Discord member")
     async def myraffle(self, interaction: Interaction, *, member: Member | None = None):
@@ -100,7 +96,7 @@ class RaffleCommands(BaseCog):
                         description=f"ERROR: Could not find player!",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
             await interaction.response.send_message(
@@ -110,10 +106,15 @@ class RaffleCommands(BaseCog):
                 )
             )
 
-    @group.command(name="status", description="Displays raffle ticket information and raffle leaderboard")
+    @group.command(
+        name="status",
+        description="Displays raffle ticket information and raffle leaderboard",
+    )
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Discord member")
-    async def rafflestatus(self, interaction: Interaction, *, member: Member | None = None):
+    async def rafflestatus(
+        self, interaction: Interaction, *, member: Member | None = None
+    ):
         """
         Displays raffle ticket information and raffle leaderboard
         """
@@ -146,12 +147,23 @@ class RaffleCommands(BaseCog):
                 )
             )
 
-    @group.command(name="setrotationmapreward", description="Set the raffle ticket reward for a map in a rotation")
+    @group.command(
+        name="setrotationmapreward",
+        description="Set the raffle ticket reward for a map in a rotation",
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(rotation_name="Existing rotation", map_short_name="Existing map", raffle_ticket_reward="Raffle award")
+    @app_commands.describe(
+        rotation_name="Existing rotation",
+        map_short_name="Existing map",
+        raffle_ticket_reward="Raffle award",
+    )
     async def setrotationmapraffle(
-        self, interaction: Interaction, rotation_name: str, map_short_name: str, raffle_ticket_reward: int
+        self,
+        interaction: Interaction,
+        rotation_name: str,
+        map_short_name: str,
+        raffle_ticket_reward: int,
     ):
         """
         Set the raffle ticket reward for a map in a rotation
@@ -162,7 +174,7 @@ class RaffleCommands(BaseCog):
                     description="Raffle ticket reward must be positive",
                     colour=Colour.red(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
@@ -182,7 +194,7 @@ class RaffleCommands(BaseCog):
                         description=f"Could not find map **{map_short_name}** in rotation **{rotation_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -200,7 +212,9 @@ class RaffleCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Discord member")
-    async def createraffle(self, interaction: Interaction, *, member: Member | None = None):
+    async def createraffle(
+        self, interaction: Interaction, *, member: Member | None = None
+    ):
         """
         TODO: Implementation
         """
@@ -210,7 +224,9 @@ class RaffleCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Discord member")
-    async def runraffle(self, interaction: Interaction, *, member: Member | None = None):
+    async def runraffle(
+        self, interaction: Interaction, *, member: Member | None = None
+    ):
         """
         TODO: Implementation
         """
@@ -233,7 +249,7 @@ class RaffleCommands(BaseCog):
                             )
                         )
         return result
-    
+
     @setrotationmapraffle.autocomplete("rotation_name")
     async def rotation_autocomplete(self, interaction: Interaction, current: str):
         result = []

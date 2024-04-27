@@ -25,7 +25,7 @@ from discord_bots.models import (
     FinishedGame,
     FinishedGamePlayer,
     Player,
-    Session
+    Session,
 )
 
 _log = logging.getLogger(__name__)
@@ -52,10 +52,10 @@ class PlayerCommands(BaseCog):
                         description=f"<@{interaction.user.id} is not a player",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
-            
+
             commendee: Player | None = (
                 session.query(Player).filter(Player.id == member.id).first()
             )
@@ -65,10 +65,10 @@ class PlayerCommands(BaseCog):
                         description=f"<@{member.id} is not a player",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
-            
+
             emoji = choice(["🔨", "💥", "🤕", "🤌"])
             if interaction.user.id == member.id:
                 await interaction.response.send_message(
@@ -76,7 +76,7 @@ class PlayerCommands(BaseCog):
                         description=f"{emoji}  **BONK**  {emoji}",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -86,7 +86,7 @@ class PlayerCommands(BaseCog):
                         description=f"Could not find {escape_markdown(member.name)}",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -103,7 +103,7 @@ class PlayerCommands(BaseCog):
                         description=f"Could not find last game played for {escape_markdown(member.name)}",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -121,7 +121,7 @@ class PlayerCommands(BaseCog):
                         description=f"You already commended someone for this game",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -137,7 +137,7 @@ class PlayerCommands(BaseCog):
                         description=f"{escape_markdown(commendee.name)} was not in your last game",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -203,10 +203,7 @@ class PlayerCommands(BaseCog):
                 channel = bot.get_channel(LEADERBOARD_CHANNEL)
                 if isinstance(channel, TextChannel):
                     await channel.send(
-                        embed=Embed(
-                            description=output,
-                            colour=Colour.blue()
-                        )
+                        embed=Embed(description=output, colour=Colour.blue())
                     )
                     await interaction.response.send_message(
                         embed=Embed(
@@ -228,13 +225,17 @@ class PlayerCommands(BaseCog):
                     except Exception:
                         pass
 
-    @group.command(name="toggleleaderboard", description="Enable/disable showing on leaderbaord")
+    @group.command(
+        name="toggleleaderboard", description="Enable/disable showing on leaderbaord"
+    )
     @app_commands.check(is_command_channel)
     @app_commands.describe(option="True/False")
     async def toggleleaderboard(self, interaction: Interaction, option: bool):
         session: SQLAlchemySession
         with Session() as session:
-            player = session.query(Player).filter(Player.id == interaction.user.id).first()
+            player = (
+                session.query(Player).filter(Player.id == interaction.user.id).first()
+            )
             if player:
                 player.leaderboard_enabled = option
                 session.commit()
@@ -244,7 +245,7 @@ class PlayerCommands(BaseCog):
                         description=f"Player {interaction.user.display_name} not found",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
         if option:
@@ -253,7 +254,7 @@ class PlayerCommands(BaseCog):
                     description="You are now visible on the leaderboard",
                     colour=Colour.blue(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
         else:
             await interaction.response.send_message(
@@ -261,16 +262,18 @@ class PlayerCommands(BaseCog):
                     description="You are no longer visible on the leaderboard",
                     colour=Colour.blue(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
-    
+
     @group.command(name="togglestats", description="Enable/disable player stats")
     @app_commands.check(is_command_channel)
     @app_commands.describe(option="True/False")
     async def togglestats(self, interaction: Interaction, option: bool):
         session: SQLAlchemySession
         with Session() as session:
-            player = session.query(Player).filter(Player.id == interaction.user.id).first()
+            player = (
+                session.query(Player).filter(Player.id == interaction.user.id).first()
+            )
             if player:
                 player.stats_enabled = False
                 session.commit()
@@ -280,7 +283,7 @@ class PlayerCommands(BaseCog):
                         description=f"Player {interaction.user.display_name} not found",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
         if option:
@@ -289,7 +292,7 @@ class PlayerCommands(BaseCog):
                     description="`/Stats` enabled",
                     colour=Colour.blue(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
         else:
             await interaction.response.send_message(
@@ -297,9 +300,9 @@ class PlayerCommands(BaseCog):
                     description="`/Stats` disabled",
                     colour=Colour.blue(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
-    
+
     @group.command(name="togglevoicemove", description="Enable/disable voice movement")
     @app_commands.check(is_command_channel)
     @app_commands.describe(option="True/False")
@@ -310,13 +313,15 @@ class PlayerCommands(BaseCog):
                     description="Voice movement is disabled",
                     colour=Colour.red(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
             return
-        
+
         session: SQLAlchemySession
         with Session() as session:
-            player = session.query(Player).filter(Player.id == interaction.user.id).first()
+            player = (
+                session.query(Player).filter(Player.id == interaction.user.id).first()
+            )
             if player:
                 player.move_enabled = option
                 session.commit()
@@ -326,7 +331,7 @@ class PlayerCommands(BaseCog):
                         description=f"Player {interaction.user.display_name} not found",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -336,7 +341,7 @@ class PlayerCommands(BaseCog):
                     description="Player moving enabled",
                     colour=Colour.blue(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
         else:
             await interaction.response.send_message(
@@ -344,5 +349,5 @@ class PlayerCommands(BaseCog):
                     description="Player moving disabled",
                     colour=Colour.blue(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )

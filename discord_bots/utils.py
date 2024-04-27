@@ -297,7 +297,7 @@ def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) 
             minutes_ago = delta.seconds // 60
             output += f"\n@ {minutes_ago} minutes ago\n"
         return output
-    
+
 
 def mock_finished_game_teams_str(
     team0_fg_players: list[FinishedGamePlayer],
@@ -402,7 +402,7 @@ def get_player_game(player_id: int, session=None) -> InProgressGame | None:
         if should_close:
             session.close()
         return None
-    
+
 
 def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
     """
@@ -1448,6 +1448,7 @@ async def move_game_players_lobby(game_id: str, guild: Guild):
         # results should be empty unless an exception occured when moving a player
         if isinstance(result, BaseException):
             _log.exception("Ignored exception when moving a gameplayer to lobby:")
+
 
 def win_rate(wins, losses, ties):
     denominator = max(wins + losses + ties, 1)

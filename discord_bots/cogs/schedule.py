@@ -344,6 +344,7 @@ class ScheduleModal(discord.ui.Modal, title="Enter up to three schedule times.")
 
         schedule_task.start()
 
+
 class ScheduleUtils:
     @classmethod
     async def rebuild_embed(self, guild: Guild, nth_embed: int):

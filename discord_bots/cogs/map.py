@@ -394,7 +394,9 @@ class MapCommands(BaseCog):
     )
     @app_commands.rename(category_name="category")
     @app_commands.describe(category_name="Optional name of a specific category")
-    async def mapstats(self, interaction: Interaction, category_name: Optional[str] = None):
+    async def mapstats(
+        self, interaction: Interaction, category_name: Optional[str] = None
+    ):
         # TODO: merge with /stats by making this a subcommand
         session: SQLAlchemySession
         with Session() as session:
@@ -469,6 +471,7 @@ class MapCommands(BaseCog):
             }
             cols = []
             for m in maps:
+
                 def map_stats(finished_games: list[FinishedGame]):
                     wins = [
                         fg
@@ -518,9 +521,7 @@ class MapCommands(BaseCog):
             title = f"{interaction.user.display_name} Map Stats for {category_name}"
         else:
             title = f"{interaction.user.display_name} Overall Map Stats"
-        embed = Embed(
-            title=title, description=code_block(table), colour=Colour.blue()
-        )
+        embed = Embed(title=title, description=code_block(table), colour=Colour.blue())
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @group.command(
@@ -646,7 +647,9 @@ class MapCommands(BaseCog):
         result = []
         session: SQLAlchemySession
         with Session() as session:
-            queues: list[Queue] | None = session.query(Queue).order_by(Queue.name).limit(25).all()
+            queues: list[Queue] | None = (
+                session.query(Queue).order_by(Queue.name).limit(25).all()
+            )
             if queues:
                 for queue in queues:
                     if current in queue.name:
@@ -681,7 +684,10 @@ class MapCommands(BaseCog):
         session: SQLAlchemySession
         with Session() as session:
             in_progress_games: list[InProgressGame] | None = (
-                session.query(InProgressGame).order_by(short_uuid(InProgressGame.id)).limit(25).all()
+                session.query(InProgressGame)
+                .order_by(short_uuid(InProgressGame.id))
+                .limit(25)
+                .all()
             )  # discord only supports up to 25 choices
             if in_progress_games:
                 for ipg in in_progress_games:

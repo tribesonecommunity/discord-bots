@@ -47,6 +47,7 @@ from .tasks import (
 
 _log = logging.getLogger(__name__)
 
+
 async def create_seed_admins():
     with Session() as session:
         for seed_admin_id in config.SEED_ADMIN_IDS:
@@ -90,7 +91,7 @@ async def on_app_command_error(
             )
         else:
             _log.exception(f"[on_app_command_error]: {error}")
-    
+
     if interaction.response.is_done():
         await interaction.followup.send(
             embed=Embed(description="Oops! Something went wrong ☹️", color=Colour.red())

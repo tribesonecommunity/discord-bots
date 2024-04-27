@@ -48,7 +48,11 @@ class BaseCog(Cog):
             )
 
     async def setname(
-        self, interaction: Interaction, class_: Type[HasName], old_name: str, new_name: str
+        self,
+        interaction: Interaction,
+        class_: Type[HasName],
+        old_name: str,
+        new_name: str,
     ):
         session: SQLAlchemySession
         with Session() as session:
@@ -61,7 +65,7 @@ class BaseCog(Cog):
                         description=f"Could not find {class_.__name__.lower()} **{old_name}**",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -71,7 +75,7 @@ class BaseCog(Cog):
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"{class_.__name__} name updated from **{old_name}** to **{new_name}**",
-                    colour=Colour.green()
+                    colour=Colour.green(),
                 )
             )
 

@@ -24,7 +24,11 @@ from discord.ui import Button, Modal, TextInput, View
 from discord.utils import get
 
 from discord_bots.bot import bot
-from discord_bots.checks import economy_enabled, is_admin_app_command, is_command_channel
+from discord_bots.checks import (
+    economy_enabled,
+    is_admin_app_command,
+    is_command_channel,
+)
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     CHANNEL_ID,
@@ -67,7 +71,9 @@ class EconomyCommands(BaseCog):
         """
         session: SQLAlchemySession
         with Session() as session:
-            in_progress_games: list[InProgressGame] = session.query(InProgressGame).all()
+            in_progress_games: list[InProgressGame] = session.query(
+                InProgressGame
+            ).all()
             for game in in_progress_games:
                 if game.prediction_message_id:
                     self.views.append(EconomyPredictionView(game.id))
@@ -80,9 +86,7 @@ class EconomyCommands(BaseCog):
         for view in self.views:
             view.stop()
 
-    @group.command(
-        name="add", description=f"Admin; Add {CURRENCY_NAME} to a player"
-    )
+    @group.command(name="add", description=f"Admin; Add {CURRENCY_NAME} to a player")
     @app_commands.check(economy_enabled)
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
@@ -158,7 +162,9 @@ class EconomyCommands(BaseCog):
         session: SQLAlchemySession
         with Session() as session:
             queue: Queue | None = (
-                session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+                session.query(Queue)
+                .filter(Queue.id == in_progress_game.queue_id)
+                .first()
             )
             if queue and queue.currency_award:
                 award_value = queue.currency_award
@@ -256,7 +262,11 @@ class EconomyCommands(BaseCog):
                 )
                 time_compare = utc.localize(time_compare)
                 if datetime.now(timezone.utc) > time_compare:
-                    game: InProgressGame | None = session.query(InProgressGame).filter(InProgressGame.id == game.id).first()
+                    game: InProgressGame | None = (
+                        session.query(InProgressGame)
+                        .filter(InProgressGame.id == game.id)
+                        .first()
+                    )
                     game.prediction_open = False
                     session.commit()
 
@@ -354,7 +364,9 @@ class EconomyCommands(BaseCog):
             session.add(
                 EconomyTransaction(
                     player_id=(
-                        source_account.id if isinstance(source_account, Player) else None
+                        source_account.id
+                        if isinstance(source_account, Player)
+                        else None
                     ),
                     finished_game_id=(
                         source_account.game_id
@@ -431,7 +443,9 @@ class EconomyCommands(BaseCog):
     )
     @app_commands.check(economy_enabled)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(member="Discord member", donation_value="Currency value to donate")
+    @app_commands.describe(
+        member="Discord member", donation_value="Currency value to donate"
+    )
     async def donatecurrency(
         self, interaction: Interaction, member: Member, donation_value: int
     ) -> None:
@@ -492,7 +506,9 @@ class EconomyCommands(BaseCog):
             session.commit()
 
             try:
-                await self.create_transaction(sender, receiver, donation.value, donation)
+                await self.create_transaction(
+                    sender, receiver, donation.value, donation
+                )
             except Exception:
                 await interaction.response.send_message(
                     embed=Embed(
@@ -547,7 +563,7 @@ class EconomyCommands(BaseCog):
                     session.query(InProgressGame)
                     .filter(InProgressGame.id == game_player.in_progress_game_id)
                     .first()
-                ) 
+                )
                 if not in_progress_game:
                     return
                 else:
@@ -619,9 +635,7 @@ class EconomyCommands(BaseCog):
                     # Cancel if either team has no predicitons
                     if len(winning_predictions) == 0 or len(losing_predictions) == 0:
                         try:
-                            await EconomyCommands.cancel_predictions(
-                                self, game_id
-                            )
+                            await EconomyCommands.cancel_predictions(self, game_id)
                         except ValueError as ve:
                             # Raised if there are no predictions on this game
                             embed.insert_field_at(
@@ -715,7 +729,9 @@ class EconomyCommands(BaseCog):
                                         winning_prediction.player_id
                                     ] += win_value
                                 else:
-                                    summed_winners[winning_prediction.player_id] = win_value
+                                    summed_winners[winning_prediction.player_id] = (
+                                        win_value
+                                    )
 
                         sorted_winners: dict = dict(
                             reversed(sorted(summed_winners.items(), key=itemgetter(1)))
@@ -747,7 +763,10 @@ class EconomyCommands(BaseCog):
                             inline=True,
                         )
                         embed.insert_field_at(
-                            index=1, name="📉 Losers", value=prediction_losers, inline=True
+                            index=1,
+                            name="📉 Losers",
+                            value=prediction_losers,
+                            inline=True,
                         )
 
             await interaction.channel.send(embed=embed)
@@ -764,9 +783,7 @@ class EconomyCommands(BaseCog):
                 if history_channel:
                     await history_channel.send(embed=embed)
 
-    @group.command(
-        name="show", description=f"Show how many {CURRENCY_NAME} you have"
-    )
+    @group.command(name="show", description=f"Show how many {CURRENCY_NAME} you have")
     @app_commands.check(economy_enabled)
     @app_commands.check(is_command_channel)
     async def showcurrency(self, interaction: Interaction):
@@ -880,7 +897,7 @@ class EconomyPredictionView(View):
                 await interaction.response.send_message(
                     embed=Embed(
                         description="You are not a player, please add to queue once to be created",
-                        colour=Colour.red()
+                        colour=Colour.red(),
                     ),
                     ephemeral=True,
                 )
@@ -895,7 +912,7 @@ class EconomyPredictionView(View):
                 await interaction.response.send_message(
                     embed=Embed(
                         description=f"Prediction is closed for game {short_game_id}",
-                        colour=Colour.red()
+                        colour=Colour.red(),
                     ),
                     ephemeral=True,
                 )
@@ -980,9 +997,9 @@ class EconomyPredictionButton(Button):
                 await interaction.response.send_message(
                     embed=Embed(
                         description="You cannot predict against yourself",
-                        colour=Colour.red()
-                    ), 
-                    ephemeral=True
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
                 )
                 session.close()
                 return False
@@ -1001,9 +1018,9 @@ class EconomyPredictionButton(Button):
                 await interaction.response.send_message(
                     embed=Embed(
                         description="You cannot predict for both teams",
-                        colour=Colour.red()
-                    ), 
-                    ephemeral=True
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
                 )
                 return False
             return True
@@ -1036,9 +1053,9 @@ class EconomyPredictionModal(Modal):
             await interaction.response.send_message(
                 embed=Embed(
                     description="Prediction value must be an integer",
-                    colour=Colour.red()
-                ), 
-                ephemeral=True
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1046,9 +1063,9 @@ class EconomyPredictionModal(Modal):
             await interaction.response.send_message(
                 embed=Embed(
                     description="Prediction value must be greater than 0",
-                    colour=Colour.red()
-                ), 
-                ephemeral=True
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
             )
             return
 
@@ -1060,7 +1077,9 @@ class EconomyPredictionModal(Modal):
                     self, interaction.user, self.game, self.team_value, self.value
                 )
                 sender: Player | None = (
-                    session.query(Player).filter(Player.id == prediction.player_id).first()
+                    session.query(Player)
+                    .filter(Player.id == prediction.player_id)
+                    .first()
                 )
                 session.add(prediction)
                 session.commit()
@@ -1068,9 +1087,9 @@ class EconomyPredictionModal(Modal):
                 await interaction.followup.send(
                     embed=Embed(
                         description=f"Error creating predicton: {e}",
-                        colour=Colour.red()
-                    ), 
-                    ephemeral=True
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
                 )
                 return
 
@@ -1083,10 +1102,9 @@ class EconomyPredictionModal(Modal):
             except Exception as e:
                 await interaction.followup.send(
                     embed=Embed(
-                        description=f"Prediction Exception: {e}",
-                        colour=Colour.red()
+                        description=f"Prediction Exception: {e}", colour=Colour.red()
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 session.delete(prediction)
                 return

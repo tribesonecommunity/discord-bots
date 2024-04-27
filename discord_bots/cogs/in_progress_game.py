@@ -883,7 +883,7 @@ class InProgressGameCommands(commands.Cog):
                         description=f"Could not find game: {game_id}",
                         colour=Colour.red(),
                     ),
-                    ephemeral=True
+                    ephemeral=True,
                 )
                 return
 
@@ -973,7 +973,7 @@ class InProgressGameCommands(commands.Cog):
                             description=f"Could not find game: {game_id}",
                             colour=Colour.red(),
                         ),
-                        ephemeral=True
+                        ephemeral=True,
                     )
                     return
                 else:
@@ -985,7 +985,10 @@ class InProgressGameCommands(commands.Cog):
                     )
                     igps: list[InProgressGamePlayer] = (
                         session.query(InProgressGamePlayer)
-                        .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
+                        .filter(
+                            InProgressGamePlayer.in_progress_game_id
+                            == in_progress_game.id
+                        )
                         .all()
                     )
                     player_ids: list[int] = [igp.player_id for igp in igps]
@@ -1002,16 +1005,12 @@ class InProgressGameCommands(commands.Cog):
                     for _, best_team in best_teams:
                         team0_players = best_team[: len(best_team) // 2]
                         team1_players = best_team[len(best_team) // 2 :]
-                        game_str += (
-                            f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
-                        )
+                        game_str += f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                     game_str += "\n\n**Least even team combination:**"
                     for _, worst_team in worst_teams:
                         team0_players = worst_team[: len(worst_team) // 2]
                         team1_players = worst_team[len(worst_team) // 2 :]
-                        game_str += (
-                            f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
-                        )
+                        game_str += f"\n{mock_teams_str(team0_players, team1_players, queue.is_rated)}"
                     if interaction.guild:
                         player_id = interaction.user.id
                         member_: Member | None = interaction.guild.get_member(player_id)
