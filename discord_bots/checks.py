@@ -112,7 +112,7 @@ async def is_command_channel(interaction: Interaction) -> bool:
     """
     Check that interactions are performed from the command channel
     """
-    if not interaction.channel:
+    if not interaction.channel or interaction.channel.id != CHANNEL_ID:
         if not interaction.response.is_done():
             await interaction.response.send_message(
                 embed=Embed(
@@ -130,27 +130,8 @@ async def is_command_channel(interaction: Interaction) -> bool:
                 ephemeral=True
             )
         return False
-    
-    if interaction.channel.id == CHANNEL_ID:
-        return True
     else:
-        if not interaction.response.is_done():
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Interactions must be performed from the command channel",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True
-            )
-        else:
-            await interaction.followup.send(
-                embed=Embed(
-                    description="Interactions must be performed from the command channel",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True
-            )
-        return False
+        return True
     
 
 class HasName(Protocol):
