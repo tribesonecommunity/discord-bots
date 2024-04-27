@@ -22,7 +22,7 @@ def upgrade():
             sa.Column(
                 "sigma_decay_amount",
                 sa.Float(),
-                server_default=sa.text("0.02"),
+                server_default=sa.text("0.0"),
                 nullable=False,
             )
         )

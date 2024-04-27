@@ -13,7 +13,7 @@ from discord_bots.models import (
     Rotation,
     RotationMap,
 )
-from discord_bots.utils import update_next_map_to_map_after_next
+from discord_bots.utils import default_sigma_decay_amount
 
 
 class CategoryCommands(BaseCog):
@@ -39,7 +39,7 @@ class CategoryCommands(BaseCog):
     @check(is_admin)
     async def createcategory(self, ctx: Context, name: str):
         session = ctx.session
-        session.add(Category(name=name, is_rated=True))
+        session.add(Category(name=name, is_rated=True, sigma_decay_amount=default_sigma_decay_amount()))
         session.commit()
         await self.send_success_message(f"Category **{name}** added")
 
