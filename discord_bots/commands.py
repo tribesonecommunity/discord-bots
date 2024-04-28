@@ -1,6 +1,7 @@
 import asyncio
 import heapq
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from itertools import combinations
 from math import floor
@@ -1099,6 +1100,155 @@ async def pug(ctx: Context):
     cropped.save(ntf.name)
     await ctx.message.channel.send(file=discord.File(ntf.name))
     ntf.close()
+
+
+@bot.command()
+async def status(ctx: Context, *args):
+    assert ctx.guild
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        queue_indices: list[int] = []
+        queue_names: list[str] = []
+        all_rotations: list[Rotation] = []  # TODO: use sets
+        if len(args) == 0:
+            all_rotations = (
+                session.query(Rotation).order_by(Rotation.created_at.asc()).all()
+            )
+        else:
+            # get the rotation associated to the specified queue
+            all_rotations = []
+            for arg in args:
+                # TODO: avoid looping so you only need one query
+                try:
+                    queue_index = int(arg)
+                    arg_rotation = (
+                        session.query(Rotation)
+                        .join(Queue)
+                        .filter(Queue.ordinal == queue_index)
+                        .first()
+                    )
+                    if arg_rotation:
+                        queue_indices.append(queue_index)
+                        if arg_rotation not in all_rotations:
+                            all_rotations.append(arg_rotation)
+                except ValueError:
+                    arg_rotation = (
+                        session.query(Rotation)
+                        .join(Queue)
+                        .filter(Queue.name.ilike(arg))
+                        .first()
+                    )
+                    if arg_rotation:
+                        queue_names.append(arg)
+                        if arg_rotation not in all_rotations:
+                            all_rotations.append(arg_rotation)
+                except IndexError:
+                    pass
+
+        if not all_rotations:
+            await ctx.channel.send("No Rotations")
+            return
+
+        embed = Embed(title="Queues", color=Colour.blue())
+        ipg_embeds: list[Embed] = []
+        rotation_queues: list[Queue] | None
+        for rotation in all_rotations:
+            conditions = [Queue.rotation_id == rotation.id]
+            if queue_indices:
+                conditions.append(Queue.ordinal.in_(queue_indices))
+            if queue_names:
+                conditions.append(Queue.name.in_(queue_names))
+            rotation_queues = (
+                session.query(Queue)
+                .filter(*conditions)
+                .order_by(Queue.ordinal.asc())
+                .all()
+            )
+            if not rotation_queues:
+                continue
+
+            games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
+            for game in session.query(InProgressGame).filter(
+                InProgressGame.is_finished == False
+            ):
+                if game.queue_id:
+                    games_by_queue[game.queue_id].append(game)
+
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.is_next == True)
+                .first()
+            )
+            if not next_rotation_map:
+                continue
+            next_map: Map | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(next_rotation_map.map_id == Map.id)
+                .first()
+            )
+            next_map_str = f"{next_map.full_name} ({next_map.short_name})"
+            if config.ENABLE_RAFFLE:
+                has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
+                raffle_reward = (
+                    next_rotation_map.raffle_ticket_reward
+                    if has_raffle_reward
+                    else config.DEFAULT_RAFFLE_VALUE
+                )
+                next_map_str += f" ({raffle_reward} tickets)"
+            embed.add_field(
+                name=f"",
+                # value="─"*10,
+                value=f"```asciidoc\n* {rotation.name}```",
+                inline=False,
+            )
+            embed.add_field(
+                name=f"🗺️ Next Map",
+                value=next_map_str,
+                inline=False,
+            )
+
+            rotation_queues_len = len(rotation_queues)
+            for i, queue in enumerate(rotation_queues):
+                if queue.is_locked:
+                    continue
+                players_in_queue: list[Player] = (
+                    session.query(Player)
+                    .join(QueuePlayer)
+                    .filter(QueuePlayer.queue_id == queue.id)
+                    .all()
+                )
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+                player_display_names: list[str] = (
+                    [player.name for player in players_in_queue]
+                    if players_in_queue
+                    else []
+                )
+                newline = "\n"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
+                embed.add_field(
+                    name=queue_title_str,
+                    value=(
+                        "> \n** **"  # weird hack to create an empty quote
+                        if not player_display_names
+                        else f">>> {newline.join(player_display_names)}"
+                    ),
+                    inline=True,
+                )
+                if i == rotation_queues_len - 1 and i >= 5 and i % 3 == 2:
+                    # embeds are allowed 3 "columns" per "row"
+                    # to line everything up nicely when there's >= 5 queues and only one "column" slot left, we add a blank
+                    embed.add_field(name="", value="", inline=True)
+                if queue.id in games_by_queue:
+                    game: InProgressGame
+                    for game in games_by_queue[queue.id]:
+                        ipg_embed = await create_in_progress_game_embed(
+                            session, game, ctx.guild
+                        )
+                        ipg_embeds.append(ipg_embed)
+        await ctx.channel.send(
+            embeds=[embed] + ipg_embeds,
+        )
 
 
 # TODO: Re-enable when configs are stored in the db
