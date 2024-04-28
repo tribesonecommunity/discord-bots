@@ -5,11 +5,14 @@ CategoryCommands:
   clearqueuecategory
   createcategory
   listcategories
+  showcategory            
   removecategory
   setcategoryname
   setcategoryrated
   setcategoryunrated
   setqueuecategory
+  setmingamesforleaderboard       
+  setcategorysigmadecay   Configure sigma decay settings for the category
 MapCommands:
   addmap                  Add a map to the map pool
   changegamemap           Change the map for a game

@@ -13,7 +13,7 @@ from discord_bots.models import (
     Rotation,
     RotationMap,
 )
-from discord_bots.utils import update_next_map_to_map_after_next
+from discord_bots.utils import default_sigma_decay_amount
 
 
 class CategoryCommands(BaseCog):
@@ -39,9 +39,33 @@ class CategoryCommands(BaseCog):
     @check(is_admin)
     async def createcategory(self, ctx: Context, name: str):
         session = ctx.session
-        session.add(Category(name=name, is_rated=True))
+        session.add(Category(name=name, is_rated=True, sigma_decay_amount=default_sigma_decay_amount()))
         session.commit()
         await self.send_success_message(f"Category **{name}** added")
+
+    def _buildCategoryOutput(self, ctx: Context, category: Category) -> str:
+        output = ""
+        output += f"**{category.name}**\n"
+        output += f"- _Rated: {category.is_rated}_\n"
+        output += "- _Sigma decay settings:_\n"
+        output += f" - _Decay amount: {category.sigma_decay_amount}_\n"
+        output += f" - _Grace days: {category.sigma_decay_grace_days}_\n"
+        output += f" - _Max decay proportion: {category.sigma_decay_max_decay_proportion}_\n"
+        output += f"- _Minimum games for leaderboard: {category.min_games_for_leaderboard}_\n"
+        queue_names = [
+            x[0]
+            for x in (
+                ctx.session.query(Queue.name)
+                .filter(Queue.category_id == category.id)
+                .order_by(Queue.ordinal.asc())
+                .all()
+            )
+        ]
+        if not queue_names:
+            output += f"- _Queues: None_\n\n"
+        else:
+            output += f"- _Queues: {', '.join(queue_names)}_\n\n"
+        return output
 
     @command()
     async def listcategories(self, ctx: Context):
@@ -53,24 +77,26 @@ class CategoryCommands(BaseCog):
             await self.send_info_message("_-- No categories-- _")
             return
 
-        output = ""
-        for category in categories:
-            output += f"- **{category.name}**\n"
-            queue_names = [
-                x[0]
-                for x in (
-                    session.query(Queue.name)
-                    .filter(Queue.category_id == category.id)
-                    .order_by(Queue.ordinal.asc())
-                    .all()
-                )
-            ]
-            if not queue_names:
-                output += f" - _Queues: None_\n\n"
-            else:
-                output += f" - _Queues: {', '.join(queue_names)}_\n\n"
+        output = "\n".join(
+            self._buildCategoryOutput(ctx, category) 
+            for category 
+            in categories
+        )
 
         await self.send_info_message(output)
+
+    @command()
+    async def showcategory(self, ctx: Context, name: str):
+        session = ctx.session
+        try:
+            category: Category = (
+                session.query(Category).filter(Category.name.ilike(name)).one()
+            )
+        except NoResultFound:
+            await self.send_error_message(f"Could not find category **{name}**")
+            return
+
+        await self.send_info_message(self._buildCategoryOutput(ctx, category))
 
     @command()
     @check(is_admin)
@@ -194,3 +220,35 @@ class CategoryCommands(BaseCog):
         await self.send_success_message(
             f"The minimum number of games required to appear on the leaderboard for category **{category.name}** is now **{min_num_games}**"
         )
+
+    @command()
+    @check(is_admin)
+    async def setcategorysigmadecay(
+        self,
+        ctx: Context,
+        name: str,
+        sigma_decay_amount: float,
+        sigma_decay_grace_days: int,
+        sigma_decay_max_decay_proportion: float,
+    ) -> None:
+        """
+        Set the amount of sigma decay per day for a given category
+        """
+        session = ctx.session
+        try:
+            category: Category = (
+                session.query(Category).filter(Category.name.ilike(name)).one()
+            )
+        except NoResultFound:
+            await self.send_error_message(f"Could not find category **{name}**")
+            return
+        category.sigma_decay_amount = sigma_decay_amount
+        category.sigma_decay_grace_days = sigma_decay_grace_days
+        category.sigma_decay_max_decay_proportion = sigma_decay_max_decay_proportion
+        session.commit()
+
+        output = f"Sigma decay settings updated for **{category.name}**:\n"
+        output += f"- Decay amount: {sigma_decay_amount}\n"
+        output += f"- Grace days: {sigma_decay_grace_days}\n"
+        output += f"- Max decay proportion: {sigma_decay_max_decay_proportion}\n"
+        await self.send_success_message(output)

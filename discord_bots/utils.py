@@ -1024,3 +1024,10 @@ async def move_game_players_lobby(
         # results should be empty unless an exception occured when moving a player
         if isinstance(result, BaseException):
             _log.exception("Ignored exception when moving a gameplayer to lobby:")
+
+def default_sigma_decay_amount() -> float:
+    """
+    The default sigma decay applied to new categories
+    Which causes decay from 0 sigma to default over a year
+    """
+    return config.DEFAULT_TRUESKILL_SIGMA / 365
