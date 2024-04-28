@@ -30,6 +30,7 @@ from .bot import bot
 from .cogs.economy import EconomyCommands
 from .commands import add_player_to_queue, create_game, is_in_game
 from .models import (
+    Category,
     InProgressGame,
     InProgressGameChannel,
     MapVote,
@@ -51,6 +52,7 @@ from .models import (
 from .queues import AddPlayerQueueMessage, add_player_queue, waitlist_messages
 
 _log = logging.getLogger(__name__)
+
 
 async def add_players(session: sqlalchemy.orm.Session):
     """
@@ -190,6 +192,7 @@ async def add_players(session: sqlalchemy.orm.Session):
                 guild_id=message.guild.id,
             )
 
+
 @tasks.loop(seconds=1)
 async def add_player_task():
     session: sqlalchemy.orm.Session
@@ -291,12 +294,14 @@ async def afk_timer_task():
                 ).delete()
                 session.commit()
 
+
 @tasks.loop(seconds=1800)
 async def leaderboard_task():
     """
     Periodically print the leaderboard
     """
     await print_leaderboard()
+
 
 @tasks.loop(minutes=1)
 async def map_rotation_task():
@@ -326,6 +331,7 @@ async def map_rotation_task():
                 if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
                     await update_next_map_to_map_after_next(rotation.id, True)
 
+
 @tasks.loop(seconds=5)
 async def prediction_task():
     """
@@ -334,10 +340,10 @@ async def prediction_task():
     """
     session = Session()
     in_progress_games: list[InProgressGame] | None = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.prediction_open == True)
-            .all()
-        )
+        session.query(InProgressGame)
+        .filter(InProgressGame.prediction_open == True)
+        .all()
+    )
     try:
         await EconomyCommands.update_embeds(None, in_progress_games)
     except Exception as e:
@@ -509,6 +515,7 @@ async def schedule_task():
     for n in range(7):
         await ScheduleUtils.rebuild_embed(bot.guilds[0], n)
 
+
 @schedule_task.before_loop
 async def delay_schedule_task():
     """
@@ -602,4 +609,45 @@ async def vote_passed_waitlist_task():
             VotePassedWaitlistPlayer.vote_passed_waitlist_id == vpw.id
         ).delete()
         session.delete(vpw)
+        session.commit()
+
+
+@tasks.loop(time=config.TRUESKILL_SIGMA_DECAY_JOB_SCHEDULED_TIME)
+async def sigma_decay_task():
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        # Lookup all categories to calculate sigma cutoffs
+        # TODO: If we kill off SQLite we can use INTERVAL to check a time range and have a single join between Category and PlayerCategoryTrueskill
+        time_now = datetime.now(timezone.utc)
+        categories = session.query(Category).filter(Category.sigma_decay_amount != 0.0).all()
+        category_details = {
+            category.id: {
+                'category': category,
+                'cutoff': time_now - timedelta(
+                    days=category.sigma_decay_grace_days
+                )
+            }
+            for category in categories
+        }
+
+        # Find all player trueskill values with a last played game older than the decay grace period
+        player_category_trueskills = (
+            session
+            .query(PlayerCategoryTrueskill)
+            .filter(
+                sqlalchemy.and_(
+                    PlayerCategoryTrueskill.last_game_finished_at.is_not(None),
+                    PlayerCategoryTrueskill.category_id.in_(category_details.keys())
+                )
+            )
+            .all()
+        )
+        for pct in player_category_trueskills:
+            # If the last game for this PCT was before the cutoff, apply the decay
+            if pct.last_game_finished_at.replace(tzinfo=timezone.utc) < category_details[pct.category_id]['cutoff']:
+                category = category_details[pct.category_id]['category']
+                pct.sigma = min(
+                    pct.sigma + category.sigma_decay_amount,
+                    config.DEFAULT_TRUESKILL_SIGMA * category.sigma_decay_max_decay_proportion,
+                )
         session.commit()

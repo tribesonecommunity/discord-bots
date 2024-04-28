@@ -22,6 +22,7 @@ from discord_bots.models import (
     RotationMap,
     Session,
 )
+from discord_bots.utils import buildCategoryOutput
 
 _log = logging.getLogger(__name__)
 
@@ -106,22 +107,11 @@ class ListCommands(BaseCog):
                 )
                 return
 
-            output = ""
-            for category in categories:
-                output += f"- **{category.name}**\n"
-                queue_names = [
-                    x[0]
-                    for x in (
-                        session.query(Queue.name)
-                        .filter(Queue.category_id == category.id)
-                        .order_by(Queue.ordinal.asc())
-                        .all()
-                    )
-                ]
-                if not queue_names:
-                    output += f" - _Queues: None_\n\n"
-                else:
-                    output += f" - _Queues: {', '.join(queue_names)}_\n\n"
+            output = "\n".join(
+                buildCategoryOutput(category) 
+                for category 
+                in categories
+            )
 
             await interaction.response.send_message(
                 embed=Embed(description=output, colour=Colour.blue())

@@ -8,6 +8,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Category, PlayerCategoryTrueskill, Queue, Session
+from discord_bots.utils import default_sigma_decay_amount, buildCategoryOutput
 
 _log = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class CategoryCommands(BaseCog):
         super().__init__(bot)
 
     group = app_commands.Group(name="category", description="Category commands")
-
+    
     @group.command(name="clearqueue", description="Remove category from queue")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
@@ -55,7 +56,7 @@ class CategoryCommands(BaseCog):
     async def createcategory(self, interaction: Interaction, name: str):
         session: SQLAlchemySession
         with Session() as session:
-            session.add(Category(name=name, is_rated=True))
+            session.add(Category(name=name, is_rated=True, sigma_decay_amount=default_sigma_decay_amount()))
             session.commit()
             await interaction.response.send_message(
                 embed=Embed(
@@ -143,6 +144,52 @@ class CategoryCommands(BaseCog):
                     )
                 )
 
+    @group.command(name="setsigmadecay", description="Set the amount of sigma decay per day for a given category")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(category_name="Existing category")
+    async def setcategorysigmadecay(
+        self,
+        interaction: Interaction,
+        category_name: str,
+        sigma_decay_amount: float,
+        sigma_decay_grace_days: int,
+        sigma_decay_max_decay_proportion: float,
+    ) -> None:
+        """
+        Set the amount of sigma decay per day for a given category
+        """
+        session: SQLAlchemySession
+        with Session() as session:
+            try:
+                category: Category = (
+                    session.query(Category).filter(Category.name.ilike(category_name)).one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find category **{category_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True
+                )
+                return
+            category.sigma_decay_amount = sigma_decay_amount
+            category.sigma_decay_grace_days = sigma_decay_grace_days
+            category.sigma_decay_max_decay_proportion = sigma_decay_max_decay_proportion
+            session.commit()
+
+        output = f"Sigma decay settings updated for **{category.name}**:\n"
+        output += f"- Decay amount: {sigma_decay_amount}\n"
+        output += f"- Grace days: {sigma_decay_grace_days}\n"
+        output += f"- Max decay proportion: {sigma_decay_max_decay_proportion}\n"
+        await interaction.response.send_message(
+            embed=Embed(
+                description=output,
+                colour=Colour.green(),
+            )
+        )
+
     @group.command(name="setunrated", description="Set category unrated")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
@@ -224,12 +271,40 @@ class CategoryCommands(BaseCog):
             )
         )
 
+    @group.command(name="show", description="Show category details")
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(category_name="Existing category")
+    async def showcategory(self, interaction: Interaction, category_name: str):
+        session: SQLAlchemySession
+        with Session() as session:
+            try:
+                category: Category = (
+                    session.query(Category).filter(Category.name.ilike(category_name)).one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find category **{category_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True
+                )
+                return
+
+        await interaction.response.send_message(
+            embed=Embed(
+                description=buildCategoryOutput(category),
+                colour=Colour.blue(),
+            )
+        )
+
     @createcategory.autocomplete("name")
     @removecategory.autocomplete("name")
     @setcategoryname.autocomplete("old_category_name")
     @setcategoryrated.autocomplete("category_name")
     @setcategoryunrated.autocomplete("category_name")
     @setmingamesforleaderboard.autocomplete("category_name")
+    @showcategory.autocomplete("category_name")
     async def category_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession

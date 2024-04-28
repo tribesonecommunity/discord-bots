@@ -21,6 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.hybrid import hybrid_property
+
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import relationship  # type: ignore
@@ -83,6 +84,9 @@ class Category:
     """
     A category is a segmentation of trueskill - for example rated vs unrated, regions, game types (CTF, Arena, Bomb, etc.)
     :min_games_for_leaderboard: The minimum number of games someone needs to play in the last 30 days to appear on the leaderboard.
+    :sigma_decay_amount: The amount to decay a player's sigma by every day after the grace period.
+    :sigma_decay_grace_days: The number of days before the sigma starts decaying.
+    :sigma_decay_max_decay_proportion: The maximum proportion of the default sigma a player may decay to. E.g. 1.0 would indicate full decay back to the default is possible
     """
 
     __sa_dataclass_metadata_key__ = "sa"
@@ -100,6 +104,18 @@ class Category:
     min_games_for_leaderboard: int = field(
         default=0,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    sigma_decay_amount: float = field(
+        default=0.0,
+        metadata={"sa": Column(Float, nullable=False, server_default=text("0.0"))},
+    )
+    sigma_decay_grace_days: int = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    sigma_decay_max_decay_proportion: float = field(
+        default=0.5,
+        metadata={"sa": Column(Float, nullable=False, server_default=text("1.0"))},
     )
     id: str = field(
         init=False,
@@ -265,20 +281,22 @@ class EconomyDonation:
     )
     receiving_player_id: int = field(
         metadata={
-            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
         },
     )
     value: int = field(metadata={"sa": Column(Integer, nullable=False)})
 
     sending_player = relationship(
         "Player",
-        foreign_keys=[sending_player_id.metadata['sa']],
+        foreign_keys=[sending_player_id.metadata["sa"]],
         back_populates="donations_sent",
     )
     receiving_player = relationship(
         "Player",
-        foreign_keys=[receiving_player_id.metadata['sa']],
-        back_populates="donations_received"
+        foreign_keys=[receiving_player_id.metadata["sa"]],
+        back_populates="donations_received",
     )
     transactions = relationship("EconomyTransaction", back_populates="donation")
 
@@ -300,7 +318,9 @@ class EconomyPrediction:
     )
     player_id: int = field(
         metadata={
-            "sa": Column(BigInteger, ForeignKey("player.id"), nullable=False, index=True)
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
         },
     )
     finished_game_id: str | None = field(
@@ -369,8 +389,12 @@ class EconomyTransaction:
             )
         },
     )
-    debit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
-    credit: int = field(metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))})
+    debit: int = field(
+        metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))}
+    )
+    credit: int = field(
+        metadata={"sa": Column(BigInteger, nullable=False, server_default=text("0"))}
+    )
     new_balance: int | None = field(metadata={"sa": Column(BigInteger, nullable=True)})
     transaction_type: str = field(
         metadata={"sa": Column(String, nullable=False)},
@@ -791,12 +815,12 @@ class Player:
     donations_sent = relationship(
         "EconomyDonation",
         back_populates="sending_player",
-        primaryjoin='Player.id == EconomyDonation.sending_player_id'
+        primaryjoin="Player.id == EconomyDonation.sending_player_id",
     )
     donations_received = relationship(
         "EconomyDonation",
         back_populates="receiving_player",
-        primaryjoin='Player.id == EconomyDonation.receiving_player_id'
+        primaryjoin="Player.id == EconomyDonation.receiving_player_id",
     )
 
     @hybrid_property
@@ -873,6 +897,9 @@ class PlayerCategoryTrueskill:
     mu: float = field(metadata={"sa": Column(Float, nullable=False)})
     sigma: float = field(metadata={"sa": Column(Float, nullable=False)})
     rank: float = field(metadata={"sa": Column(Float, nullable=False)})
+    last_game_finished_at: datetime = field(
+        metadata={"sa": Column(DateTime, nullable=True, index=True)}
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
@@ -972,8 +999,7 @@ class Queue:
         metadata={"sa": Column(Boolean, nullable=False)},
     )
     currency_award: int = field(
-        default=None,
-        metadata={"sa": Column(Integer, nullable=True)}
+        default=None, metadata={"sa": Column(Integer, nullable=True)}
     )
 
     rotation = relationship("Rotation", back_populates="queues")

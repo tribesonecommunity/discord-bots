@@ -65,6 +65,33 @@ SIGMA_LOWER_UNICODE = "\u03C3"
 DELTA_UPPER_UNICODE = "\u03B4"
 
 
+def buildCategoryOutput(category: Category) -> str:
+    output = ""
+    output += f"**{category.name}**\n"
+    output += f"- _Rated: {category.is_rated}_\n"
+    output += "- _Sigma decay settings:_\n"
+    output += f" - _Decay amount: {category.sigma_decay_amount}_\n"
+    output += f" - _Grace days: {category.sigma_decay_grace_days}_\n"
+    output += f" - _Max decay proportion: {category.sigma_decay_max_decay_proportion}_\n"
+    output += f"- _Minimum games for leaderboard: {category.min_games_for_leaderboard}_\n"
+    session: SQLAlchemySession
+    with Session() as session:
+        queue_names = [
+            x[0]
+            for x in (
+                session.query(Queue.name)
+                .filter(Queue.category_id == category.id)
+                .order_by(Queue.ordinal.asc())
+                .all()
+            )
+        ]
+        if not queue_names:
+            output += f"- _Queues: None_\n\n"
+        else:
+            output += f"- _Queues: {', '.join(queue_names)}_\n\n"
+        return output
+
+
 def get_n_best_finished_game_teams(
     fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
 ) -> list[tuple[list[FinishedGamePlayer], float]]:
@@ -1449,9 +1476,15 @@ async def move_game_players_lobby(game_id: str, guild: Guild):
         if isinstance(result, BaseException):
             _log.exception("Ignored exception when moving a gameplayer to lobby:")
 
-
 def win_rate(wins, losses, ties):
     denominator = max(wins + losses + ties, 1)
     return round(
         100 * (wins + 0.5 * ties) / denominator, 1
     )  # why are ties counted as half a win?
+
+def default_sigma_decay_amount() -> float:
+    """
+    The default sigma decay applied to new categories
+    Which causes decay from 0 sigma to default over a year
+    """
+    return config.DEFAULT_TRUESKILL_SIGMA / 365
