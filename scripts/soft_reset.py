@@ -1,7 +1,7 @@
 import argparse
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 import numpy
 from dateutil.parser import parse as parse_date
@@ -240,10 +240,17 @@ def map_ratings_to_entities(
                 sigma=rating.sigma,
                 rank=rating.mu - (3 * rating.sigma),
                 last_game_finished_at=(
-                    old_pct.last_game_finished_at
-                    if old_pct
-                    else datetime.now(timezone.utc)
+                    old_pct.last_game_finished_at if old_pct else None  # type: ignore
                 ),
+            )
+        else:
+            new_pct = PlayerCategoryTrueskill(
+                player_id=player.id,
+                category_id=target_category_id,
+                mu=default_rating.mu,
+                sigma=default_rating.sigma,
+                rank=default_rating.mu - (3 * default_rating.sigma),
+                last_game_finished_at=None,  # type: ignore
             )
         result.append((player, old_pct, new_pct))
     return result
