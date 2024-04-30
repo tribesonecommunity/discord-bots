@@ -290,8 +290,8 @@ class CategoryRatedSelect(Select):
             placeholder=f"Is_Rated: {str(view.category.is_rated)}",
             row=1,
             options=[
-                SelectOption(label="Is_Rated: True", value="True"),
-                SelectOption(label="Is_Rated: False", value="False"),
+                SelectOption(label="True", value="True"),
+                SelectOption(label="False", value="False"),
             ],
         )
         self.view: CategoryConfigureView
