@@ -94,7 +94,7 @@ class AdminCommands(BaseCog):
     @app_commands.describe(role="Role to be made admin")
     async def addadminrole(self, interaction: Interaction, role: Role):
         if interaction.guild:
-            if not role in interaction.guild.roles:
+            if role not in interaction.guild.roles:
                 await interaction.response.send_message(
                     embed=Embed(
                         description=f"Could not find role: {role.name}",
@@ -114,7 +114,7 @@ class AdminCommands(BaseCog):
                 if admin_role:
                     await interaction.response.send_message(
                         embed=Embed(
-                            description="Role is already an admin", colour=Colour.blue()
+                            description=f"**{role.name}** is already an admin", colour=Colour.yellow()
                         ),
                         ephemeral=True,
                     )
@@ -136,8 +136,8 @@ class AdminCommands(BaseCog):
         """TODO: remove player from queues"""
         session: SQLAlchemySession
         with Session() as session:
-            players = session.query(Player).filter(Player.id == member.id).all()
-            if len(players) == 0:
+            player: Player | None = session.query(Player).filter(Player.id == member.id).first()
+            if not player:
                 session.add(
                     Player(
                         id=member.id,
@@ -153,7 +153,6 @@ class AdminCommands(BaseCog):
                 )
                 session.commit()
             else:
-                player = players[0]
                 if player.is_banned:
                     await interaction.response.send_message(
                         embed=Embed(
@@ -176,42 +175,36 @@ class AdminCommands(BaseCog):
     )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
+    @app_commands.guild_only()
     async def configure(self, interaction: Interaction):
-        if interaction.guild:
-            session: SQLAlchemySession
-            with Session() as session:
-                guild = (
-                    session.query(DiscordGuild)
-                    .filter(DiscordGuild.discord_id == interaction.guild.id)
-                    .first()
-                )
-                if guild:
-                    await interaction.response.send_message(
-                        embed=Embed(
-                            description="Server already configured",
-                            colour=Colour.red(),
-                        ),
-                        ephemeral=True,
-                    )
-                else:
-                    guild = DiscordGuild(interaction.guild.id, interaction.guild.name)
-                    session.add(guild)
-                    session.commit()
-                    await interaction.response.send_message(
-                        embed=Embed(
-                            description="Server configured successfully!",
-                            colour=Colour.green(),
-                        ),
-                        ephemeral=True,
-                    )
-        else:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Command must be run from within a guild",
-                    colour=Colour.blue(),
-                ),
-                ephemeral=True,
+        assert interaction.guild
+        
+        session: SQLAlchemySession
+        with Session() as session:
+            guild = (
+                session.query(DiscordGuild)
+                .filter(DiscordGuild.discord_id == interaction.guild.id)
+                .first()
             )
+            if guild:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Server already configured",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                guild = DiscordGuild(interaction.guild.id, interaction.guild.name)
+                session.add(guild)
+                session.commit()
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Server configured successfully!",
+                        colour=Colour.green(),
+                    ),
+                    ephemeral=True,
+                )
 
     @group.command(name="createcommand", description="Create a custom command")
     @app_commands.check(is_admin_app_command)
@@ -246,6 +239,20 @@ class AdminCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     async def createdbbackup(self, interaction: Interaction):
+        # Only functions for SQLite
+        # TODO: Covert to work for Postgres
+
+        # Check for Postgres URI
+        if config.DATABASE_URI:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="This command does not support Postgres databases",
+                    colour=Colour.yellow(),
+                ),
+                ephemeral=True
+            )
+            return
+        
         date_string = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         copyfile(f"{config.DB_NAME}.db", f"{config.DB_NAME}_{date_string}.db")
         await interaction.response.send_message(
@@ -388,13 +395,14 @@ class AdminCommands(BaseCog):
     )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(game_id="Finished game id", outcome="<tie|be|ds>")
+    @app_commands.describe(game_id="Finished game id", outcome="Tie, BE, DS")
     async def editgamewinner(
         self,
         interaction: Interaction,
         game_id: str,
         outcome: Literal["Tie", "BE", "DS"],
     ):
+        # TODO: Move away from BE/DS to Team0/Team1
         session: SQLAlchemySession
         with Session() as session:
             game: FinishedGame | None = (
@@ -445,8 +453,8 @@ class AdminCommands(BaseCog):
     async def removeadmin(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
         with Session() as session:
-            players = session.query(Player).filter(Player.id == member.id).all()
-            if len(players) == 0 or not players[0].is_admin:
+            player: Player | None = session.query(Player).filter(Player.id == member.id).first()
+            if not player or not player.is_admin:
                 await interaction.response.send_message(
                     embed=Embed(
                         description=f"{escape_markdown(member.name)} is not an admin",
@@ -455,7 +463,7 @@ class AdminCommands(BaseCog):
                 )
                 return
 
-            players[0].is_admin = False
+            player.is_admin = False
             session.commit()
         await interaction.response.send_message(
             embed=Embed(
@@ -467,43 +475,45 @@ class AdminCommands(BaseCog):
     @group.command(name="removerole", description="Remove an admin role")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
+    @app_commands.guild_only()
     @app_commands.describe(role="Role to be removed as admin")
     async def removeadminrole(self, interaction: Interaction, role: Role):
-        if interaction.guild:
-            if not role in interaction.guild.roles:
+        assert interaction.guild
+        
+        if role not in interaction.guild.roles:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Could not find role: {role.name}",
+                    colour=Colour.blue(),
+                ),
+                ephemeral=True,
+            )
+            return
+
+        session: SQLAlchemySession
+        with Session() as session:
+            admin_role = (
+                session.query(AdminRole)
+                .filter(AdminRole.role_id == role.id)
+                .first()
+            )
+            if admin_role:
+                session.delete(admin_role)
+                session.commit()
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find role: {role.name}",
+                        description=f"Removed admin role: {role.name}",
+                        colour=Colour.green(),
+                    )
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find admin role: {role.name}",
                         colour=Colour.blue(),
                     ),
                     ephemeral=True,
                 )
-                return
-
-            session: SQLAlchemySession
-            with Session() as session:
-                admin_role = (
-                    session.query(AdminRole)
-                    .filter(AdminRole.role_id == role.id)
-                    .first()
-                )
-                if admin_role:
-                    session.delete(admin_role)
-                    session.commit()
-                    await interaction.response.send_message(
-                        embed=Embed(
-                            description=f"Removed admin role: {role.name}",
-                            colour=Colour.green(),
-                        )
-                    )
-                else:
-                    await interaction.response.send_message(
-                        embed=Embed(
-                            description=f"Could not find admin role: {role.name}",
-                            colour=Colour.blue(),
-                        ),
-                        ephemeral=True,
-                    )
 
     @group.command(name="removecommand", description="Remove a custom command")
     @app_commands.check(is_admin_app_command)
@@ -540,6 +550,21 @@ class AdminCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.describe(db_filename="Name of backup file")
     async def removedbbackup(self, interaction: Interaction, db_filename: str):
+        # Only functions for SQLite
+        # TODO: Covert to work for Postgres
+
+        # Check for Postgres URI
+        if config.DATABASE_URI:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="This command does not support Postgres databases",
+                    colour=Colour.yellow(),
+                ),
+                ephemeral=True
+            )
+            return
+
+        
         if not db_filename.startswith(config.DB_NAME) or not db_filename.endswith(
             ".db"
         ):
@@ -651,8 +676,8 @@ class AdminCommands(BaseCog):
     async def unban(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
         with Session() as session:
-            players = session.query(Player).filter(Player.id == member.id).all()
-            if len(players) == 0 or not players[0].is_banned:
+            player: Player | None = session.query(Player).filter(Player.id == member.id).first()
+            if not player or not player.is_banned:
                 await interaction.response.send_message(
                     embed=Embed(
                         description=f"{escape_markdown(member.name)} is not banned",
@@ -662,7 +687,7 @@ class AdminCommands(BaseCog):
                 )
                 return
 
-            players[0].is_banned = False
+            player.is_banned = False
             session.commit()
             await interaction.response.send_message(
                 embed=Embed(

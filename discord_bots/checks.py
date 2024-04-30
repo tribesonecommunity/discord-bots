@@ -19,14 +19,24 @@ async def economy_enabled(interaction: Interaction) -> bool:
         return False
 
     if not ECONOMY_ENABLED:
-        await interaction.response.send_message(
-            "Player economy is disabled",
-            ephemeral=True
-        )
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                embed=Embed(
+                    description="Player economy is disabled", colour=Colour.red()
+                ),
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Player economy is disabled", colour=Colour.red()
+                ),
+                ephemeral=True,
+            )
         return False
     else:
         return True
-    
+
 
 async def is_admin(ctx: Context):
     """
@@ -119,7 +129,7 @@ async def is_command_channel(interaction: Interaction) -> bool:
                     description="Interactions must be performed from the command channel",
                     colour=Colour.red(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
         else:
             await interaction.followup.send(
@@ -127,12 +137,12 @@ async def is_command_channel(interaction: Interaction) -> bool:
                     description="Interactions must be performed from the command channel",
                     colour=Colour.red(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
         return False
     else:
         return True
-    
+
 
 class HasName(Protocol):
     name: str
