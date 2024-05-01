@@ -48,6 +48,8 @@ class CategoryConfigureView(BaseView):
     @button(label="Save", style=ButtonStyle.success, row=4)
     async def save(self, interaction: Interaction, button: Button):
         await interaction.response.defer()
+        await self.disable_children(interaction)
+
         confirmation_buttons = ConfirmationView(interaction.user.id)
         confirmation_buttons.message = await interaction.followup.send(
             embed=Embed(
@@ -59,6 +61,7 @@ class CategoryConfigureView(BaseView):
         )
         await confirmation_buttons.wait()
         if not confirmation_buttons.value:
+            await self.enable_children(interaction)
             return False
         else:
             self.value = True

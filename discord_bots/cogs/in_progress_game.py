@@ -1091,7 +1091,7 @@ class InProgressGameView(BaseView):
             interaction, "win", self.game_id
         )
         if self.is_game_finished:
-            await self.disable_buttons(interaction)
+            await self.disable_children(interaction)
             self.stop()
 
     @button(
@@ -1105,7 +1105,7 @@ class InProgressGameView(BaseView):
             interaction, "loss", self.game_id
         )
         if self.is_game_finished:
-            await self.disable_buttons(interaction)
+            await self.disable_children(interaction)
             self.stop()
 
     @button(
@@ -1119,7 +1119,7 @@ class InProgressGameView(BaseView):
             interaction, "tie", self.game_id
         )
         if self.is_game_finished:
-            await self.disable_buttons(interaction)
+            await self.disable_children(interaction)
             self.stop()
 
     @button(
