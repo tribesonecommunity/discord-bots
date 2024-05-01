@@ -25,13 +25,13 @@ class MapConfigureView(BaseView):
         self.map: Map = map
         self.interaction: Interaction = interaction
         self.embed: Embed
-    
+
     @button(label="Set Name", style=ButtonStyle.primary, row=0)
     async def setname(self, interaction: Interaction, button: Button):
         modal = MapNameModal(self)
         await interaction.response.send_modal(modal)
         return True
-    
+
     @button(label="Save", style=ButtonStyle.success, row=4)
     async def save(self, interaction: Interaction, button: Button):
         if self.map.short_name == "" or self.map.full_name == "":
@@ -40,11 +40,13 @@ class MapConfigureView(BaseView):
                     description="Map full name & short name must not be empty",
                     colour=Colour.red(),
                 ),
-                ephemeral=True
+                ephemeral=True,
             )
             return
-        
+
         await interaction.response.defer()
+        await self.disable_children(interaction)
+
         confirmation_buttons = ConfirmationView(interaction.user.id)
         confirmation_buttons.message = await interaction.followup.send(
             embed=Embed(
@@ -56,6 +58,7 @@ class MapConfigureView(BaseView):
         )
         await confirmation_buttons.wait()
         if not confirmation_buttons.value:
+            await self.enable_children(interaction)
             return False
         else:
             self.value = True
@@ -66,7 +69,7 @@ class MapConfigureView(BaseView):
     async def cancel(self, interaction: Interaction, button: Button):
         self.stop()
         return False
-    
+
 
 class MapNameModal(Modal):
     def __init__(
