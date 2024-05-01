@@ -301,7 +301,7 @@ class CategoryRatedSelect(Select):
         if self.view.embed.description:
             self.view.embed.description = (
                 self.view.embed.description
-                + f"\nIs_Rated set: **{self.view.category.is_rated}**"
+                + f"\nIs_Rated: **{self.view.category.is_rated}**"
             )
         await self.view.interaction.edit_original_response(embed=self.view.embed)
 
