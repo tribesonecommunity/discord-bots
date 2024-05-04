@@ -1177,6 +1177,7 @@ async def print_leaderboard():
                     .join(Player, Player.id == PlayerCategoryTrueskill.player_id)
                     .filter(PlayerCategoryTrueskill.player_id.in_(select(subquery)))
                     .filter(PlayerCategoryTrueskill.category_id == category.id)
+                    .filter(Player.leaderboard_enabled == True)
                     .order_by(PlayerCategoryTrueskill.rank.desc())
                     .limit(10)
                     .all()
