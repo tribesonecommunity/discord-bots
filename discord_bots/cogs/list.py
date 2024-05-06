@@ -22,7 +22,7 @@ from discord_bots.models import (
     RotationMap,
     Session,
 )
-from discord_bots.utils import buildCategoryOutput
+from discord_bots.utils import build_category_str
 
 _log = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class ListCommands(BaseCog):
                 return
 
             output = "\n".join(
-                buildCategoryOutput(category) 
+                build_category_str(category) 
                 for category 
                 in categories
             )

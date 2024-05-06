@@ -91,6 +91,7 @@ class CommonCommands(BaseCog):
     )
     @app_commands.check(is_command_channel)
     @app_commands.describe(category_name="Category to show stats for")
+    @app_commands.rename(category_name="category")
     async def stats(
         self, interaction: Interaction, category_name: Optional[str] | None
     ):
@@ -363,173 +364,175 @@ class CommonCommands(BaseCog):
             except Exception:
                 _log.exception(f"Caught exception trying to send stats message")
 
-    # @app_commands.command(name="status", description="Display queue status")
-    # @app_commands.check(is_command_channel)
-    # @app_commands.describe(queues="Space separated list of queue ordinals")
-    # async def status(self, interaction: Interaction, queues: Optional[str] | None):
-    #     assert interaction.guild
+    """
+    @app_commands.command(name="status", description="Display queue status")
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(queues="Space separated list of queue ordinals")
+    async def status(self, interaction: Interaction, queues: Optional[str] | None):
+        assert interaction.guild
 
-    #     args: List[str] = []
-    #     if queues:
-    #         for queue in queues.split(" "):
-    #             args.append(queue)
+        args: List[str] = []
+        if queues:
+            for queue in queues.split(" "):
+                args.append(queue)
 
-    #     await interaction.response.defer()
+        await interaction.response.defer()
 
-    #     session: SQLAlchemySession
-    #     with Session() as session:
-    #         queue_indices: list[int] = []
-    #         queue_names: list[str] = []
-    #         all_rotations: list[Rotation] = []  # TODO: use sets
-    #         if len(args) == 0:
-    #             all_rotations = (
-    #                 session.query(Rotation).order_by(Rotation.created_at.asc()).all()
-    #             )
-    #         else:
-    #             # get the rotation associated to the specified queue
-    #             all_rotations = []
-    #             for arg in args:
-    #                 # TODO: avoid looping so you only need one query
-    #                 try:
-    #                     queue_index = int(arg)
-    #                     arg_rotation = (
-    #                         session.query(Rotation)
-    #                         .join(Queue)
-    #                         .filter(Queue.ordinal == queue_index)
-    #                         .first()
-    #                     )
-    #                     if arg_rotation:
-    #                         queue_indices.append(queue_index)
-    #                         if arg_rotation not in all_rotations:
-    #                             all_rotations.append(arg_rotation)
-    #                 except ValueError:
-    #                     arg_rotation = (
-    #                         session.query(Rotation)
-    #                         .join(Queue)
-    #                         .filter(Queue.name.ilike(arg))
-    #                         .first()
-    #                     )
-    #                     if arg_rotation:
-    #                         queue_names.append(arg)
-    #                         if arg_rotation not in all_rotations:
-    #                             all_rotations.append(arg_rotation)
-    #                 except IndexError:
-    #                     pass
+        session: SQLAlchemySession
+        with Session() as session:
+            queue_indices: list[int] = []
+            queue_names: list[str] = []
+            all_rotations: list[Rotation] = []  # TODO: use sets
+            if len(args) == 0:
+                all_rotations = (
+                    session.query(Rotation).order_by(Rotation.created_at.asc()).all()
+                )
+            else:
+                # get the rotation associated to the specified queue
+                all_rotations = []
+                for arg in args:
+                    # TODO: avoid looping so you only need one query
+                    try:
+                        queue_index = int(arg)
+                        arg_rotation = (
+                            session.query(Rotation)
+                            .join(Queue)
+                            .filter(Queue.ordinal == queue_index)
+                            .first()
+                        )
+                        if arg_rotation:
+                            queue_indices.append(queue_index)
+                            if arg_rotation not in all_rotations:
+                                all_rotations.append(arg_rotation)
+                    except ValueError:
+                        arg_rotation = (
+                            session.query(Rotation)
+                            .join(Queue)
+                            .filter(Queue.name.ilike(arg))
+                            .first()
+                        )
+                        if arg_rotation:
+                            queue_names.append(arg)
+                            if arg_rotation not in all_rotations:
+                                all_rotations.append(arg_rotation)
+                    except IndexError:
+                        pass
 
-    #         if not all_rotations:
-    #             await interaction.followup.send(
-    #                 embed=Embed(
-    #                     description="No Rotations",
-    #                     colour=Colour.blue(),
-    #                 ),
-    #                 ephemeral=True,
-    #             )
-    #             # await interaction.channel.send("No Rotations")
-    #             return
+            if not all_rotations:
+                await interaction.followup.send(
+                    embed=Embed(
+                        description="No Rotations",
+                        colour=Colour.blue(),
+                    ),
+                    ephemeral=True,
+                )
+                # await interaction.channel.send("No Rotations")
+                return
 
-    #         embed = Embed(title="Queues", color=Colour.blue())
-    #         ipg_embeds: list[Embed] = []
-    #         rotation_queues: list[Queue] | None
-    #         for rotation in all_rotations:
-    #             conditions = [Queue.rotation_id == rotation.id]
-    #             if queue_indices:
-    #                 conditions.append(Queue.ordinal.in_(queue_indices))
-    #             if queue_names:
-    #                 conditions.append(Queue.name.in_(queue_names))
-    #             rotation_queues = (
-    #                 session.query(Queue)
-    #                 .filter(*conditions)
-    #                 .order_by(Queue.ordinal.asc())
-    #                 .all()
-    #             )
-    #             if not rotation_queues:
-    #                 continue
+            embed = Embed(title="Queues", color=Colour.blue())
+            ipg_embeds: list[Embed] = []
+            rotation_queues: list[Queue] | None
+            for rotation in all_rotations:
+                conditions = [Queue.rotation_id == rotation.id]
+                if queue_indices:
+                    conditions.append(Queue.ordinal.in_(queue_indices))
+                if queue_names:
+                    conditions.append(Queue.name.in_(queue_names))
+                rotation_queues = (
+                    session.query(Queue)
+                    .filter(*conditions)
+                    .order_by(Queue.ordinal.asc())
+                    .all()
+                )
+                if not rotation_queues:
+                    continue
 
-    #             games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
-    #             for game in session.query(InProgressGame).filter(
-    #                 InProgressGame.is_finished == False
-    #             ):
-    #                 if game.queue_id:
-    #                     games_by_queue[game.queue_id].append(game)
+                games_by_queue: dict[str, list[InProgressGame]] = defaultdict(list)
+                for game in session.query(InProgressGame).filter(
+                    InProgressGame.is_finished == False
+                ):
+                    if game.queue_id:
+                        games_by_queue[game.queue_id].append(game)
 
-    #             next_rotation_map: RotationMap | None = (
-    #                 session.query(RotationMap)
-    #                 .filter(RotationMap.rotation_id == rotation.id)
-    #                 .filter(RotationMap.is_next == True)
-    #                 .first()
-    #             )
-    #             if not next_rotation_map:
-    #                 continue
-    #             next_map: Map | None = (
-    #                 session.query(Map)
-    #                 .join(RotationMap, RotationMap.map_id == Map.id)
-    #                 .filter(next_rotation_map.map_id == Map.id)
-    #                 .first()
-    #             )
-    #             next_map_str = f"{next_map.full_name} ({next_map.short_name})"
-    #             if ENABLE_RAFFLE:
-    #                 has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
-    #                 raffle_reward = (
-    #                     next_rotation_map.raffle_ticket_reward
-    #                     if has_raffle_reward
-    #                     else DEFAULT_RAFFLE_VALUE
-    #                 )
-    #                 next_map_str += f" ({raffle_reward} tickets)"
-    #             embed.add_field(
-    #                 name=f"",
-    #                 # value="─"*10,
-    #                 value=f"```asciidoc\n* {rotation.name}```",
-    #                 inline=False,
-    #             )
-    #             embed.add_field(
-    #                 name=f"🗺️ Next Map",
-    #                 value=next_map_str,
-    #                 inline=False,
-    #             )
+                next_rotation_map: RotationMap | None = (
+                    session.query(RotationMap)
+                    .filter(RotationMap.rotation_id == rotation.id)
+                    .filter(RotationMap.is_next == True)
+                    .first()
+                )
+                if not next_rotation_map:
+                    continue
+                next_map: Map | None = (
+                    session.query(Map)
+                    .join(RotationMap, RotationMap.map_id == Map.id)
+                    .filter(next_rotation_map.map_id == Map.id)
+                    .first()
+                )
+                next_map_str = f"{next_map.full_name} ({next_map.short_name})"
+                if ENABLE_RAFFLE:
+                    has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
+                    raffle_reward = (
+                        next_rotation_map.raffle_ticket_reward
+                        if has_raffle_reward
+                        else DEFAULT_RAFFLE_VALUE
+                    )
+                    next_map_str += f" ({raffle_reward} tickets)"
+                embed.add_field(
+                    name=f"",
+                    # value="─"*10,
+                    value=f"```asciidoc\n* {rotation.name}```",
+                    inline=False,
+                )
+                embed.add_field(
+                    name=f"🗺️ Next Map",
+                    value=next_map_str,
+                    inline=False,
+                )
 
-    #             rotation_queues_len = len(rotation_queues)
-    #             for i, queue in enumerate(rotation_queues):
-    #                 if queue.is_locked:
-    #                     continue
-    #                 players_in_queue: list[Player] = (
-    #                     session.query(Player)
-    #                     .join(QueuePlayer)
-    #                     .filter(QueuePlayer.queue_id == queue.id)
-    #                     .all()
-    #                 )
-    #                 queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
-    #                 player_display_names: list[str] = (
-    #                     [player.name for player in players_in_queue]
-    #                     if players_in_queue
-    #                     else []
-    #                 )
-    #                 newline = "\n"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
-    #                 embed.add_field(
-    #                     name=queue_title_str,
-    #                     value=(
-    #                         "> \n** **"  # weird hack to create an empty quote
-    #                         if not player_display_names
-    #                         else f">>> {newline.join(player_display_names)}"
-    #                     ),
-    #                     inline=True,
-    #                 )
-    #                 if i == rotation_queues_len - 1 and i >= 5 and i % 3 == 2:
-    #                     # embeds are allowed 3 "columns" per "row"
-    #                     # to line everything up nicely when there's >= 5 queues and only one "column" slot left, we add a blank
-    #                     embed.add_field(name="", value="", inline=True)
-    #                 if queue.id in games_by_queue:
-    #                     game: InProgressGame
-    #                     for game in games_by_queue[queue.id]:
-    #                         ipg_embed = await create_in_progress_game_embed(
-    #                             session, game, interaction.guild
-    #                         )
-    #                         ipg_embeds.append(ipg_embed)
-    #         await interaction.followup.send(
-    #             embeds=[embed] + ipg_embeds,
-    #         )
-    #         # await interaction.channel.send(
-    #         #     embeds=[embed] + ipg_embeds,
-    #         # )
+                rotation_queues_len = len(rotation_queues)
+                for i, queue in enumerate(rotation_queues):
+                    if queue.is_locked:
+                        continue
+                    players_in_queue: list[Player] = (
+                        session.query(Player)
+                        .join(QueuePlayer)
+                        .filter(QueuePlayer.queue_id == queue.id)
+                        .all()
+                    )
+                    queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
+                    player_display_names: list[str] = (
+                        [player.name for player in players_in_queue]
+                        if players_in_queue
+                        else []
+                    )
+                    newline = "\n"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
+                    embed.add_field(
+                        name=queue_title_str,
+                        value=(
+                            "> \n** **"  # weird hack to create an empty quote
+                            if not player_display_names
+                            else f">>> {newline.join(player_display_names)}"
+                        ),
+                        inline=True,
+                    )
+                    if i == rotation_queues_len - 1 and i >= 5 and i % 3 == 2:
+                        # embeds are allowed 3 "columns" per "row"
+                        # to line everything up nicely when there's >= 5 queues and only one "column" slot left, we add a blank
+                        embed.add_field(name="", value="", inline=True)
+                    if queue.id in games_by_queue:
+                        game: InProgressGame
+                        for game in games_by_queue[queue.id]:
+                            ipg_embed = await create_in_progress_game_embed(
+                                session, game, interaction.guild
+                            )
+                            ipg_embeds.append(ipg_embed)
+            await interaction.followup.send(
+                embeds=[embed] + ipg_embeds,
+            )
+            # await interaction.channel.send(
+            #     embeds=[embed] + ipg_embeds,
+            # )
+    """
 
     @stats.autocomplete("category_name")
     async def category_autocomplete_with_user_id(

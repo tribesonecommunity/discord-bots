@@ -8,7 +8,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Category, PlayerCategoryTrueskill, Queue, Session
-from discord_bots.utils import default_sigma_decay_amount, buildCategoryOutput
+from discord_bots.utils import default_sigma_decay_amount, build_category_str
 
 _log = logging.getLogger(__name__)
 
@@ -18,36 +18,6 @@ class CategoryCommands(BaseCog):
         super().__init__(bot)
 
     group = app_commands.Group(name="category", description="Category commands")
-    
-    @group.command(name="clearqueue", description="Remove category from queue")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
-    @app_commands.describe(queue_name="Name of existing queue")
-    async def clearqueuecategory(self, interaction: Interaction, queue_name: str):
-        session: SQLAlchemySession
-        with Session() as session:
-            try:
-                queue: Queue = (
-                    session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
-                )
-            except NoResultFound:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find queue **{queue_name}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-            else:
-                queue.category_id = None
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue **{queue.name}** category cleared",
-                        colour=Colour.green(),
-                    ),
-                    ephemeral=True,
-                )
 
     @group.command(name="create", description="Create a new category")
     @app_commands.check(is_admin_app_command)
@@ -70,6 +40,7 @@ class CategoryCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(name="Category to be removed")
+    @app_commands.rename(name="category")
     async def removecategory(self, interaction: Interaction, name: str):
         session: SQLAlchemySession
         with Session() as session:
@@ -104,6 +75,7 @@ class CategoryCommands(BaseCog):
     @app_commands.describe(
         old_category_name="Existing category", new_category_name="New category name"
     )
+    @app_commands.rename(old_category_name="category")
     async def setcategoryname(
         self, interaction: Interaction, old_category_name: str, new_category_name: str
     ):
@@ -116,6 +88,7 @@ class CategoryCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(category_name="Existing category")
+    @app_commands.rename(category_name="category")
     async def setcategoryrated(self, interaction: Interaction, category_name: str):
         session: SQLAlchemySession
         with Session() as session:
@@ -148,6 +121,7 @@ class CategoryCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(category_name="Existing category")
+    @app_commands.rename(category_name="category")
     async def setcategorysigmadecay(
         self,
         interaction: Interaction,
@@ -194,6 +168,7 @@ class CategoryCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(category_name="Existing category")
+    @app_commands.rename(category_name="category")
     async def setcategoryunrated(self, interaction: Interaction, category_name: str):
         session: SQLAlchemySession
         with Session() as session:
@@ -232,6 +207,7 @@ class CategoryCommands(BaseCog):
         category_name="Existing category",
         min_num_games="Games required to show on the leaderboard",
     )
+    @app_commands.rename(category_name="category")
     async def setmingamesforleaderboard(
         self,
         interaction: Interaction,
@@ -274,6 +250,7 @@ class CategoryCommands(BaseCog):
     @group.command(name="show", description="Show category details")
     @app_commands.check(is_command_channel)
     @app_commands.describe(category_name="Existing category")
+    @app_commands.rename(category_name="category")
     async def showcategory(self, interaction: Interaction, category_name: str):
         session: SQLAlchemySession
         with Session() as session:
@@ -293,7 +270,7 @@ class CategoryCommands(BaseCog):
 
         await interaction.response.send_message(
             embed=Embed(
-                description=buildCategoryOutput(category),
+                description=build_category_str(category),
                 colour=Colour.blue(),
             )
         )
@@ -317,21 +294,5 @@ class CategoryCommands(BaseCog):
                     if current in category.name:
                         result.append(
                             app_commands.Choice(name=category.name, value=category.name)
-                        )
-        return result
-
-    @clearqueuecategory.autocomplete("queue_name")
-    async def queue_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            queues: list[Queue] | None = (
-                session.query(Queue).order_by(Queue.name).limit(25).all()
-            )
-            if queues:
-                for queue in queues:
-                    if current in queue.name:
-                        result.append(
-                            app_commands.Choice(name=queue.name, value=queue.name)
                         )
         return result

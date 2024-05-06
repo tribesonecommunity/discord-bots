@@ -89,6 +89,36 @@ class QueueCommands(BaseCog):
                     )
                 )
 
+    @group.command(name="clearcategory", description="Remove category from queue")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(queue_name="Name of existing queue")
+    async def clearqueuecategory(self, interaction: Interaction, queue_name: str):
+        session: SQLAlchemySession
+        with Session() as session:
+            try:
+                queue: Queue = (
+                    session.query(Queue).filter(Queue.name.ilike(queue_name)).one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find queue **{queue_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                queue.category_id = None
+                session.commit()
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Queue **{queue.name}** category cleared",
+                        colour=Colour.green(),
+                    ),
+                    ephemeral=True,
+                )
+
     @group.command(name="clear", description="Clear all players out of a queue")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
@@ -1010,6 +1040,7 @@ class QueueCommands(BaseCog):
         return result
 
     @addqueuerole.autocomplete("queue_name")
+    @clearqueuecategory.autocomplete("queue_name")
     @clearqueue.autocomplete("queue_name")
     @clearqueuerange.autocomplete("queue_name")
     @isolatequeue.autocomplete("queue_name")

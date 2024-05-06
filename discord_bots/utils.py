@@ -65,7 +65,7 @@ SIGMA_LOWER_UNICODE = "\u03C3"
 DELTA_UPPER_UNICODE = "\u03B4"
 
 
-def buildCategoryOutput(category: Category) -> str:
+def build_category_str(category: Category) -> str:
     output = ""
     output += f"**{category.name}**\n"
     output += f"- _Rated: {category.is_rated}_\n"
@@ -1481,7 +1481,7 @@ def win_rate(wins, losses, ties):
     denominator = max(wins + losses + ties, 1)
     return round(
         100 * (wins + 0.5 * ties) / denominator, 1
-    )  # why are ties counted as half a win?
+    )
 
 def default_sigma_decay_amount() -> float:
     """

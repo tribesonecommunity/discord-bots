@@ -234,109 +234,108 @@ class MapCommands(BaseCog):
             )
 
     # broken commands
-
+    """
     # TODO: update to !map <queue_name>
 
-    # @command(name="map")
-    # async def map_(ctx: Context):
-    #     # TODO: This is duplicated
-    #     session = ctx.session
-    #     output = ""
-    #     current_map: CurrentMap | None = session.query(CurrentMap).first()
-    #     if current_map:
-    #         rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
-    #         next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
-    #             rotation_maps
-    #         )
-    #         next_map = rotation_maps[next_rotation_map_index]
+    @command(name="map")
+    async def map_(ctx: Context):
+        # TODO: This is duplicated
+        session = ctx.session
+        output = ""
+        current_map: CurrentMap | None = session.query(CurrentMap).first()
+        if current_map:
+            rotation_maps: list[RotationMap] = session.query(RotationMap).order_by(RotationMap.created_at.asc()).all()  # type: ignore
+            next_rotation_map_index = (current_map.map_rotation_index + 1) % len(
+                rotation_maps
+            )
+            next_map = rotation_maps[next_rotation_map_index]
 
-    #         time_since_update: timedelta = datetime.now(
-    #             timezone.utc
-    #         ) - current_map.updated_at.replace(tzinfo=timezone.utc)
-    #         time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
-    #         if current_map.map_rotation_index == 0:
-    #             output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
-    #         else:
-    #             output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
-    #     skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
-    #     output += (
-    #         f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
-    #     )
+            time_since_update: timedelta = datetime.now(
+                timezone.utc
+            ) - current_map.updated_at.replace(tzinfo=timezone.utc)
+            time_until_rotation = MAP_ROTATION_MINUTES - (time_since_update.seconds // 60)
+            if current_map.map_rotation_index == 0:
+                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next: {next_map.full_name} ({next_map.short_name})_\n"
+            else:
+                output += f"**Next map: {current_map.full_name} ({current_map.short_name})**\n_Map after next (auto-rotates in {time_until_rotation} minutes): {next_map.full_name} ({next_map.short_name})_\n"
+        skip_map_votes: list[SkipMapVote] = session.query(SkipMapVote).all()
+        output += (
+            f"_Votes to skip (voteskip): [{len(skip_map_votes)}/{MAP_VOTE_THRESHOLD}]_\n"
+        )
 
-    #     # TODO: This is duplicated
-    #     map_votes: list[MapVote] = session.query(MapVote).all()
-    #     voted_map_ids: list[str] = [map_vote.map_id for map_vote in map_votes]
-    #     voted_maps: list[Map] = (
-    #         session.query(Map).filter(Map.id.in_(voted_map_ids)).all()  # type: ignore
-    #     )
-    #     voted_maps_str = ", ".join(
-    #         [
-    #             f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
-    #             for voted_map in voted_maps
-    #         ]
-    #     )
-    #     output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
-    #     session.close()
-    #     await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
+        # TODO: This is duplicated
+        map_votes: list[MapVote] = session.query(MapVote).all()
+        voted_map_ids: list[str] = [map_vote.map_id for map_vote in map_votes]
+        voted_maps: list[Map] = (
+            session.query(Map).filter(Map.id.in_(voted_map_ids)).all()  # type: ignore
+        )
+        voted_maps_str = ", ".join(
+            [
+                f"{voted_map.short_name} [{voted_map_ids.count(voted_map.id)}/{MAP_VOTE_THRESHOLD}]"
+                for voted_map in voted_maps
+            ]
+        )
+        output += f"_Votes to change map (votemap): {voted_maps_str}_\n\n"
+        session.close()
+        await ctx.send(embed=Embed(description=output, colour=Colour.blue()))
 
-    # TODO: decide where the random map comes from
+    TODO: decide where the random map comes from
 
-    # @bot.command()
-    # async def randommap(ctx: Context):
-    #     session = ctx.session
-    #     maps: list[Map] = session.query(Map).all()
-    #     map = choice(maps)
-    #     await send_message(
-    #         ctx.message.channel,
-    #         embed_description=f"Random map selected: **{map.full_name} ({map.short_name})**",
-    #         colour=Colour.blue(),
-    #     )
+    @bot.command()
+    async def randommap(ctx: Context):
+        session = ctx.session
+        maps: list[Map] = session.query(Map).all()
+        map = choice(maps)
+        await send_message(
+            ctx.message.channel,
+            embed_description=f"Random map selected: **{map.full_name} ({map.short_name})**",
+            colour=Colour.blue(),
+        )
 
-    # TODO: change to !setrandommap <map_short_name> <rotation> <random_probability>
-    # random_probability stored in rotation_map
+    TODO: change to !setrandommap <map_short_name> <rotation> <random_probability>
+    random_probability stored in rotation_map
 
-    # @bot.command(usage="<map_full_name> <map_short_name> <random_probability>")
-    # @commands.check(is_admin)
-    # async def addrandomrotationmap(
-    #     ctx: Context, map_full_name: str, map_short_name: str, random_probability: float
-    # ):
-    #     """
-    #     Adds a special map to the rotation that is random each time it comes up
-    #     """
-    #     message = ctx.message
-    #     if random_probability < 0 or random_probability > 1:
-    #         await send_message(
-    #             message.channel,
-    #             embed_description=f"Random map probability must be between 0 and 1!",
-    #             colour=Colour.red(),
-    #         )
-    #         return
+    @bot.command(usage="<map_full_name> <map_short_name> <random_probability>")
+    @commands.check(is_admin)
+    async def addrandomrotationmap(
+        ctx: Context, map_full_name: str, map_short_name: str, random_probability: float
+    ):
+        # Adds a special map to the rotation that is random each time it comes up
+        message = ctx.message
+        if random_probability < 0 or random_probability > 1:
+            await send_message(
+                message.channel,
+                embed_description=f"Random map probability must be between 0 and 1!",
+                colour=Colour.red(),
+            )
+            return
 
-    #     session = ctx.session
-    #     session.add(
-    #         RotationMap(
-    #             f"{map_full_name} (R)",
-    #             f"{map_short_name}R",
-    #             is_random=True,
-    #             random_probability=random_probability,
-    #         )
-    #     )
-    #     try:
-    #         session.commit()
-    #     except IntegrityError:
-    #         session.rollback()
-    #         await send_message(
-    #             message.channel,
-    #             embed_description=f"Error adding random map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
-    #             colour=Colour.red(),
-    #         )
-    #         return
+        session = ctx.session
+        session.add(
+            RotationMap(
+                f"{map_full_name} (R)",
+                f"{map_short_name}R",
+                is_random=True,
+                random_probability=random_probability,
+            )
+        )
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            await send_message(
+                message.channel,
+                embed_description=f"Error adding random map {map_full_name} ({map_short_name}) to rotation. Does it already exist?",
+                colour=Colour.red(),
+            )
+            return
 
-    #     await send_message(
-    #         message.channel,
-    #         embed_description=f"{map_full_name} (R) ({map_short_name}R) added to map rotation",
-    #         colour=Colour.green(),
-    #     )
+        await send_message(
+            message.channel,
+            embed_description=f"{map_full_name} (R) ({map_short_name}R) added to map rotation",
+            colour=Colour.green(),
+        )
+    """
 
     @group.command(name="remove", description="Remove a map from the map pool")
     @app_commands.check(is_admin_app_command)

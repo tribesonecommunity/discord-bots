@@ -11,7 +11,7 @@ from discord_bots.models import Queue, QueueNotification, Session
 _log = logging.getLogger(__name__)
 
 
-class ListCommands(BaseCog):
+class NotificationCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 

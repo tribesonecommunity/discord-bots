@@ -404,11 +404,11 @@ class InProgressGameCommands(commands.Cog):
                 await confirmation_buttons.wait()
                 if not confirmation_buttons.value:
                     return False
-                is_finished = await self.finish_in_progress_game(
+                is_game_finished = await self.finish_in_progress_game(
                     session, interaction, outcome, game_player, game
                 )
                 session.commit()
-                return is_finished
+                return is_game_finished
 
     async def finish_in_progress_game(
         self,
@@ -665,7 +665,7 @@ class InProgressGameCommands(commands.Cog):
             game_history_channel: GuildChannel | None = interaction.guild.get_channel(
                 config.GAME_HISTORY_CHANNEL
             )
-            if game_history_channel and isinstance(game_history_channel, TextChannel):
+            if isinstance(game_history_channel, TextChannel):
                 game_history_message = await game_history_channel.send(
                     embed=finished_game_embed
                 )
