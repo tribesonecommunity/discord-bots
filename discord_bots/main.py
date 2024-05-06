@@ -9,14 +9,20 @@ from discord.app_commands import AppCommandError, errors
 from discord.ext.commands import CommandError, Context, UserInputError
 
 import discord_bots.config as config
-from discord_bots.cogs.categories import CategoryCommands
+from discord_bots.cogs.admin import AdminCommands
+from discord_bots.cogs.category import CategoryCommands
+from discord_bots.cogs.common import CommonCommands
 from discord_bots.cogs.economy import EconomyCommands
-from discord_bots.cogs.in_progress_game import InProgressGameCog
+from discord_bots.cogs.in_progress_game import InProgressGameCommands
+from discord_bots.cogs.list import ListCommands
 from discord_bots.cogs.map import MapCommands
+from discord_bots.cogs.player import PlayerCommands
 from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
+from discord_bots.cogs.random import RandomCommands
 from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.schedule import ScheduleCommands, ScheduleUtils
+from discord_bots.cogs.trueskill import TrueskillCommands
 from discord_bots.cogs.vote import VoteCommands
 
 from .bot import bot
@@ -77,6 +83,16 @@ async def on_app_command_error(
     interaction: Interaction, error: AppCommandError
 ) -> None:
     # TODO: provide more context about the error to the user
+    if isinstance(error, errors.CheckFailure):
+        return
+    else:
+        if interaction.command:
+            _log.exception(
+                f"[on_app_command_error]: {error}, command: {interaction.command.name}"
+            )
+        else:
+            _log.exception(f"[on_app_command_error]: {error}")
+
     if interaction.response.is_done():
         await interaction.followup.send(
             embed=Embed(description="Oops! Something went wrong ☹️", color=Colour.red())
@@ -89,16 +105,6 @@ async def on_app_command_error(
             ),
             ephemeral=True,
         )
-
-    if isinstance(error, errors.CheckFailure):
-        return
-    else:
-        if interaction.command:
-            _log.exception(
-                f"[on_app_command_error]: {error}, command: {interaction.command.name}"
-            )
-        else:
-            _log.exception(f"[on_app_command_error]: {error}")
 
 
 @bot.event
@@ -253,15 +259,21 @@ async def after_invoke(context: Context):
 
 
 async def setup():
+    await bot.add_cog(AdminCommands(bot))
     await bot.add_cog(CategoryCommands(bot))
-    await bot.add_cog(RaffleCommands(bot))
-    await bot.add_cog(RotationCommands(bot))
-    await bot.add_cog(MapCommands(bot))
-    await bot.add_cog(QueueCommands(bot))
-    await bot.add_cog(VoteCommands(bot))
+    await bot.add_cog(CommonCommands(bot))
     await bot.add_cog(EconomyCommands(bot))
-    await bot.add_cog(InProgressGameCog(bot))
+    await bot.add_cog(InProgressGameCommands(bot))
+    await bot.add_cog(ListCommands(bot))
+    await bot.add_cog(MapCommands(bot))
+    await bot.add_cog(PlayerCommands(bot))
+    await bot.add_cog(QueueCommands(bot))
+    await bot.add_cog(RaffleCommands(bot))
+    await bot.add_cog(RandomCommands(bot))
+    await bot.add_cog(RotationCommands(bot))
     await bot.add_cog(ScheduleCommands(bot))
+    await bot.add_cog(TrueskillCommands(bot))
+    await bot.add_cog(VoteCommands(bot))
     add_player_task.start()
     afk_timer_task.start()
     leaderboard_task.start()

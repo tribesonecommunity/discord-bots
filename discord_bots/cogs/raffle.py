@@ -1,16 +1,21 @@
-from random import choice
-
-import sqlalchemy
-from discord import Colour
-from discord.ext.commands import Bot, Context, check, command
-from discord.member import Member
+import logging
 from emoji import emojize
-from sqlalchemy.sql import functions
 
-from discord_bots.checks import is_admin
+from sqlalchemy.sql import functions
+from sqlalchemy.orm.session import Session as SQLAlchemySession
+
+from discord import (
+    app_commands,
+    Colour,
+    Embed,
+    Interaction,
+    Member,
+)
+from discord.ext.commands import Bot
+
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Map, Player, Rotation, RotationMap, Session
-from discord_bots.utils import send_message
 
 strings = [
     "Don't give up!",
@@ -63,40 +68,57 @@ strings = [
     "You're the best!",
 ]
 
+_log = logging.getLogger(__name__)
+
 
 class RaffleCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    @command()
-    async def myraffle(self, ctx, *, member: Member = None):
+    group = app_commands.Group(name="raffle", description="Raffle commands")
+
+    @group.command(
+        name="showtickets", description="Displays how many raffle tickets you have"
+    )
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(member="Discord member")
+    async def myraffle(self, interaction: Interaction, *, member: Member | None = None):
         """
         Displays how many raffle tickets you have
         """
-        member = member or ctx.author
-        session: sqlalchemy.orm.Session
+        member = member or interaction.user
+        session: SQLAlchemySession
         with Session() as session:
             player = session.query(Player).filter(Player.id == member.id).first()
             if not player:
-                await send_message(
-                    ctx.message.channel,
-                    embed_description=f"ERROR: Could not find player!",
-                    colour=Colour.red(),
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"ERROR: Could not find player!",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
                 )
                 return
-            await send_message(
-                ctx.message.channel,
-                embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')}",
-                # embed_description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')} \n\n_{choice(strings)}_",
-                colour=Colour.blue(),
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"{emojize(':partying_face:')} You have **{player.raffle_tickets}** raffle tickets!  {emojize(':party_popper:')}",
+                    colour=Colour.blue(),
+                )
             )
 
-    @command()
-    async def rafflestatus(self, ctx, *, member: Member = None):
+    @group.command(
+        name="status",
+        description="Displays raffle ticket information and raffle leaderboard",
+    )
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(member="Discord member")
+    async def rafflestatus(
+        self, interaction: Interaction, *, member: Member | None = None
+    ):
         """
         Displays raffle ticket information and raffle leaderboard
         """
-        session: sqlalchemy.orm.Session
+        session: SQLAlchemySession
         with Session() as session:
             total_tickets = session.query(functions.sum(Player.raffle_tickets)).scalar()
             total_players = (
@@ -118,59 +140,128 @@ class RaffleCommands(BaseCog):
             message.append(f"**Leaderboard:**")
             for player in top_15_players:
                 message.append(f"_{player.name}:_ {player.raffle_tickets}")
-            await send_message(
-                ctx.message.channel,
-                embed_description="\n".join(message),
-                colour=Colour.blue(),
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="\n".join(message),
+                    colour=Colour.blue(),
+                )
             )
 
-    @command()
-    @check(is_admin)
+    @group.command(
+        name="setrotationmapreward",
+        description="Set the raffle ticket reward for a map in a rotation",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(
+        rotation_name="Existing rotation",
+        map_short_name="Existing map",
+        raffle_ticket_reward="Raffle award",
+    )
     async def setrotationmapraffle(
-        self, ctx, rotation_name: str, map_short_name: str, raffle_ticket_reward: int
+        self,
+        interaction: Interaction,
+        rotation_name: str,
+        map_short_name: str,
+        raffle_ticket_reward: int,
     ):
         """
         Set the raffle ticket reward for a map in a rotation
         """
         if raffle_ticket_reward < 0:
-            await self.send_error_message("Raffle ticket reward must be positive")
-            return
-
-        session = ctx.session
-
-        rotation_map: RotationMap | None = (
-            session.query(RotationMap)
-            .join(Map, Map.id == RotationMap.map_id)
-            .join(Rotation, Rotation.id == RotationMap.rotation_id)
-            .filter(Map.short_name.ilike(map_short_name))
-            .filter(Rotation.name.ilike(rotation_name))
-            .first()  # type: ignore
-        )
-        if not rotation_map:
-            await self.send_error_message(
-                f"Could not find map **{map_short_name}** in rotation **{rotation_name}**"
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Raffle ticket reward must be positive",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
             )
             return
 
-        rotation_map.raffle_ticket_reward = raffle_ticket_reward
-        session.commit()
+        session: SQLAlchemySession
+        with Session() as session:
+            rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .join(Map, Map.id == RotationMap.map_id)
+                .join(Rotation, Rotation.id == RotationMap.rotation_id)
+                .filter(Map.short_name.ilike(map_short_name))
+                .filter(Rotation.name.ilike(rotation_name))
+                .first()  # type: ignore
+            )
+            if not rotation_map:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map **{map_short_name}** in rotation **{rotation_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
 
-        await self.send_info_message(
-            f"Raffle tickets for **{map_short_name}** in **{rotation_name}** set to **{raffle_ticket_reward}**"
-        )
+            rotation_map.raffle_ticket_reward = raffle_ticket_reward
+            session.commit()
 
-    @command()
-    @check(is_admin)
-    async def createraffle(self, ctx, *, member: Member = None):
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Raffle tickets for **{map_short_name}** in **{rotation_name}** set to **{raffle_ticket_reward}**",
+                    colour=Colour.blue(),
+                )
+            )
+
+    @group.command(name="create", description="TODO: Implementation")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(member="Discord member")
+    async def createraffle(
+        self, interaction: Interaction, *, member: Member | None = None
+    ):
         """
         TODO: Implementation
         """
         pass
 
-    @command()
-    @check(is_admin)
-    async def runraffle(self, ctx, *, member: Member = None):
+    @group.command(name="run", description="TODO: Implementation")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(member="Discord member")
+    async def runraffle(
+        self, interaction: Interaction, *, member: Member | None = None
+    ):
         """
         TODO: Implementation
         """
         pass
+
+    @setrotationmapraffle.autocomplete("map_short_name")
+    async def map_autocomplete(self, interaction: Interaction, current: str):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            maps: list[Map] | None = (
+                session.query(Map).order_by(Map.full_name).limit(25).all()
+            )
+            if maps:
+                for map in maps:
+                    if current in map.short_name:
+                        result.append(
+                            app_commands.Choice(
+                                name=map.full_name, value=map.short_name
+                            )
+                        )
+        return result
+
+    @setrotationmapraffle.autocomplete("rotation_name")
+    async def rotation_autocomplete(self, interaction: Interaction, current: str):
+        result = []
+        session: SQLAlchemySession
+        with Session() as session:
+            rotations: list[Rotation] | None = (
+                session.query(Rotation).order_by(Rotation.name).limit(25).all()
+            )
+            if rotations:
+                for rotation in rotations:
+                    if current in rotation.name:
+                        result.append(
+                            app_commands.Choice(name=rotation.name, value=rotation.name)
+                        )
+        return result

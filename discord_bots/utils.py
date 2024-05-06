@@ -6,6 +6,8 @@ import math
 import os
 import statistics
 from datetime import datetime, timedelta, timezone
+from heapq import heappush, heappop
+from itertools import combinations
 from typing import Optional
 
 import discord
@@ -26,6 +28,7 @@ from discord import (
 )
 from discord.ext.commands.context import Context
 from discord.member import Member
+from discord.utils import escape_markdown
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -60,6 +63,460 @@ _log = logging.getLogger(__name__)
 MU_LOWER_UNICODE = "\u03BC"
 SIGMA_LOWER_UNICODE = "\u03C3"
 DELTA_UPPER_UNICODE = "\u03B4"
+
+
+def build_category_str(category: Category) -> str:
+    output = ""
+    output += f"**{category.name}**\n"
+    output += f"- _Rated: {category.is_rated}_\n"
+    output += "- _Sigma decay settings:_\n"
+    output += f" - _Decay amount: {category.sigma_decay_amount}_\n"
+    output += f" - _Grace days: {category.sigma_decay_grace_days}_\n"
+    output += f" - _Max decay proportion: {category.sigma_decay_max_decay_proportion}_\n"
+    output += f"- _Minimum games for leaderboard: {category.min_games_for_leaderboard}_\n"
+    session: SQLAlchemySession
+    with Session() as session:
+        queue_names = [
+            x[0]
+            for x in (
+                session.query(Queue.name)
+                .filter(Queue.category_id == category.id)
+                .order_by(Queue.ordinal.asc())
+                .all()
+            )
+        ]
+        if not queue_names:
+            output += f"- _Queues: None_\n\n"
+        else:
+            output += f"- _Queues: {', '.join(queue_names)}_\n\n"
+        return output
+
+
+def get_n_best_finished_game_teams(
+    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+) -> list[tuple[list[FinishedGamePlayer], float]]:
+    return get_n_finished_game_teams(fgps, team_size, is_rated, n, 1)
+
+
+def get_n_worst_finished_game_teams(
+    fgps: list[FinishedGamePlayer], team_size: int, is_rated: bool, n: int
+) -> list[tuple[list[FinishedGamePlayer], float]]:
+    return get_n_finished_game_teams(fgps, team_size, is_rated, n, -1)
+
+
+# Return n of the most even or least even teams
+# For best teams, use direction = 1, for worst teams use direction = -1
+def get_n_finished_game_teams(
+    fgps: list[FinishedGamePlayer],
+    team_size: int,
+    is_rated: bool,
+    n: int,
+    direction: int = 1,
+) -> list[tuple[list[FinishedGamePlayer], float]]:
+    teams: list[tuple[float, list[FinishedGamePlayer]]] = []
+
+    all_combinations = list(combinations(fgps, team_size))
+    for team0 in all_combinations:
+        team1 = [p for p in fgps if p not in team0]
+        team0_ratings = list(
+            map(
+                lambda x: Rating(
+                    x.rated_trueskill_mu_before, x.rated_trueskill_sigma_before
+                ),
+                team0,
+            )
+        )
+        team1_ratings = list(
+            map(
+                lambda x: Rating(
+                    x.rated_trueskill_mu_before, x.rated_trueskill_sigma_before
+                ),
+                team1,
+            )
+        )
+        win_prob = win_probability(team0_ratings, team1_ratings)
+        current_team_evenness = abs(0.50 - win_prob)
+        heappush(
+            teams, (direction * current_team_evenness, list(team0[:]) + list(team1[:]))
+        )
+
+    teams_out = []
+    for _ in range(n):
+        teams_out.append(heappop(teams))
+
+    return teams_out
+
+
+def get_n_best_teams(
+    players: list[Player], team_size: int, is_rated: bool, n: int
+) -> list[tuple[list[Player], float]]:
+    return get_n_teams(players, team_size, is_rated, n, 1)
+
+
+def get_n_worst_teams(
+    players: list[Player], team_size: int, is_rated: bool, n: int
+) -> list[tuple[list[Player], float]]:
+    return get_n_teams(players, team_size, is_rated, n, -1)
+
+
+# Return n of the most even or least even teams
+# For best teams, use direction = 1, for worst teams use direction = -1
+def get_n_teams(
+    players: list[Player],
+    team_size: int,
+    is_rated: bool,
+    n: int,
+    direction: int = 1,
+) -> list[tuple[list[Player], float]]:
+    teams: list[tuple[float, list[Player]]] = []
+
+    all_combinations = list(combinations(players, team_size))
+    for team0 in all_combinations:
+        team1 = [p for p in players if p not in team0]
+        team0_ratings = list(
+            map(
+                lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+                team0,
+            )
+        )
+        team1_ratings = list(
+            map(
+                lambda x: Rating(x.rated_trueskill_mu, x.rated_trueskill_sigma),
+                team1,
+            )
+        )
+        win_prob = win_probability(team0_ratings, team1_ratings)
+        current_team_evenness = abs(0.50 - win_prob)
+        heappush(
+            teams, (direction * current_team_evenness, list(team0[:]) + list(team1[:]))
+        )
+
+    teams_out = []
+    for _ in range(n):
+        teams_out.append(heappop(teams))
+
+    return teams_out
+
+
+def mock_teams_str(
+    team0_players: list[Player],
+    team1_players: list[Player],
+    is_rated: bool,
+) -> str:
+    """
+    Helper method to debug print teams if these were the players
+    """
+    output = ""
+    team0_rating = [
+        Rating(p.rated_trueskill_mu, p.rated_trueskill_sigma) for p in team0_players
+    ]
+    team1_rating = [
+        Rating(p.rated_trueskill_mu, p.rated_trueskill_sigma) for p in team1_players
+    ]
+    team0_names = ", ".join(
+        sorted([escape_markdown(player.name) for player in team0_players])
+    )
+    team1_names = ", ".join(
+        sorted([escape_markdown(player.name) for player in team1_players])
+    )
+    team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
+    team1_win_prob = round(100 - team0_win_prob, 1)
+    team0_mu = round(mean([player.rated_trueskill_mu for player in team0_players]), 2)
+    team1_mu = round(mean([player.rated_trueskill_mu for player in team1_players]), 2)
+    team0_sigma = round(
+        mean([player.rated_trueskill_sigma for player in team0_players]),
+        2,
+    )
+    team1_sigma = round(
+        mean([player.rated_trueskill_sigma for player in team1_players]),
+        2,
+    )
+    output += f"\n**BE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
+    output += f"\n**DS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
+    return output
+
+
+def in_progress_game_str(in_progress_game: InProgressGame, debug: bool = False) -> str:
+    """
+    Helper method to pretty print a finished game
+    """
+    output = ""
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        short_game_id = short_uuid(in_progress_game.id)
+        queue: Queue = (
+            session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
+        )
+        if debug:
+            output += f"**{queue.name}** ({short_game_id}) (TS: {round(in_progress_game.average_trueskill, 2)})"
+        else:
+            output += f"**{queue.name}** ({short_game_id})"
+        team0_igp_players: list[InProgressGamePlayer] = session.query(
+            InProgressGamePlayer
+        ).filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        team1_igp_players: list[InProgressGamePlayer] = session.query(
+            InProgressGamePlayer
+        ).filter(
+            InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        team0_player_ids = set(map(lambda x: x.player_id, team0_igp_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_igp_players))
+        team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_igp_players}
+        team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_igp_players}
+        team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+        team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+        if debug and False:
+            team0_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team0_players
+                    ]
+                )
+            )
+            team1_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team1_players
+                    ]
+                )
+            )
+        else:
+            team0_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team0_players])
+            )
+            team1_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team1_players])
+            )
+        # TODO: Include win prob
+        # team0_win_prob = round(100 * finished_game.win_probability, 1)
+        # team1_win_prob = round(100 - team0_win_prob, 1)
+        team0_tsr = round(
+            mean([player.rated_trueskill_mu for player in team0_players]), 1
+        )
+        team1_tsr = round(
+            mean([player.rated_trueskill_mu for player in team1_players]), 1
+        )
+        # TODO: Include win prob
+        if debug:
+            team0_str = f"{in_progress_game.team0_name} ({team0_tsr}): {team0_names}"
+            team1_str = f"{in_progress_game.team1_name} ({team1_tsr}): {team1_names}"
+        else:
+            team0_str = f"{in_progress_game.team0_name} ({team0_names}"
+            team1_str = f"{in_progress_game.team1_name} ({team1_names}"
+
+        output += f"\n{team0_str}"
+        output += f"\n{team1_str}"
+        delta: timedelta = datetime.now(
+            timezone.utc
+        ) - in_progress_game.created_at.replace(tzinfo=timezone.utc)
+        if delta.days > 0:
+            output += f"\n@ {delta.days} days ago\n"
+        elif delta.seconds > 3600:
+            hours_ago = delta.seconds // 3600
+            output += f"\n@ {hours_ago} hours ago\n"
+        else:
+            minutes_ago = delta.seconds // 60
+            output += f"\n@ {minutes_ago} minutes ago\n"
+        return output
+
+
+def mock_finished_game_teams_str(
+    team0_fg_players: list[FinishedGamePlayer],
+    team1_fg_players: list[FinishedGamePlayer],
+    is_rated: bool,
+) -> str:
+    """
+    Helper method to debug print teams if these were the players
+    """
+    output = ""
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        team0_rating = [
+            Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
+            for fgp in team0_fg_players
+        ]
+        team1_rating = [
+            Rating(fgp.rated_trueskill_mu_before, fgp.rated_trueskill_sigma_before)
+            for fgp in team1_fg_players
+        ]
+        team0_player_ids_map = {x.player_id: x for x in team0_fg_players}
+        team1_player_ids_map = {x.player_id: x for x in team1_fg_players}
+        team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
+        team0_players: list[Player] = session.query(Player).filter(
+            Player.id.in_(team0_player_ids)
+        )
+        team1_players: list[Player] = session.query(Player).filter(
+            Player.id.in_(team1_player_ids)
+        )
+        team0_names = ", ".join(
+            sorted(
+                [
+                    f"{escape_markdown(player.name)} ({round(team0_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
+                    for player in team0_players
+                ]
+            )
+        )
+        team1_names = ", ".join(
+            sorted(
+                [
+                    f"{escape_markdown(player.name)} ({round(team1_player_ids_map.get(player.id).rated_trueskill_mu_before, 1)})"
+                    for player in team1_players
+                ]
+            )
+        )
+        team0_win_prob = round(100 * win_probability(team0_rating, team1_rating), 1)
+        team1_win_prob = round(100 - team0_win_prob, 1)
+        team0_mu = round(
+            mean([player.rated_trueskill_mu_before for player in team0_fg_players]), 2
+        )
+        team1_mu = round(
+            mean([player.rated_trueskill_mu_before for player in team1_fg_players]), 2
+        )
+        team0_sigma = round(
+            mean([player.rated_trueskill_sigma_before for player in team0_fg_players]),
+            2,
+        )
+        team1_sigma = round(
+            mean([player.rated_trueskill_sigma_before for player in team1_fg_players]),
+            2,
+        )
+        output += f"\n**BE** (**{team0_win_prob}%**, mu: {team0_mu}, sigma: {team0_sigma}): {team0_names}"
+        output += f"\n**DS** (**{team1_win_prob}%**, mu: {team1_mu}, sigma: {team1_sigma}): {team1_names}"
+        return output
+
+
+def is_in_game(player_id: int) -> bool:
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        return get_player_game(player_id, session) is not None
+
+
+def get_player_game(player_id: int, session=None) -> InProgressGame | None:
+    """
+    Find the game a player is currently in
+
+    :session: Pass in a session if you want to do something with the game that
+    gets returned
+    """
+    should_close = False
+    if not session:
+        should_close = True
+        session = (
+            Session()
+        )  # TODO: this session has the potential to not be closed, replace with context manager
+    ipg_player = (
+        session.query(InProgressGamePlayer)
+        .join(InProgressGame)
+        .filter(InProgressGamePlayer.player_id == player_id)
+        .first()
+    )
+    if ipg_player:
+        if should_close:
+            session.close()
+        return (
+            session.query(InProgressGame)
+            .filter(InProgressGame.id == ipg_player.in_progress_game_id)
+            .first()
+        )
+    else:
+        if should_close:
+            session.close()
+        return None
+
+
+def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
+    """
+    Helper method to pretty print a finished game
+    """
+    output = ""
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        short_game_id = short_uuid(finished_game.game_id)
+        team0_fg_players: list[FinishedGamePlayer] = (
+            session.query(FinishedGamePlayer)
+            .filter(
+                FinishedGamePlayer.finished_game_id == finished_game.id,
+                FinishedGamePlayer.team == 0,
+            )
+            .all()
+        )
+        team1_fg_players: list[FinishedGamePlayer] = (
+            session.query(FinishedGamePlayer)
+            .filter(
+                FinishedGamePlayer.finished_game_id == finished_game.id,
+                FinishedGamePlayer.team == 1,
+            )
+            .all()
+        )
+
+        if config.SHOW_TRUESKILL:
+            output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id}) (mu: {round(finished_game.average_trueskill, 2)})"
+        else:
+            output += f"**{finished_game.queue_name}** - **{finished_game.map_short_name}** ({short_game_id})"
+
+        team0_player_ids = set(map(lambda x: x.player_id, team0_fg_players))
+        team1_player_ids = set(map(lambda x: x.player_id, team1_fg_players))
+        team0_fgp_by_id = {fgp.player_id: fgp for fgp in team0_fg_players}
+        team1_fgp_by_id = {fgp.player_id: fgp for fgp in team1_fg_players}
+        team0_players: list[Player] = session.query(Player).filter(Player.id.in_(team0_player_ids))  # type: ignore
+        team1_players: list[Player] = session.query(Player).filter(Player.id.in_(team1_player_ids))  # type: ignore
+        if debug:
+            team0_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team0_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team0_players
+                    ]
+                )
+            )
+            team1_names = ", ".join(
+                sorted(
+                    [
+                        f"{escape_markdown(player.name)} ({round(team1_fgp_by_id[player.id].rated_trueskill_mu_before, 1)})"
+                        for player in team1_players
+                    ]
+                )
+            )
+        else:
+            team0_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team0_players])
+            )
+            team1_names = ", ".join(
+                sorted([escape_markdown(player.name) for player in team1_players])
+            )
+        team0_win_prob = round(100 * finished_game.win_probability, 1)
+        team1_win_prob = round(100 - team0_win_prob, 1)
+        team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
+        team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
+
+        if finished_game.winning_team == 0:
+            output += f"\n**{team0_str}**"
+            output += f"\n{team1_str}"
+        elif finished_game.winning_team == 1:
+            output += f"\n{team0_str}"
+            output += f"\n**{team1_str}**"
+        else:
+            output += f"\n{team0_str}"
+            output += f"\n{team1_str}"
+        delta: timedelta = datetime.now(
+            timezone.utc
+        ) - finished_game.finished_at.replace(tzinfo=timezone.utc)
+        if delta.days > 0:
+            output += f"\n@ {delta.days} days ago\n"
+        elif delta.seconds > 3600:
+            hours_ago = delta.seconds // 3600
+            output += f"\n@ {hours_ago} hours ago\n"
+        else:
+            minutes_ago = delta.seconds // 60
+            output += f"\n@ {minutes_ago} minutes ago\n"
+        return output
 
 
 # Convenience mean function that can handle lists of 0 or 1 length
@@ -517,7 +974,7 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
 async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
     """
     :is_verbose: specifies if we want to see queues affected in the bot response.
-                 currently passing in False for when game pops, True for everything else.
+        currently passing in False for when game pops, True for everything else.
     """
     session: sqlalchemy.orm.Session
     with Session() as session:
@@ -676,6 +1133,7 @@ async def send_message(
         _log.exception("[send_message] Ignoring exception:")
     return message
 
+
 async def print_leaderboard():
     output = "**Leaderboard**"  # TODO: remove output str, it's not used anymore
     embeds = []
@@ -719,6 +1177,7 @@ async def print_leaderboard():
                     .join(Player, Player.id == PlayerCategoryTrueskill.player_id)
                     .filter(PlayerCategoryTrueskill.player_id.in_(select(subquery)))
                     .filter(PlayerCategoryTrueskill.category_id == category.id)
+                    .filter(Player.leaderboard_enabled == True)
                     .order_by(PlayerCategoryTrueskill.rank.desc())
                     .limit(10)
                     .all()
@@ -774,13 +1233,10 @@ async def print_leaderboard():
         if config.ECONOMY_ENABLED:
             output += f"\n\n**{config.CURRENCY_NAME}**"
             top_10_player_currency: list[Player] = (
-                session.query(Player)
-                .order_by(Player.currency.desc())
-                .limit(10)
+                session.query(Player).order_by(Player.currency.desc()).limit(10)
             )
             for i, player_currency in enumerate(top_10_player_currency, 1):
                 output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
-
 
     if config.LEADERBOARD_CHANNEL:
         # TODO: merge with new leaderboard style
@@ -854,6 +1310,7 @@ def get_team_name_diff(
         else "> \n** **"  # creates an empty quote
     )
     return team0_diff_str, team1_diff_str
+
 
 async def move_game_players(
     game_id: str, interaction: Interaction | None = None, guild: Guild | None = None
@@ -964,39 +1421,34 @@ async def move_game_players(
         if isinstance(result, BaseException):
             _log.exception("Ignored exception when moving a gameplayer:")
 
-async def move_game_players_lobby(
-    game_id: str, guild: Guild
-):
+
+async def move_game_players_lobby(game_id: str, guild: Guild):
     session: sqlalchemy.orm.Session
     with Session() as session:
         in_progress_game: InProgressGame | None = (
-            session.query(InProgressGame)
-            .filter(InProgressGame.id == game_id)
-            .first()
+            session.query(InProgressGame).filter(InProgressGame.id == game_id).first()
         )
         if not in_progress_game:
             return
 
         queue: Queue | None = (
-            session.query(Queue)
-            .filter(Queue.id == in_progress_game.queue_id)
-            .first()
+            session.query(Queue).filter(Queue.id == in_progress_game.queue_id).first()
         )
         if not queue or not queue.move_enabled:
             return
 
         voice_lobby: discord.abc.GuildChannel | None = guild.get_channel(
-                config.VOICE_MOVE_LOBBY
+            config.VOICE_MOVE_LOBBY
         )
         if not isinstance(voice_lobby, VoiceChannel) or not voice_lobby:
             _log.exception("VOICE_MOVE_LOBBY not found")
             return
 
         ipg_channels: list[InProgressGameChannel] | None = (
-                session.query(InProgressGameChannel)
-                .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
-                .all()
-            )
+            session.query(InProgressGameChannel)
+            .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
+            .all()
+        )
 
         coroutines = []
         for ipg_channel in ipg_channels or []:
@@ -1016,14 +1468,20 @@ async def move_game_players_lobby(
                             )
                         except Exception:
                             _log.exception(
-                                    f"Caught exception moving player to voice lobby"
-                                )
+                                f"Caught exception moving player to voice lobby"
+                            )
 
     results = await asyncio.gather(*coroutines, return_exceptions=True)
     for result in results:
         # results should be empty unless an exception occured when moving a player
         if isinstance(result, BaseException):
             _log.exception("Ignored exception when moving a gameplayer to lobby:")
+
+def win_rate(wins, losses, ties):
+    denominator = max(wins + losses + ties, 1)
+    return round(
+        100 * (wins + 0.5 * ties) / denominator, 1
+    )
 
 def default_sigma_decay_amount() -> float:
     """
