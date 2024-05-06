@@ -9,6 +9,7 @@ from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Category, PlayerCategoryTrueskill, Queue, Session
 from discord_bots.utils import default_sigma_decay_amount, build_category_str
+from discord_bots.views.configure_category import CategoryConfigureView
 
 _log = logging.getLogger(__name__)
 
