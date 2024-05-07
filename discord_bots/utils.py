@@ -1143,7 +1143,7 @@ async def print_leaderboard():
         timestamp=discord.utils.utcnow(),
     )
     embed_footer = f"\nRanks calculated using the formula: {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}"
-    embed_footer += "\n!disableleaderboard to hide yourself from the leaderboard"
+    embed_footer += "\n/player toggleleaderboard to show/hide yourself from the leaderboard"
     embed_footer += "\nLast Updated"
     embed.set_footer(text=embed_footer)
     session: SQLAlchemySession
