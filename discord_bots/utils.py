@@ -679,7 +679,7 @@ async def create_in_progress_game_embed(
     # TODO: make the commands configurable/toggleable
     embed.add_field(
         name="🔧 Commands",
-        value="\n".join(["`/finishgame`", "`/setgamecode`"]),
+        value="\n".join(["`/game finish`", "`/setgamecode`"]),
         inline=True,
     )
     if game.channel_id:

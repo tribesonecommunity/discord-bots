@@ -605,10 +605,16 @@ class InProgressGameCommands(commands.Cog):
                 session.add(finished_game_player)
 
         update_ratings(
-            team0_players, team0_rated_ratings_before, team0_rated_ratings_after, game_finished_at
+            team0_players,
+            team0_rated_ratings_before,
+            team0_rated_ratings_after,
+            game_finished_at,
         )
         update_ratings(
-            team1_players, team1_rated_ratings_before, team1_rated_ratings_after, game_finished_at
+            team1_players,
+            team1_rated_ratings_before,
+            team1_rated_ratings_after,
+            game_finished_at,
         )
         session.commit()  # temporary solution until the foreign key constraint is resolved on EconomyPredictions/EconomyTransactions
         if config.ECONOMY_ENABLED:
@@ -720,155 +726,6 @@ class InProgressGameCommands(commands.Cog):
                         colour=Colour.blue(),
                     ),
                 )
-
-    @group.command(name="setcode", description="Sets lobby code for your current game")
-    @app_commands.check(is_command_channel)
-    @app_commands.guild_only()
-    @app_commands.describe(code="Game lobby code")
-    async def setgamecode(self, interaction: Interaction, code: str):
-        assert interaction.guild
-        session: SQLAlchemySession
-        with Session() as session:
-            ipgp = (
-                session.query(InProgressGamePlayer)
-                .filter(InProgressGamePlayer.player_id == interaction.user.id)
-                .first()
-            )
-            if not ipgp:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="You must be in game to set the game code!",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            ipg = (
-                session.query(InProgressGame)
-                .filter(InProgressGame.id == ipgp.in_progress_game_id)
-                .first()
-            )
-            if not ipg:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="You must be in game to set the game code!",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            if ipg.code == code:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="This is already the current game code!",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-            ipg.code = code
-            await interaction.response.defer(ephemeral=True)
-            title: str = f"Lobby code for ({short_uuid(ipg.id)})"
-            if ipg.channel_id and ipg.message_id:
-                partial_message = get_guild_partial_message(
-                    interaction.guild, ipg.channel_id, ipg.message_id
-                )
-                channel = interaction.guild.get_channel(ipg.channel_id)
-                if isinstance(channel, TextChannel):
-                    try:
-                        message: Message = await channel.fetch_message(ipg.message_id)
-                        if len(message.embeds) > 0:
-                            embed: Embed = message.embeds[0]
-                            replaced_code = False
-                            for i, field in enumerate(embed.fields):
-                                if field.name == "🔢 Game Code":
-                                    field.value = f"`{code}`"
-                                    embed.set_field_at(
-                                        i,
-                                        name="🔢 Game Code",
-                                        value=f"`{code}`",
-                                        inline=True,
-                                    )
-                                    replaced_code = True
-                                    break
-                            if not replaced_code:
-                                last = embed.fields[-1]
-                                if (
-                                    last.name == ""
-                                    and last.value == ""
-                                    and last.inline == True
-                                ):
-                                    embed.remove_field(-1)
-                                embed.add_field(
-                                    name="🔢 Game Code", value=f"`{code}`", inline=True
-                                )
-                                embed_fields_len = (
-                                    len(embed.fields) - 3
-                                )  # subtract team0, team1, and "newline" fields
-                                if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
-                                    # embeds are allowed 3 "columns" per "row"
-                                    # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
-                                    embed.add_field(name="", value="", inline=True)
-                            await message.edit(embed=embed)
-                    except:
-                        _log.exception(
-                            f"[setgamecode] Failed to get message with guild_id={interaction.guild_id}, channel_id={ipg.channel_id}, message_id={ipg.message_id}:"
-                        )
-                if partial_message:
-                    title = f"Lobby code for {partial_message.jump_url}"
-
-            embed = Embed(
-                title=title,
-                description=f"`{code}`",
-                colour=Colour.green(),
-            )
-            embed.set_footer(
-                text=f"set by {interaction.user.display_name} ({interaction.user.name})"
-            )
-            coroutines = []
-            result = (
-                session.query(InProgressGamePlayer.player_id)
-                .filter(
-                    InProgressGamePlayer.in_progress_game_id == ipg.id,
-                    InProgressGamePlayer.player_id
-                    != interaction.user.id,  # don't send the code to the one who wants to send it out
-                )
-                .all()
-            )
-            ipg_player_ids: list[int] = (
-                [player_id[0] for player_id in result if player_id] if result else []
-            )
-            for player_id in ipg_player_ids:
-                coroutines.append(
-                    send_in_guild_message(interaction.guild, player_id, embed=embed)
-                )
-            if ipg_player_ids:
-                try:
-                    await asyncio.gather(*coroutines)
-                except:
-                    _log.exception(
-                        "[setgamecode] Ignoring exception in asyncio.gather:"
-                    )
-                else:
-                    await interaction.followup.send(
-                        embed=Embed(
-                            description="Lobby code sent to each player",
-                            colour=Colour.blue(),
-                        ),
-                        ephemeral=True,
-                    )
-            else:
-                _log.warn("No in_progress_game_players to send a lobby code to")
-                await interaction.followup.send(
-                    embed=Embed(
-                        description="There are no in-game players to send this lobby code to!",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-            session.commit()
 
     @group.command(name="show", description="Show game details")
     @app_commands.check(is_command_channel)
