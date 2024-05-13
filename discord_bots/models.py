@@ -27,6 +27,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship  # type: ignore
 from sqlalchemy.orm import registry, scoped_session, sessionmaker
 from sqlalchemy.sql import expression, func
+from sqlalchemy.sql.functions import now as sql_now
 from sqlalchemy.sql.schema import ForeignKey, MetaData
 
 import discord_bots.config as config
@@ -898,7 +899,14 @@ class PlayerCategoryTrueskill:
     sigma: float = field(metadata={"sa": Column(Float, nullable=False)})
     rank: float = field(metadata={"sa": Column(Float, nullable=False)})
     last_game_finished_at: datetime = field(
-        metadata={"sa": Column(DateTime, nullable=True, index=True)}
+        metadata={
+                "sa": Column(
+                    DateTime, 
+                    nullable=False, 
+                    server_default=sql_now(), 
+                    index=True
+                )
+            }
     )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),

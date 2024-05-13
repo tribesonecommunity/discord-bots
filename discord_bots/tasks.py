@@ -635,10 +635,7 @@ async def sigma_decay_task():
             session
             .query(PlayerCategoryTrueskill)
             .filter(
-                sqlalchemy.and_(
-                    PlayerCategoryTrueskill.last_game_finished_at.is_not(None),
-                    PlayerCategoryTrueskill.category_id.in_(category_details.keys())
-                )
+                PlayerCategoryTrueskill.category_id.in_(category_details.keys())
             )
             .all()
         )
