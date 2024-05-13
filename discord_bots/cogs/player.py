@@ -275,7 +275,7 @@ class PlayerCommands(BaseCog):
                 session.query(Player).filter(Player.id == interaction.user.id).first()
             )
             if player:
-                player.stats_enabled = False
+                player.stats_enabled = option
                 session.commit()
             else:
                 await interaction.response.send_message(
