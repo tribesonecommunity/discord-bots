@@ -3,7 +3,7 @@ from typing import Optional
 
 import discord
 
-from discord_bots.cogs.base import BaseView
+from discord_bots.views.base import BaseView
 
 
 class ConfirmationView(BaseView):

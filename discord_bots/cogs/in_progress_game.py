@@ -26,8 +26,6 @@ from trueskill import Rating, rate
 
 from discord_bots import config
 from discord_bots.checks import is_admin_app_command, is_command_channel
-from discord_bots.cogs.base import BaseView
-from discord_bots.cogs.confirmation import ConfirmationView
 from discord_bots.cogs.economy import EconomyCommands
 from discord_bots.models import (
     Category,
@@ -64,6 +62,8 @@ from discord_bots.utils import (
     get_n_worst_teams,
     mock_teams_str,
 )
+from discord_bots.views.base import BaseView
+from discord_bots.views.confirmation import ConfirmationView
 
 if TYPE_CHECKING:
     from discord.ext.commands import Bot
@@ -948,7 +948,7 @@ class InProgressGameView(BaseView):
             interaction, "win", self.game_id
         )
         if self.is_game_finished:
-            await self.disable_buttons(interaction)
+            await self.disable_children(interaction)
             self.stop()
 
     @button(
@@ -962,7 +962,7 @@ class InProgressGameView(BaseView):
             interaction, "loss", self.game_id
         )
         if self.is_game_finished:
-            await self.disable_buttons(interaction)
+            await self.disable_children(interaction)
             self.stop()
 
     @button(
@@ -976,7 +976,7 @@ class InProgressGameView(BaseView):
             interaction, "tie", self.game_id
         )
         if self.is_game_finished:
-            await self.disable_buttons(interaction)
+            await self.disable_children(interaction)
             self.stop()
 
     @button(

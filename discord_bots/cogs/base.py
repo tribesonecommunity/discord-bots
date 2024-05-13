@@ -3,17 +3,15 @@ from __future__ import annotations
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from typing import TYPE_CHECKING
 
-import discord
 from discord import Colour, Embed, Interaction, TextChannel
 from discord.ext.commands import Cog, Context
-from discord.ui.item import Item
 
 from discord_bots.checks import HasName
 from discord_bots.models import Session
 from discord_bots.utils import send_message
 
 if TYPE_CHECKING:
-    from typing import Any, Type
+    from typing import Type
 
 
 class BaseCog(Cog):
@@ -78,38 +76,3 @@ class BaseCog(Cog):
                     colour=Colour.green(),
                 )
             )
-
-
-class BaseView(discord.ui.View):
-    async def on_error(
-        self,
-        interaction: discord.Interaction[discord.Client],
-        error: Exception,
-        item: Item[Any],
-    ) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(
-                embed=discord.Embed(
-                    description="Oops! Something went wrong ☹️",
-                    color=discord.Color.red(),
-                ),
-                ephemeral=True,
-            )
-        else:
-            # fallback case that responds to the interaction, since there always needs to be a response
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    description="Oops! Something went wrong ☹️",
-                    color=discord.Color.red(),
-                ),
-                ephemeral=True,
-            )
-        await super().on_error(interaction, error, item)
-        return
-
-    async def disable_buttons(self, interaction: discord.Interaction):
-        for child in self.children:
-            if type(child) == discord.ui.Button and not child.disabled:
-                child.disabled = True
-        if interaction.message is not None:
-            await interaction.message.edit(view=self)
