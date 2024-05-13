@@ -218,7 +218,7 @@ async def on_reaction_add(reaction: Reaction, user: User | Member):
 
 
 @bot.event
-async def on_join(member: Member):
+async def on_member_join(member: Member):
     session: sqlalchemy.orm.Session
     with Session() as session:
         player = session.query(Player).filter(Player.id == member.id).first()
@@ -237,7 +237,7 @@ async def on_join(member: Member):
 
 
 @bot.event
-async def on_leave(member: Member):
+async def on_member_remove(member: Member):
     session: sqlalchemy.orm.Session
     with Session() as session:
         session.query(QueuePlayer).filter(QueuePlayer.player_id == member.id).delete()
