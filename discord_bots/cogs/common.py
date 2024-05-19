@@ -77,6 +77,9 @@ class CommonCommands(BaseCog):
             await channel.purge()
             await print_leaderboard()
         except:
+            _log.exception(
+                "[resetleaderboardchannel] Leaderboard failed to reset due to:"
+            )
             await interaction.followup.send(
                 embed=Embed(
                     description="Leaderboard failed to reset",

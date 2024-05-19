@@ -158,12 +158,24 @@ class VoteCommands(BaseCog):
                     session.delete(skip_map_vote)
                 session.commit()
 
-                await self.send_success_message(
-                    f"Vote to skip the current map passed!  All votes removed.\n\nNew map: **{ipg.map_full_name} ({ipg.map_short_name})**"
+                embed_description = (
+                    f"Vote to skip the current map passed! All votes removed."
                 )
+                embed_description += (
+                    f"\nNew map: **{ipg.map_full_name} ({ipg.map_short_name})**"
+                )
+                embed = Embed(
+                    description=embed_description,
+                    color=Colour.green(),
+                )
+                await interaction.response.send_message(embed=embed)
                 await update_next_map_to_map_after_next(rotation.id, True)
             else:
-                await self.send_success_message("Your vote has been cast!")
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Your vote has been cast!", color=Colour.green()
+                    )
+                )
 
     @group.command(name="unvote", description="Remove all of a player's votes")
     @app_commands.check(is_command_channel)
