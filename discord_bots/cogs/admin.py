@@ -178,7 +178,7 @@ class AdminCommands(BaseCog):
     @app_commands.guild_only()
     async def configure(self, interaction: Interaction):
         assert interaction.guild
-        
+
         session: SQLAlchemySession
         with Session() as session:
             guild = (
@@ -252,7 +252,7 @@ class AdminCommands(BaseCog):
                 ephemeral=True
             )
             return
-        
+
         date_string = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         copyfile(f"{config.DB_NAME}.db", f"{config.DB_NAME}_{date_string}.db")
         await interaction.response.send_message(
@@ -348,15 +348,15 @@ class AdminCommands(BaseCog):
                 queue_statuses.append(
                     f"{queue.name} [{len(queue_players)}/{queue.size}]"
                 )
+            await interaction.response.send_message(
+                embed=Embed(
+                    title=f"{escape_markdown(member.name)} removed from: {', '.join([queue.name for queue in queues])}",
+                    description=" ".join(queue_statuses),
+                    colour=Colour.green(),
+                )
+            )  # needs to be done before committing, since the ORM queue instances are being referenced and expire_on_commit=True
             session.commit()
 
-        await interaction.response.send_message(
-            embed=Embed(
-                title=f"{escape_markdown(member.name)} removed from: {', '.join([queue.name for queue in queues])}",
-                description=" ".join(queue_statuses),
-                colour=Colour.green(),
-            )
-        )
 
     @group.command(name="editcommand", description="Edit a custom command")
     @app_commands.check(is_admin_app_command)
@@ -479,7 +479,7 @@ class AdminCommands(BaseCog):
     @app_commands.describe(role="Role to be removed as admin")
     async def removeadminrole(self, interaction: Interaction, role: Role):
         assert interaction.guild
-        
+
         if role not in interaction.guild.roles:
             await interaction.response.send_message(
                 embed=Embed(
@@ -564,7 +564,7 @@ class AdminCommands(BaseCog):
             )
             return
 
-        
+
         if not db_filename.startswith(config.DB_NAME) or not db_filename.endswith(
             ".db"
         ):
