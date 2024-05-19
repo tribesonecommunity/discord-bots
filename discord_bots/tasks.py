@@ -228,10 +228,8 @@ async def afk_timer_task():
                     if member:
                         await send_message(
                             channel,
-                            content=member.mention,
+                            content=f"{member.mention} was removed from all queues for being inactive for {config.AFK_TIME_MINUTES} minutes",
                             embed_content=False,
-                            embed_description=f"{escape_markdown(player.name)} was removed from all queues for being inactive for {config.AFK_TIME_MINUTES} minutes",
-                            colour=Colour.red(),
                         )
                 session.query(QueuePlayer).filter(
                     QueuePlayer.player_id == player.id
