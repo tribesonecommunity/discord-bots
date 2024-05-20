@@ -44,7 +44,8 @@ class ListCommands(BaseCog):
                 output += f"\n- {escape_markdown(player.name)}"
 
         await interaction.response.send_message(
-            embed=Embed(description=output, colour=Colour.blue())
+            embed=Embed(description=output, colour=Colour.blue()),
+            ephemeral=True,
         )
 
     @group.command(name="adminrole", description="List admin roles")
@@ -71,7 +72,8 @@ class ListCommands(BaseCog):
         output += f"\n{', '.join(admin_role_names)}"
 
         await interaction.response.send_message(
-            embed=Embed(description=output, colour=Colour.blue())
+            embed=Embed(description=output, colour=Colour.blue()),
+            ephemeral=True,
         )
 
     @group.command(name="ban", description="List banned players")
@@ -86,7 +88,8 @@ class ListCommands(BaseCog):
             embed=Embed(
                 description=output,
                 colour=Colour.blue(),
-            )
+            ),
+            ephemeral=True,
         )
 
     @group.command(name="category", description="List categories")
@@ -107,14 +110,11 @@ class ListCommands(BaseCog):
                 )
                 return
 
-            output = "\n".join(
-                build_category_str(category) 
-                for category 
-                in categories
-            )
+            output = "\n".join(build_category_str(category) for category in categories)
 
             await interaction.response.send_message(
-                embed=Embed(description=output, colour=Colour.blue())
+                embed=Embed(description=output, colour=Colour.blue()),
+                ephemeral=True,
             )
 
     @group.command(name="channel", description="List bot channels")
@@ -169,7 +169,8 @@ class ListCommands(BaseCog):
                 embed=Embed(
                     description=output,
                     colour=Colour.blue(),
-                )
+                ),
+                ephemeral=True,
             )
 
     @group.command(name="notification", description="List your notifications")
@@ -255,7 +256,8 @@ class ListCommands(BaseCog):
                 embed=Embed(
                     description=output,
                     colour=Colour.blue(),
-                )
+                ),
+                ephemeral=True,
             )
 
     @group.command(
@@ -289,7 +291,8 @@ class ListCommands(BaseCog):
                         queue_role_names.append(str(queue_role.role_id))
                 output += f"**{queue.name}**: {', '.join(queue_role_names)}\n"
             await interaction.response.send_message(
-                embed=Embed(description=output, colour=Colour.blue())
+                embed=Embed(description=output, colour=Colour.blue()),
+                ephemeral=True,
             )
 
     @group.command(
@@ -309,7 +312,8 @@ class ListCommands(BaseCog):
                 await interaction.response.send_message(
                     embed=Embed(
                         description="_-- No Rotations-- _", colour=Colour.blue()
-                    )
+                    ),
+                    ephemeral=True,
                 )
                 return
 
@@ -348,5 +352,6 @@ class ListCommands(BaseCog):
                     output += f" - Queues:  {', '.join(queue_names)}\n"
 
             await interaction.response.send_message(
-                embed=Embed(description=output, colour=Colour.blue())
+                embed=Embed(description=output, colour=Colour.blue()),
+                ephemeral=True,
             )

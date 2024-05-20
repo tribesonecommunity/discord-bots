@@ -102,13 +102,14 @@ async def add_players(session: sqlalchemy.orm.Session):
         for queue in queues_added_to_by_id.values():
             if queue.is_locked:
                 continue
+            # select from the QueuePlayer table to preserve the order in which players were added
             result = (
-                session.query(Player.name)
-                .join(QueuePlayer)
+                session.query(QueuePlayer, Player.name)
+                .join(Player, QueuePlayer.player_id == Player.id)
                 .filter(QueuePlayer.queue_id == queue.id)
                 .all()
             )
-            player_names: list[str] = [name[0] for name in result] if result else []
+            player_names: list[str] = [name[1] for name in result] if result else []
             queue_title_str = (
                 f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
             )
