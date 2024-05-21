@@ -646,4 +646,5 @@ async def sigma_decay_task():
                     pct.sigma + category.sigma_decay_amount,
                     config.DEFAULT_TRUESKILL_SIGMA * category.sigma_decay_max_decay_proportion,
                 )
+                pct.rank = pct.mu - (3 * pct.sigma)
         session.commit()
