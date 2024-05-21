@@ -70,7 +70,7 @@ class AdminRole:
     __tablename__ = "admin_role"
 
     role_id: int = field(
-        metadata={"sa": Column(Integer, nullable=False)},
+        metadata={"sa": Column(BigInteger, nullable=False)},
     )
     id: str = field(
         init=False,
@@ -900,13 +900,8 @@ class PlayerCategoryTrueskill:
     rank: float = field(metadata={"sa": Column(Float, nullable=False)})
     last_game_finished_at: datetime = field(
         metadata={
-                "sa": Column(
-                    DateTime, 
-                    nullable=False, 
-                    server_default=sql_now(), 
-                    index=True
-                )
-            }
+            "sa": Column(DateTime, nullable=False, server_default=sql_now(), index=True)
+        }
     )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),

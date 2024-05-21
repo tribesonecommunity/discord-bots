@@ -249,13 +249,13 @@ class VoteCommands(BaseCog):
 
             for map_vote in map_votes:
                 session.delete(map_vote)
-            session.commit()
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"Your vote for {map.short_name} was removed",
                     colour=Colour.green(),
                 )
             )
+            session.commit()
 
     @group.command(
         name="unskip", description="Remove all of a player's votes to skip the next map"
@@ -437,14 +437,13 @@ class VoteCommands(BaseCog):
                 )
                 return
 
-            session.commit()
-
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"Mock votes added!\nTo add your vote use `{final_vote_command}`",
                     colour=Colour.green(),
                 )
             )
+            session.commit()
 
     # @group.command(name="map", description="Vote for a map in a queue")
     # @app_commands.guild_only()
