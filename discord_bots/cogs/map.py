@@ -609,8 +609,9 @@ class MapCommands(BaseCog):
             content = "Global Map Stats"
         content += f"\n{code_block(table)}"
         await interaction.response.send_message(
-            content=content
-        )  # TODO: consider making this ephemeral, or giving the option to choose
+            content=content,
+            ephemeral=True,
+        )
 
     @mapstats.autocomplete("category_name")
     async def category_autocomplete_with_user_id(
