@@ -58,7 +58,6 @@ class CategoryCommands(BaseCog):
             if configure_view.value:
                 if new_category:
                     session.add(category)
-                session.commit()
                 await interaction.delete_original_response()
                 await interaction.followup.send(
                     embed=Embed(
@@ -67,6 +66,7 @@ class CategoryCommands(BaseCog):
                     ),
                     ephemeral=True,
                 )
+                session.commit()
             else:
                 await interaction.delete_original_response()
                 await interaction.followup.send(
@@ -102,13 +102,13 @@ class CategoryCommands(BaseCog):
                 category.id == PlayerCategoryTrueskill.category_id
             ).delete()
             session.delete(category)
-            session.commit()
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"Category **{category.name}** removed",
                     colour=Colour.green(),
                 )
             )
+            session.commit()
 
     @group.command(name="show", description="Show category details")
     @app_commands.check(is_command_channel)

@@ -80,13 +80,13 @@ class AdminCommands(BaseCog):
                     )
                 else:
                     player.is_admin = True
-                    session.commit()
                     await interaction.response.send_message(
                         embed=Embed(
                             description=f"{escape_markdown(player.name)} added to admins",
                             colour=Colour.green(),
                         )
                     )
+                    session.commit()
 
     @group.command(name="addrole", description="Add an admin role")
     @app_commands.check(is_admin_app_command)
@@ -120,13 +120,13 @@ class AdminCommands(BaseCog):
                     )
                 else:
                     session.add(AdminRole(role.id))
-                    session.commit()
                     await interaction.response.send_message(
                         embed=Embed(
                             description=f"Added admin role: {role.name}",
                             colour=Colour.green(),
                         )
                     )
+                    session.commit()
 
     @group.command(name="ban", description="Bans player from queues")
     @app_commands.check(is_admin_app_command)
@@ -162,13 +162,13 @@ class AdminCommands(BaseCog):
                     )
                 else:
                     player.is_banned = True
-                    session.commit()
                     await interaction.response.send_message(
                         embed=Embed(
                             description=f"{escape_markdown(player.name)} banned",
                             colour=Colour.green(),
                         )
                     )
+                    session.commit()
 
     @group.command(
         name="configure", description="Initially configure the bot for this server"
@@ -197,7 +197,6 @@ class AdminCommands(BaseCog):
             else:
                 guild = DiscordGuild(interaction.guild.id, interaction.guild.name)
                 session.add(guild)
-                session.commit()
                 await interaction.response.send_message(
                     embed=Embed(
                         description="Server configured successfully!",
@@ -205,6 +204,7 @@ class AdminCommands(BaseCog):
                     ),
                     ephemeral=True,
                 )
+                session.commit()
 
     @group.command(name="createcommand", description="Create a custom command")
     @app_commands.check(is_admin_app_command)
@@ -227,11 +227,12 @@ class AdminCommands(BaseCog):
                 return
 
             session.add(CustomCommand(name, output))
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Command `{name}` added", colour=Colour.green()
+                )
+            )
             session.commit()
-
-        await interaction.response.send_message(
-            embed=Embed(description=f"Command `{name}` added", colour=Colour.green())
-        )
 
     @group.command(
         name="createdbbackup", description="Creates a backup of the database"
@@ -288,13 +289,13 @@ class AdminCommands(BaseCog):
                 FinishedGamePlayer.finished_game_id == finished_game.id
             ).delete()
             session.delete(finished_game)
-            session.commit()
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"Game: **{finished_game.game_id}** deleted",
                     colour=Colour.green(),
                 )
             )
+            session.commit()
 
     @group.command(
         name="delplayer", description="Admin command to delete player from all queues"
@@ -354,7 +355,7 @@ class AdminCommands(BaseCog):
                     description=" ".join(queue_statuses),
                     colour=Colour.green(),
                 )
-            )  # needs to be done before committing, since the ORM queue instances are being referenced and expire_on_commit=True
+            )
             session.commit()
 
 
@@ -381,14 +382,13 @@ class AdminCommands(BaseCog):
                 return
 
             exists.output = output
-            session.commit()
-
-        await interaction.response.send_message(
-            embed=Embed(
-                description=f"Command `{name}` updated",
-                colour=Colour.green(),
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Command `{name}` updated",
+                    colour=Colour.green(),
+                )
             )
-        )
+            session.commit()
 
     @group.command(
         name="editgamewinner", description="Edit the winner of a finished game"
@@ -437,14 +437,14 @@ class AdminCommands(BaseCog):
                 return
 
             session.add(game)
-            session.commit()
-        await interaction.response.send_message(
-            embed=Embed(
-                description=f"Game {game_id} outcome changed:\n\n"
-                + finished_game_str(game),
-                colour=Colour.green(),
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Game {game_id} outcome changed:\n\n"
+                    + finished_game_str(game),
+                    colour=Colour.green(),
+                )
             )
-        )
+            session.commit()
 
     @group.command(name="remove", description="Remove an admin")
     @app_commands.check(is_admin_app_command)
@@ -464,13 +464,13 @@ class AdminCommands(BaseCog):
                 return
 
             player.is_admin = False
-            session.commit()
-        await interaction.response.send_message(
-            embed=Embed(
-                description=f"{escape_markdown(member.name)} removed from admins",
-                colour=Colour.green(),
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"{escape_markdown(member.name)} removed from admins",
+                    colour=Colour.green(),
+                )
             )
-        )
+            session.commit()
 
     @group.command(name="removerole", description="Remove an admin role")
     @app_commands.check(is_admin_app_command)
@@ -499,13 +499,13 @@ class AdminCommands(BaseCog):
             )
             if admin_role:
                 session.delete(admin_role)
-                session.commit()
                 await interaction.response.send_message(
                     embed=Embed(
                         description=f"Removed admin role: {role.name}",
                         colour=Colour.green(),
                     )
                 )
+                session.commit()
             else:
                 await interaction.response.send_message(
                     embed=Embed(
@@ -536,14 +536,13 @@ class AdminCommands(BaseCog):
                 return
 
             session.delete(exists)
-            session.commit()
-
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"Command `{name}` removed",
                     colour=Colour.green(),
                 )
             )
+            session.commit()
 
     @group.command(name="removedbbackup", description="Remove a database backup")
     @app_commands.check(is_admin_app_command)
@@ -688,13 +687,13 @@ class AdminCommands(BaseCog):
                 return
 
             player.is_banned = False
-            session.commit()
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"{escape_markdown(member.name)} unbanned",
                     colour=Colour.green(),
                 )
             )
+            session.commit()
 
     @editcommand.autocomplete("name")
     @removecommand.autocomplete("name")
