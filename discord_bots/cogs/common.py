@@ -445,7 +445,7 @@ class CommonCommands(BaseCog):
                             embed=Embed(description="Could not find your stats")
                         )
                         return
-                    title = f"{category.name} TrueSkill Stats"
+                    title = f"TrueSkill for {category.name}"
                     if category.is_rated and SHOW_TRUESKILL:
                         description = (
                             f"Rating: **{round(pct.rank, 1)}**"
