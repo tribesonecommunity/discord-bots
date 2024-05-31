@@ -648,7 +648,7 @@ async def create_in_progress_game_embed(
     team1_player_names.sort(key=str.casefold)
     newline = "\n"
     embed.add_field(
-        name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
+        name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
         value=(
             f"\n>>> {newline.join(team0_player_names)}"
             if team0_player_names
@@ -657,7 +657,7 @@ async def create_in_progress_game_embed(
         inline=True,
     )
     embed.add_field(
-        name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
+        name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
         value=(
             f"\n>>> {newline.join(team1_player_names)}"
             if team1_player_names
@@ -749,32 +749,38 @@ def create_finished_game_embed(
     # sort the names alphabetically and caselessly to make them easier to read
     team0_player_names.sort(key=str.casefold)
     team1_player_names.sort(key=str.casefold)
+    newline = "\n"
+    team0_embed_value: str = ""
+    team1_embed_value: str = ""
     if finished_game.winning_team == 0:
         be_str = f"🥇 {finished_game.team0_name}"
         ds_str = f"🥈 {finished_game.team1_name}"
+        if team0_player_names:
+            team0_embed_value = f"\n>>> {'**{0}**'.format(newline.join(team0_player_names))}"  # bold winning names
+        if team1_player_names:
+            team1_embed_value = f"\n>>> {newline.join(team1_player_names)}"
     elif finished_game.winning_team == 1:
         be_str = f"🥈 {finished_game.team0_name}"
         ds_str = f"🥇 {finished_game.team1_name}"
+        if team0_player_names:
+            team0_embed_value = f"\n>>> {newline.join(team0_player_names)}"
+        if team1_player_names:
+            team1_embed_value = f"\n>>> {'**{0}**'.format(newline.join(team1_player_names))}"  # bold winning names
     else:
         be_str = f"🥈 {finished_game.team0_name}"
         ds_str = f"🥈 {finished_game.team1_name}"
-    newline = "\n"
+        if team0_player_names:
+            team0_embed_value = f"\n>>> {newline.join(team0_player_names)}"
+        if team1_player_names:
+            team1_embed_value = f"\n>>> {newline.join(team1_player_names)}"
     embed.add_field(
-        name=f"{be_str} ({round(100 * finished_game.win_probability)}%)",
-        value=(
-            ""
-            if not team0_player_names
-            else f"\n>>> {newline.join(team0_player_names)}"
-        ),
+        name=f"{be_str} ({round(100 * finished_game.win_probability, 1)}%)",
+        value=team0_embed_value,
         inline=True,
     )
     embed.add_field(
-        name=f"{ds_str} ({round(100*(1 - finished_game.win_probability))}%)",
-        value=(
-            ""
-            if not team1_player_names
-            else f"\n>>> {newline.join(team1_player_names)}"
-        ),
+        name=f"{ds_str} ({round(100*(1 - finished_game.win_probability), 1)}%)",
+        value=team1_embed_value,
         inline=True,
     )
     embed.add_field(name="", value="", inline=False)  # newline
@@ -981,6 +987,12 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
         rotation: Rotation | None = (
             session.query(Rotation).filter(Rotation.id == rotation_id).first()
         )
+
+        if not rotation:
+            _log.warning(
+                f"[update_next_map_to_map_after_next] Could not find rotation {rotation_id}, skipping update"
+            )
+            return
 
         next_rotation_map: RotationMap | None = (
             session.query(RotationMap)

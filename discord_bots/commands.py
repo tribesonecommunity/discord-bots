@@ -200,7 +200,7 @@ async def create_game(
         if len(player_ids) == 1:
             # Useful for debugging, no real world application
             players = session.query(Player).filter(Player.id == player_ids[0]).all()
-            win_prob = 0
+            win_prob = 0.0
         else:
             """
             # run get_even_teams in a separate process, so that it doesn't block the event loop
@@ -899,20 +899,17 @@ async def autosub(ctx: Context, member: Member = None):
     )
     for i, field in enumerate(embed.fields):
         # brute force iteration through the embed's fields until we find the original team0 and team1 embeds to update
-        if field.name == f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)":
+        if field.name and game.team0_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
+                name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
                 value=team0_diff_vaules,
                 inline=True,
             )
-        if (
-            field.name
-            == f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)"
-        ):
+        if field.name and game.team1_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
+                name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
                 value=team1_diff_values,
                 inline=True,
             )
@@ -1551,20 +1548,17 @@ async def sub(ctx: Context, member: Member):
     )
     for i, field in enumerate(embed.fields):
         # brute force iteration through the embed's fields until we find the original team0 and team1 embeds to update
-        if field.name == f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)":
+        if field.name and game.team0_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability)}%)",
+                name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
                 value=team0_diff_vaules,
                 inline=True,
             )
-        if (
-            field.name
-            == f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)"
-        ):
+        if field.name and game.team1_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability))}%)",
+                name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
                 value=team1_diff_values,
                 inline=True,
             )
