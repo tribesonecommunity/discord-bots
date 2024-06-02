@@ -71,12 +71,18 @@ async def add_players(session: sqlalchemy.orm.Session):
     player_name_by_id: dict[int, str] = {}
     message: AddPlayerQueueMessage | None = None
     embed = discord.Embed()
+    queue_popped = False
     while not add_player_queue.empty():
         queues_added_to: list[Queue] = []
         message: AddPlayerQueueMessage = add_player_queue.get()
         player_name_by_id[message.player_id] = message.player_name
-        queue_popped = False
-        for queue_id in message.queue_ids:
+        # add some randomization to which queue gets to pop. queue_player does not track the add-time, otherwise it
+        # would be possible to fill all queues and then start popping full queues randomly until no queue has full
+        # player count anymore
+        queue_ids = message.queue_ids
+        if config.POP_RANDOM_QUEUE:
+            shuffle(queue_ids)
+        for queue_id in queue_ids:
             queue: Queue = queue_by_id[queue_id]
             if queue.is_locked:
                 continue
