@@ -4,7 +4,7 @@ from discord.ext.commands import Bot, Context, check, command
 from sqlalchemy.exc import IntegrityError
 
 import discord_bots.config as config
-from discord_bots.checks import is_admin
+from discord_bots.checks import is_admin, is_mock_command_user
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import MAP_VOTE_THRESHOLD
 from discord_bots.models import (
@@ -201,7 +201,7 @@ class VoteCommands(BaseCog):
         )
 
     @command(usage="<map|skip>")
-    @check(is_admin)
+    @check(is_mock_command_user)
     async def mockvotes(self, ctx: Context, type: str, count: int):
         """
         Generates 6 mock votes for testing
@@ -214,19 +214,13 @@ class VoteCommands(BaseCog):
         message = ctx.message
         session = ctx.session
 
-        lesser_gods = [115204465589616646, 347125254050676738, 508003755220926464]
-
-        if message.author.id not in lesser_gods:
-            await self.send_error_message("Only special people can use this command")
-            return
-
         if type == "map":
             rotation_map: RotationMap | None = session.query(RotationMap).first()
 
             player_ids = [
                 x[0]
                 for x in session.query(Player.id)
-                .filter(Player.id.not_in(lesser_gods))
+                .filter(Player.id.not_in(config.MOCK_COMMAND_USERS))
                 .limit(count)
                 .all()
             ]
@@ -258,7 +252,7 @@ class VoteCommands(BaseCog):
             player_ids = [
                 x[0]
                 for x in session.query(Player.id)
-                .filter(Player.id.not_in(lesser_gods))
+                .filter(Player.id.not_in(config.MOCK_COMMAND_USERS))
                 .limit(count)
                 .all()
             ]
@@ -283,7 +277,7 @@ class VoteCommands(BaseCog):
             player_ids = [
                 x[0]
                 for x in session.query(InProgressGamePlayer.player_id)
-                .filter(InProgressGamePlayer.player_id.not_in(lesser_gods))
+                .filter(InProgressGamePlayer.player_id.not_in(config.MOCK_COMMAND_USERS))
                 .limit(count)
                 .all()
             ]

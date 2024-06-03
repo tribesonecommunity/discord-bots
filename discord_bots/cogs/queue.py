@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord_bots.checks import is_admin
+from discord_bots.checks import is_admin, is_mock_command_user
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     CURRENCY_AWARD,
@@ -220,23 +220,14 @@ class QueueCommands(BaseCog):
         await self.send_success_message(f"Queue **{queue.name}** locked")
 
     @command()
-    @check(is_admin)
+    @check(is_mock_command_user)
     async def mockqueue(self, ctx: Context, queue_name: str, count: int):
-        message = ctx.message
         """
         Helper test method for adding random players to queues
 
         This will send PMs to players, create voice channels, etc. so be careful
         """
-        if message.author.id not in [
-            115204465589616646,
-            347125254050676738,
-            508003755220926464,
-            133700743201816577,
-        ]:
-            await self.send_error_message("Only special people can use this command")
-            return
-
+        message = ctx.message
         session = ctx.session
         players_from_last_30_days = (
             session.query(Player)

@@ -5,6 +5,7 @@ from discord import Colour, Embed, Interaction, Member, Message
 from discord.ext.commands.context import Context
 
 from discord_bots.utils import send_message
+from . import config
 
 from .config import ECONOMY_ENABLED
 from .models import AdminRole, Player, Session
@@ -37,8 +38,8 @@ async def is_admin(ctx: Context):
         admin_roles = session.query(AdminRole).all()
         admin_role_ids = map(lambda x: x.role_id, admin_roles)
         member_role_ids = map(lambda x: x.id, member.roles)
-        is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
-        if is_admin:
+        has_admin_priviledges: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
+        if has_admin_priviledges:
             return True
         else:
             await send_message(
@@ -47,6 +48,23 @@ async def is_admin(ctx: Context):
                 colour=Colour.red(),
             )
             return False
+
+
+async def is_mock_command_user(ctx: Context):
+    """
+    Check to wrap functions that require mock command priviledges
+
+    https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
+    """
+    if ctx.author.id in config.MOCK_COMMAND_USERS:
+        return True
+    else:
+        await send_message(
+            ctx.message.channel,
+            embed_description="You must be a mock command user to use that command",
+            colour=Colour.red(),
+        )
+        return False
 
 
 async def is_admin_app_command(interaction: Interaction) -> bool:
