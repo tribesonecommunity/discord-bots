@@ -52,6 +52,7 @@ def setup_logging(log_level: str):
             hdlr.close()
             log.removeHandler(hdlr)
 
+
 def _to_str(key: str, required: bool = False, default: str | None = None) -> str | None:
     value = os.getenv(key)
     if not value and default is not None:
@@ -105,6 +106,7 @@ def _to_bool(
             CONFIG_IS_VALID = False
             _log.error(f"{key} must be specified correctly, was '{value}'")
         return default
+
 
 # Parse an ISO time string env var into a datetime.time object
 def _to_time(
@@ -194,4 +196,5 @@ PREDICTION_TIMEOUT: int = _to_int(key="PREDICTION_TIMEOUT", default=300)
 CURRENCY_AWARD: int = _to_int(key="CURRENCY_AWARD", default=25)
 GAME_HISTORY_CHANNEL: int = _to_int(key="GAME_HISTORY_CHANNEL", required=True)
 ADMIN_AUTOSUB: bool = _to_bool(key="ADMIN_AUTOSUB", default=False)
+POP_RANDOM_QUEUE: bool = _to_bool(key="POP_RANDOM_QUEUE", default=False)
 # TODO grouping here and in docs
