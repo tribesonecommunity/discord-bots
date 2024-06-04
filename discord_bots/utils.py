@@ -1524,10 +1524,10 @@ async def map_autocomplete(interaction: Interaction, current: str):
         )
         if maps:
             for map in maps:
-                current_lower = current.casefold()
+                current_casefold = current.casefold()
                 if (
-                    current_lower in map.short_name.casefold()
-                    or current in map.full_name.casefold()
+                    current_casefold in map.short_name.casefold()
+                    or current_casefold in map.full_name.casefold()
                 ):
                     result.append(
                         discord.app_commands.Choice(
@@ -1581,8 +1581,9 @@ async def rotation_autocomplete(interaction: Interaction, current: str):
             session.query(Rotation).order_by(Rotation.name).limit(25).all()
         )
         if rotations:
+            current_casefold = current.casefold()
             for rotation in rotations:
-                if current in rotation.name:
+                if current_casefold in rotation.name.casefold():
                     result.append(
                         discord.app_commands.Choice(
                             name=rotation.name, value=rotation.name
@@ -1607,7 +1608,7 @@ async def category_autocomplete_with_user_id(interaction: Interaction, current: 
         category_names: list[str] = [r[0] for r in result] if result else []
         for name in category_names:
             current_casefold = current.casefold()
-            if current in name.casefold():
+            if current_casefold in name.casefold():
                 choices.append(
                     discord.app_commands.Choice(
                         name=name,
