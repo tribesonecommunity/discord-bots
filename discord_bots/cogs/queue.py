@@ -15,7 +15,7 @@ from discord import (
 )
 from discord.ext.commands import Bot
 
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_channel, is_mock_user_app_command
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
     CURRENCY_AWARD,
@@ -277,7 +277,7 @@ class QueueCommands(BaseCog):
         name="mock",
         description="Helper test method for adding random players to queues",
     )
-    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_mock_user_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", count="Number of people to add")
     async def mockqueue(self, interaction: Interaction, queue_name: str, count: int):
@@ -286,22 +286,6 @@ class QueueCommands(BaseCog):
 
         This will send PMs to players, create voice channels, etc. so be careful
         """
-        if interaction.user.id not in [
-            115204465589616646,
-            347125254050676738,
-            508003755220926464,
-            133700743201816577,
-            649029546749853706,
-        ]:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Only special people can use this command",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            return
-
         session: SQLAlchemySession
         with Session() as session:
             players_from_last_30_days = (

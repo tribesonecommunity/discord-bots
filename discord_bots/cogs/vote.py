@@ -8,9 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_channel, is_mock_user_app_command
 from discord_bots.cogs.base import BaseCog
-from discord_bots.config import MAP_VOTE_THRESHOLD
 from discord_bots.models import (
     InProgressGame,
     InProgressGamePlayer,
@@ -295,7 +294,7 @@ class VoteCommands(BaseCog):
             )
 
     @group.command(name="mock", description="Generates 6 mock votes for testing")
-    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_mock_user_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.guild_only()
     @app_commands.describe(
@@ -312,21 +311,6 @@ class VoteCommands(BaseCog):
         map: mocks MapVote entries for first rotation_map
         skip: mocks SkipMapVote entries for first rotation
         """
-        lesser_gods = [
-            115204465589616646,
-            347125254050676738,
-            508003755220926464,
-            649029546749853706,
-        ]
-        if interaction.user.id not in lesser_gods:
-            await interaction.response.send_message(
-                embed=Embed(
-                    description="Only special people can use this command",
-                    colour=Colour.red(),
-                ),
-                ephemeral=True,
-            )
-            return
         if not interaction.channel:
             await interaction.response.send_message(
                 embed=Embed(
@@ -354,7 +338,7 @@ class VoteCommands(BaseCog):
                 player_ids = [
                     x[0]
                     for x in session.query(Player.id)
-                    .filter(Player.id.not_in(lesser_gods))
+                    .filter(Player.id.not_in(config.MOCK_COMMAND_USERS))
                     .limit(count)
                     .all()
                 ]
@@ -395,7 +379,7 @@ class VoteCommands(BaseCog):
                 player_ids = [
                     x[0]
                     for x in session.query(Player.id)
-                    .filter(Player.id.not_in(lesser_gods))
+                    .filter(Player.id.not_in(config.MOCK_COMMAND_USERS))
                     .limit(count)
                     .all()
                 ]
@@ -420,7 +404,7 @@ class VoteCommands(BaseCog):
                 player_ids = [
                     x[0]
                     for x in session.query(InProgressGamePlayer.player_id)
-                    .filter(InProgressGamePlayer.player_id.not_in(lesser_gods))
+                    .filter(InProgressGamePlayer.player_id.not_in(config.MOCK_COMMAND_USERS))
                     .limit(count)
                     .all()
                 ]

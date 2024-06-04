@@ -5,9 +5,33 @@ from discord import Colour, Embed, Interaction, Member, Message
 from discord.ext.commands.context import Context
 
 from discord_bots.utils import send_message
+from . import config
 
 from .config import CHANNEL_ID, ECONOMY_ENABLED
 from .models import AdminRole, Player, Session
+
+
+def __has_admin_role(user_id: int, member: Member) -> bool:
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        has_admin_priviledge = (
+            session.query(Player)
+            .filter(Player.id == user_id, Player.is_admin == True)
+            .first()
+        )
+        if has_admin_priviledge:
+            return True
+
+        if not member:
+            return False
+
+        admin_roles = session.query(AdminRole).all()
+        admin_role_ids = map(lambda x: x.role_id, admin_roles)
+        member_role_ids = map(lambda x: x.id, member.roles)
+        has_admin_role: bool = (
+            len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
+        )
+        return has_admin_role
 
 
 async def economy_enabled(interaction: Interaction) -> bool:
@@ -44,78 +68,66 @@ async def is_admin(ctx: Context):
 
     https://discordpy.readthedocs.io/en/stable/ext/commands/commands.html#global-checks
     """
-    session: sqlalchemy.orm.Session
-    with Session() as session:
-        message: Message = ctx.message
-        caller = (
-            session.query(Player)
-            .filter(Player.id == message.author.id, Player.is_admin == True)
-            .first()
+    member = (
+        None
+        if not ctx.message.guild
+        else ctx.message.guild.get_member(ctx.message.author.id)
+    )
+    if __has_admin_role(ctx.message.author.id, member):
+        return True
+    else:
+        await send_message(
+            ctx.message.channel,
+            embed_description="You must be an admin to use that command",
+            colour=Colour.red(),
         )
-        if caller:
-            return True
-
-        if not message.guild:
-            return False
-
-        member = message.guild.get_member(message.author.id)
-        if not member:
-            return False
-
-        admin_roles = session.query(AdminRole).all()
-        admin_role_ids = map(lambda x: x.role_id, admin_roles)
-        member_role_ids = map(lambda x: x.id, member.roles)
-        is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
-        if is_admin:
-            return True
-        else:
-            await send_message(
-                message.channel,
-                embed_description="You must be an admin to use that command",
-                colour=Colour.red(),
-            )
-            return False
+        return False
 
 
 async def is_admin_app_command(interaction: Interaction) -> bool:
-    session: sqlalchemy.orm.Session
-    with Session() as session:
-        caller = (
-            session.query(Player)
-            .filter(Player.id == interaction.user.id, Player.is_admin == True)
-            .first()
-        )
-        if caller:
-            return True
-
-        member: Member = interaction.user
-        if not member:
-            return False
-
-        admin_roles = session.query(AdminRole).all()
-        admin_role_ids = map(lambda x: x.role_id, admin_roles)
-        member_role_ids = map(lambda x: x.id, member.roles)
-        is_admin: bool = len(set(admin_role_ids).intersection(set(member_role_ids))) > 0
-        if is_admin:
-            return True
+    if __has_admin_role(interaction.user.id, interaction.user):
+        return True
+    else:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="You must be an admin to use that command",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
         else:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="You must be an admin to use that command",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-            else:
-                await interaction.followup.send(
-                    embed=Embed(
-                        description="You must be an admin to use that command",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-            return False
+            await interaction.followup.send(
+                embed=Embed(
+                    description="You must be an admin to use that command",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+        return False
+
+
+async def is_mock_user_app_command(interaction: Interaction) -> bool:
+    if interaction.user.id in config.MOCK_COMMAND_USERS:
+        return True
+    else:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="You must be a mock command user to use that command",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+        else:
+            await interaction.followup.send(
+                embed=Embed(
+                    description="You must be a mock command user to use that command",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+        return False
 
 
 async def is_command_channel(interaction: Interaction) -> bool:
