@@ -46,21 +46,20 @@ from discord_bots.models import (
 from discord_bots.utils import (
     create_cancelled_game_embed,
     create_finished_game_embed,
-    get_guild_partial_message,
+    finished_game_str,
     get_n_best_finished_game_teams,
+    get_n_best_teams,
     get_n_worst_finished_game_teams,
+    get_n_worst_teams,
+    in_progress_game_autocomplete,
+    in_progress_game_str,
+    mock_finished_game_teams_str,
+    mock_teams_str,
     move_game_players,
     move_game_players_lobby,
-    send_in_guild_message,
     short_uuid,
     upload_stats_screenshot_imgkit_channel,
     upload_stats_screenshot_imgkit_interaction,
-    finished_game_str,
-    mock_finished_game_teams_str,
-    in_progress_game_str,
-    get_n_best_teams,
-    get_n_worst_teams,
-    mock_teams_str,
 )
 from discord_bots.views.base import BaseView
 from discord_bots.views.confirmation import ConfirmationView
@@ -143,6 +142,8 @@ class InProgressGameCommands(commands.Cog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(game_id="In progress game ID")
+    @app_commands.autocomplete(game_id=in_progress_game_autocomplete)
+    @app_commands.rename(game_id="game")
     @app_commands.guild_only()
     async def cancelgame(self, interaction: Interaction, game_id: str):
         await self.cancelgame_callback(interaction, game_id)
@@ -694,6 +695,8 @@ class InProgressGameCommands(commands.Cog):
     @app_commands.guild_only()
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
+    @app_commands.autocomplete(game_id=in_progress_game_autocomplete)
+    @app_commands.rename(game_id="game")
     async def movegameplayers(self, interaction: Interaction, game_id: str):
         """
         Move players in a given in-progress game to the correct voice channels
@@ -897,25 +900,6 @@ class InProgressGameCommands(commands.Cog):
                     #     embed_description=game_str,
                     #     colour=Colour.blue(),
                     # )
-
-    @cancelgame.autocomplete("game_id")
-    @movegameplayers.autocomplete("game_id")
-    async def game_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            in_progress_games: list[InProgressGame] | None = (
-                session.query(InProgressGame).limit(25).all()
-            )  # discord only supports up to 25 choices
-            if in_progress_games:
-                for ipg in in_progress_games:
-                    short_game_id = short_uuid(ipg.id)
-                    if current in short_game_id:
-                        result.append(
-                            app_commands.Choice(name=short_game_id, value=short_game_id)
-                        )
-        return result
-
 
 class InProgressGameView(BaseView):
     def __init__(self, game_id: str, cog: InProgressGameCommands):

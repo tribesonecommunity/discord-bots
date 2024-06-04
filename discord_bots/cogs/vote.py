@@ -8,7 +8,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
-from discord_bots.checks import is_admin_app_command, is_command_channel, is_mock_user_app_command
+from discord_bots.checks import (
+    is_admin_app_command,
+    is_command_channel,
+    is_mock_user_app_command,
+)
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
     InProgressGame,
@@ -23,7 +27,11 @@ from discord_bots.models import (
     SkipMapVote,
     VotePassedWaitlist,
 )
-from discord_bots.utils import update_next_map_to_map_after_next
+from discord_bots.utils import (
+    map_autocomplete,
+    queue_autocomplete,
+    update_next_map_to_map_after_next,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -206,6 +214,8 @@ class VoteCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.guild_only()
     @app_commands.describe(map_name="Map to remove votes from")
+    @app_commands.rename(map_name="map")
+    @app_commands.autocomplete(map_name=map_autocomplete)
     async def unvotemap(self, interaction: Interaction, map_name: str):
         """
         Remove all of a player's votes for a map
@@ -429,9 +439,11 @@ class VoteCommands(BaseCog):
             )
             session.commit()
 
-    # @group.command(name="map", description="Vote for a map in a queue")
-    # @app_commands.guild_only()
-    # @app_commands.describe(queue_name="Existing queue", map_name="Map to vote gor")
+    @group.command(name="map", description="Vote for a map in a queue")
+    @app_commands.guild_only()
+    @app_commands.describe(queue_name="Name of the queue", map_name="Map to vote for")
+    @app_commands.rename(queue_name="queue", map_name="map")
+    @app_commands.autocomplete(queue_name=queue_autocomplete, map_name=map_autocomplete)
     async def votemap(self, interaction: Interaction, queue_name: str, map_name: str):
         """
         Vote for a map in a queue
@@ -584,9 +596,11 @@ class VoteCommands(BaseCog):
             #     ]
             # )
 
-    # @group.command(name="skip", description="Vote to skip a map in a queue")
-    # @app_commands.guild_only()
-    # @app_commands.describe(queue_name="Queue to vote skip")
+    @group.command(name="skip", description="Vote to skip a map in a queue")
+    @app_commands.guild_only()
+    @app_commands.describe(queue_name="Queue to cast a vote for.")
+    @app_commands.rename(queue_name="queue")
+    @app_commands.autocomplete(queue_name=queue_autocomplete)
     async def voteskip(self, interaction: Interaction, queue_name: str):
         """
         Vote to skip a map in a queue
@@ -677,38 +691,3 @@ class VoteCommands(BaseCog):
                         colour=Colour.green(),
                     )
                 )
-
-    @unvotemap.autocomplete("map_name")
-    # @votemap.autocomplete("map_name")
-    async def map_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            maps: list[Map] | None = (
-                session.query(Map).order_by(Map.full_name).limit(25).all()
-            )
-            if maps:
-                for map in maps:
-                    if current in map.short_name:
-                        result.append(
-                            app_commands.Choice(
-                                name=map.full_name, value=map.short_name
-                            )
-                        )
-        return result
-
-    # @voteskip.autocomplete("queue_name")
-    async def queue_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            queues: list[Queue] | None = (
-                session.query(Queue).order_by(Queue.name).limit(25).all()
-            )
-            if queues:
-                for queue in queues:
-                    if current in queue.name:
-                        result.append(
-                            app_commands.Choice(name=queue.name, value=queue.name)
-                        )
-        return result

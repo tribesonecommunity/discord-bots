@@ -18,7 +18,6 @@ from discord import (
     DMChannel,
     Embed,
     GroupChannel,
-    Interaction,
     Message,
     TextChannel,
 )
@@ -36,11 +35,11 @@ from trueskill import Rating
 import discord_bots.config as config
 from discord_bots.checks import is_admin
 from discord_bots.utils import (
-    MU_LOWER_UNICODE,
-    SIGMA_LOWER_UNICODE,
-    create_finished_game_embed,
+    add_empty_field,
     create_in_progress_game_embed,
+    get_player_game,
     get_team_name_diff,
+    is_in_game,
     mean,
     move_game_players,
     send_in_guild_message,
@@ -49,30 +48,21 @@ from discord_bots.utils import (
     update_next_map_to_map_after_next,
     upload_stats_screenshot_imgkit_channel,
     win_probability,
-    is_in_game,
-    get_player_game,
-    finished_game_str,
 )
 
 from .bot import bot
 from .cogs.economy import EconomyCommands
 from .cogs.in_progress_game import InProgressGameCommands, InProgressGameView
 from .models import (
-    AdminRole,
     Category,
-    Commend,
-    CustomCommand,
-    DiscordGuild,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
     InProgressGameChannel,
     InProgressGamePlayer,
     Map,
-    MapVote,
     Player,
     PlayerCategoryTrueskill,
-    PlayerDecay,
     Queue,
     QueueNotification,
     QueuePlayer,
@@ -82,14 +72,12 @@ from .models import (
     Rotation,
     RotationMap,
     Session,
-    SkipMapVote,
     VotePassedWaitlist,
     VotePassedWaitlistPlayer,
 )
 from .names import generate_be_name, generate_ds_name
 from .queues import AddPlayerQueueMessage, add_player_queue, waitlist_messages
 from .twitch import twitch
-
 
 _log = logging.getLogger(__name__)
 
@@ -350,13 +338,7 @@ async def create_game(
             embed.add_field(
                 name="📺 Channel", value=match_channel.jump_url, inline=True
             )
-            embed_fields_len = (
-                len(embed.fields) - 3
-            )  # subtract team0, team1, and "newline" fields
-            if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
-                # embeds are allowed 3 "columns" per "row"
-                # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
-                embed.add_field(name="", value="", inline=True)
+            add_empty_field(embed, offset=3)
             game.channel_id = match_channel.id
         send_message_coroutines = []
         for player in team0_players:
@@ -1050,11 +1032,7 @@ async def del_(ctx: Context, *args):
         embed_description = f"<@{message.author.id}> no valid queues specified"
         embed.color = discord.Color.red()
     embed.description = embed_description
-    embed_fields_len = len(embed.fields)
-    if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
-        # embeds are allowed 3 "columns" per "row"
-        # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
-        embed.add_field(name="", value="", inline=True)
+    add_empty_field(embed)
     await message.channel.send(embed=embed)
     session.commit()
     session.close()
@@ -1232,7 +1210,8 @@ async def status(ctx: Context, *args):
                     ),
                     inline=True,
                 )
-                if i == rotation_queues_len - 1 and i >= 5 and i % 3 == 2:
+                if (i + 1) == rotation_queues_len and (i + 1) >= 5 and (i + 1) % 3 == 2:
+                    # we have to do this "inline", since there can be multiple sets of queues per rotation in a single embed
                     # embeds are allowed 3 "columns" per "row"
                     # to line everything up nicely when there's >= 5 queues and only one "column" slot left, we add a blank
                     embed.add_field(name="", value="", inline=True)

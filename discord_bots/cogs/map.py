@@ -1,18 +1,11 @@
 import logging
-from table2ascii import Alignment, PresetStyle, table2ascii
 from typing import List, Optional
-from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord import (
-    app_commands,
-    Colour,
-    Embed,
-    Interaction,
-)
-
+from discord import Colour, Embed, Interaction, app_commands
 from discord.ext.commands import Bot
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.orm.session import Session as SQLAlchemySession
+from table2ascii import Alignment, PresetStyle, table2ascii
 
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
@@ -29,7 +22,14 @@ from discord_bots.models import (
     RotationMap,
     Session,
 )
-from discord_bots.utils import code_block, short_uuid, win_rate
+from discord_bots.utils import (
+    code_block,
+    in_progress_game_autocomplete,
+    map_autocomplete,
+    queue_autocomplete,
+    short_uuid,
+    win_rate,
+)
 from discord_bots.views.configure_map import MapConfigureView
 
 _log = logging.getLogger(__name__)
@@ -44,9 +44,11 @@ class MapCommands(BaseCog):
     @group.command(name="changegame", description="Change the map for a game")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(
-        game_id="In progress game id", map_name="Map name"
+    @app_commands.describe(game_id="In progress game id", map_name="Map name")
+    @app_commands.autocomplete(
+        game_id=in_progress_game_autocomplete, map_name=map_autocomplete
     )
+    @app_commands.rename(game_id="game", map_name="map")
     async def changegamemap(
         self, interaction: Interaction, game_id: str, map_name: str
     ):
@@ -111,6 +113,8 @@ class MapCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", map_name="Map name")
+    @app_commands.rename(queue_name="queue", map_name="map")
+    @app_commands.autocomplete(queue_name=queue_autocomplete, map_name=map_autocomplete)
     async def changequeuemap(
         self, interaction: Interaction, queue_name: str, map_name: str
     ):
@@ -310,6 +314,8 @@ class MapCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(map_name="New or existing map")
+    @app_commands.autocomplete(map_name=map_autocomplete)
+    @app_commands.rename(map_name="map")
     async def configure(self, interaction: Interaction, map_name: str):
         assert interaction.guild
 
@@ -364,6 +370,8 @@ class MapCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(map_name="Short name of map")
+    @app_commands.autocomplete(map_name=map_autocomplete)
+    @app_commands.rename(map_name="map")
     async def removemap(self, interaction: Interaction, map_name: str):
         """
         Remove a map from the map pool
@@ -664,60 +672,3 @@ class MapCommands(BaseCog):
                             )
                         )
         return choices
-
-    @changequeuemap.autocomplete("queue_name")
-    async def queue_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            queues: list[Queue] | None = (
-                session.query(Queue).order_by(Queue.name).limit(25).all()
-            )
-            if queues:
-                for queue in queues:
-                    if current in queue.name:
-                        result.append(
-                            app_commands.Choice(name=queue.name, value=queue.name)
-                        )
-        return result
-
-    @changequeuemap.autocomplete("map_name")
-    @changegamemap.autocomplete("map_name")
-    @configure.autocomplete("map_name")
-    @removemap.autocomplete("map_name")
-    async def map_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            maps: list[Map] | None = (
-                session.query(Map).order_by(Map.full_name).limit(25).all()
-            )
-            if maps:
-                for map in maps:
-                    if current in map.full_name:
-                        result.append(
-                            app_commands.Choice(
-                                name=map.full_name, value=map.full_name
-                            )
-                        )
-        return result
-
-    @changegamemap.autocomplete("game_id")
-    async def game_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            in_progress_games: list[InProgressGame] | None = (
-                session.query(InProgressGame)
-                .order_by(short_uuid(InProgressGame.id))
-                .limit(25)
-                .all()
-            )  # discord only supports up to 25 choices
-            if in_progress_games:
-                for ipg in in_progress_games:
-                    short_game_id = short_uuid(ipg.id)
-                    if current in short_game_id:
-                        result.append(
-                            app_commands.Choice(name=short_game_id, value=short_game_id)
-                        )
-        return result

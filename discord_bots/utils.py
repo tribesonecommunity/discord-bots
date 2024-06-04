@@ -686,11 +686,7 @@ async def create_in_progress_game_embed(
         embed.add_field(name="📺 Channel", value=f"<#{game.channel_id}>", inline=True)
     if game.code:
         embed.add_field(name="🔢 Game Code", value=f"`{game.code}`", inline=True)
-    embed_fields_len = len(embed.fields) - 3  # subtract team0 and team1 fields
-    if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
-        # embeds are allowed 3 "columns" per "row"
-        # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
-        embed.add_field(name="", value="", inline=True)
+    add_empty_field(embed, offset=3)
     return embed
 
 
@@ -1044,13 +1040,15 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
                     .filter(Queue.rotation_id == rotation_id)
                     .all()
                 )
-                rotation_queue_names = ""
-                for name in rotation_queues:
-                    rotation_queue_names += f"\n- {name[0]}"
-
+                rotation_queue_names = (
+                    [rotation_queue.name for rotation_queue in rotation_queues]
+                    if rotation_queues
+                    else []
+                )
+                rotation_queue_names_str = f"**{', '.join(rotation_queue_names)}**"
                 await send_message(
                     channel,
-                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected:{rotation_queue_names}",
+                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected: {rotation_queue_names_str}",
                     colour=Colour.blue(),
                 )
             else:
@@ -1501,3 +1499,120 @@ def default_sigma_decay_amount() -> float:
     Which causes decay from 0 sigma to default over a year
     """
     return config.DEFAULT_TRUESKILL_SIGMA / 365
+
+
+def add_empty_field(embed: discord.Embed, *, offset: int = 0):
+    """
+    :offset Amount to deduct from the length of the embed's fields. Useful if you want to ignore some non-inlined fields beforehand.
+    embeds are allowed 3 "columns" per "row" for fields.
+    To line everything up nicely when there are >= 5 embed fields and only one "column" slot left, we add a blank.
+    """
+    if not embed.fields:
+        return embed
+    num_fields = len(embed.fields) - offset
+    if num_fields >= 5 and num_fields % 3 == 2:
+        embed.add_field(name="", value="", inline=True)
+    return embed
+
+
+async def map_autocomplete(interaction: Interaction, current: str):
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        maps: list[Map] | None = (
+            session.query(Map).order_by(Map.full_name).limit(25).all()
+        )
+        if maps:
+            for map in maps:
+                current_casefold = current.casefold()
+                if (
+                    current_casefold in map.short_name.casefold()
+                    or current_casefold in map.full_name.casefold()
+                ):
+                    result.append(
+                        discord.app_commands.Choice(
+                            name=map.full_name, value=map.short_name
+                        )
+                    )
+    return result
+
+
+async def queue_autocomplete(interaction: Interaction, current: str):
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        queues: list[Queue] | None = (
+            session.query(Queue).order_by(Queue.name).limit(25).all()
+        )
+        if queues:
+            current_casefold = current.casefold()
+            for queue in queues:
+                if current_casefold in queue.name.casefold():
+                    result.append(
+                        discord.app_commands.Choice(name=queue.name, value=queue.name)
+                    )
+    return result
+
+
+async def in_progress_game_autocomplete(interaction: Interaction, current: str):
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        in_progress_games: list[InProgressGame] | None = (
+            session.query(InProgressGame).limit(25).all()
+        )  # discord only supports up to 25 choices
+        if in_progress_games:
+            for ipg in in_progress_games:
+                short_game_id = short_uuid(ipg.id)
+                if current in short_game_id:
+                    result.append(
+                        discord.app_commands.Choice(
+                            name=short_game_id, value=short_game_id
+                        )
+                    )
+    return result
+
+
+async def rotation_autocomplete(interaction: Interaction, current: str):
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        rotations: list[Rotation] | None = (
+            session.query(Rotation).order_by(Rotation.name).limit(25).all()
+        )
+        if rotations:
+            current_casefold = current.casefold()
+            for rotation in rotations:
+                if current_casefold in rotation.name.casefold():
+                    result.append(
+                        discord.app_commands.Choice(
+                            name=rotation.name, value=rotation.name
+                        )
+                    )
+    return result
+
+
+async def category_autocomplete_with_user_id(interaction: Interaction, current: str):
+    # useful for when you want to filter the categories based on the ones the author has games played in
+    choices = []
+    session: SQLAlchemySession
+    with Session() as session:
+        result = (
+            session.query(Category.name, PlayerCategoryTrueskill.player_id)
+            .join(PlayerCategoryTrueskill)
+            .filter(PlayerCategoryTrueskill.player_id == interaction.user.id)
+            .order_by(Category.name)
+            .limit(25)  # discord only supports up to 25 choices
+            .all()
+        )
+        category_names: list[str] = [r[0] for r in result] if result else []
+        for name in category_names:
+            current_casefold = current.casefold()
+            if current_casefold in name.casefold():
+                choices.append(
+                    discord.app_commands.Choice(
+                        name=name,
+                        value=name,
+                    )
+                )
+    return choices
