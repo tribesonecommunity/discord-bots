@@ -155,6 +155,10 @@ __admin_ids = (
 SEED_ADMIN_IDS: list[int] = list(
     filter(lambda x: x is not None, map(_convert_to_int, __admin_ids))
 )
+__mock_comand_users = os.getenv("MOCK_COMMAND_USERS").split(",") if os.getenv("MOCK_COMMAND_USERS") else []
+MOCK_COMMAND_USERS: list[int] = list(
+    filter(lambda x: x is not None, map(_convert_to_int, __mock_comand_users))
+)
 ENABLE_VOICE_MOVE: bool = _to_bool(key="ENABLE_VOICE_MOVE", default=False)
 DEFAULT_VOICE_MOVE: bool = _to_bool(key="DEFAULT_VOICE_MOVE", default=False)
 VOICE_MOVE_LOBBY: int = _to_int(key="VOICE_MOVE_LOBBY", required=False)
