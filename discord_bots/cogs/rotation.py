@@ -1,20 +1,19 @@
 import logging
+
+from discord import Colour, Embed, Interaction, app_commands
+from discord.ext.commands import Bot, Context, check, command
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord import (
-    app_commands,
-    Colour,
-    Embed,
-    Interaction,
-)
-from discord.ext.commands import Bot, Context, check, command
-
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Map, Queue, Rotation, RotationMap, Session
-from discord_bots.utils import update_next_map_to_map_after_next
+from discord_bots.utils import (
+    map_autocomplete,
+    rotation_autocomplete,
+    update_next_map_to_map_after_next,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -29,6 +28,8 @@ class RotationCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(rotation_name="Existing rotation")
+    @app_commands.autocomplete(rotation_name=rotation_autocomplete)
+    @app_commands.rename(rotation_name="rotation")
     async def addrotation(self, interaction: Interaction, rotation_name: str):
         """
         Add a rotation to the rotation pool
@@ -63,14 +64,18 @@ class RotationCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
-        map_short_name="Existing map",
+        map_name="Existing map",
         ordinal="Map ordinal",
     )
+    @app_commands.autocomplete(
+        rotation_name=rotation_autocomplete, map_name=map_autocomplete
+    )
+    @app_commands.rename(rotation_name="rotation", map_name="map")
     async def addrotationmap(
         self,
         interaction: Interaction,
         rotation_name: str,
-        map_short_name: str,
+        map_name: str,
         ordinal: int,
     ):
         """
@@ -105,15 +110,11 @@ class RotationCommands(BaseCog):
                 return
 
             try:
-                map = (
-                    session.query(Map)
-                    .filter(Map.short_name.ilike(map_short_name))
-                    .one()
-                )
+                map = session.query(Map).filter(Map.short_name.ilike(map_name)).one()
             except NoResultFound:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map **{map_short_name}**",
+                        description=f"Could not find map **{map_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -151,7 +152,7 @@ class RotationCommands(BaseCog):
                 session.rollback()
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Error adding {map_short_name} to {rotation_name} at ordinal {ordinal}",
+                        description=f"Error adding {map_name} to {rotation_name} at ordinal {ordinal}",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -170,6 +171,8 @@ class RotationCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(rotation_name="Existing rotation")
+    @app_commands.autocomplete(rotation_name=rotation_autocomplete)
+    @app_commands.rename(rotation_name="rotation")
     async def removerotation(self, interaction: Interaction, rotation_name: str):
         """
         Remove a rotation from the rotation pool
@@ -205,11 +208,13 @@ class RotationCommands(BaseCog):
     @group.command(name="removemap", description="Remove a map from a rotation")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(
-        rotation_name="Existing rotation", map_short_name="Existing map"
+    @app_commands.autocomplete(
+        rotation_name=rotation_autocomplete, map_name=map_autocomplete
     )
+    @app_commands.rename(rotation_name="rotation", map_name="map")
+    @app_commands.describe(rotation_name="Existing rotation", map_name="Existing map")
     async def removerotationmap(
-        self, interaction: Interaction, rotation_name: str, map_short_name: str
+        self, interaction: Interaction, rotation_name: str, map_name: str
     ):
         """
         Remove a map from a rotation
@@ -233,15 +238,11 @@ class RotationCommands(BaseCog):
                 return
 
             try:
-                map = (
-                    session.query(Map)
-                    .filter(Map.short_name.ilike(map_short_name))
-                    .one()
-                )
+                map = session.query(Map).filter(Map.short_name.ilike(map_name)).one()
             except NoResultFound:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map **{map_short_name}**",
+                        description=f"Could not find map **{map_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -295,14 +296,20 @@ class RotationCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
-        map_short_name="Existing map",
+        map_name="Existing map",
         new_ordinal="New map ordinal",
+    )
+    @app_commands.autocomplete(
+        rotation_name=rotation_autocomplete, map_name=map_autocomplete
+    )
+    @app_commands.rename(
+        rotation_name="rotation", map_name="map", new_ordinal="ordinal"
     )
     async def setrotationmapordinal(
         self,
         interaction: Interaction,
         rotation_name: str,
-        map_short_name: str,
+        map_name: str,
         new_ordinal: int,
     ):
         """
@@ -337,15 +344,11 @@ class RotationCommands(BaseCog):
                 return
 
             try:
-                map = (
-                    session.query(Map)
-                    .filter(Map.short_name.ilike(map_short_name))
-                    .one()
-                )
+                map = session.query(Map).filter(Map.short_name.ilike(map_name)).one()
             except NoResultFound:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map **{map_short_name}**",
+                        description=f"Could not find map **{map_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -414,6 +417,8 @@ class RotationCommands(BaseCog):
     @group.command(name="setname", description="Set rotation name")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
+    @app_commands.autocomplete(old_rotation_name=rotation_autocomplete)
+    @app_commands.rename(old_rotation_name="old_name", new_rotation_name="new_name")
     @app_commands.describe(
         old_rotation_name="Existing rotation", new_rotation_name="New rotation name"
     )
@@ -429,6 +434,8 @@ class RotationCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(rotation_name="Existing rotation")
+    @app_commands.autocomplete(rotation_name=rotation_autocomplete)
+    @app_commands.rename(rotation_name="rotation")
     async def setrotationrandom(self, interaction: Interaction, rotation_name: str):
         """
         Chooses rotation's maps at random
@@ -463,6 +470,8 @@ class RotationCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(rotation_name="Existing rotation")
+    @app_commands.autocomplete(rotation_name=rotation_autocomplete)
+    @app_commands.rename(rotation_name="rotation")
     async def unsetrotationrandom(self, interaction: Interaction, rotation_name: str):
         """
         Chooses rotation's maps in order
@@ -492,46 +501,3 @@ class RotationCommands(BaseCog):
                     colour=Colour.green(),
                 )
             )
-
-    @addrotationmap.autocomplete("map_short_name")
-    @removerotationmap.autocomplete("map_short_name")
-    @setrotationmapordinal.autocomplete("map_short_name")
-    async def map_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            maps: list[Map] | None = (
-                session.query(Map).order_by(Map.full_name).limit(25).all()
-            )
-            if maps:
-                for map in maps:
-                    if current in map.short_name:
-                        result.append(
-                            app_commands.Choice(
-                                name=map.full_name, value=map.short_name
-                            )
-                        )
-        return result
-
-    @addrotation.autocomplete("rotation_name")
-    @addrotationmap.autocomplete("rotation_name")
-    @removerotation.autocomplete("rotation_name")
-    @removerotationmap.autocomplete("rotation_name")
-    @setrotationmapordinal.autocomplete("rotation_name")
-    @setrotationname.autocomplete("old_rotation_name")
-    @setrotationrandom.autocomplete("rotation_name")
-    @unsetrotationrandom.autocomplete("rotation_name")
-    async def rotation_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            rotations: list[Rotation] | None = (
-                session.query(Rotation).order_by(Rotation.name).limit(25).all()
-            )
-            if rotations:
-                for rotation in rotations:
-                    if current in rotation.name:
-                        result.append(
-                            app_commands.Choice(name=rotation.name, value=rotation.name)
-                        )
-        return result

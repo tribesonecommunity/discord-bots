@@ -20,10 +20,11 @@ from discord.utils import escape_markdown
 import discord_bots.config as config
 from discord_bots.cogs.schedule import ScheduleUtils
 from discord_bots.utils import (
+    add_empty_field,
+    move_game_players_lobby,
     print_leaderboard,
     send_message,
     update_next_map_to_map_after_next,
-    move_game_players_lobby
 )
 
 from .bot import bot
@@ -137,7 +138,9 @@ async def add_players(session: sqlalchemy.orm.Session):
             queues_added_to = queues_added_to_by_player_id[player_id]
             queue_names = [queue.name for queue in queues_added_to]
             if not queues_added_to:
-                embed_description += f"**{player_name}** not added to any queues" + "\n"
+                embed_description += (
+                    f"**{player_name}** was not added to any queues" + "\n"
+                )
             else:
                 embed_description += (
                     f"**{player_name}** added to **{', '.join(queue_names)}**" + "\n"
@@ -147,11 +150,7 @@ async def add_players(session: sqlalchemy.orm.Session):
         embed.description = embed_description
         if not queues_added_to_by_id:
             embed.color = discord.Color.yellow()
-        embed_fields_len = len(embed.fields)
-        if embed_fields_len >= 5 and embed_fields_len % 3 == 2:
-            # embeds are allowed 3 "columns" per "row"
-            # to line everything up nicely when there's >= 5 fields and only one "column" slot left, we add a blank
-            embed.add_field(name="", value="", inline=True)
+        add_empty_field(embed)
         await message.channel.send(embed=embed)
 
     # No messages processed, so no way that sweaty queues popped

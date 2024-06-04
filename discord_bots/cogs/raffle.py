@@ -1,21 +1,15 @@
 import logging
-from emoji import emojize
 
-from sqlalchemy.sql import functions
-from sqlalchemy.orm.session import Session as SQLAlchemySession
-
-from discord import (
-    app_commands,
-    Colour,
-    Embed,
-    Interaction,
-    Member,
-)
+from discord import Colour, Embed, Interaction, Member, app_commands
 from discord.ext.commands import Bot
+from emoji import emojize
+from sqlalchemy.orm.session import Session as SQLAlchemySession
+from sqlalchemy.sql import functions
 
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Map, Player, Rotation, RotationMap, Session
+from discord_bots.utils import map_autocomplete, rotation_autocomplete
 
 strings = [
     "Don't give up!",
@@ -155,14 +149,18 @@ class RaffleCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
-        map_short_name="Existing map",
+        map_name="Existing map",
         raffle_ticket_reward="Raffle award",
     )
+    @app_commands.autocomplete(
+        rotation_name=rotation_autocomplete, map_name=map_autocomplete
+    )
+    @app_commands.rename(rotation_name="rotation", map_name="map")
     async def setrotationmapraffle(
         self,
         interaction: Interaction,
         rotation_name: str,
-        map_short_name: str,
+        map_name: str,
         raffle_ticket_reward: int,
     ):
         """
@@ -184,14 +182,14 @@ class RaffleCommands(BaseCog):
                 session.query(RotationMap)
                 .join(Map, Map.id == RotationMap.map_id)
                 .join(Rotation, Rotation.id == RotationMap.rotation_id)
-                .filter(Map.short_name.ilike(map_short_name))
+                .filter(Map.short_name.ilike(map_name))
                 .filter(Rotation.name.ilike(rotation_name))
                 .first()  # type: ignore
             )
             if not rotation_map:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map **{map_short_name}** in rotation **{rotation_name}**",
+                        description=f"Could not find map **{map_name}** in rotation **{rotation_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -203,7 +201,7 @@ class RaffleCommands(BaseCog):
 
             await interaction.response.send_message(
                 embed=Embed(
-                    description=f"Raffle tickets for **{map_short_name}** in **{rotation_name}** set to **{raffle_ticket_reward}**",
+                    description=f"Raffle tickets for **{map_name}** in **{rotation_name}** set to **{raffle_ticket_reward}**",
                     colour=Colour.blue(),
                 )
             )
@@ -231,37 +229,3 @@ class RaffleCommands(BaseCog):
         TODO: Implementation
         """
         pass
-
-    @setrotationmapraffle.autocomplete("map_short_name")
-    async def map_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            maps: list[Map] | None = (
-                session.query(Map).order_by(Map.full_name).limit(25).all()
-            )
-            if maps:
-                for map in maps:
-                    if current in map.short_name:
-                        result.append(
-                            app_commands.Choice(
-                                name=map.full_name, value=map.short_name
-                            )
-                        )
-        return result
-
-    @setrotationmapraffle.autocomplete("rotation_name")
-    async def rotation_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            rotations: list[Rotation] | None = (
-                session.query(Rotation).order_by(Rotation.name).limit(25).all()
-            )
-            if rotations:
-                for rotation in rotations:
-                    if current in rotation.name:
-                        result.append(
-                            app_commands.Choice(name=rotation.name, value=rotation.name)
-                        )
-        return result
