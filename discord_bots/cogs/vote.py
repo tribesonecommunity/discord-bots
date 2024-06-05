@@ -578,7 +578,7 @@ class VoteCommands(BaseCog):
 
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Added map vote for **{map.short_name}** in **{queue.name}**.\n`!unvotemap` to remove your vote.\nMap vote status: [{map_votes}/{config.MAP_VOTE_THRESHOLD}]",
+                        description=f"Added map vote for **{map.full_name} ({map.short_name})** in **{queue.name}**.\n`/vote unvotemap` to remove your vote.\nMap vote status: [{map_votes}/{config.MAP_VOTE_THRESHOLD}]",
                         colour=Colour.green(),
                     )
                 )
@@ -687,7 +687,7 @@ class VoteCommands(BaseCog):
             else:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Added vote to skip the current map.\n!unvoteskip to remove vote.\nVotes to skip: [{skip_map_votes_count}/{config.MAP_VOTE_THRESHOLD}]",
+                        description=f"Added vote to skip the current map.\n`/vote unskip` to remove your vote.\nVotes to skip: [{skip_map_votes_count}/{config.MAP_VOTE_THRESHOLD}]",
                         colour=Colour.green(),
                     )
                 )
