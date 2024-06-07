@@ -142,6 +142,7 @@ class CommonCommands(BaseCog):
             await interaction.response.defer(ephemeral=True)
             title: str = f"Lobby code for ({short_uuid(ipg.id)})"
             if ipg.channel_id and ipg.message_id:
+                # Update the match channel's in_progress_game embed with the game code
                 partial_message = get_guild_partial_message(
                     interaction.guild, ipg.channel_id, ipg.message_id
                 )
@@ -158,7 +159,7 @@ class CommonCommands(BaseCog):
                                     embed.set_field_at(
                                         i,
                                         name="🔢 Game Code",
-                                        value=f"`{code}`",
+                                        value=code_block(code, language="yaml"),
                                         inline=True,
                                     )
                                     replaced_code = True
