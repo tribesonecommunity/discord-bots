@@ -685,7 +685,11 @@ async def create_in_progress_game_embed(
     if game.channel_id:
         embed.add_field(name="📺 Channel", value=f"<#{game.channel_id}>", inline=True)
     if game.code:
-        embed.add_field(name="🔢 Game Code", value=f"`{game.code}`", inline=True)
+        embed.add_field(
+            name="🔢 Game Code",
+            value=code_block(game.code, language="yaml"),
+            inline=True,
+        )
     add_empty_field(embed, offset=3)
     return embed
 
