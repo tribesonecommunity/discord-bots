@@ -953,7 +953,7 @@ class InProgressGameView(BaseView):
         label="Tie",
         style=ButtonStyle.primary,
         custom_id="in_progress_game_view:tie",
-        emoji="🤞",
+        emoji="🤝",
     )
     async def tie_button(self, interaction: Interaction, button: Button):
         self.is_game_finished = await self.cog.finishgame_callback(
