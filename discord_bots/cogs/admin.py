@@ -3,19 +3,12 @@ import os
 import sys
 from datetime import datetime, timezone
 from shutil import copyfile
-from sqlalchemy.orm.session import Session as SQLAlchemySession
 from typing import List, Literal
 
-from discord import (
-    app_commands,
-    Colour,
-    Embed,
-    Interaction,
-    Member,
-    Role,
-)
+from discord import Colour, Embed, Interaction, Member, Role, TextChannel, app_commands
 from discord.ext.commands import Bot
 from discord.utils import escape_markdown
+from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
 from discord_bots.bot import bot
@@ -27,14 +20,24 @@ from discord_bots.models import (
     DiscordGuild,
     FinishedGame,
     FinishedGamePlayer,
+    InProgressGame,
+    Map,
     Player,
     Queue,
     QueuePlayer,
     QueueWaitlist,
     QueueWaitlistPlayer,
+    Rotation,
+    RotationMap,
     Session,
 )
-from discord_bots.utils import finished_game_str
+from discord_bots.utils import (
+    finished_game_str,
+    in_progress_game_autocomplete,
+    map_short_name_autocomplete,
+    print_leaderboard,
+    queue_autocomplete,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -714,3 +717,210 @@ class AdminCommands(BaseCog):
                             app_commands.Choice(name=command.name, value=command.name)
                         )
         return result
+
+    @group.command(
+        name="resetleaderboard", description="Resets & updates the leaderboards"
+    )
+    @app_commands.check(is_command_channel)
+    @app_commands.check(is_admin_app_command)
+    async def resetleaderboardchannel(self, interaction: Interaction):
+        if not config.LEADERBOARD_CHANNEL:
+            await interaction.response.send_message(
+                "Leaderboard channel ID not configured", ephemeral=True
+            )
+            return
+        channel: TextChannel = bot.get_channel(config.LEADERBOARD_CHANNEL)
+        if not channel:
+            await interaction.response.send_message(
+                "Could not find leaderboard channel, check ID", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer()
+        try:
+            await channel.purge()
+            await print_leaderboard()
+        except:
+            _log.exception(
+                "[resetleaderboardchannel] Leaderboard failed to reset due to:"
+            )
+            await interaction.followup.send(
+                embed=Embed(
+                    description="Leaderboard failed to reset",
+                    colour=Colour.red(),
+                )
+            )
+        else:
+            await interaction.followup.send(
+                embed=Embed(
+                    description="Leaderboard channel reset",
+                    colour=Colour.green(),
+                )
+            )
+
+    @group.command(description="Set the map for a game")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(game_id="In progress game id", map_short_name="Map name")
+    @app_commands.autocomplete(
+        game_id=in_progress_game_autocomplete,
+        map_short_name=map_short_name_autocomplete,
+    )
+    @app_commands.rename(game_id="game", map_short_name="map")
+    async def setgamemap(
+        self, interaction: Interaction, game_id: str, map_short_name: str
+    ):
+        """
+        Change the map for a game
+        TODO: tests
+        """
+        session: SQLAlchemySession
+        with Session() as session:
+            ipg = (
+                session.query(InProgressGame)
+                .filter(InProgressGame.id.startswith(game_id))
+                .first()
+            )
+            finished_game = (
+                session.query(FinishedGame)
+                .filter(FinishedGame.game_id.startswith(game_id))
+                .first()
+            )
+            game: InProgressGame | FinishedGame
+            if ipg:
+                game = ipg
+            elif finished_game:
+                game = finished_game
+            else:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find game: **{game_id}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            map: Map | None = (
+                session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()
+            )
+            if not map:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map: **{map_short_name}**. Add to map pool first.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            game.map_full_name = map.full_name
+            game.map_short_name = map.short_name
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Map for game **{game_id}** changed to **{map.short_name}**",
+                    colour=Colour.green(),
+                )
+            )
+
+    @group.command(
+        description="Set the map for a queue (note: affects all queues sharing the same rotation)",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(queue_name="Queue Name", map_short_name="Map Name")
+    @app_commands.rename(queue_name="queue", map_short_name="map")
+    @app_commands.autocomplete(
+        queue_name=queue_autocomplete, map_short_name=map_short_name_autocomplete
+    )
+    async def setqueuemap(
+        self, interaction: Interaction, queue_name: str, map_short_name: str
+    ):
+        """
+        Change the next map for a queue (note: affects all queues sharing that rotation)
+        TODO: tests
+        """
+
+        session: SQLAlchemySession
+        with Session() as session:
+            queue: Queue | None = (
+                session.query(Queue).filter(Queue.name.ilike(queue_name)).first()
+            )
+            if not queue:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find queue: **{queue_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            map: Map | None = (
+                session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()
+            )
+            if not map:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map: **{map_short_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            rotation: Rotation | None = (
+                session.query(Rotation).filter(queue.rotation_id == Rotation.id).first()
+            )
+            if not rotation:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"**{queue.name}** has not been assigned a rotation.\nPlease assign one with `/setqueuerotation`.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(
+                    RotationMap.rotation_id == rotation.id, RotationMap.map_id == map.id
+                )
+                .first()
+            )
+            if not next_rotation_map:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"The rotation for **{queue.name}** doesn't have that map.\nPlease add it to the **{rotation.name}** rotation with `/addrotationmap`.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            session.query(RotationMap).filter(
+                RotationMap.rotation_id == rotation.id
+            ).filter(RotationMap.is_next == True).update({"is_next": False})
+            next_rotation_map.is_next = True
+            session.commit()
+
+            output = f"Next map for **{queue.name}** changed to **{map.full_name}**"
+            result = (
+                session.query(Queue.name)
+                .filter(Queue.rotation_id == rotation.id)
+                .filter(Queue.name != queue.name)
+                .all()
+            )
+            affected_queues = [queue_name[0] for queue_name in result] if result else []
+            if affected_queues:
+                queues_affected_str = f"**{', '.join(affected_queues)}**"
+                output += f"\nQueues affected: {queues_affected_str}"
+
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=output,
+                    colour=Colour.green(),
+                )
+            )

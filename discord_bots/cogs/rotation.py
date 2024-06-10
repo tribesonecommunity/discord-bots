@@ -10,7 +10,7 @@ from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Map, Queue, Rotation, RotationMap, Session
 from discord_bots.utils import (
-    map_autocomplete,
+    map_short_name_autocomplete,
     rotation_autocomplete,
     update_next_map_to_map_after_next,
 )
@@ -64,18 +64,18 @@ class RotationCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
-        map_name="Existing map",
+        map_short_name="Existing map",
         ordinal="Map ordinal",
     )
     @app_commands.autocomplete(
-        rotation_name=rotation_autocomplete, map_name=map_autocomplete
+        rotation_name=rotation_autocomplete, map_short_name=map_short_name_autocomplete
     )
-    @app_commands.rename(rotation_name="rotation", map_name="map")
+    @app_commands.rename(rotation_name="rotation", map_short_name="map")
     async def addrotationmap(
         self,
         interaction: Interaction,
         rotation_name: str,
-        map_name: str,
+        map_short_name: str,
         ordinal: int,
     ):
         """
@@ -110,11 +110,15 @@ class RotationCommands(BaseCog):
                 return
 
             try:
-                map = session.query(Map).filter(Map.short_name.ilike(map_name)).one()
+                map = (
+                    session.query(Map)
+                    .filter(Map.short_name.ilike(map_short_name))
+                    .one()
+                )
             except NoResultFound:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map **{map_name}**",
+                        description=f"Could not find map **{map_short_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -152,7 +156,7 @@ class RotationCommands(BaseCog):
                 session.rollback()
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Error adding {map_name} to {rotation_name} at ordinal {ordinal}",
+                        description=f"Error adding {map_short_name} to {rotation_name} at ordinal {ordinal}",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -209,12 +213,14 @@ class RotationCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.autocomplete(
-        rotation_name=rotation_autocomplete, map_name=map_autocomplete
+        rotation_name=rotation_autocomplete, map_short_name=map_short_name_autocomplete
     )
-    @app_commands.rename(rotation_name="rotation", map_name="map")
-    @app_commands.describe(rotation_name="Existing rotation", map_name="Existing map")
+    @app_commands.rename(rotation_name="rotation", map_short_name="map")
+    @app_commands.describe(
+        rotation_name="Existing rotation", map_short_name="Existing map"
+    )
     async def removerotationmap(
-        self, interaction: Interaction, rotation_name: str, map_name: str
+        self, interaction: Interaction, rotation_name: str, map_short_name: str
     ):
         """
         Remove a map from a rotation
@@ -238,11 +244,15 @@ class RotationCommands(BaseCog):
                 return
 
             try:
-                map = session.query(Map).filter(Map.short_name.ilike(map_name)).one()
+                map = (
+                    session.query(Map)
+                    .filter(Map.short_name.ilike(map_short_name))
+                    .one()
+                )
             except NoResultFound:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map **{map_name}**",
+                        description=f"Could not find map **{map_short_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -296,20 +306,20 @@ class RotationCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
-        map_name="Existing map",
+        map_short_name="Existing map",
         new_ordinal="New map ordinal",
     )
     @app_commands.autocomplete(
-        rotation_name=rotation_autocomplete, map_name=map_autocomplete
+        rotation_name=rotation_autocomplete, map_short_name=map_short_name_autocomplete
     )
     @app_commands.rename(
-        rotation_name="rotation", map_name="map", new_ordinal="ordinal"
+        rotation_name="rotation", map_short_name="map", new_ordinal="ordinal"
     )
     async def setrotationmapordinal(
         self,
         interaction: Interaction,
         rotation_name: str,
-        map_name: str,
+        map_short_name: str,
         new_ordinal: int,
     ):
         """
@@ -344,11 +354,15 @@ class RotationCommands(BaseCog):
                 return
 
             try:
-                map = session.query(Map).filter(Map.short_name.ilike(map_name)).one()
+                map = (
+                    session.query(Map)
+                    .filter(Map.short_name.ilike(map_short_name))
+                    .one()
+                )
             except NoResultFound:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map **{map_name}**",
+                        description=f"Could not find map **{map_short_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,

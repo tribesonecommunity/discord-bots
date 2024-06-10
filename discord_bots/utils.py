@@ -1519,7 +1519,7 @@ def add_empty_field(embed: discord.Embed, *, offset: int = 0):
     return embed
 
 
-async def map_autocomplete(interaction: Interaction, current: str):
+async def map_short_name_autocomplete(interaction: Interaction, current: str):
     result = []
     session: SQLAlchemySession
     with Session() as session:
