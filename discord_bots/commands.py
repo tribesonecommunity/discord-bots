@@ -492,6 +492,7 @@ async def add_player_to_queue(
                 queue_id=queue_id,
                 player_id=player_id,
                 channel_id=channel.id,
+                added_at=discord.utils.utcnow(),
             )
         )
         try:
@@ -1192,6 +1193,7 @@ async def status(ctx: Context, *args):
                     session.query(Player)
                     .join(QueuePlayer)
                     .filter(QueuePlayer.queue_id == queue.id)
+                    .order_by(QueuePlayer.added_at.asc())
                     .all()
                 )
                 queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(players_in_queue)}/{queue.size}]"
