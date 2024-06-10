@@ -13,9 +13,7 @@ from discord_bots.models import (
     Category,
     FinishedGame,
     FinishedGamePlayer,
-    InProgressGame,
     Map,
-    MapVote,
     PlayerCategoryTrueskill,
     Queue,
     Rotation,
@@ -24,10 +22,8 @@ from discord_bots.models import (
 )
 from discord_bots.utils import (
     code_block,
-    in_progress_game_autocomplete,
-    map_autocomplete,
+    map_short_name_autocomplete,
     queue_autocomplete,
-    short_uuid,
     win_rate,
 )
 from discord_bots.views.configure_map import MapConfigureView
@@ -41,70 +37,6 @@ class MapCommands(BaseCog):
 
     group = app_commands.Group(name="map", description="Map commands")
 
-    @group.command(name="changegame", description="Change the map for a game")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
-    @app_commands.describe(game_id="In progress game id", map_name="Map name")
-    @app_commands.autocomplete(
-        game_id=in_progress_game_autocomplete, map_name=map_autocomplete
-    )
-    @app_commands.rename(game_id="game", map_name="map")
-    async def changegamemap(
-        self, interaction: Interaction, game_id: str, map_name: str
-    ):
-        """
-        Change the map for a game
-        TODO: tests
-        """
-        session: SQLAlchemySession
-        with Session() as session:
-            ipg = (
-                session.query(InProgressGame)
-                .filter(InProgressGame.id.startswith(game_id))
-                .first()
-            )
-            finished_game = (
-                session.query(FinishedGame)
-                .filter(FinishedGame.game_id.startswith(game_id))
-                .first()
-            )
-            game: InProgressGame | FinishedGame
-            if ipg:
-                game = ipg
-            elif finished_game:
-                game = finished_game
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find game: **{game_id}**",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            map: Map | None = (
-                session.query(Map).filter(Map.full_name.ilike(map_name)).first()
-            )
-            if not map:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Could not find map: **{map_name}**. Add to map pool first.",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            game.map_full_name = map.full_name
-            game.map_short_name = map.short_name
-            session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Map for game **{game_id}** changed to **{map.short_name}**",
-                    colour=Colour.green(),
-                )
-            )
 
     @group.command(
         name="changequeue",
@@ -112,11 +44,13 @@ class MapCommands(BaseCog):
     )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(queue_name="Name of queue", map_name="Map name")
-    @app_commands.rename(queue_name="queue", map_name="map")
-    @app_commands.autocomplete(queue_name=queue_autocomplete, map_name=map_autocomplete)
+    @app_commands.describe(queue_name="Queue Name", map_short_name="Map Name")
+    @app_commands.rename(queue_name="queue", map_short_name="map")
+    @app_commands.autocomplete(
+        queue_name=queue_autocomplete, map_short_name=map_short_name_autocomplete
+    )
     async def changequeuemap(
-        self, interaction: Interaction, queue_name: str, map_name: str
+        self, interaction: Interaction, queue_name: str, map_short_name: str
     ):
         """
         Change the next map for a queue (note: affects all queues sharing that rotation)
@@ -139,12 +73,12 @@ class MapCommands(BaseCog):
                 return
 
             map: Map | None = (
-                session.query(Map).filter(Map.full_name.ilike(map_name)).first()
+                session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()
             )
             if not map:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map: **{map_name}**",
+                        description=f"Could not find map: **{map_short_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -313,23 +247,23 @@ class MapCommands(BaseCog):
     @group.command(name="configure", description="Create/Edit a map")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(map_name="New or existing map")
-    @app_commands.autocomplete(map_name=map_autocomplete)
-    @app_commands.rename(map_name="map")
-    async def configure(self, interaction: Interaction, map_name: str):
+    @app_commands.describe(map_short_name="New or existing map")
+    @app_commands.autocomplete(map_short_name=map_short_name_autocomplete)
+    @app_commands.rename(map_short_name="map")
+    async def configure(self, interaction: Interaction, map_short_name: str):
         assert interaction.guild
 
         new_map: bool = False
         session: SQLAlchemySession
         with Session() as session:
             map: Map | None = (
-                session.query(Map).filter(Map.full_name.ilike(map_name)).first()
+                session.query(Map).filter(Map.full_name.ilike(map_short_name)).first()
             )
             if not map:
                 new_map = True
                 map = Map(
-                    short_name="",
-                    full_name=map_name,
+                    short_name=map_short_name,
+                    full_name="",
                 )
 
             configure_view = MapConfigureView(interaction, map)
@@ -369,21 +303,25 @@ class MapCommands(BaseCog):
     @group.command(name="remove", description="Remove a map from the map pool")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(map_name="Short name of map")
-    @app_commands.autocomplete(map_name=map_autocomplete)
-    @app_commands.rename(map_name="map")
-    async def removemap(self, interaction: Interaction, map_name: str):
+    @app_commands.describe(map_short_name="Short name of map")
+    @app_commands.autocomplete(map_short_name=map_short_name_autocomplete)
+    @app_commands.rename(map_short_name="map")
+    async def removemap(self, interaction: Interaction, map_short_name: str):
         """
         Remove a map from the map pool
         """
         session: SQLAlchemySession
         with Session() as session:
             try:
-                map = session.query(Map).filter(Map.full_name.ilike(map_name)).one()
+                map = (
+                    session.query(Map)
+                    .filter(Map.short_name.ilike(map_short_name))
+                    .one()
+                )
             except NoResultFound:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map **{map_name}**",
+                        description=f"Could not find map **{map_short_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -555,7 +493,7 @@ class MapCommands(BaseCog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @group.command(
-        name="globalmapstats", description="Displays global statistics for each map"
+        name="globalstats", description="Displays global statistics for each map"
     )
     @app_commands.rename(category_name="category")
     @app_commands.describe(category_name="Optional name of a specific category")

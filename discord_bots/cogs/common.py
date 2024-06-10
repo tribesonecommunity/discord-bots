@@ -17,8 +17,6 @@ from discord_bots.config import (
     DEFAULT_RAFFLE_VALUE,
     DEFAULT_TRUESKILL_MU,
     DEFAULT_TRUESKILL_SIGMA,
-    ENABLE_RAFFLE,
-    LEADERBOARD_CHANNEL,
     SHOW_TRUESKILL,
 )
 from discord_bots.models import (
@@ -38,7 +36,6 @@ from discord_bots.utils import (
     category_autocomplete_with_user_id,
     code_block,
     get_guild_partial_message,
-    print_leaderboard,
     send_in_guild_message,
     short_uuid,
 )
@@ -50,44 +47,6 @@ class CommonCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    @app_commands.command(
-        name="resetleaderboardchannel", description="Resets & updates the leaderboards"
-    )
-    @app_commands.check(is_command_channel)
-    async def resetleaderboardchannel(self, interaction: Interaction):
-        if not LEADERBOARD_CHANNEL:
-            await interaction.response.send_message(
-                "Leaderboard channel ID not configured", ephemeral=True
-            )
-            return
-        channel: TextChannel = bot.get_channel(LEADERBOARD_CHANNEL)
-        if not channel:
-            await interaction.response.send_message(
-                "Could not find leaderboard channel, check ID", ephemeral=True
-            )
-            return
-
-        await interaction.response.defer()
-        try:
-            await channel.purge()
-            await print_leaderboard()
-        except:
-            _log.exception(
-                "[resetleaderboardchannel] Leaderboard failed to reset due to:"
-            )
-            await interaction.followup.send(
-                embed=Embed(
-                    description="Leaderboard failed to reset",
-                    colour=Colour.red(),
-                )
-            )
-        else:
-            await interaction.followup.send(
-                embed=Embed(
-                    description="Leaderboard channel reset",
-                    colour=Colour.green(),
-                )
-            )
 
     @app_commands.command(
         name="setgamecode", description="Sets lobby code for your current game"
@@ -155,7 +114,7 @@ class CommonCommands(BaseCog):
                             replaced_code = False
                             for i, field in enumerate(embed.fields):
                                 if field.name == "🔢 Game Code":
-                                    field.value = f"`{code}`"
+                                    field.value = code_block(code, language="yaml")
                                     embed.set_field_at(
                                         i,
                                         name="🔢 Game Code",
@@ -173,7 +132,9 @@ class CommonCommands(BaseCog):
                                 ):
                                     embed.remove_field(-1)
                                 embed.add_field(
-                                    name="🔢 Game Code", value=f"`{code}`", inline=True
+                                    name="🔢 Game Code",
+                                    value=code_block(code, language="yaml"),
+                                    inline=True,
                                 )
                                 add_empty_field(embed, offset=3)
                             await message.edit(embed=embed)
@@ -186,7 +147,7 @@ class CommonCommands(BaseCog):
 
             embed = Embed(
                 title=title,
-                description=f"`{code}`",
+                description=code_block(code, language="yaml"),
                 colour=Colour.green(),
             )
             embed.set_footer(

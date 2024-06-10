@@ -28,7 +28,7 @@ from discord_bots.models import (
     VotePassedWaitlist,
 )
 from discord_bots.utils import (
-    map_autocomplete,
+    map_short_name_autocomplete,
     queue_autocomplete,
     update_next_map_to_map_after_next,
 )
@@ -213,10 +213,10 @@ class VoteCommands(BaseCog):
     )
     @app_commands.check(is_command_channel)
     @app_commands.guild_only()
-    @app_commands.describe(map_name="Map to remove votes from")
-    @app_commands.rename(map_name="map")
-    @app_commands.autocomplete(map_name=map_autocomplete)
-    async def unvotemap(self, interaction: Interaction, map_name: str):
+    @app_commands.describe(map_short_name="Map to remove votes from")
+    @app_commands.rename(map_short_name="map")
+    @app_commands.autocomplete(map_short_name=map_short_name_autocomplete)
+    async def unvotemap(self, interaction: Interaction, map_short_name: str):
         """
         Remove all of a player's votes for a map
         Use irrespective of rotation/queue because that seems like a super niche use case
@@ -225,7 +225,7 @@ class VoteCommands(BaseCog):
         session: SQLAlchemySession
         with Session() as session:
             map: Map | None = (
-                session.query(Map).filter(Map.short_name.ilike(map_name)).first()
+                session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()
             )
             if not map:
                 await interaction.response.send_message(
@@ -249,7 +249,7 @@ class VoteCommands(BaseCog):
             if not map_votes:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"You don't have any votes for {map_name}",
+                        description=f"You don't have any votes for {map_short_name}",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -441,10 +441,16 @@ class VoteCommands(BaseCog):
 
     @group.command(name="map", description="Vote for a map in a queue")
     @app_commands.guild_only()
-    @app_commands.describe(queue_name="Name of the queue", map_name="Map to vote for")
-    @app_commands.rename(queue_name="queue", map_name="map")
-    @app_commands.autocomplete(queue_name=queue_autocomplete, map_name=map_autocomplete)
-    async def votemap(self, interaction: Interaction, queue_name: str, map_name: str):
+    @app_commands.describe(
+        queue_name="Name of the queue", map_short_name="Map to vote for"
+    )
+    @app_commands.rename(queue_name="queue", map_short_name="map")
+    @app_commands.autocomplete(
+        queue_name=queue_autocomplete, map_short_name=map_short_name_autocomplete
+    )
+    async def votemap(
+        self, interaction: Interaction, queue_name: str, map_short_name: str
+    ):
         """
         Vote for a map in a queue
         TODO: Vote for many maps at once
@@ -492,12 +498,12 @@ class VoteCommands(BaseCog):
                 return
 
             map: Map | None = (
-                session.query(Map).filter(Map.short_name.ilike(map_name)).first()
+                session.query(Map).filter(Map.short_name.ilike(map_short_name)).first()
             )
             if not map:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Could not find map **{map_name}**",
+                        description=f"Could not find map **{map_short_name}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
