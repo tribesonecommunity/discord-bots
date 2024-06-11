@@ -222,6 +222,7 @@ class AdminCommands(BaseCog):
         with Session() as session:
             custom_command_modal = CustomCommandModal(name, session)
             await interaction.response.send_modal(custom_command_modal)
+            await custom_command_modal.wait()
 
     @group.command(
         name="createdbbackup", description="Creates a backup of the database"
