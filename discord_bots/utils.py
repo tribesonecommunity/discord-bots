@@ -6,7 +6,7 @@ import math
 import os
 import statistics
 from datetime import datetime, timedelta, timezone
-from heapq import heappush, heappop
+from heapq import heappop, heappush
 from itertools import combinations
 from typing import Optional
 
@@ -41,6 +41,7 @@ import discord_bots.config as config
 from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
+    CustomCommand,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -1620,3 +1621,21 @@ async def category_autocomplete_with_user_id(interaction: Interaction, current: 
                     )
                 )
     return choices
+
+
+async def command_autocomplete(interaction: Interaction, current: str):
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        commands: list[CustomCommand] | None = (
+            session.query(CustomCommand).order_by(CustomCommand.name).limit(25).all()
+        )  # discord only supports up to 25 choices
+        if commands:
+            for command in commands:
+                if current in command.name:
+                    result.append(
+                        discord.app_commands.Choice(
+                            name=command.name, value=command.name
+                        )
+                    )
+    return result

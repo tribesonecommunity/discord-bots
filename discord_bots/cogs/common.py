@@ -428,7 +428,9 @@ class CommonCommands(BaseCog):
                         ],
                     )
                     description += code_block(table)
-                    embed = Embed(title=title, description=description)
+                    embed = Embed(
+                        title=title, description=description, color=Colour.dark_theme()
+                    )
                     if i == (num_pct - 1):
                         # only add the footer to the last embed so we don't duplicate the information
                         embed.set_footer(text=footer_text)

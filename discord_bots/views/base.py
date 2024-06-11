@@ -33,7 +33,6 @@ class BaseView(View):
                 ephemeral=True,
             )
         await super().on_error(interaction, error, item)
-        return
 
     async def disable_children(self, interaction: Interaction):
         for child in self.children:

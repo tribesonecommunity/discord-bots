@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from shutil import copyfile
 from typing import List, Literal
 
+import discord
 from discord import Colour, Embed, Interaction, Member, Role, TextChannel, app_commands
 from discord.ext.commands import Bot
 from discord.utils import escape_markdown
@@ -32,12 +33,14 @@ from discord_bots.models import (
     Session,
 )
 from discord_bots.utils import (
+    command_autocomplete,
     finished_game_str,
     in_progress_game_autocomplete,
     map_short_name_autocomplete,
     print_leaderboard,
     queue_autocomplete,
 )
+from discord_bots.views.base import BaseView
 
 _log = logging.getLogger(__name__)
 
@@ -209,33 +212,16 @@ class AdminCommands(BaseCog):
                 )
                 session.commit()
 
-    @group.command(name="createcommand", description="Create a custom command")
+    @group.command(description="Create or Edit a custom command")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(name="Name of new command", output="Command output")
-    async def createcommand(self, interaction: Interaction, name: str, *, output: str):
+    @app_commands.describe(name="New or Existing command name")
+    @app_commands.autocomplete(name=command_autocomplete)
+    async def customcommand(self, interaction: Interaction, name: str):
         session: SQLAlchemySession
         with Session() as session:
-            exists = (
-                session.query(CustomCommand).filter(CustomCommand.name == name).first()
-            )
-            if exists is not None:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="A command with that name already exists",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            session.add(CustomCommand(name, output))
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Command `{name}` added", colour=Colour.green()
-                )
-            )
-            session.commit()
+            custom_command_modal = CustomCommandModal(name, session)
+            await interaction.response.send_modal(custom_command_modal)
 
     @group.command(
         name="createdbbackup", description="Creates a backup of the database"
@@ -356,38 +342,6 @@ class AdminCommands(BaseCog):
                 embed=Embed(
                     title=f"{escape_markdown(member.name)} removed from: {', '.join([queue.name for queue in queues])}",
                     description=" ".join(queue_statuses),
-                    colour=Colour.green(),
-                )
-            )
-            session.commit()
-
-
-    @group.command(name="editcommand", description="Edit a custom command")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
-    @app_commands.describe(
-        name="Name of existing custom command", output="New command output"
-    )
-    async def editcommand(self, interaction: Interaction, name: str, *, output: str):
-        session: SQLAlchemySession
-        with Session() as session:
-            exists = (
-                session.query(CustomCommand).filter(CustomCommand.name == name).first()
-            )
-            if exists is None:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="Could not find a command with that name",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-            exists.output = output
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Command `{name}` updated",
                     colour=Colour.green(),
                 )
             )
@@ -522,6 +476,7 @@ class AdminCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(name="Name of existing custom command")
+    @app_commands.autocomplete(name=command_autocomplete)
     async def removecommand(self, interaction: Interaction, name: str):
         session: SQLAlchemySession
         with Session() as session:
@@ -543,9 +498,13 @@ class AdminCommands(BaseCog):
                 embed=Embed(
                     description=f"Command `{name}` removed",
                     colour=Colour.green(),
-                )
+                ),
+                ephemeral=True,
             )
             session.commit()
+            _log.info(
+                f"[removecommand] Command {name} removed by {interaction.user.name} ({interaction.user.id})"
+            )
 
     @group.command(name="removedbbackup", description="Remove a database backup")
     @app_commands.check(is_admin_app_command)
@@ -698,26 +657,6 @@ class AdminCommands(BaseCog):
             )
             session.commit()
 
-    @editcommand.autocomplete("name")
-    @removecommand.autocomplete("name")
-    async def command_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            commands: list[CustomCommand] | None = (
-                session.query(CustomCommand)
-                .order_by(CustomCommand.name)
-                .limit(25)
-                .all()
-            )  # discord only supports up to 25 choices
-            if commands:
-                for command in commands:
-                    if current in command.name:
-                        result.append(
-                            app_commands.Choice(name=command.name, value=command.name)
-                        )
-        return result
-
     @group.command(
         name="resetleaderboard", description="Resets & updates the leaderboards"
     )
@@ -736,7 +675,6 @@ class AdminCommands(BaseCog):
             )
             return
 
-        await interaction.response.defer()
         try:
             await channel.purge()
             await print_leaderboard()
@@ -744,18 +682,20 @@ class AdminCommands(BaseCog):
             _log.exception(
                 "[resetleaderboardchannel] Leaderboard failed to reset due to:"
             )
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 embed=Embed(
                     description="Leaderboard failed to reset",
                     colour=Colour.red(),
-                )
+                ),
+                ephemeral=True,
             )
         else:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 embed=Embed(
                     description="Leaderboard channel reset",
                     colour=Colour.green(),
-                )
+                ),
+                ephemeral=True,
             )
 
     @group.command(description="Set the map for a game")
@@ -924,3 +864,73 @@ class AdminCommands(BaseCog):
                     colour=Colour.green(),
                 )
             )
+
+
+class CustomCommandModal(discord.ui.Modal):
+    """
+    Sends a discord.ui.Modal that handles both Creating/Editing custom commands
+    For existing commands, the existing output will be autofilled to allow easy editing.
+    """
+
+    def __init__(self, name: str, session: SQLAlchemySession):
+        super().__init__(
+            title=f"Custom Command {config.COMMAND_PREFIX}{name}", timeout=None
+        )
+        self.session = session
+        self.name = name
+        self.custom_command: CustomCommand | None = (
+            self.session.query(CustomCommand)
+            .filter(CustomCommand.name == self.name)
+            .first()
+        )
+        self.form = discord.ui.TextInput(
+            style=discord.TextStyle.long,
+            label="Command Ouput",
+            placeholder="Enter the command output here...",
+            default=self.custom_command.output if self.custom_command else None,
+            required=True,
+        )
+        self.add_item(self.form)
+
+    async def on_submit(self, interaction: Interaction) -> None:
+        if self.custom_command:
+            self.custom_command.output = self.form.value
+            embed_description: str = (
+                f"Command `{config.COMMAND_PREFIX}{self.name}` updated!"
+            )
+        else:
+            self.custom_command = CustomCommand(name=self.name, output=self.form.value)
+            self.session.add(self.custom_command)
+            embed_description: str = (
+                f"Command `{config.COMMAND_PREFIX}{self.name}` added!"
+            )
+        self.session.commit()
+        await interaction.response.send_message(
+            embed=Embed(description=embed_description, colour=Colour.green()),
+            ephemeral=True,
+        )
+
+    async def on_error(
+        self,
+        interaction: Interaction,
+        error: Exception,
+    ) -> None:
+        self.session.rollback()
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                embed=Embed(
+                    description="Oops! Something went wrong ☹️",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+        else:
+            # fallback case that responds to the interaction, since there always needs to be a response
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Oops! Something went wrong ☹️",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+        await super().on_error(interaction, error)

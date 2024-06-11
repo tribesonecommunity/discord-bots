@@ -471,6 +471,9 @@ class MapCommands(BaseCog):
                         f"{wr}%",
                     ]
                 )
+        cols.sort(
+            key=lambda lst: lst[-1], reverse=True
+        )  # sort by WR in descending order
         table = table2ascii(
             header=["Map", "W", "L", "T", "Total", "WR"],
             body=cols,
@@ -489,7 +492,9 @@ class MapCommands(BaseCog):
             title = f"{interaction.user.display_name} Map Stats for {category_name}"
         else:
             title = f"{interaction.user.display_name} Overall Map Stats"
-        embed = Embed(title=title, description=code_block(table), colour=Colour.blue())
+        embed = Embed(
+            title=title, description=code_block(table), colour=Colour.dark_theme()
+        )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @group.command(
