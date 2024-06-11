@@ -1074,6 +1074,9 @@ class QueuePlayer:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+    added_at: datetime = field(
+        metadata={"sa": Column(DateTime, index=True, nullable=False)},
+    )
 
 
 @mapper_registry.mapped
