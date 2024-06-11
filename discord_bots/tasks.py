@@ -114,6 +114,7 @@ async def add_players(session: sqlalchemy.orm.Session):
                 session.query(QueuePlayer, Player.name)
                 .join(Player, QueuePlayer.player_id == Player.id)
                 .filter(QueuePlayer.queue_id == queue.id)
+                .order_by(QueuePlayer.added_at.asc())
                 .all()
             )
             player_names: list[str] = [name[1] for name in result] if result else []
