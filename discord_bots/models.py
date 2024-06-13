@@ -675,6 +675,9 @@ class Map:
         default_factory=lambda: str(uuid4()),
         metadata={"sa": Column(String, primary_key=True)},
     )
+    image_url: str | None = field(
+        metadata={"sa": Column(String, unique=False, nullable=True)}, default=None
+    )
 
     rotation_maps = relationship("RotationMap", cascade="all, delete-orphan")
 

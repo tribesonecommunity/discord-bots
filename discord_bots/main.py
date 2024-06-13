@@ -16,6 +16,7 @@ from discord_bots.cogs.economy import EconomyCommands
 from discord_bots.cogs.in_progress_game import InProgressGameCommands
 from discord_bots.cogs.list import ListCommands
 from discord_bots.cogs.map import MapCommands
+from discord_bots.cogs.notification import NotificationCommands
 from discord_bots.cogs.player import PlayerCommands
 from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
@@ -26,14 +27,7 @@ from discord_bots.cogs.trueskill import TrueskillCommands
 from discord_bots.cogs.vote import VoteCommands
 
 from .bot import bot
-from .models import (
-    CustomCommand,
-    Player,
-    QueuePlayer,
-    QueueWaitlistPlayer,
-    Session,
-    engine,
-)
+from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
 from .tasks import (
     add_player_task,
     afk_timer_task,
@@ -42,8 +36,8 @@ from .tasks import (
     prediction_task,
     queue_waitlist_task,
     schedule_task,
-    vote_passed_waitlist_task,
     sigma_decay_task,
+    vote_passed_waitlist_task,
 )
 
 _log = logging.getLogger(__name__)
@@ -274,6 +268,7 @@ async def setup():
     await bot.add_cog(ScheduleCommands(bot))
     await bot.add_cog(TrueskillCommands(bot))
     await bot.add_cog(VoteCommands(bot))
+    await bot.add_cog(NotificationCommands(bot))
     add_player_task.start()
     afk_timer_task.start()
     leaderboard_task.start()

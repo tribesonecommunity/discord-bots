@@ -379,7 +379,7 @@ async def create_game(
         session.commit()
 
         if not rolled_random_map:
-            await update_next_map_to_map_after_next(queue.rotation_id, False)
+            await update_next_map_to_map_after_next(queue.rotation_id, True)
 
         if config.ECONOMY_ENABLED and match_channel:
             prediction_message_id: int | None = (
@@ -1225,7 +1225,7 @@ async def status(ctx: Context, *args):
                         )
                         ipg_embeds.append(ipg_embed)
         await ctx.channel.send(
-            embeds=[embed] + ipg_embeds,
+            embeds=ipg_embeds + [embed],
         )
 
 

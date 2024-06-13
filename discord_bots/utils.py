@@ -6,6 +6,7 @@ import math
 import os
 import statistics
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from heapq import heappop, heappush
 from itertools import combinations
 from typing import Optional
@@ -32,7 +33,7 @@ from discord.utils import escape_markdown
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from table2ascii import Alignment, Merge, PresetStyle, table2ascii
 from trueskill import Rating, global_env
@@ -680,7 +681,7 @@ async def create_in_progress_game_embed(
     # TODO: make the commands configurable/toggleable
     embed.add_field(
         name="🔧 Commands",
-        value="\n".join(["`/game finish`", "`/setgamecode`"]),
+        value="\n".join(["`/game finish`", "`/vote skipgamemap`", "`/setgamecode`"]),
         inline=True,
     )
     if game.channel_id:
@@ -692,6 +693,18 @@ async def create_in_progress_game_embed(
             inline=True,
         )
     add_empty_field(embed, offset=3)
+    map: Map | None = (
+        session.query(Map)
+        .filter(
+            or_(
+                Map.full_name == game.map_full_name,
+                Map.short_name == game.map_short_name,
+            )
+        )
+        .first()
+    )
+    if map and map.image_url:
+        embed.set_image(url=map.image_url)
     return embed
 
 
@@ -804,6 +817,18 @@ def create_finished_game_embed(
             value=round(finished_game.average_trueskill, 2),
             inline=True,
         )
+    map: Map | None = (
+        session.query(Map)
+        .filter(
+            or_(
+                Map.full_name == finished_game.map_full_name,
+                Map.short_name == finished_game.map_short_name,
+            )
+        )
+        .first()
+    )
+    if map and map.image_url:
+        embed.set_image(url=map.image_url)
     return embed
 
 
@@ -842,9 +867,20 @@ def create_cancelled_game_embed(
         .all()
     )
     embed.add_field(
-        name="📍 Map",
+        name=f"{in_progress_game.team0_name} ({round(100 * in_progress_game.win_probability, 1)}%)",
+        value="\n".join([f"> {ipgp.player.name}" for ipgp in team0_fg_players]),
+        inline=True,
+    )
+    embed.add_field(
+        name=f"{in_progress_game.team1_name} ({round(100*(1 - in_progress_game.win_probability), 1)}%)",
+        value="\n".join([f"> {ipgp.player.name}" for ipgp in team1_fg_players]),
+        inline=True,
+    )
+    embed.add_field(name="", value="", inline=False)  # newline
+    embed.add_field(
+        name="🗺️️ Map",
         value=f"{in_progress_game.map_full_name} ({in_progress_game.map_short_name})",
-        inline=False,
+        inline=True,
     )
     # probably don't need duration for cancelled games, but might as well add it
     duration: timedelta = discord.utils.utcnow() - in_progress_game.created_at.replace(
@@ -853,25 +889,26 @@ def create_cancelled_game_embed(
     embed.add_field(
         name="⏱️ Duration",
         value=f"{duration.seconds // 60} minutes",
-        inline=False,
+        inline=True,
     )
     if config.SHOW_TRUESKILL:
         embed.add_field(
             name=f"📊 Average {MU_LOWER_UNICODE}",
             value=round(in_progress_game.average_trueskill, 2),
-            inline=False,
+            inline=True,
         )
-    embed.add_field(name="", value="", inline=False)  # newline
-    embed.add_field(
-        name=f"{in_progress_game.team0_name} ({round(100 * in_progress_game.win_probability)}%)",
-        value="\n".join([f"> <@{player.player_id}>" for player in team0_fg_players]),
-        inline=True,
+    map: Map | None = (
+        session.query(Map)
+        .filter(
+            or_(
+                Map.full_name == in_progress_game.map_full_name,
+                Map.short_name == in_progress_game.map_short_name,
+            )
+        )
+        .first()
     )
-    embed.add_field(
-        name=f"{in_progress_game.team1_name} ({round(100*(1 - in_progress_game.win_probability))}%)",
-        value="\n".join([f"> <@{player.player_id}>" for player in team1_fg_players]),
-        inline=True,
-    )
+    if map and map.image_url:
+        embed.set_image(url=map.image_url)
     return embed
 
 
@@ -1001,6 +1038,11 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
             .filter(RotationMap.is_next == True)
             .first()
         )
+        if not next_rotation_map:
+            _log.error(
+                f"[update_next_map_to_map_after_next] Could not find next rotation_map for rotation {rotation.id}"
+            )
+            return
 
         if rotation.is_random:
             rotation_map_after_next: RotationMap | None = (
@@ -1010,6 +1052,11 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
                 .order_by(func.random())
                 .first()
             )
+            if not rotation_map_after_next:
+                _log.error(
+                    f"[update_next_map_to_map_after_next] Could not find a random rotation_map for rotation {rotation.id}. There are likely no rotation_maps to pick from"
+                )
+                return
         else:
             rotation_map_length = (
                 session.query(RotationMap)
@@ -1026,16 +1073,26 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
                 .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
                 .first()
             )
+            if not rotation_map_after_next:
+                _log.error(
+                    f"[update_next_map_to_map_after_next] Could not find a rotation_map after next with ordinal {rotation_map_after_next_ordinal} for rotation {rotation.id}"
+                )
+                return
 
         next_rotation_map.is_next = False
         rotation_map_after_next.is_next = True
 
-        map_after_next_name: str | None = (
-            session.query(Map.full_name)
+        map_after_next: Map | None = (
+            session.query(Map)
             .join(RotationMap, RotationMap.map_id == Map.id)
             .filter(RotationMap.id == rotation_map_after_next.id)
-            .scalar()
+            .first()
         )
+        if not map_after_next:
+            _log.error(
+                f"[update_next_map_to_map_after_next] Could not find map_after_next with id {rotation_map_after_next.id}"
+            )
+            return
 
         channel = bot.get_channel(config.CHANNEL_ID)
         if isinstance(channel, discord.TextChannel):
@@ -1053,14 +1110,19 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
                 rotation_queue_names_str = f"**{', '.join(rotation_queue_names)}**"
                 await send_message(
                     channel,
-                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed\n\nQueues affected: {rotation_queue_names_str}",
+                    embed_title=f"Next Map rotated to {map_after_next.full_name}",
+                    embed_description=f"Queues affected: {rotation_queue_names_str}",
+                    embed_footer="All votes removed",
+                    image_url=map_after_next.image_url,
                     colour=Colour.blue(),
                 )
             else:
                 await send_message(
                     channel,
-                    embed_description=f"Map rotated to **{map_after_next_name}**, all votes removed",
+                    embed_title=f"Next Map rotated to {map_after_next.full_name}",
                     colour=Colour.blue(),
+                    embed_footer="All votes removed",
+                    image_url=map_after_next.image_url,
                 )
 
         map_votes = (
@@ -1121,6 +1183,8 @@ async def send_message(
     embed_title: str | None = None,
     embed_thumbnail: str | None = None,
     delete_after: float | None = None,
+    image_url: str | None = None,
+    embed_footer: str | None = None,
 ) -> Message | None:
     """
     :colour: red = fail, green = success, blue = informational
@@ -1138,8 +1202,12 @@ async def send_message(
         embed.set_thumbnail(url=embed_thumbnail)
     if embed_description:
         embed.description = embed_description
+    if embed_footer:
+        embed.set_footer(text=embed_footer)
     if colour:
         embed.colour = colour
+    if image_url:
+        embed.set_image(url=image_url)
     try:
         message = await channel.send(
             content=content, embed=embed, delete_after=delete_after
@@ -1541,13 +1609,34 @@ async def map_short_name_autocomplete(interaction: Interaction, current: str):
                     )
     return result
 
+async def map_full_name_autocomplete(interaction: Interaction, current: str):
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        maps: list[Map] | None = (
+            session.query(Map).order_by(Map.full_name).limit(25).all()
+        )
+        if maps:
+            for map in maps:
+                current_casefold = current.casefold()
+                if (
+                    current_casefold in map.short_name.casefold()
+                    or current_casefold in map.full_name.casefold()
+                ):
+                    result.append(
+                        discord.app_commands.Choice(
+                            name=map.full_name, value=map.full_name
+                        )
+                    )
+    return result
+
 
 async def queue_autocomplete(interaction: Interaction, current: str):
     result = []
     session: SQLAlchemySession
     with Session() as session:
         queues: list[Queue] | None = (
-            session.query(Queue).order_by(Queue.name).limit(25).all()
+            session.query(Queue).order_by(Queue.ordinal).limit(25).all()
         )
         if queues:
             current_casefold = current.casefold()
@@ -1611,13 +1700,40 @@ async def category_autocomplete_with_user_id(interaction: Interaction, current: 
             .all()
         )
         category_names: list[str] = [r[0] for r in result] if result else []
+        current_casefold = current.casefold()
         for name in category_names:
-            current_casefold = current.casefold()
             if current_casefold in name.casefold():
                 choices.append(
                     discord.app_commands.Choice(
                         name=name,
                         value=name,
+                    )
+                )
+    return choices
+
+
+async def category_name_autocomplete_without_user_id(
+    interaction: Interaction, current: str
+):
+    # useful for when you want all of the categories, regardless of whether the user has played games in them
+    choices = []
+    session: SQLAlchemySession
+    with Session() as session:
+        categories: list[Category] | None = (
+            session.query(Category)
+            .order_by(Category.name)
+            .limit(25)  # discord only supports up to 25 choices
+            .all()
+        )
+        if not categories:
+            return []
+        current_casefold = current.casefold()
+        for category in categories:
+            if current_casefold in category.name.casefold():
+                choices.append(
+                    discord.app_commands.Choice(
+                        name=category.name,
+                        value=category.name,
                     )
                 )
     return choices
