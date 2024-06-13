@@ -30,6 +30,7 @@ from discord_bots.models import (
 from discord_bots.utils import (
     map_short_name_autocomplete,
     queue_autocomplete,
+    short_uuid,
     update_next_map_to_map_after_next,
 )
 
@@ -124,6 +125,18 @@ class VoteCommands(BaseCog):
                 .filter(InProgressGame.id == ipgp.in_progress_game_id)
                 .first()
             )
+            if not ipg:
+                # should never happen
+                _log.error(
+                    f"[skipgamemap] Could not find in_progress_game for in_progress_game_player {ipgp.in_progress_game_id}"
+                )
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Oops! Could not find the game you are in ☹️",
+                        color=Colour.red(),
+                    )
+                )
+                return
 
             skip_map_votes = (
                 session.query(SkipMapVote)
@@ -135,14 +148,26 @@ class VoteCommands(BaseCog):
                 .all()
             )
 
-            queue_vote_threshold = (
-                session.query(Queue.vote_threshold)
+            queue: Queue | None = (
+                session.query(Queue)
                 .join(InProgressGame, InProgressGame.queue_id == Queue.id)
                 .filter(InProgressGame.id == ipg.id)
-                .scalar()
+                .first()
             )
+            if not queue:
+                _log.error(
+                    f"[skipgamemap] Could not find queue for in_progress_game {ipg.id}"
+                )
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Oops! Could not find the queue for your game ☹️",
+                        color=Colour.red(),
+                    )
+                )
+                return
 
-            if len(skip_map_votes) >= queue_vote_threshold:
+
+            if len(skip_map_votes) >= queue.vote_threshold:
                 rotation: Rotation | None = (
                     session.query(Rotation)
                     .join(Queue, Queue.rotation_id == Rotation.id)
@@ -150,6 +175,17 @@ class VoteCommands(BaseCog):
                     .filter(InProgressGame.id == ipg.id)
                     .first()
                 )
+                if not rotation:
+                    _log.error(
+                        f"[skipgamemap] Could not find rotation for in_progress_game {ipg.id}"
+                    )
+                    await interaction.response.send_message(
+                        embed=Embed(
+                            description="Oops! Could not find the rotation for your game ☹️",
+                            color=Colour.red(),
+                        )
+                    )
+                    return
                 new_map: Map | None = (
                     session.query(Map)
                     .join(RotationMap, RotationMap.map_id == Map.id)
@@ -158,29 +194,45 @@ class VoteCommands(BaseCog):
                     .filter(RotationMap.is_next == True)
                     .first()
                 )
-
+                if not new_map:
+                    _log.error(
+                        f"[skipgamemap] Could not find next map in rotation {rotation.id}"
+                    )
+                    await interaction.response.send_message(
+                        embed=Embed(
+                            description="Oops! Could not find the next map ☹️",
+                            color=Colour.red(),
+                        )
+                    )
+                    return
+                # old_map_full_name: str | None = str(ipg.map_full_name)
+                old_map_full_name: str | None = ipg.map_full_name
                 ipg.map_full_name = new_map.full_name
                 ipg.map_short_name = new_map.short_name
                 for skip_map_vote in skip_map_votes:
                     session.delete(skip_map_vote)
                 session.commit()
 
-                embed_description = (
-                    f"Vote to skip the current map passed! All votes removed."
-                )
-                embed_description += (
-                    f"\nNew map: **{ipg.map_full_name} ({ipg.map_short_name})**"
-                )
                 embed = Embed(
-                    description=embed_description,
+                    title=f"Vote skip for game '{queue.name}' ({short_uuid(ipg.id)}) passed!",
+                    # description=embed_description,
                     color=Colour.green(),
+                )
+                embed.add_field(
+                    name="🗺️ New Map",
+                    value=f"{new_map.full_name} ({new_map.short_name})",
+                )
+                embed.set_image(url=new_map.image_url if new_map else None)
+                embed.set_footer(
+                    text=f'Previous map was "{old_map_full_name}". All votes removed'
                 )
                 await interaction.response.send_message(embed=embed)
                 await update_next_map_to_map_after_next(rotation.id, True)
             else:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description="Your vote has been cast!", color=Colour.green()
+                        description=f"Your vote has been cast! [{len(skip_map_votes)}/{queue.vote_threshold}]",
+                        color=Colour.green(),
                     )
                 )
 
@@ -568,12 +620,27 @@ class VoteCommands(BaseCog):
                         )
                     )
                 session.commit()
+                result = (
+                    session.query(Queue.name)
+                    .filter(Queue.rotation_id == rotation.id)
+                    .order_by(Queue.ordinal)
+                    .all()
+                )
+                affected_queues = (
+                    [queue_name[0] for queue_name in result] if result else []
+                )
+                queues_affected_str: str = ""
+                if affected_queues:
+                    queues_affected_str: str = f"**{', '.join(affected_queues)}**"
 
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Vote for **{map.full_name} ({map.short_name})** passed!\nMap rotated, all votes removed",
+                        title=f"Next Map rotated to **{map.full_name} ({map.short_name})**",
+                        description=f"Queues affected: {queues_affected_str}",
                         colour=Colour.green(),
                     )
+                    .set_footer(text="All votes removed")
+                    .set_image(url=map.image_url)
                 )
             else:
                 map_votes = (
@@ -668,7 +735,7 @@ class VoteCommands(BaseCog):
             if skip_map_votes_count >= config.MAP_VOTE_THRESHOLD:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Vote to skip the current map passed!  All votes removed.",
+                        description=f"Vote to skip the current map passed!",
                         colour=Colour.green(),
                     )
                 )

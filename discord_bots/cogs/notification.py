@@ -7,6 +7,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from discord_bots.checks import is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Queue, QueueNotification, Session
+from discord_bots.utils import queue_autocomplete
 
 _log = logging.getLogger(__name__)
 
@@ -17,9 +18,17 @@ class NotificationCommands(BaseCog):
 
     group = app_commands.Group(name="notify", description="Notification commands")
 
-    @group.command(name="add", description="Set a notification for queue")
+    @group.command(
+        name="queue",
+        description="Get DM when a queue reaches the specified number of players. You will only be notified once.",
+    )
     @app_commands.check(is_command_channel)
-    @app_commands.describe(queue_name="Queue to be notified", size="Notification size")
+    @app_commands.describe(
+        queue_name="Queue name",
+        size="A one-time notification will be sent when the queue reaches this number of players",
+    )
+    @app_commands.autocomplete(queue_name=queue_autocomplete)
+    @app_commands.rename(queue_name="queue")
     async def notify(self, interaction: Interaction, queue_name: str, size: int):
         if size <= 0:
             await interaction.response.send_message(
@@ -52,7 +61,7 @@ class NotificationCommands(BaseCog):
             )
             await interaction.response.send_message(
                 embed=Embed(
-                    description=f"Notification added for {queue.name} at {size} players.",
+                    description=f"Notification added for **{queue.name}** at `{size}` players.",
                     colour=Colour.green(),
                 ),
                 ephemeral=True,
@@ -72,21 +81,6 @@ class NotificationCommands(BaseCog):
             embed=Embed(
                 description=f"All queue notifications removed",
                 colour=Colour.green(),
-            )
+            ),
+            ephemeral=True,
         )
-
-    @notify.autocomplete("queue_name")
-    async def queue_autocomplete(self, interaction: Interaction, current: str):
-        result = []
-        session: SQLAlchemySession
-        with Session() as session:
-            queues: list[Queue] | None = (
-                session.query(Queue).order_by(Queue.name).limit(25).all()
-            )
-            if queues:
-                for queue in queues:
-                    if current in queue.name:
-                        result.append(
-                            app_commands.Choice(name=queue.name, value=queue.name)
-                        )
-        return result

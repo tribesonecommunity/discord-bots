@@ -138,15 +138,6 @@ class InProgressGameCommands(commands.Cog):
                 return None
         return game_player, in_progress_game
 
-    @group.command(name="cancel", description="Cancels the specified game")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
-    @app_commands.describe(game_id="In progress game ID")
-    @app_commands.autocomplete(game_id=in_progress_game_autocomplete)
-    @app_commands.rename(game_id="game")
-    @app_commands.guild_only()
-    async def cancelgame(self, interaction: Interaction, game_id: str):
-        await self.cancelgame_callback(interaction, game_id)
 
     async def cancelgame_callback(self, interaction: Interaction, game_id: str) -> bool:
         if not interaction.response.is_done():
@@ -179,7 +170,7 @@ class InProgressGameCommands(commands.Cog):
                 confirmation_buttons = ConfirmationView(interaction.user.id)
                 confirmation_buttons.message = await interaction.followup.send(
                     embed=Embed(
-                        description=f"⚠️ Are you sure you want to **Cancel** game **{short_uuid(game.id)}**?⚠️",
+                        description=f"⚠️ Are you sure you want to **CANCEL** game **{short_uuid(game.id)}**?⚠️",
                         color=Colour.yellow(),
                     ),
                     view=confirmation_buttons,
@@ -396,7 +387,7 @@ class InProgressGameCommands(commands.Cog):
                 confirmation_buttons = ConfirmationView(interaction.user.id)
                 confirmation_buttons.message = await interaction.followup.send(
                     embed=Embed(
-                        description=f"⚠️ Are you sure you want to **Finish** game **{short_uuid(game.id)}** as a **{outcome}**?⚠️",
+                        description=f"⚠️ Are you sure you want to finish game **{short_uuid(game.id)}** as a **{outcome.upper()}**?⚠️",
                         color=Colour.yellow(),
                     ),
                     view=confirmation_buttons,

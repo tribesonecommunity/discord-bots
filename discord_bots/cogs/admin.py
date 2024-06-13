@@ -15,6 +15,7 @@ import discord_bots.config as config
 from discord_bots.bot import bot
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
+from discord_bots.cogs.in_progress_game import InProgressGameCommands
 from discord_bots.models import (
     AdminRole,
     CustomCommand,
@@ -865,6 +866,27 @@ class AdminCommands(BaseCog):
                     colour=Colour.green(),
                 )
             )
+
+    @group.command(name="cancel", description="Cancels the specified game")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(game_id="The game ID")
+    @app_commands.autocomplete(game_id=in_progress_game_autocomplete)
+    @app_commands.rename(game_id="game")
+    @app_commands.guild_only()
+    async def cancelgame(self, interaction: Interaction, game_id: str):
+        in_progress_game_cog = self.bot.get_cog("InProgressGameCommands")
+        if not isinstance(in_progress_game_cog, InProgressGameCommands):
+            _log.error(f"[cancelgame] InProgressGameCommands cog is not loaded")
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"This funcationality is not enabled, please contact the bot owner",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+        else:
+            await in_progress_game_cog.cancelgame_callback(interaction, game_id)
 
 
 class CustomCommandModal(discord.ui.Modal):

@@ -14,7 +14,7 @@ cryptography==36.0.1
 cycler==0.11.0
 darker==1.7.2
 discord==2.3.2
-discord.py==2.3.2
+discord.py[speed]>=2.3.2
 distlib==0.3.4
 emoji==2.8.0
 filelock==3.4.2

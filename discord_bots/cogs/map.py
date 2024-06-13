@@ -21,7 +21,10 @@ from discord_bots.models import (
     Session,
 )
 from discord_bots.utils import (
+    category_autocomplete_with_user_id,
+    category_name_autocomplete_without_user_id,
     code_block,
+    map_full_name_autocomplete,
     map_short_name_autocomplete,
     queue_autocomplete,
     win_rate,
@@ -244,61 +247,34 @@ class MapCommands(BaseCog):
         )
     """
 
-    @group.command(name="configure", description="Create/Edit a map")
+    @group.command(name="configure", description="Create or Edit a map")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(map_short_name="New or existing map")
-    @app_commands.autocomplete(map_short_name=map_short_name_autocomplete)
-    @app_commands.rename(map_short_name="map")
-    async def configure(self, interaction: Interaction, map_short_name: str):
-        assert interaction.guild
-
-        new_map: bool = False
+    @app_commands.describe(map_full_name="New or existing map")
+    @app_commands.autocomplete(map_full_name=map_full_name_autocomplete)
+    @app_commands.rename(map_full_name="map")
+    async def configure(self, interaction: Interaction, map_full_name: str):
+        exists: bool = False
         session: SQLAlchemySession
         with Session() as session:
             map: Map | None = (
-                session.query(Map).filter(Map.full_name.ilike(map_short_name)).first()
+                session.query(Map).filter(Map.full_name.ilike(map_full_name)).first()
             )
-            if not map:
-                new_map = True
-                map = Map(
-                    short_name=map_short_name,
-                    full_name="",
-                )
-
-            configure_view = MapConfigureView(interaction, map)
-            configure_view.embed = Embed(
-                description=f"**{map.full_name} ({map.short_name})** Map Configure\n-----",
-                colour=Colour.blue(),
-            )
-            await interaction.response.send_message(
-                embed=configure_view.embed,
-                view=configure_view,
-                ephemeral=True,
-            )
-
-            await configure_view.wait()
-            if configure_view.value:
-                if new_map:
-                    session.add(map)
-                session.commit()
-                await interaction.delete_original_response()
-                await interaction.followup.send(
-                    embed=Embed(
-                        description=f"**{configure_view.map.full_name} ({configure_view.map.short_name})** has been configured!",
-                        colour=Colour.green(),
-                    ),
-                    ephemeral=True,
+            if map:
+                map_configure_view = MapConfigureView(
+                    map.full_name, map.short_name, map.image_url, map.id
                 )
             else:
-                await interaction.delete_original_response()
-                await interaction.followup.send(
-                    embed=Embed(
-                        description=f"**{map.full_name} ({map.short_name})** configuration cancelled",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
+                map_configure_view = MapConfigureView(
+                    map_full_name, map_full_name[:2], None
                 )
+            embed: Embed = map_configure_view.embed
+            map_configure_view.embed = embed
+            await interaction.response.send_message(
+                embed=embed,
+                view=map_configure_view,
+                ephemeral=True,
+            )
 
     @group.command(name="remove", description="Remove a map from the map pool")
     @app_commands.check(is_admin_app_command)
@@ -358,10 +334,11 @@ class MapCommands(BaseCog):
 
     @group.command(
         name="stats",
-        description="For a given category, privately displays your winrate per map",
+        description="Privately displays your stats per map. Optionally specify a category",
     )
     @app_commands.rename(category_name="category")
     @app_commands.describe(category_name="Optional name of a specific category")
+    @app_commands.autocomplete(category_name=category_autocomplete_with_user_id)
     async def mapstats(
         self, interaction: Interaction, category_name: Optional[str] = None
     ):
@@ -502,6 +479,7 @@ class MapCommands(BaseCog):
     )
     @app_commands.rename(category_name="category")
     @app_commands.describe(category_name="Optional name of a specific category")
+    @app_commands.autocomplete(category_name=category_name_autocomplete_without_user_id)
     async def globalmapstats(
         self, interaction: Interaction, category_name: Optional[str] = None
     ):
@@ -563,55 +541,3 @@ class MapCommands(BaseCog):
             content=content,
             ephemeral=True,
         )
-
-    @mapstats.autocomplete("category_name")
-    async def category_autocomplete_with_user_id(
-        self, interaction: Interaction, current: str
-    ):
-        # useful for when you want to filter the categories based on the ones the author has games played in
-        choices = []
-        session: SQLAlchemySession
-        with Session() as session:
-            result = (
-                session.query(Category.name, PlayerCategoryTrueskill.player_id)
-                .join(PlayerCategoryTrueskill)
-                .filter(PlayerCategoryTrueskill.player_id == interaction.user.id)
-                .order_by(Category.name)
-                .limit(25)  # discord only supports up to 25 choices
-                .all()
-            )
-            category_names: list[str] = [r[0] for r in result] if result else []
-            for name in category_names:
-                if current in name:
-                    choices.append(
-                        app_commands.Choice(
-                            name=name,
-                            value=name,
-                        )
-                    )
-        return choices
-
-    @globalmapstats.autocomplete("category_name")
-    async def category_name_autocomplete_without_user_id(
-        self, interaction: Interaction, current: str
-    ):
-        # useful for when you want all of the categories, regardless of whether the user has played games in them
-        choices = []
-        session: SQLAlchemySession
-        with Session() as session:
-            categories: list[Category] | None = (
-                session.query(Category)
-                .order_by(Category.name)
-                .limit(25)  # discord only supports up to 25 choices
-                .all()
-            )
-            if categories:
-                for category in categories:
-                    if current in category.name:
-                        choices.append(
-                            app_commands.Choice(
-                                name=category.name,
-                                value=category.name,
-                            )
-                        )
-        return choices

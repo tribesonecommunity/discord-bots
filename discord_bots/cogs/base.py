@@ -12,11 +12,12 @@ from discord_bots.utils import send_message
 
 if TYPE_CHECKING:
     from typing import Type
+    from discord.ext.commands import Bot
 
 
 class BaseCog(Cog):
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: Bot = bot
 
     async def cog_before_invoke(self, ctx: Context):
         self.message = ctx.message
