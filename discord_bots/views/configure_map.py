@@ -1,6 +1,5 @@
 import logging
 from re import A
-from turtle import color
 
 import discord
 import sqlalchemy
