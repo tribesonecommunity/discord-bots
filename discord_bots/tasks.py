@@ -300,7 +300,7 @@ async def afk_timer_task():
                 session.commit()
 
 
-@tasks.loop(seconds=1800)
+@tasks.loop(seconds=1)
 async def leaderboard_task():
     """
     Periodically print the leaderboard

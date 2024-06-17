@@ -102,7 +102,7 @@ class MapConfigureView(BaseView):
                 if not self.map_id
                 else f'Editing Map "{self.full_name}" ({self.short_name})'
             ),
-            color=discord.Color.dark_theme(),
+            color=discord.Color.dark_embed(),
         )
         embed.add_field(
             name="Name", value=self.full_name if self.full_name else "*None*"
