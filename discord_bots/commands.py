@@ -1129,7 +1129,7 @@ async def status(ctx: Context, *args):
         ipg_embeds: list[Embed] = []
         rotation_queues: list[Queue] | None
         for rotation in all_rotations:
-            conditions = [Queue.rotation_id == rotation.id]
+            conditions = [Queue.rotation_id == rotation.id, Queue.is_locked == False]
             if queue_indices:
                 conditions.append(Queue.ordinal.in_(queue_indices))
             if queue_names:
@@ -1173,19 +1173,19 @@ async def status(ctx: Context, *args):
                     else config.DEFAULT_RAFFLE_VALUE
                 )
                 next_map_str += f" ({raffle_reward} tickets)"
-            embed.add_field(
-                name=f"",
-                # value="─"*10,
-                value=f"```asciidoc\n* {rotation.name}```",
-                inline=False,
-            )
-            embed.add_field(
-                name=f"🗺️ Next Map",
-                value=next_map_str,
-                inline=False,
-            )
-
             rotation_queues_len = len(rotation_queues)
+            if rotation_queues_len:
+                embed.add_field(
+                    name=f"",
+                    value=f"```asciidoc\n* {rotation.name}```",
+                    inline=False,
+                )
+                embed.add_field(
+                    name=f"🗺️ Next Map",
+                    value=next_map_str,
+                    inline=False,
+                )
+
             for i, queue in enumerate(rotation_queues):
                 if queue.is_locked:
                     continue

@@ -470,9 +470,12 @@ class MapCommands(BaseCog):
         else:
             title = f"{interaction.user.display_name} Overall Map Stats"
         embed = Embed(
-            title=title, description=code_block(table), colour=Colour.dark_theme()
+            title=title, description=code_block(table), colour=Colour.dark_embed()
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        # await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(
+            content=f"{title}\n{code_block(table)}", ephemeral=True
+        )  # TODO: temp fix
 
     @group.command(
         name="globalstats", description="Displays global statistics for each map"

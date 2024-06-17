@@ -366,6 +366,7 @@ class CommonCommands(BaseCog):
                 return cols
 
             embeds: list[Embed] = []
+            message_content = ""  # TODO: temp fix
             footer_text = f"Rating = {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}"
             cols = []
             conditions = []
@@ -401,8 +402,8 @@ class CommonCommands(BaseCog):
                     if category.is_rated and SHOW_TRUESKILL:
                         description = (
                             f"Rating: **{round(pct.rank, 1)}**"
-                            f" (`{MU_LOWER_UNICODE}: {round(pct.mu, 1)}`, "
-                            f"`{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}`)"
+                            f" `{MU_LOWER_UNICODE}: {round(pct.mu, 1)}`, "
+                            f"`{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}` "
                         )
                     else:
                         description = f"Rating: {trueskill_pct}"
@@ -429,8 +430,9 @@ class CommonCommands(BaseCog):
                     )
                     description += code_block(table)
                     embed = Embed(
-                        title=title, description=description, color=Colour.dark_theme()
+                        title=title, description=description, color=Colour.dark_embed()
                     )
+                    message_content += f"\n{title}\n{description}"  # TODO: temp fix
                     if i == (num_pct - 1):
                         # only add the footer to the last embed so we don't duplicate the information
                         embed.set_footer(text=footer_text)
@@ -442,8 +444,8 @@ class CommonCommands(BaseCog):
                     rank = player.rated_trueskill_mu - 3 * player.rated_trueskill_sigma
                     description = (
                         f"Rating: **{round(rank, 1)}**"
-                        f" (`{MU_LOWER_UNICODE}: {round(player.rated_trueskill_mu, 1)}`, "
-                        f"`{SIGMA_LOWER_UNICODE}: {round(player.rated_trueskill_sigma, 1)}`)"
+                        f" `{MU_LOWER_UNICODE}: {round(player.rated_trueskill_mu, 1)}`, "
+                        f"`{SIGMA_LOWER_UNICODE}: {round(player.rated_trueskill_sigma, 1)}` "
                     )
                 else:
                     description = f"Rating: {trueskill_pct}"
@@ -466,10 +468,16 @@ class CommonCommands(BaseCog):
                 embed = Embed(
                     title="Overall Stats",
                     description=description,
+                    color=Colour.dark_embed(),
                 )
                 embed.set_footer(text=footer_text)
                 embeds.append(embed)
+                message_content = (
+                    f"Overall Stats\n{description}\n{footer_text}"  # TODO: temp fix
+                )
             try:
-                await interaction.response.send_message(embeds=embeds, ephemeral=True)
+                await interaction.response.send_message(
+                    content=message_content, ephemeral=True
+                )
             except Exception:
                 _log.exception(f"Caught exception trying to send stats message")
