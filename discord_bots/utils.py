@@ -678,14 +678,10 @@ async def create_in_progress_game_embed(
             value=round(game.average_trueskill, 2),
             inline=True,
         )
-    # TODO: make the commands configurable/toggleable
-    embed.add_field(
-        name="🔧 Commands",
-        value="\n".join(["`/game finish`", "`/vote skipgamemap`", "`/setgamecode`"]),
-        inline=True,
-    )
+    """ TODO: find a way to add this while keeping the embed compact
     if game.channel_id:
         embed.add_field(name="📺 Channel", value=f"<#{game.channel_id}>", inline=True)
+    """
     if game.code:
         embed.add_field(
             name="🔢 Game Code",
@@ -705,6 +701,94 @@ async def create_in_progress_game_embed(
     )
     if map and map.image_url:
         embed.set_image(url=map.image_url)
+    return embed
+
+
+async def create_condensed_in_progress_game_embed(
+    session: sqlalchemy.orm.Session,
+    game: InProgressGame,
+) -> Embed:
+    queue: Queue | None = session.query(Queue).filter(Queue.id == game.queue_id).first()
+    embed: discord.Embed
+    if queue:
+        embed = Embed(
+            title=f"⏳In Progress Game '{queue.name}' ({short_uuid(game.id)})",
+            color=discord.Color.blue(),
+        )
+    else:
+        embed = Embed(
+            title=f"⏳In Progress Game ({short_uuid(game.id)})",
+            color=discord.Color.blue(),
+        )
+
+    aware_db_datetime: datetime = game.created_at.replace(
+        tzinfo=timezone.utc
+    )  # timezones aren't stored in the DB, so add it ourselves
+    timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+    result: list[str] | None = (
+        session.query(Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    team0_player_names = [f"**{name[0]}**" for name in result if name] if result else []
+    result: list[str] | None = (
+        session.query(Player.name)
+        .join(InProgressGamePlayer)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
+    )
+    team1_player_names: list[str] = (
+        [f"**{name[0]}**" for name in result if name] if result else []
+    )
+    if config.SHOW_CAPTAINS:
+        if team0_player_names:
+            team0_player_names[0] = "(C) " + team0_player_names[0]
+        if team1_player_names:
+            team1_player_names[0] = "(C) " + team1_player_names[0]
+    # sort the names alphabetically and caselessly to make them easier to read
+    team0_player_names.sort(key=str.casefold)
+    team1_player_names.sort(key=str.casefold)
+    content = ""
+    content += f"🗺️ Map: **{game.map_full_name}({game.map_short_name})**"
+    """
+    embed.add_field(
+        name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
+        value=(
+            f'{", ".join(team0_player_names)}'
+            if team0_player_names
+            else "> \n** **"
+        ),
+        inline=False,
+    )
+    """
+    content += f"\n⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%):"
+    content += (
+        f'\n> {", ".join(team0_player_names)}' if team0_player_names else "> \n** **"
+    )
+    """
+    embed.add_field(
+        name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
+        value=(
+            f'{", ".join(team1_player_names)}'
+            if team1_player_names
+            else "> \n** **"
+        ),
+        inline=False,
+    )
+    """
+    content += f"\n➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%):"
+    content += (
+        f'\n> {", ".join(team1_player_names)}' if team1_player_names else "> \n** **"
+    )
+    content += f"\n*{timestamp}*"
+    embed.description = content
     return embed
 
 
@@ -1115,14 +1199,6 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
                     embed_footer="All votes removed",
                     image_url=map_after_next.image_url,
                     colour=Colour.blue(),
-                )
-            else:
-                await send_message(
-                    channel,
-                    embed_title=f"Next Map rotated to {map_after_next.full_name}",
-                    colour=Colour.blue(),
-                    embed_footer="All votes removed",
-                    image_url=map_after_next.image_url,
                 )
 
         map_votes = (
@@ -1563,7 +1639,7 @@ def add_empty_field(embed: discord.Embed, *, offset: int = 0):
     if not embed.fields:
         return embed
     num_fields = len(embed.fields) - offset
-    if num_fields >= 5 and num_fields % 3 == 2:
+    if num_fields >= 2 and num_fields % 3 == 2:
         embed.add_field(name="", value="", inline=True)
     return embed
 
