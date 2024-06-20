@@ -757,32 +757,10 @@ async def create_condensed_in_progress_game_embed(
     team1_player_names.sort(key=str.casefold)
     content = ""
     content += f"🗺️ Map: **{game.map_full_name}({game.map_short_name})**"
-    """
-    embed.add_field(
-        name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
-        value=(
-            f'{", ".join(team0_player_names)}'
-            if team0_player_names
-            else "> \n** **"
-        ),
-        inline=False,
-    )
-    """
     content += f"\n⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%):"
     content += (
         f'\n> {", ".join(team0_player_names)}' if team0_player_names else "> \n** **"
     )
-    """
-    embed.add_field(
-        name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
-        value=(
-            f'{", ".join(team1_player_names)}'
-            if team1_player_names
-            else "> \n** **"
-        ),
-        inline=False,
-    )
-    """
     content += f"\n➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%):"
     content += (
         f'\n> {", ".join(team1_player_names)}' if team1_player_names else "> \n** **"
@@ -1639,7 +1617,7 @@ def add_empty_field(embed: discord.Embed, *, offset: int = 0):
     if not embed.fields:
         return embed
     num_fields = len(embed.fields) - offset
-    if num_fields >= 2 and num_fields % 3 == 2:
+    if num_fields >= 5 and num_fields % 3 == 2:
         embed.add_field(name="", value="", inline=True)
     return embed
 
