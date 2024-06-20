@@ -36,6 +36,7 @@ import discord_bots.config as config
 from discord_bots.checks import is_admin
 from discord_bots.utils import (
     add_empty_field,
+    create_condensed_in_progress_game_embed,
     create_in_progress_game_embed,
     get_player_game,
     get_team_name_diff,
@@ -294,10 +295,6 @@ async def create_game(
             session.add(game_player)
 
         short_game_id = short_uuid(game.id)
-        # embed = Embed(
-        # title=title,
-        # colour=Colour.blue(),
-        # )
         embed: Embed = await create_in_progress_game_embed(session, game, guild)
         embed.title = f"⏳Game '{queue.name}' ({short_uuid(game.id)}) has begun!"
 
@@ -335,10 +332,12 @@ async def create_game(
             )
         if match_channel:
             # the embed won't have the Match Channel Field yet, so we add it ourselves
+            """TODO: find a way to add this while keeping the embed compact
             embed.add_field(
                 name="📺 Channel", value=match_channel.jump_url, inline=True
             )
             add_empty_field(embed, offset=3)
+            """
             game.channel_id = match_channel.id
         send_message_coroutines = []
         for player in team0_players:
@@ -379,7 +378,7 @@ async def create_game(
         session.commit()
 
         if not rolled_random_map:
-            await update_next_map_to_map_after_next(queue.rotation_id, True)
+            await update_next_map_to_map_after_next(queue.rotation_id, False)
 
         if config.ECONOMY_ENABLED and match_channel:
             prediction_message_id: int | None = (
@@ -1220,12 +1219,13 @@ async def status(ctx: Context, *args):
                 if queue.id in games_by_queue:
                     game: InProgressGame
                     for game in games_by_queue[queue.id]:
-                        ipg_embed = await create_in_progress_game_embed(
-                            session, game, ctx.guild
+                        ipg_embed = await create_condensed_in_progress_game_embed(
+                            session,
+                            game,
                         )
                         ipg_embeds.append(ipg_embed)
         await ctx.channel.send(
-            embeds=ipg_embeds + [embed],
+            embeds=[embed] + ipg_embeds,
         )
 
 
