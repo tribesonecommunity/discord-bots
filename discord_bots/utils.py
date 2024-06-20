@@ -1272,6 +1272,7 @@ async def send_message(
 
 
 async def print_leaderboard():
+    message_content = ""
     session: SQLAlchemySession
     with Session() as session:
         categories: list[Category] = (
@@ -1280,81 +1281,107 @@ async def print_leaderboard():
             .order_by("name")
             .all()
         )
-        embeds: list[discord.Embed] = []
-        for i, category in enumerate(categories):
-            subquery = (
-                session.query(FinishedGamePlayer.player_id)
-                .join(
-                    FinishedGame,
-                    FinishedGame.id == FinishedGamePlayer.finished_game_id,
-                )
-                .filter(
-                    FinishedGame.started_at
-                    > (datetime.now(timezone.utc) - timedelta(days=30))
-                )
-                .filter(FinishedGame.category_name == category.name)
-                .group_by(FinishedGamePlayer.player_id)
-                .having(func.count() >= category.min_games_for_leaderboard)
-                .subquery()
-            )
-            top_10_pcts: list[PlayerCategoryTrueskill] | None = (
-                session.query(PlayerCategoryTrueskill)
-                .join(Player, Player.id == PlayerCategoryTrueskill.player_id)
-                .filter(PlayerCategoryTrueskill.player_id.in_(select(subquery)))
-                .filter(PlayerCategoryTrueskill.category_id == category.id)
-                .filter(Player.leaderboard_enabled == True)
-                .order_by(PlayerCategoryTrueskill.rank.desc())
-                .limit(10)
-                .all()
-            )
-            if top_10_pcts:
-                embed = discord.Embed(
-                    title=f"{category.name} Leaderboard",
-                    color=discord.Color.blue(),
-                    timestamp=discord.utils.utcnow(),
-                )
-                embed_description: str = ""
-                for i, pct in enumerate(top_10_pcts, 1):
-                    # TODO: merge this with the pct query
-                    player: Player | None = (
-                        session.query(Player).filter(Player.id == pct.player_id).first()
+        if len(categories) > 0:
+            for i, category in enumerate(categories):
+                subquery = (
+                    session.query(FinishedGamePlayer.player_id)
+                    .join(
+                        FinishedGame,
+                        FinishedGame.id == FinishedGamePlayer.finished_game_id,
                     )
-                    if player:
-                        if i == 1:
-                            medal_emoji = "🥇"
-                        elif i == 2:
-                            medal_emoji = "🥈"
-                        elif i == 3:
-                            medal_emoji = "🥉"
-                        else:
-                            # no medal :(
-                            medal_emoji = ""
-                        if i != 1:
-                            embed_description += "\n"
-                        embed_description += f"{i}. {round(pct.rank, 1)} - {medal_emoji}**{player.name}** `{MU_LOWER_UNICODE}: {round(pct.mu, 1)}`, `{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}`"
-                        """
-                        embed.add_field(
-                            name="",
-                            value=f"{prefix} {round(pct.rank, 1)} - **{player.name}** `{MU_LOWER_UNICODE}: {round(pct.mu, 1)}`, `{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}`",
-                            #value=f"> `{MU_LOWER_UNICODE}: {round(pct.mu, 1)}`, `{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}`",
-                            inline=False)
-                        """
-                embed.description = embed_description
-                embed_footer = ""
-                if category.min_games_for_leaderboard > 0:
-                    embed_footer += f"Minimum of {category.min_games_for_leaderboard} {'games' if category.min_games_for_leaderboard > 1 else 'game'} played in the last 30 days"
-                embed_footer += "\nLast Updated"
-                embed.set_footer(text=embed_footer)
-                embeds.append(embed)
-
+                    .filter(
+                        FinishedGame.started_at
+                        > (datetime.now(timezone.utc) - timedelta(days=30))
+                    )
+                    .filter(FinishedGame.category_name == category.name)
+                    .group_by(FinishedGamePlayer.player_id)
+                    .having(func.count() >= category.min_games_for_leaderboard)
+                    .subquery()
+                )
+                top_10_pcts: list[PlayerCategoryTrueskill] | None = (
+                    session.query(PlayerCategoryTrueskill)
+                    .join(Player, Player.id == PlayerCategoryTrueskill.player_id)
+                    .filter(PlayerCategoryTrueskill.player_id.in_(select(subquery)))
+                    .filter(PlayerCategoryTrueskill.category_id == category.id)
+                    .filter(Player.leaderboard_enabled == True)
+                    .order_by(PlayerCategoryTrueskill.rank.desc())
+                    .limit(10)
+                    .all()
+                )
+                if top_10_pcts:
+                    message_content += f"**{category.name} Leaderboard**"
+                    cols = []
+                    for i, pct in enumerate(top_10_pcts, 1):
+                        # TODO: merge this with the pct query
+                        player: Player | None = (
+                            session.query(Player)
+                            .filter(Player.id == pct.player_id)
+                            .first()
+                        )
+                        if player:
+                            if i == 1:
+                                player_name = f"{player.name}🥇"
+                            elif i == 2:
+                                player_name = f"{player.name}🥈"
+                            elif i == 3:
+                                player_name = f"{player.name}🥉"
+                            else:
+                                player_name = player.name
+                            col = [
+                                i,
+                                round(pct.rank, 1),
+                                round(pct.mu, 1),
+                                round(pct.sigma, 1),
+                                player_name,
+                            ]
+                            cols.append(col)
+                    if category.min_games_for_leaderboard > 0:
+                        footer = [
+                            f"Min. {category.min_games_for_leaderboard} {'games' if category.min_games_for_leaderboard > 1 else 'game'} played in the last 30 days",
+                            Merge.LEFT,
+                            Merge.LEFT,
+                            Merge.LEFT,
+                            Merge.LEFT,
+                        ]
+                    else:
+                        footer = None
+                    table = table2ascii(
+                        header=[
+                            Merge.LEFT,
+                            "Rank",
+                            MU_LOWER_UNICODE,
+                            SIGMA_LOWER_UNICODE,
+                            "Name",
+                        ],
+                        body=cols,
+                        style=PresetStyle.plain,
+                        alignments=[
+                            Alignment.DECIMAL,
+                            Alignment.DECIMAL,
+                            Alignment.DECIMAL,
+                            Alignment.DECIMAL,
+                            Alignment.LEFT,
+                        ],
+                        footer=footer,
+                    )
+                    message_content += f"{code_block(table)}"
         if config.ECONOMY_ENABLED:
-            # output += f"\n\n**{config.CURRENCY_NAME}**" TODO: create seperate embeds
+            # TODO: merge with new leaderboard style
+            message_content += f"\n**{config.CURRENCY_NAME}**"
             top_10_player_currency: list[Player] = (
                 session.query(Player).order_by(Player.currency.desc()).limit(10)
             )
             for i, player_currency in enumerate(top_10_player_currency, 1):
-                # output += f"\n{i}. {player_currency.currency} - <@{player_currency.id}>" TODO: create seperate embeds
-                pass
+                message_content += (
+                    f"\n{i}. {player_currency.currency} - <@{player_currency.id}>"
+                )
+
+    message_content += (
+        f"Last updated: {discord.utils.format_dt(discord.utils.utcnow(), 'R')}"
+    )
+    message_content += (
+        "\n*`/player toggleleaderboard` to show/hide yourself from the leaderboard*"
+    )
 
     if config.LEADERBOARD_CHANNEL:
         leaderboard_channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
@@ -1365,11 +1392,17 @@ async def print_leaderboard():
                         leaderboard_channel.last_message_id
                     )
                 if last_message:
-                    await last_message.edit(embeds=embeds)
+                    await last_message.edit(content=message_content)
                     return
             except Exception as e:
                 pass
-            await leaderboard_channel.send(embeds=embeds)
+            if len(message_content) > 2000:
+                _log.warning(
+                    "[print_leaderboard] The leaderboard is > 2000 characters. Try reducing its length by removing categories"
+                )
+            await leaderboard_channel.send(
+                content=message_content[:2000]
+            )  # TODO: paginate this instead
 
 
 def code_block(content: str, language: str = "autohotkey") -> str:
