@@ -1050,7 +1050,7 @@ async def del_(ctx: Context, *args):
     embed.description = embed_description
     add_empty_field(embed)
     if embed.description:
-        await ctx.reply(embed=embed)
+        await message.channel.send(embed=embed)
     session.commit()
     session.close()
 
