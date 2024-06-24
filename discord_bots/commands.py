@@ -1045,6 +1045,8 @@ async def del_(ctx: Context, *args):
         embed_description += f"**{message.author.display_name}** removed from **{', '.join([queue.name for queue in queues_to_del])}**"
         embed.color = discord.Color.green()
     if queues_to_del_by_queue_waitlist_player:
+        if embed_description:
+            embed_description += "\n"
         embed_description += f"**{message.author.display_name}** removed from the waitlist for **{', '.join([queue.name for queue in queues_to_del_by_queue_waitlist_player])}**"
         embed.color = discord.Color.green()
     embed.description = embed_description
