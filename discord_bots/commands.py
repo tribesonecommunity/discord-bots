@@ -1220,7 +1220,7 @@ async def status(ctx: Context, *args):
                     if players_in_queue
                     else []
                 )
-                newline = "\n,"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
+                newline = "\n"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
                 embed.add_field(
                     name=queue_title_str,
                     value=(
