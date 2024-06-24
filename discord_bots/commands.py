@@ -27,7 +27,7 @@ from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 from PIL import Image
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from trueskill import Rating
@@ -966,10 +966,27 @@ async def del_(ctx: Context, *args):
     embed = discord.Embed(color=discord.Color.green())
     queues_to_del_query = (
         session.query(Queue)
-        .join(QueuePlayer)
-        .filter(QueuePlayer.player_id == message.author.id)
+        .join(
+            QueuePlayer,
+            and_(
+                QueuePlayer.player_id == message.author.id,
+                QueuePlayer.queue_id == Queue.id,
+            ),
+        )
         .order_by(Queue.ordinal.asc())
     )  # type: ignore
+
+    queues_to_del_query_by_queue_waitlist_player = (
+        session.query(Queue)
+        .join(
+            QueueWaitlistPlayer,
+            and_(
+                QueueWaitlistPlayer.player_id == message.author.id,
+                QueueWaitlistPlayer.queue_id == Queue.id,
+            ),
+        )
+        .order_by(Queue.ordinal.asc())
+    )
 
     # TODO: handle DataError here
     if len(args) > 0:
@@ -979,26 +996,24 @@ async def del_(ctx: Context, *args):
                 func.lower(Queue.name).in_([x.lower() for x in args]),
             )
         )
+        queues_to_del_query_by_queue_waitlist_player = (
+            queues_to_del_query_by_queue_waitlist_player.filter(
+                or_(
+                    Queue.ordinal.in_(args),
+                    func.lower(Queue.name).in_([x.lower() for x in args]),
+                )
+            )
+        )
 
     queues_to_del = queues_to_del_query.all()
+    queues_to_del_by_queue_waitlist_player = (
+        queues_to_del_query_by_queue_waitlist_player.all()
+    )
 
     for queue in queues_to_del:
         session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == message.author.id
         ).delete()
-        # TODO: Test this part
-        queue_waitlist: QueueWaitlist | None = (
-            session.query(QueueWaitlist)
-            .filter(
-                QueueWaitlist.queue_id == queue.id,
-            )
-            .first()
-        )
-        if queue_waitlist:
-            session.query(QueueWaitlistPlayer).filter(
-                QueueWaitlistPlayer.player_id == message.author.id,
-                QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
-            ).delete()
         result = (
             session.query(Player.name)
             .join(QueuePlayer)
@@ -1019,21 +1034,23 @@ async def del_(ctx: Context, *args):
             ),
             inline=True,
         )
+    for queue in queues_to_del_by_queue_waitlist_player:
+        session.query(QueueWaitlistPlayer).filter(
+            QueueWaitlistPlayer.queue_id == queue.id,
+            QueueWaitlistPlayer.player_id == message.author.id,
+        ).delete()
 
-    # TODO: Check deleting by name / ordinal
-    # session.query(QueueWaitlistPlayer).filter(
-    #     QueueWaitlistPlayer.player_id == message.author.id
-    # ).delete()
-
+    embed_description = ""
     if queues_to_del:
-        embed_description = f"<@{message.author.id}> removed from **{', '.join([queue.name for queue in queues_to_del])}**"
+        embed_description += f"**{message.author.display_name}** removed from **{', '.join([queue.name for queue in queues_to_del])}**"
         embed.color = discord.Color.green()
-    else:
-        embed_description = f"<@{message.author.id}> no valid queues specified"
-        embed.color = discord.Color.red()
+    if queues_to_del_by_queue_waitlist_player:
+        embed_description += f"**{message.author.display_name}** removed from the waitlist for **{', '.join([queue.name for queue in queues_to_del_by_queue_waitlist_player])}**"
+        embed.color = discord.Color.green()
     embed.description = embed_description
     add_empty_field(embed)
-    await message.channel.send(embed=embed)
+    if embed.description:
+        await ctx.reply(embed=embed)
     session.commit()
     session.close()
 
@@ -1201,7 +1218,7 @@ async def status(ctx: Context, *args):
                     if players_in_queue
                     else []
                 )
-                newline = "\n"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
+                newline = "\n,"  # Escape sequence (backslash) not allowed in expression portion of f-string prior to Python 3.12
                 embed.add_field(
                     name=queue_title_str,
                     value=(
