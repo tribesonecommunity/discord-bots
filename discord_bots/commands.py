@@ -1010,6 +1010,7 @@ async def del_(ctx: Context, *args):
         queues_to_del_query_by_queue_waitlist_player.all()
     )
 
+    queues_del_from_by_id: dict[int, Queue] = {}
     for queue in queues_to_del:
         session.query(QueuePlayer).filter(
             QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == message.author.id
@@ -1034,20 +1035,17 @@ async def del_(ctx: Context, *args):
             ),
             inline=True,
         )
+        queues_del_from_by_id[queue.id] = queue
     for queue in queues_to_del_by_queue_waitlist_player:
         session.query(QueueWaitlistPlayer).filter(
             QueueWaitlistPlayer.queue_id == queue.id,
             QueueWaitlistPlayer.player_id == message.author.id,
         ).delete()
+        queues_del_from_by_id[queue.id] = queue
 
     embed_description = ""
-    if queues_to_del:
-        embed_description += f"**{message.author.display_name}** removed from **{', '.join([queue.name for queue in queues_to_del])}**"
-        embed.color = discord.Color.green()
-    if queues_to_del_by_queue_waitlist_player:
-        if embed_description:
-            embed_description += "\n"
-        embed_description += f"**{message.author.display_name}** removed from the waitlist for **{', '.join([queue.name for queue in queues_to_del_by_queue_waitlist_player])}**"
+    if queues_del_from_by_id:
+        embed_description += f"**{message.author.display_name}** removed from **{', '.join([queue.name for queue in queues_del_from_by_id.values()])}**"
         embed.color = discord.Color.green()
     embed.description = embed_description
     add_empty_field(embed)
