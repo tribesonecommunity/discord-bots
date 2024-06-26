@@ -1833,8 +1833,8 @@ def del_player_from_queues_and_waitlists(
         # can be a mix of queue ordinals or names
         conditions = [
             or_(
-                Queue.ordinal.in_(args),
-                func.lower(Queue.name).in_([x.lower() for x in args]),
+                Queue.ordinal.in_([arg for arg in args if arg.isdigit()]),
+                func.lower(Queue.name).in_([x.casefold() for x in args]),
             )
         ]
     else:
