@@ -9,6 +9,7 @@ import discord
 from discord import Colour, Embed, Interaction, Member, Role, TextChannel, app_commands
 from discord.ext.commands import Bot
 from discord.utils import escape_markdown
+from sqlalchemy import and_
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
@@ -34,7 +35,9 @@ from discord_bots.models import (
     Session,
 )
 from discord_bots.utils import (
+    add_empty_field,
     command_autocomplete,
+    del_player_from_queues_and_waitlists,
     finished_game_str,
     in_progress_game_autocomplete,
     map_short_name_autocomplete,
@@ -302,52 +305,40 @@ class AdminCommands(BaseCog):
         """
         Admin command to delete player from all queues
         """
+        embed = discord.Embed()
         session: SQLAlchemySession
         with Session() as session:
-            queues: List[Queue] = (
-                session.query(Queue)
-                .join(QueuePlayer)
-                .filter(QueuePlayer.player_id == member.id)
-                .order_by(Queue.created_at.asc())
-                .all()
-            )  # type: ignore
-            for queue in queues:
-                session.query(QueuePlayer).filter(
-                    QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == member.id
-                ).delete()
-                # TODO: Test this part
-                queue_waitlist: QueueWaitlist | None = (
-                    session.query(QueueWaitlist)
-                    .filter(
-                        QueueWaitlist.queue_id == queue.id,
-                    )
-                    .first()
-                )
-                if queue_waitlist:
-                    session.query(QueueWaitlistPlayer).filter(
-                        QueueWaitlistPlayer.player_id == member.id,
-                        QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
-                    ).delete()
-
-            queue_statuses = []
-            queue: Queue
-            for queue in session.query(Queue).order_by(Queue.created_at.asc()).all():  # type: ignore
-                queue_players = (
-                    session.query(QueuePlayer)
-                    .filter(QueuePlayer.queue_id == queue.id)
+            queues_del_from = del_player_from_queues_and_waitlists(session, member.id)
+            for queue in queues_del_from:
+                # TODO: generify this into queue status util
+                players_in_queue = (
+                    session.query(Player)
+                    .join(QueuePlayer, QueuePlayer.queue_id == queue.id)
+                    .order_by(QueuePlayer.added_at.asc())
                     .all()
                 )
-                queue_statuses.append(
-                    f"{queue.name} [{len(queue_players)}/{queue.size}]"
+                player_names: list[str] = [player.name for player in players_in_queue]
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
+                newline = "\n"
+                embed.add_field(
+                    name=queue_title_str,
+                    value=(
+                        f">>> {newline.join(player_names)}"
+                        if player_names
+                        else "> \n** **"  # creates an empty quote
+                    ),
+                    inline=True,
                 )
-            await interaction.response.send_message(
-                embed=Embed(
-                    title=f"{escape_markdown(member.name)} removed from: {', '.join([queue.name for queue in queues])}",
-                    description=" ".join(queue_statuses),
-                    colour=Colour.green(),
-                )
-            )
-            session.commit()
+            if queues_del_from:
+                embed.description = f"**{member.display_name}** removed from **{', '.join([queue.name for queue in queues_del_from])}**"
+                embed.color = discord.Color.green()
+                add_empty_field(embed)
+                await interaction.response.send_message(embed=embed)
+                session.commit()
+            else:
+                embed.description = f"**{member.display_name}** is not in any queues"
+                embed.color = discord.Color.yellow()
+                await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @group.command(
         name="editgamewinner", description="Edit the winner of a finished game"

@@ -6,10 +6,9 @@ import math
 import os
 import statistics
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 from heapq import heappop, heappush
 from itertools import combinations
-from typing import Optional
+from typing import List, Optional
 
 import discord
 import imgkit
@@ -33,7 +32,7 @@ from discord.utils import escape_markdown
 from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from table2ascii import Alignment, Merge, PresetStyle, table2ascii
 from trueskill import Rating, global_env
@@ -53,6 +52,8 @@ from discord_bots.models import (
     Player,
     PlayerCategoryTrueskill,
     Queue,
+    QueuePlayer,
+    QueueWaitlistPlayer,
     Rotation,
     RotationMap,
     Session,
@@ -1822,3 +1823,61 @@ async def command_autocomplete(interaction: Interaction, current: str):
                         )
                     )
     return result
+
+
+def del_player_from_queues_and_waitlists(
+    session: sqlalchemy.orm.Session, player_id: int, *args: str
+) -> list[Queue]:
+    queues_del_from_by_id: dict[str, Queue] = {}
+    if args:
+        # can be a mix of queue ordinals or names
+        conditions = [
+            or_(
+                Queue.ordinal.in_(
+                    [arg for arg in args if all(char in "0123456789" for char in arg)]
+                ),
+                func.lower(Queue.name).in_([x.casefold() for x in args]),
+            )
+        ]
+    else:
+        conditions = []
+    queues: List[Queue] = (
+        session.query(Queue)
+        .join(
+            QueuePlayer,
+            and_(
+                QueuePlayer.player_id == player_id,
+                QueuePlayer.queue_id == Queue.id,
+            ),
+        )
+        .filter(*conditions)
+        .order_by(Queue.ordinal.asc())
+        .all()
+    )
+    queues_by_queue_waitlist_player: List[Queue] = (
+        session.query(Queue)
+        .join(
+            QueueWaitlistPlayer,
+            and_(
+                QueueWaitlistPlayer.player_id == player_id,
+                QueueWaitlistPlayer.queue_id == Queue.id,
+            ),
+        )
+        .filter(*conditions)
+        .order_by(Queue.ordinal.asc())
+        .all()
+    )
+    for queue in queues:
+        session.query(QueuePlayer).filter(
+            QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == player_id
+        ).delete()
+        queues_del_from_by_id[queue.id] = queue
+
+    for queue in queues_by_queue_waitlist_player:
+        session.query(QueueWaitlistPlayer).filter(
+            QueueWaitlistPlayer.queue_id == queue.id,
+            QueueWaitlistPlayer.player_id == player_id,
+        ).delete()
+        queues_del_from_by_id[queue.id] = queue
+
+    return list(queues_del_from_by_id.values())

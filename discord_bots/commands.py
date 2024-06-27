@@ -1,5 +1,4 @@
 import asyncio
-import heapq
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -27,7 +26,7 @@ from discord.guild import Guild
 from discord.member import Member
 from discord.utils import escape_markdown
 from PIL import Image
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from trueskill import Rating
@@ -38,6 +37,7 @@ from discord_bots.utils import (
     add_empty_field,
     create_condensed_in_progress_game_embed,
     create_in_progress_game_embed,
+    del_player_from_queues_and_waitlists,
     get_player_game,
     get_team_name_diff,
     is_in_game,
@@ -962,80 +962,41 @@ async def del_(ctx: Context, *args):
     If no args deletes from existing queues
     """
     message = ctx.message
-    session: sqlalchemy.orm.Session = ctx.session
-    embed = discord.Embed(color=discord.Color.green())
-    queues_to_del_query = (
-        session.query(Queue)
-        .join(QueuePlayer)
-        .filter(QueuePlayer.player_id == message.author.id)
-        .order_by(Queue.ordinal.asc())
-    )  # type: ignore
-
-    # TODO: handle DataError here
-    if len(args) > 0:
-        queues_to_del_query = queues_to_del_query.filter(
-            or_(
-                Queue.ordinal.in_(args),
-                func.lower(Queue.name).in_([x.lower() for x in args]),
+    embed = discord.Embed()
+    session: SQLAlchemySession
+    with Session() as session:
+        queues_del_from = del_player_from_queues_and_waitlists(
+            session, ctx.author.id, *args
+        )
+        for queue in queues_del_from:
+            # TODO: generify this into queue status util
+            players_in_queue = (
+                session.query(Player)
+                .join(QueuePlayer, QueuePlayer.queue_id == queue.id)
+                .order_by(QueuePlayer.added_at.asc())
+                .all()
             )
-        )
-
-    queues_to_del = queues_to_del_query.all()
-
-    for queue in queues_to_del:
-        session.query(QueuePlayer).filter(
-            QueuePlayer.queue_id == queue.id, QueuePlayer.player_id == message.author.id
-        ).delete()
-        # TODO: Test this part
-        queue_waitlist: QueueWaitlist | None = (
-            session.query(QueueWaitlist)
-            .filter(
-                QueueWaitlist.queue_id == queue.id,
+            player_names: list[str] = [player.name for player in players_in_queue]
+            queue_title_str = (
+                f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
             )
-            .first()
-        )
-        if queue_waitlist:
-            session.query(QueueWaitlistPlayer).filter(
-                QueueWaitlistPlayer.player_id == message.author.id,
-                QueueWaitlistPlayer.queue_waitlist_id == queue_waitlist.id,
-            ).delete()
-        result = (
-            session.query(Player.name)
-            .join(QueuePlayer)
-            .filter(QueuePlayer.queue_id == queue.id)
-            .all()
-        )
-        player_names: list[str] = [name[0] for name in result] if result else []
-        queue_title_str = (
-            f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
-        )
-        newline = "\n"
-        embed.add_field(
-            name=queue_title_str,
-            value=(
-                f">>> {newline.join(player_names)}"
-                if player_names
-                else "> \n** **"  # creates an empty quote
-            ),
-            inline=True,
-        )
+            newline = "\n"
+            embed.add_field(
+                name=queue_title_str,
+                value=(
+                    f">>> {newline.join(player_names)}"
+                    if player_names
+                    else "> \n** **"  # creates an empty quote
+                ),
+                inline=True,
+            )
+        if queues_del_from:
+            embed.description = f"**{ctx.author.display_name}** removed from **{', '.join([queue.name for queue in queues_del_from])}**"
+            embed.color = discord.Color.green()
+            add_empty_field(embed)
+            await message.channel.send(embed=embed)
+            session.commit()
 
-    # TODO: Check deleting by name / ordinal
-    # session.query(QueueWaitlistPlayer).filter(
-    #     QueueWaitlistPlayer.player_id == message.author.id
-    # ).delete()
-
-    if queues_to_del:
-        embed_description = f"<@{message.author.id}> removed from **{', '.join([queue.name for queue in queues_to_del])}**"
-        embed.color = discord.Color.green()
-    else:
-        embed_description = f"<@{message.author.id}> no valid queues specified"
-        embed.color = discord.Color.red()
-    embed.description = embed_description
-    add_empty_field(embed)
-    await message.channel.send(embed=embed)
-    session.commit()
-    session.close()
 
 
 # @bot.command()
