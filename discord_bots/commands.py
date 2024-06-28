@@ -972,7 +972,13 @@ async def del_(ctx: Context, *args):
             # TODO: generify this into queue status util
             players_in_queue = (
                 session.query(Player)
-                .join(QueuePlayer, QueuePlayer.queue_id == queue.id)
+                .join(
+                    QueuePlayer,
+                    and_(
+                        QueuePlayer.queue_id == queue.id,
+                        QueuePlayer.player_id == Player.id,
+                    ),
+                )
                 .order_by(QueuePlayer.added_at.asc())
                 .all()
             )
