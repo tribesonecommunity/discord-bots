@@ -757,7 +757,7 @@ async def create_condensed_in_progress_game_embed(
     team0_player_names.sort(key=str.casefold)
     team1_player_names.sort(key=str.casefold)
     content = ""
-    content += f"🗺️ Map: **{game.map_full_name}({game.map_short_name})**"
+    content += f"🗺️ Map: **{game.map_full_name} ({game.map_short_name})**"
     content += f"\n⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%):"
     content += (
         f'\n> {", ".join(team0_player_names)}' if team0_player_names else "> \n** **"
