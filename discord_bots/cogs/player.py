@@ -189,15 +189,15 @@ class PlayerCommands(BaseCog):
             session.close()
 
             output = "**Most commends given**"
-            for i, row in enumerate(most_commends_given, 1):
+            for i, row in zip(range(20), most_commends_given):
                 player = row[Player]
                 count = row["commend_count"]
-                output += f"\n{i}. {count} - {player.name}"
+                output += f"\n{i + 1}. {count} - {player.name}"
             output += "\n**Most commends received**"
-            for i, row in enumerate(most_commends_received, 1):
+            for i, row in zip(range(20), most_commends_received):
                 player = row[Player]
                 count = row["commend_count"]
-                output += f"\n{i}. {count} - {player.name}"
+                output += f"\n{i + 1}. {count} - {player.name}"
 
             if LEADERBOARD_CHANNEL:
                 channel = bot.get_channel(LEADERBOARD_CHANNEL)
@@ -209,7 +209,8 @@ class PlayerCommands(BaseCog):
                         embed=Embed(
                             description=f"Check {channel.mention}!",
                             colour=Colour.blue(),
-                        )
+                        ),
+                        ephemeral=True,
                     )
             elif interaction.guild:
                 player_id = interaction.user.id
