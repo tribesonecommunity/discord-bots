@@ -414,7 +414,7 @@ S = [
     "Scalps",
     "Slimes",
     "Silicone",
-    "Simps ",
+    "Simps",
     "Surfers",
     "Swans",
     "Sea Turtles",
