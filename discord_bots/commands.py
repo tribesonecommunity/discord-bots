@@ -48,7 +48,7 @@ from discord_bots.utils import (
     short_uuid,
     update_next_map_to_map_after_next,
     upload_stats_screenshot_imgkit_channel,
-    win_probability,
+    win_probability_matchmaking,
 )
 
 from .bot import bot
@@ -101,7 +101,7 @@ def get_even_teams(
         players: list[Player] = (
             session.query(Player).filter(Player.id.in_(player_ids)).all()
         )
-        # This is important! This ensures captains are randomly distributed!
+        # Shuffling is important! This ensures captains are randomly distributed!
         shuffle(players)
         if queue_category_id:
             player_category_trueskills = session.query(PlayerCategoryTrueskill).filter(
@@ -153,7 +153,7 @@ def get_even_teams(
                     team1_ratings.append(
                         Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
                     )
-            win_prob = win_probability(team0_ratings, team1_ratings)
+            win_prob = win_probability_matchmaking(team0_ratings, team1_ratings)
             current_team_evenness = abs(0.50 - win_prob)
             best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
             if current_team_evenness < best_team_evenness_so_far:
@@ -162,9 +162,9 @@ def get_even_teams(
             if best_team_evenness_so_far < 0.001:
                 break
 
-        _log.info(
+        _log.debug(
             f"Found team evenness: {best_team_evenness_so_far} interations: {i}"
-        )  # DEBUG, TRACE?
+        )
         return best_teams_so_far, best_win_prob_so_far
 
 
