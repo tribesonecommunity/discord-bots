@@ -1063,16 +1063,37 @@ async def upload_stats_screenshot_imgkit_channel(
                 os.remove(os.path.join(config.STATS_DIR, file_))
 
 
+def win_probability_matchmaking(team0: list[Rating], team1: list[Rating]) -> float:
+    """
+    See win_probability_matchmaking.
+    May only be used for matchmaking! This way the rating calculations are unaffected.
+
+    Alterations: To help with new players not leading to absolutely stacked games (as new players generally don't come
+        in with a skill level similar to the average player) we subtract a sigma-based amount from players mu.
+        New players join with high sima and are impacted more heavily than settled players with low sigmas.
+    Theorized improvements: instead of using a static multiplier to alter the mu we could use a (linear?) function
+        that returns 2 for 0 played games and 0.4 for high game counts or win counts. This more closely resembles the `v0` variable
+        described in the TS whitepaper to help model new players. `v0` sadly is not available in the ts-python-lib.
+    """
+    mmu = lambda p: p.mu - config.MM_SIGMA_MULT * p.sigma
+    delta_mu = sum(mmu(r) for r in team0) - sum(mmu(r) for r in team1)
+    sum_sigma = sum(r.sigma ** 2 for r in itertools.chain(team0, team1))
+    size = len(team0) + len(team1)
+    denom = math.sqrt(size * config.DEFAULT_TRUESKILL_BETA**2 + sum_sigma)
+    trueskill = global_env()
+
+    return trueskill.cdf(delta_mu / denom)
+
+
 def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     """
     Calculate the probability that team0 beats team1
     Taken from https://trueskill.org/#win-probability
     """
-    BETA = 4.1666
     delta_mu = sum(r.mu for r in team0) - sum(r.mu for r in team1)
-    sum_sigma = sum(r.sigma**2 for r in itertools.chain(team0, team1))
+    sum_sigma = sum(r.sigma ** 2 for r in itertools.chain(team0, team1))
     size = len(team0) + len(team1)
-    denom = math.sqrt(size * (BETA * BETA) + sum_sigma)
+    denom = math.sqrt(size * config.DEFAULT_TRUESKILL_BETA**2 + sum_sigma)
     trueskill = global_env()
 
     return trueskill.cdf(delta_mu / denom)
@@ -1628,11 +1649,11 @@ async def move_game_players_lobby(game_id: str, guild: Guild):
         if isinstance(result, BaseException):
             _log.exception("Ignored exception when moving a gameplayer to lobby:")
 
+
 def win_rate(wins, losses, ties):
     denominator = max(wins + losses + ties, 1)
-    return round(
-        100 * (wins + 0.5 * ties) / denominator, 1
-    )
+    return round(100 * (wins + 0.5 * ties) / denominator, 1)
+
 
 def default_sigma_decay_amount() -> float:
     """
@@ -1676,6 +1697,7 @@ async def map_short_name_autocomplete(interaction: Interaction, current: str):
                         )
                     )
     return result
+
 
 async def map_full_name_autocomplete(interaction: Interaction, current: str):
     result = []
