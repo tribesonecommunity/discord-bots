@@ -48,7 +48,7 @@ from discord_bots.utils import (
     short_uuid,
     update_next_map_to_map_after_next,
     upload_stats_screenshot_imgkit_channel,
-    win_probability_matchmaking,
+    win_probability_matchmaking, win_probability,
 )
 
 from .bot import bot
@@ -159,13 +159,17 @@ def get_even_teams(
             if current_team_evenness < best_team_evenness_so_far:
                 best_win_prob_so_far = win_prob
                 best_teams_so_far = list(team0[:]) + list(team1[:])
+                best_team0_ratings = team0_ratings
+                best_team1_ratings = team1_ratings
             if best_team_evenness_so_far < 0.001:
                 break
 
-        _log.debug(
-            f"Found team evenness: {best_team_evenness_so_far} interations: {i}"
+        # log and return mu-based win probability instead of matchmaking-based win probability
+        best_win_prob_mu = win_probability(best_team0_ratings, best_team1_ratings)
+        _log.info(
+            f"Found team evenness matchmaking: {best_win_prob_so_far}, actual evenness: {best_win_prob_mu}, interations: {i}"
         )
-        return best_teams_so_far, best_win_prob_so_far
+        return best_teams_so_far, best_win_prob_mu
 
 
 async def create_game(
