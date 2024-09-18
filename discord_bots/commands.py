@@ -842,7 +842,9 @@ async def autosub(ctx: Context, member: Member = None):
         colour=Colour.yellow(),
     )
     await _rebalance_game(game, session, message)
-    embed: discord.Embed = await create_in_progress_game_embed(session, game, guild)
+    embed: discord.Embed = await create_in_progress_game_embed(
+        session, game, guild, False
+    )
     short_game_id: str = short_uuid(game.id)
     embed.title = f"New Teams for Game {short_game_id})"
     embed.description = (
@@ -1457,7 +1459,9 @@ async def sub(ctx: Context, member: Member):
     )
 
     await _rebalance_game(game, session, message)
-    embed: discord.Embed = await create_in_progress_game_embed(session, game, guild)
+    embed: discord.Embed = await create_in_progress_game_embed(
+        session, game, guild, False
+    )
     short_game_id: str = short_uuid(game.id)
     embed.title = f"New Teams for Game {short_game_id})"
     embed.description = (
