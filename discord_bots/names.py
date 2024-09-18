@@ -384,7 +384,6 @@ D = [
     "Dutiful",
     "Dynamic",
     "Dysfunctional",
-    "Sugar Gliders",
 ]
 
 D_VULGAR = [
