@@ -601,6 +601,7 @@ async def create_in_progress_game_embed(
     session: sqlalchemy.orm.Session,
     game: InProgressGame,
     guild: discord.Guild,
+    show_map_image: bool = True,
 ) -> Embed:
     queue: Queue | None = session.query(Queue).filter(Queue.id == game.queue_id).first()
     embed: discord.Embed
@@ -690,18 +691,19 @@ async def create_in_progress_game_embed(
             inline=True,
         )
     add_empty_field(embed, offset=3)
-    map: Map | None = (
-        session.query(Map)
-        .filter(
-            or_(
-                Map.full_name == game.map_full_name,
-                Map.short_name == game.map_short_name,
+    if show_map_image:
+        map: Map | None = (
+            session.query(Map)
+            .filter(
+                or_(
+                    Map.full_name == game.map_full_name,
+                    Map.short_name == game.map_short_name,
+                )
             )
+            .first()
         )
-        .first()
-    )
-    if map and map.image_url:
-        embed.set_image(url=map.image_url)
+        if map and map.image_url:
+            embed.set_image(url=map.image_url)
     return embed
 
 
