@@ -306,10 +306,10 @@ async def create_game(
                 f"{queue.name}-({short_game_id})", category=category_channel
             )
             be_voice_channel = await guild.create_voice_channel(
-                f"{game.team0_name}", category=category_channel
+                f"🔴{game.team0_name}", category=category_channel
             )
             ds_voice_channel = await guild.create_voice_channel(
-                f"{game.team1_name}", category=category_channel
+                f"🔵{game.team1_name}", category=category_channel
             )
             session.add(
                 InProgressGameChannel(
@@ -403,27 +403,6 @@ async def create_game(
                 embed_description=f"Players moved to voice channels for game {short_game_id}",
                 colour=Colour.blue(),
             )
-
-
-async def create_team_voice_channels(
-    session: SQLAlchemySession,
-    guild: Guild,
-    game: InProgressGame,
-    category: CategoryChannel,
-) -> tuple[discord.VoiceChannel, discord.VoiceChannel]:
-    be_channel = await guild.create_voice_channel(
-        f"{game.team0_name}", category=category
-    )
-    ds_channel = await guild.create_voice_channel(
-        f"{game.team1_name}", category=category
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=be_channel.id)
-    )
-    session.add(
-        InProgressGameChannel(in_progress_game_id=game.id, channel_id=ds_channel.id)
-    )
-    return be_channel, ds_channel
 
 
 async def add_player_to_queue(
@@ -886,14 +865,14 @@ async def autosub(ctx: Context, member: Member = None):
         if field.name and game.team0_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
+                name=f"🔴 {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
                 value=team0_diff_vaules,
                 inline=True,
             )
         if field.name and game.team1_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
+                name=f"🔵 {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
                 value=team1_diff_values,
                 inline=True,
             )
@@ -1503,14 +1482,14 @@ async def sub(ctx: Context, member: Member):
         if field.name and game.team0_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
+                name=f"🔴 {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
                 value=team0_diff_vaules,
                 inline=True,
             )
         if field.name and game.team1_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
+                name=f"🔵 {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
                 value=team1_diff_values,
                 inline=True,
             )
