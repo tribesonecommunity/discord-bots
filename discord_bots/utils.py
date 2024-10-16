@@ -652,7 +652,7 @@ async def create_in_progress_game_embed(
     team1_player_names.sort(key=str.casefold)
     newline = "\n"
     embed.add_field(
-        name=f"⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
+        name=f"🔴 {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
         value=(
             f"\n>>> {newline.join(team0_player_names)}"
             if team0_player_names
@@ -661,7 +661,7 @@ async def create_in_progress_game_embed(
         inline=True,
     )
     embed.add_field(
-        name=f"➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
+        name=f"🔵 {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
         value=(
             f"\n>>> {newline.join(team1_player_names)}"
             if team1_player_names
@@ -760,13 +760,15 @@ async def create_condensed_in_progress_game_embed(
     team1_player_names.sort(key=str.casefold)
     content = ""
     content += f"🗺️ Map: **{game.map_full_name} ({game.map_short_name})**"
-    content += f"\n⬅️ {game.team0_name} ({round(100 * game.win_probability, 1)}%):"
+    content += f"\n🔴 {game.team0_name} ({round(100 * game.win_probability, 1)}%):"
     content += (
-        f'\n> {", ".join(team0_player_names)}' if team0_player_names else "> \n** **"
+        f'\n> {", ".join(team0_player_names)}' if team0_player_names else "\n> ** **"
     )
-    content += f"\n➡️ {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%):"
     content += (
-        f'\n> {", ".join(team1_player_names)}' if team1_player_names else "> \n** **"
+        f"\n🔵 {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%):"
+    )
+    content += (
+        f'\n> {", ".join(team1_player_names)}' if team1_player_names else "\n> ** **"
     )
     content += f"\n*{timestamp}*"
     embed.description = content
@@ -846,8 +848,8 @@ def create_finished_game_embed(
         if team1_player_names:
             team1_embed_value = f"\n>>> {'**{0}**'.format(newline.join(team1_player_names))}"  # bold winning names
     else:
-        be_str = f"🥈 {finished_game.team0_name}"
-        ds_str = f"🥈 {finished_game.team1_name}"
+        be_str = f"🤝 {finished_game.team0_name}"
+        ds_str = f"🤝 {finished_game.team1_name}"
         if team0_player_names:
             team0_embed_value = f"\n>>> {newline.join(team0_player_names)}"
         if team1_player_names:
