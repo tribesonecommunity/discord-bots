@@ -661,21 +661,21 @@ class AdminCommands(BaseCog):
                 "Leaderboard channel ID not configured", ephemeral=True
             )
             return
-        channel: TextChannel = bot.get_channel(config.LEADERBOARD_CHANNEL)
-        if not channel:
+        channel = bot.get_channel(config.LEADERBOARD_CHANNEL)
+        if not isinstance(channel, TextChannel):
             await interaction.response.send_message(
                 "Could not find leaderboard channel, check ID", ephemeral=True
             )
             return
-
         try:
+            await interaction.response.defer(ephemeral=True)
             await channel.purge()
             await print_leaderboard()
         except:
             _log.exception(
                 "[resetleaderboardchannel] Leaderboard failed to reset due to:"
             )
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=Embed(
                     description="Leaderboard failed to reset",
                     colour=Colour.red(),
@@ -683,9 +683,9 @@ class AdminCommands(BaseCog):
                 ephemeral=True,
             )
         else:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=Embed(
-                    description="Leaderboard channel reset",
+                    description=f"{channel.jump_url} reset",
                     colour=Colour.green(),
                 ),
                 ephemeral=True,
