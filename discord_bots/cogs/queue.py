@@ -891,22 +891,29 @@ class QueueCommands(BaseCog):
                 )
                 return
 
-            map_names = [
-                x[0]
-                for x in (
-                    session.query(Map.short_name)
-                    .join(RotationMap, RotationMap.map_id == Map.id)
-                    .filter(RotationMap.rotation_id == rotation.id)
-                    .order_by(RotationMap.ordinal.asc())
-                    .all()
-                )
-            ]
+            maps_and_weights = (
+                session.query(Map.short_name, RotationMap.random_weight)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .order_by(RotationMap.ordinal.asc())
+                .all()
+            )
 
-            if not map_names:
-                map_names = ["None"]
+            if not maps_and_weights:
+                display_weights = False
+                maps = ["None"]
+            else:
+                first_weight = maps_and_weights[0][1]
+                display_weights = rotation.is_random and any(x[1] != first_weight for x in maps_and_weights)
+                if display_weights:
+                    maps = [f"{x[0]} ({x[1]})" for x in maps_and_weights]
+                else:
+                    maps = [x[0] for x in maps_and_weights]
 
             output = f"**{queue.name}** is assigned to **{rotation.name}**\n"
-            output += f"- _Maps: {', '.join(map_names)}_"
+            if rotation.is_random:
+                output += f"- Rotation is random\n"
+            output += f"- _Maps{' (random weight)' if display_weights else ''}: {', '.join(maps)}_"
             await interaction.response.send_message(
                 embed=Embed(
                     description=output,

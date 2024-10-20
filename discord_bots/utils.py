@@ -8,6 +8,7 @@ import statistics
 from datetime import datetime, timedelta, timezone
 from heapq import heappop, heappush
 from itertools import combinations
+from random import choices
 from typing import List, Optional
 
 import discord
@@ -1133,18 +1134,28 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
             return
 
         if rotation.is_random:
-            rotation_map_after_next: RotationMap | None = (
+            # Follow-Up:
+            #  - introduce backlog of previous maps per rotation -> RotationMapHistory
+            #     update whenever a new map is chosen regardless of reason
+            #     -> vote
+            #     -> skip
+            #     -> admin force
+            #     -> game start
+            #     -> autorotation
+            #  - introduce Rotation.min_maps_before_requeue -> not eligible if maps are available that haven't been queue recently
+            #  - refactoring: introduce  "update_next_map_to" function parallel to this that is called rather than the "manual" updates we have now scattered all over tha place
+            eligible_maps: list[RotationMap] = (
                 session.query(RotationMap)
                 .filter(RotationMap.rotation_id == rotation_id)
                 .filter(RotationMap.is_next == False)
-                .order_by(func.random())
-                .first()
+                .all()
             )
-            if not rotation_map_after_next:
+            if not eligible_maps:
                 _log.error(
                     f"[update_next_map_to_map_after_next] Could not find a random rotation_map for rotation {rotation.id}. There are likely no rotation_maps to pick from"
                 )
                 return
+            rotation_map_after_next = choices(eligible_maps, weights=[x.random_weight for x in eligible_maps])[0]
         else:
             rotation_map_length = (
                 session.query(RotationMap)
