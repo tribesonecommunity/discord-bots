@@ -306,10 +306,10 @@ async def create_game(
                 f"{queue.name}-({short_game_id})", category=category_channel
             )
             be_voice_channel = await guild.create_voice_channel(
-                f"🔴{game.team0_name}", category=category_channel
+                f"🔴 {game.team0_name}", category=category_channel
             )
             ds_voice_channel = await guild.create_voice_channel(
-                f"🔵{game.team1_name}", category=category_channel
+                f"🔵 {game.team1_name}", category=category_channel
             )
             session.add(
                 InProgressGameChannel(
