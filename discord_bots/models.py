@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -1290,6 +1289,10 @@ class RotationMap:
     random_probability: float = field(
         default=0,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    random_weight: int = field(
+        default=1,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("1"))},
     )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),

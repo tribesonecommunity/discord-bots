@@ -1,14 +1,14 @@
 import logging
 
 from discord import Colour, Embed, Interaction, app_commands
-from discord.ext.commands import Bot, Context, check, command
+from discord.ext.commands import Bot
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import Map, Queue, Rotation, RotationMap, Session
+from discord_bots.models import Map, Rotation, RotationMap, Session
 from discord_bots.utils import (
     map_short_name_autocomplete,
     rotation_autocomplete,
@@ -66,6 +66,7 @@ class RotationCommands(BaseCog):
         rotation_name="Existing rotation",
         map_short_name="Existing map",
         ordinal="Map ordinal",
+        random_weight="Random weight (default: 1)"
     )
     @app_commands.autocomplete(
         rotation_name=rotation_autocomplete, map_short_name=map_short_name_autocomplete
@@ -75,8 +76,9 @@ class RotationCommands(BaseCog):
         self,
         interaction: Interaction,
         rotation_name: str,
-        map_short_name: str,
-        ordinal: int,
+            map_short_name: str,
+            ordinal: int,
+            random_weight: int | None,
     ):
         """
         Add a map to a rotation at a specific ordinal (position)
@@ -85,6 +87,17 @@ class RotationCommands(BaseCog):
             await interaction.response.send_message(
                 embed=Embed(
                     description="Ordinal must be a positive number",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        if random_weight is None:
+            random_weight = 1
+        if random_weight < 1:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="Random Weight must be a positive number",
                     colour=Colour.red(),
                 ),
                 ephemeral=True,
@@ -148,6 +161,7 @@ class RotationCommands(BaseCog):
                         rotation_id=rotation.id,
                         map_id=map.id,
                         ordinal=ordinal,
+                        random_weight=random_weight,
                         is_next=is_next,
                     )
                 )
@@ -424,6 +438,105 @@ class RotationCommands(BaseCog):
             await interaction.response.send_message(
                 embed=Embed(
                     description=f"Map **{map.short_name}** in rotation **{rotation.name}** set to ordinal **{rotation_map_to_set.ordinal}**.",
+                    colour=Colour.green(),
+                )
+            )
+
+    @group.command(
+        name="setrotationmaprandomweight",
+        description="Set the random weight for a map in a rotation",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(
+        rotation_name="Existing rotation",
+        map_short_name="Existing map",
+        new_random_weight="New random weight",
+    )
+    @app_commands.autocomplete(
+        rotation_name=rotation_autocomplete, map_short_name=map_short_name_autocomplete
+    )
+    @app_commands.rename(
+        rotation_name="rotation", map_short_name="map", new_random_weight="random_weight"
+    )
+    async def setrotationmaprandomweight(
+            self,
+            interaction: Interaction,
+            rotation_name: str,
+            map_short_name: str,
+            new_random_weight: int,
+    ):
+        """
+        Set the random weight for a map in a rotation
+        """
+        session: SQLAlchemySession
+        with Session() as session:
+            if new_random_weight < 1:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Random weight must be a positive number",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                rotation = (
+                    session.query(Rotation)
+                    .filter(Rotation.name.ilike(rotation_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find rotation **{rotation_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                map = (
+                    session.query(Map)
+                    .filter(Map.short_name.ilike(map_short_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map **{map_short_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                rotation_map_to_set = (
+                    session.query(RotationMap)
+                    .filter(RotationMap.rotation_id == rotation.id)
+                    .filter(RotationMap.map_id == map.id)
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Map **{map.short_name}** is not in rotation **{rotation.name}**\nPlease add it with `!addrotationmap`.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            rotation_map_to_set.random_weight = new_random_weight
+
+            session.commit()
+
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Map **{map.short_name}** in rotation **{rotation.name}** set to random weight **{rotation_map_to_set.random_weight}**.",
                     colour=Colour.green(),
                 )
             )
