@@ -203,4 +203,5 @@ GAME_HISTORY_CHANNEL: int = _to_int(key="GAME_HISTORY_CHANNEL", required=True)
 ADMIN_AUTOSUB: bool = _to_bool(key="ADMIN_AUTOSUB", default=False)
 POP_RANDOM_QUEUE: bool = _to_bool(key="POP_RANDOM_QUEUE", default=False)
 MM_SIGMA_MULT: float = _to_float(key="MM_SIGMA_MULT", default=0)
+END_ROTATION_AFTER_CYCLE: bool = _to_bool(key="END_ROTATION_AFTER_CYCLE", default=True)
 # TODO grouping here and in docs
