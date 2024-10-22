@@ -1558,9 +1558,9 @@ async def move_game_players(
             )
             if isinstance(discord_channel, VoiceChannel):
                 # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
-                if discord_channel.name == in_progress_game.team0_name:
+                if in_progress_game.team0_name in discord_channel.name:
                     be_voice_channel = discord_channel
-                elif discord_channel.name == in_progress_game.team1_name:
+                elif in_progress_game.team1_name in discord_channel.name:
                     ds_voice_channel = discord_channel
 
         # TODO: combine for loops into one for all players
