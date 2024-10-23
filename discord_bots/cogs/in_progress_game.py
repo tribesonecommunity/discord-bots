@@ -970,24 +970,3 @@ class InProgressGameView(BaseView):
         if self.is_game_finished:
             # no need to disable the buttons, since the channel will be deleted immediately
             self.stop()
-
-
-def get_team_voice_channels(
-    session: SQLAlchemySession, in_progress_game: InProgressGame, guild: Guild
-):
-    team0_vc: VoiceChannel | None = None
-    team1_vc: VoiceChannel | None = None
-    ipg_channels: list[InProgressGameChannel] | None = (
-        session.query(InProgressGameChannel)
-        .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
-        .all()
-    )
-    for ipg_channel in ipg_channels or []:
-        discord_channel: GuildChannel | None = guild.get_channel(ipg_channel.channel_id)
-        if isinstance(discord_channel, VoiceChannel):
-            # This is suboptimal and fragile solution but it's good enough for now. We should keep track of each team's VC in the database
-            if in_progress_game.team0_name in discord_channel.name:
-                team0_vc = discord_channel
-            elif in_progress_game.team1_name in discord_channel.name:
-                team1_vc = discord_channel
-    return team0_vc, team1_vc

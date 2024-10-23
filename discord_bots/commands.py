@@ -40,6 +40,7 @@ from discord_bots.utils import (
     del_player_from_queues_and_waitlists,
     get_player_game,
     get_team_name_diff,
+    get_team_voice_channels,
     is_in_game,
     mean,
     move_game_players,
@@ -53,11 +54,7 @@ from discord_bots.utils import (
 
 from .bot import bot
 from .cogs.economy import EconomyCommands
-from .cogs.in_progress_game import (
-    InProgressGameCommands,
-    InProgressGameView,
-    get_team_voice_channels,
-)
+from .cogs.in_progress_game import InProgressGameCommands, InProgressGameView
 from .models import (
     Category,
     FinishedGame,
