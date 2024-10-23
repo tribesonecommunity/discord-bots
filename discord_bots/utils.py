@@ -1104,7 +1104,7 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     return trueskill.cdf(delta_mu / denom)
 
 
-async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
+async def execute_map_rotation(rotation_id: str, is_verbose: bool):
     """
     :is_verbose: specifies if we want to see queues affected in the bot response.
         currently passing in False for when game pops, True for everything else.
@@ -1114,22 +1114,9 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
         rotation: Rotation | None = (
             session.query(Rotation).filter(Rotation.id == rotation_id).first()
         )
-
         if not rotation:
             _log.warning(
-                f"[update_next_map_to_map_after_next] Could not find rotation {rotation_id}, skipping update"
-            )
-            return
-
-        next_rotation_map: RotationMap | None = (
-            session.query(RotationMap)
-            .filter(RotationMap.rotation_id == rotation_id)
-            .filter(RotationMap.is_next == True)
-            .first()
-        )
-        if not next_rotation_map:
-            _log.error(
-                f"[update_next_map_to_map_after_next] Could not find next rotation_map for rotation {rotation.id}"
+                f"[execute_map_rotation] Could not find rotation {rotation_id}, skipping update"
             )
             return
 
@@ -1142,7 +1129,10 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
             #     -> admin force
             #     -> game start
             #     -> autorotation
-            #  - introduce Rotation.min_maps_before_requeue -> not eligible if maps are available that haven't been queue recently
+            #  - introduce Rotation.min_maps_before_requeue (int)
+            #       -> not eligible if maps are available that haven't been queue recently
+            #  - introduce Rotation.weight_increase (float)
+            #       -> weight increases to weight + Math.floor(value*x) x = times not selected since eligible
             #  - refactoring: introduce  "update_next_map_to" function parallel to this that is called rather than the "manual" updates we have now scattered all over tha place
             eligible_maps: list[RotationMap] = (
                 session.query(RotationMap)
@@ -1152,82 +1142,99 @@ async def update_next_map_to_map_after_next(rotation_id: str, is_verbose: bool):
             )
             if not eligible_maps:
                 _log.error(
-                    f"[update_next_map_to_map_after_next] Could not find a random rotation_map for rotation {rotation.id}. There are likely no rotation_maps to pick from"
+                    f"[execute_map_rotation] Could not find a random rotation_map for rotation {rotation.id}. There are likely no rotation_maps to pick from"
                 )
                 return
-            rotation_map_after_next = choices(eligible_maps, weights=[x.random_weight for x in eligible_maps])[0]
+            following_map = choices(eligible_maps, weights=[x.random_weight for x in eligible_maps])[0]
         else:
+            current_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation_id)
+                .filter(RotationMap.is_next == True)
+                .first()
+            )
             rotation_map_length = (
                 session.query(RotationMap)
                 .filter(RotationMap.rotation_id == rotation_id)
                 .count()
             )
-            rotation_map_after_next_ordinal = next_rotation_map.ordinal + 1
-            if rotation_map_after_next_ordinal > rotation_map_length:
-                rotation_map_after_next_ordinal = 1
+            following_ordinal = current_rotation_map.ordinal + 1 if current_rotation_map else 1
+            if following_ordinal > rotation_map_length:
+                following_ordinal = 1
 
-            rotation_map_after_next: RotationMap | None = (
+            following_map: RotationMap | None = (
                 session.query(RotationMap)
                 .filter(RotationMap.rotation_id == rotation_id)
-                .filter(RotationMap.ordinal == rotation_map_after_next_ordinal)
+                .filter(RotationMap.ordinal == following_ordinal)
                 .first()
             )
-            if not rotation_map_after_next:
+            if not following_map:
                 _log.error(
-                    f"[update_next_map_to_map_after_next] Could not find a rotation_map after next with ordinal {rotation_map_after_next_ordinal} for rotation {rotation.id}"
+                    f"[execute_map_rotation] Could not find a rotation_map after next with ordinal {following_ordinal} for rotation {rotation.id}"
                 )
                 return
 
-        next_rotation_map.is_next = False
-        rotation_map_after_next.is_next = True
+    await update_next_map(rotation.id, following_map.id, is_verbose)
 
-        map_after_next: Map | None = (
-            session.query(Map)
-            .join(RotationMap, RotationMap.map_id == Map.id)
-            .filter(RotationMap.id == rotation_map_after_next.id)
-            .first()
-        )
-        if not map_after_next:
-            _log.error(
-                f"[update_next_map_to_map_after_next] Could not find map_after_next with id {rotation_map_after_next.id}"
-            )
-            return
+
+async def update_next_map(rotation_id: str, new_rotation_map_id: str, is_verbose: bool = True):
+    """
+    Central function to update next rotation.
+    Removes all votes
+
+    :rotation_id: The id of the rotation. Must be verified beforehand
+    :rotation_map_id: The id of the rotation map. Must be verified beforehand
+    :is_verbose: specifies if we want to see queues affected in the bot response.
+        currently passing in False for when game pops, True for everything else.
+    """
+    session: sqlalchemy.orm.Session
+    with Session() as session:
+        next_rotation_map: RotationMap = session.query(RotationMap) \
+            .filter(RotationMap.id == new_rotation_map_id) \
+            .one()
+        session.query(RotationMap) \
+            .filter(RotationMap.rotation_id == rotation_id) \
+            .filter(RotationMap.is_next == True) \
+            .update({"is_next": False})
+        next_rotation_map.is_next = True
+
+        map_votes: list[MapVote] = session.query(MapVote) \
+            .join(RotationMap, RotationMap.id == MapVote.rotation_map_id) \
+            .filter(RotationMap.rotation_id == rotation_id) \
+            .all()
+        for map_vote in map_votes:
+            session.delete(map_vote)
+        session.query(SkipMapVote) \
+            .filter(SkipMapVote.rotation_id == rotation_id) \
+            .delete()
+        session.commit()
 
         channel = bot.get_channel(config.CHANNEL_ID)
         if isinstance(channel, discord.TextChannel):
             if is_verbose:
-                rotation_queues = (
+                next_map: Map = (
+                    session.query(Map)
+                    .filter(Map.id == next_rotation_map.map_id)
+                    .one()
+                )
+                affected_queues: list[Queue] = (
                     session.query(Queue.name)
                     .filter(Queue.rotation_id == rotation_id)
                     .all()
                 )
-                rotation_queue_names = (
-                    [rotation_queue.name for rotation_queue in rotation_queues]
-                    if rotation_queues
+                affected_queue_names = (
+                    [q.name for q in affected_queues]
+                    if affected_queues
                     else []
                 )
-                rotation_queue_names_str = f"**{', '.join(rotation_queue_names)}**"
                 await send_message(
                     channel,
-                    embed_title=f"Next Map rotated to {map_after_next.full_name}",
-                    embed_description=f"Queues affected: {rotation_queue_names_str}",
+                    embed_title=f"Next Map rotated to {next_map.full_name}",
+                    embed_description=f"Queues affected: **{', '.join(affected_queue_names)}**",
                     embed_footer="All votes removed",
-                    image_url=map_after_next.image_url,
+                    image_url=next_map.image_url,
                     colour=Colour.blue(),
                 )
-
-        map_votes = (
-            session.query(MapVote)
-            .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
-            .filter(RotationMap.rotation_id == rotation_id)
-            .all()
-        )
-        for map_vote in map_votes:
-            session.delete(map_vote)
-        session.query(SkipMapVote).filter(
-            SkipMapVote.rotation_id == rotation_id
-        ).delete()
-        session.commit()
 
 
 async def send_in_guild_message(

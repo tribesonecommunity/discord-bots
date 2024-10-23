@@ -42,9 +42,9 @@ from discord_bots.utils import (
     in_progress_game_autocomplete,
     map_short_name_autocomplete,
     print_leaderboard,
+    update_next_map,
     queue_autocomplete,
 )
-from discord_bots.views.base import BaseView
 
 _log = logging.getLogger(__name__)
 
@@ -833,30 +833,14 @@ class AdminCommands(BaseCog):
                 )
                 return
 
-            session.query(RotationMap).filter(
-                RotationMap.rotation_id == rotation.id
-            ).filter(RotationMap.is_next == True).update({"is_next": False})
-            next_rotation_map.is_next = True
-            session.commit()
-
-            output = f"Next map for **{queue.name}** changed to **{map.full_name}**"
-            result = (
-                session.query(Queue.name)
-                .filter(Queue.rotation_id == rotation.id)
-                .filter(Queue.name != queue.name)
-                .all()
-            )
-            affected_queues = [queue_name[0] for queue_name in result] if result else []
-            if affected_queues:
-                queues_affected_str = f"**{', '.join(affected_queues)}**"
-                output += f"\nQueues affected: {queues_affected_str}"
-
             await interaction.response.send_message(
                 embed=Embed(
-                    description=output,
+                    description="Map changed successfully",
                     colour=Colour.green(),
-                )
+                ),
+                ephemeral=True
             )
+            await update_next_map(rotation.id, next_rotation_map.id)
 
     @group.command(name="cancel", description="Cancels the specified game")
     @app_commands.check(is_admin_app_command)
