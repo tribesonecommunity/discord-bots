@@ -53,7 +53,11 @@ from discord_bots.utils import (
 
 from .bot import bot
 from .cogs.economy import EconomyCommands
-from .cogs.in_progress_game import InProgressGameCommands, InProgressGameView
+from .cogs.in_progress_game import (
+    InProgressGameCommands,
+    InProgressGameView,
+    get_team_voice_channels,
+)
 from .models import (
     Category,
     FinishedGame,
@@ -876,23 +880,9 @@ async def autosub(ctx: Context, member: Member = None):
                 value=team1_diff_values,
                 inline=True,
             )
-    be_voice_channel: discord.VoiceChannel | None = None
-    ds_voice_channel: discord.VoiceChannel | None = None
-    ipg_channels: list[InProgressGameChannel] | None = (
-        session.query(InProgressGameChannel)
-        .filter(InProgressGameChannel.in_progress_game_id == game.id)
-        .all()
-    )
-    for ipg_channel in ipg_channels or []:
-        discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
-            ipg_channel.channel_id
-        )
-        if isinstance(discord_channel, discord.VoiceChannel):
-            # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
-            if discord_channel.name == game.team0_name:
-                be_voice_channel = discord_channel
-            elif discord_channel.name == game.team1_name:
-                ds_voice_channel = discord_channel
+    be_voice_channel: discord.VoiceChannel | None
+    ds_voice_channel: discord.VoiceChannel | None
+    be_voice_channel, ds_voice_channel = get_team_voice_channels(session, game, guild)
 
     coroutines = []
     coroutines.append(message.channel.send(embed=embed))
@@ -1493,23 +1483,9 @@ async def sub(ctx: Context, member: Member):
                 value=team1_diff_values,
                 inline=True,
             )
-    be_voice_channel: discord.VoiceChannel | None = None
-    ds_voice_channel: discord.VoiceChannel | None = None
-    ipg_channels: list[InProgressGameChannel] | None = (
-        session.query(InProgressGameChannel)
-        .filter(InProgressGameChannel.in_progress_game_id == game.id)
-        .all()
-    )
-    for ipg_channel in ipg_channels or []:
-        discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
-            ipg_channel.channel_id
-        )
-        if isinstance(discord_channel, discord.VoiceChannel):
-            # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
-            if discord_channel.name == game.team0_name:
-                be_voice_channel = discord_channel
-            elif discord_channel.name == game.team1_name:
-                ds_voice_channel = discord_channel
+    be_voice_channel: discord.VoiceChannel | None
+    ds_voice_channel: discord.VoiceChannel | None
+    be_voice_channel, ds_voice_channel = get_team_voice_channels(session, game, guild)
 
     coroutines = []
     coroutines.append(message.channel.send(embed=embed))

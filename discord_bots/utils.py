@@ -40,6 +40,7 @@ from trueskill import Rating, global_env
 
 import discord_bots.config as config
 from discord_bots.bot import bot
+from discord_bots.cogs.in_progress_game import get_team_voice_channels
 from discord_bots.models import (
     Category,
     CustomCommand,
@@ -1547,21 +1548,9 @@ async def move_game_players(
 
         be_voice_channel: VoiceChannel | None = None
         ds_voice_channel: VoiceChannel | None = None
-        ipg_channels: list[InProgressGameChannel] | None = (
-            session.query(InProgressGameChannel)
-            .filter(InProgressGameChannel.in_progress_game_id == in_progress_game.id)
-            .all()
+        be_voice_channel, ds_voice_channel = get_team_voice_channels(
+            session, in_progress_game, guild
         )
-        for ipg_channel in ipg_channels or []:
-            discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
-                ipg_channel.channel_id
-            )
-            if isinstance(discord_channel, VoiceChannel):
-                # This is suboptimal solution but it's good enough for now. We should keep track of each team's VC in the database
-                if in_progress_game.team0_name in discord_channel.name:
-                    be_voice_channel = discord_channel
-                elif in_progress_game.team1_name in discord_channel.name:
-                    ds_voice_channel = discord_channel
 
         # TODO: combine for loops into one for all players
         coroutines = []
