@@ -10,9 +10,9 @@ from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Map, Rotation, RotationMap, Session
 from discord_bots.utils import (
+    execute_map_rotation,
     map_short_name_autocomplete,
     rotation_autocomplete,
-    update_next_map_to_map_after_next,
 )
 
 _log = logging.getLogger(__name__)
@@ -153,8 +153,6 @@ class RotationCommands(BaseCog):
                 for rotation_map in rotation_maps[ordinal - 1 :]:
                     rotation_map.ordinal += 1
 
-            is_next = True if not rotation_maps else False
-
             try:
                 session.add(
                     RotationMap(
@@ -162,10 +160,13 @@ class RotationCommands(BaseCog):
                         map_id=map.id,
                         ordinal=ordinal,
                         random_weight=random_weight,
-                        is_next=is_next,
                     )
                 )
                 session.commit()
+
+                if not rotation_maps:
+                    # ensure there is a "next map" to start rotating
+                    await execute_map_rotation(rotation.id, False)
             except IntegrityError:
                 session.rollback()
                 await interaction.response.send_message(
@@ -291,7 +292,7 @@ class RotationCommands(BaseCog):
                 return
 
             if rotation_map.is_next:
-                await update_next_map_to_map_after_next(rotation.id, True)
+                await execute_map_rotation(rotation.id, True)
 
             # adjust the rest of the ordinals in the rotation
             rotation_maps = (

@@ -646,11 +646,11 @@ class InProgressGameCommands(commands.Cog):
             .filter(Queue.id == in_progress_game.queue_id)
             .scalar()
         )
-        if reward == 0:
+        if not reward:
             reward = config.DEFAULT_RAFFLE_VALUE
 
         for player in players:
-            player.raffle_tickets += reward
+            player.raffle_tickets = (player.raffle_tickets or 0) + reward
             session.add(player)
         session.commit()
 

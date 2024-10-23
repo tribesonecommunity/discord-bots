@@ -21,10 +21,10 @@ import discord_bots.config as config
 from discord_bots.cogs.schedule import ScheduleUtils
 from discord_bots.utils import (
     add_empty_field,
+    execute_map_rotation,
     move_game_players_lobby,
     print_leaderboard,
     send_message,
-    update_next_map_to_map_after_next,
 )
 
 from .bot import bot
@@ -335,7 +335,7 @@ async def map_rotation_task():
                     timezone.utc
                 ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
                 if (time_since_update.seconds // 60) > config.MAP_ROTATION_MINUTES:
-                    await update_next_map_to_map_after_next(rotation.id, True)
+                    await execute_map_rotation(rotation.id, True)
 
 
 @tasks.loop(seconds=5)

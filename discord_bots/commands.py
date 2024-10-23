@@ -38,6 +38,7 @@ from discord_bots.utils import (
     create_condensed_in_progress_game_embed,
     create_in_progress_game_embed,
     del_player_from_queues_and_waitlists,
+    execute_map_rotation,
     get_player_game,
     get_team_name_diff,
     get_team_voice_channels,
@@ -47,7 +48,6 @@ from discord_bots.utils import (
     send_in_guild_message,
     send_message,
     short_uuid,
-    update_next_map_to_map_after_next,
     upload_stats_screenshot_imgkit_channel,
     win_probability_matchmaking,
 )
@@ -379,7 +379,7 @@ async def create_game(
         session.commit()
 
         if not rolled_random_map:
-            await update_next_map_to_map_after_next(queue.rotation_id, False)
+            await execute_map_rotation(queue.rotation_id, False)
 
         if config.ECONOMY_ENABLED and match_channel:
             prediction_message_id: int | None = (

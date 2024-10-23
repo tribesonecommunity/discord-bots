@@ -28,10 +28,11 @@ from discord_bots.models import (
     VotePassedWaitlist,
 )
 from discord_bots.utils import (
+    execute_map_rotation,
     map_short_name_autocomplete,
     queue_autocomplete,
     short_uuid,
-    update_next_map_to_map_after_next,
+    update_next_map,
 )
 
 _log = logging.getLogger(__name__)
@@ -205,7 +206,7 @@ class VoteCommands(BaseCog):
                         )
                     )
                     return
-                # old_map_full_name: str | None = str(ipg.map_full_name)
+
                 old_map_full_name: str | None = ipg.map_full_name
                 ipg.map_full_name = new_map.full_name
                 ipg.map_short_name = new_map.short_name
@@ -215,7 +216,6 @@ class VoteCommands(BaseCog):
 
                 embed = Embed(
                     title=f"Vote skip for game '{queue.name}' ({short_uuid(ipg.id)}) passed!",
-                    # description=embed_description,
                     color=Colour.green(),
                 )
                 embed.add_field(
@@ -227,7 +227,7 @@ class VoteCommands(BaseCog):
                     text=f'Previous map was "{old_map_full_name}". All votes removed'
                 )
                 await interaction.response.send_message(embed=embed)
-                await update_next_map_to_map_after_next(rotation.id, True)
+                await execute_map_rotation(rotation.id, True)
             else:
                 await interaction.response.send_message(
                     embed=Embed(
@@ -592,23 +592,7 @@ class VoteCommands(BaseCog):
                 .all()
             )
             if len(rotation_map_votes) >= config.MAP_VOTE_THRESHOLD:
-                session.query(RotationMap).filter(
-                    RotationMap.rotation_id == rotation.id
-                ).filter(RotationMap.is_next == True).update({"is_next": False})
-                rotation_map.is_next = True
-
-                map_votes = (
-                    session.query(MapVote)
-                    .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
-                    .filter(RotationMap.rotation_id == rotation.id)
-                    .all()
-                )
-                for map_vote in map_votes:
-                    session.delete(map_vote)
-                session.query(SkipMapVote).filter(
-                    SkipMapVote.rotation_id == rotation.id
-                ).delete()
-
+                await update_next_map(rotation.id, rotation_map.id)
                 if interaction.guild and interaction.channel:
                     # TODO: Check if another vote already exists
                     session.add(
@@ -619,29 +603,6 @@ class VoteCommands(BaseCog):
                             + timedelta(seconds=config.RE_ADD_DELAY),
                         )
                     )
-                session.commit()
-                result = (
-                    session.query(Queue.name)
-                    .filter(Queue.rotation_id == rotation.id)
-                    .order_by(Queue.ordinal)
-                    .all()
-                )
-                affected_queues = (
-                    [queue_name[0] for queue_name in result] if result else []
-                )
-                queues_affected_str: str = ""
-                if affected_queues:
-                    queues_affected_str: str = f"**{', '.join(affected_queues)}**"
-
-                await interaction.response.send_message(
-                    embed=Embed(
-                        title=f"Next Map rotated to **{map.full_name} ({map.short_name})**",
-                        description=f"Queues affected: {queues_affected_str}",
-                        colour=Colour.green(),
-                    )
-                    .set_footer(text="All votes removed")
-                    .set_image(url=map.image_url)
-                )
             else:
                 map_votes = (
                     session.query(MapVote)
@@ -739,7 +700,7 @@ class VoteCommands(BaseCog):
                         colour=Colour.green(),
                     )
                 )
-                await update_next_map_to_map_after_next(rotation.id, True)
+                await execute_map_rotation(rotation.id, True)
 
                 if interaction.guild:
                     # TODO: Might be bugs if two votes pass one after the other
