@@ -833,6 +833,7 @@ class AdminCommands(BaseCog):
                 )
                 return
 
+            await update_next_map(rotation.id, next_rotation_map.id)
             await interaction.response.send_message(
                 embed=Embed(
                     description="Map changed successfully",
@@ -840,7 +841,6 @@ class AdminCommands(BaseCog):
                 ),
                 ephemeral=True
             )
-            await update_next_map(rotation.id, next_rotation_map.id)
 
     @group.command(name="cancel", description="Cancels the specified game")
     @app_commands.check(is_admin_app_command)

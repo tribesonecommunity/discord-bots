@@ -1189,19 +1189,23 @@ async def update_next_map(rotation_id: str, new_rotation_map_id: str, is_verbose
     """
     session: sqlalchemy.orm.Session
     with Session() as session:
-        next_rotation_map: RotationMap = session.query(RotationMap) \
-            .filter(RotationMap.id == new_rotation_map_id) \
+        next_rotation_map: RotationMap = (
+            session.query(RotationMap)
+            .filter(RotationMap.id == new_rotation_map_id)
             .one()
+        )
         session.query(RotationMap) \
             .filter(RotationMap.rotation_id == rotation_id) \
             .filter(RotationMap.is_next == True) \
             .update({"is_next": False})
         next_rotation_map.is_next = True
 
-        map_votes: list[MapVote] = session.query(MapVote) \
-            .join(RotationMap, RotationMap.id == MapVote.rotation_map_id) \
-            .filter(RotationMap.rotation_id == rotation_id) \
+        map_votes: list[MapVote] = (
+            session.query(MapVote)
+            .join(RotationMap, RotationMap.id == MapVote.rotation_map_id)
+            .filter(RotationMap.rotation_id == rotation_id)
             .all()
+        )
         for map_vote in map_votes:
             session.delete(map_vote)
         session.query(SkipMapVote) \
