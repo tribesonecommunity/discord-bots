@@ -1451,9 +1451,14 @@ async def sub(ctx: Context, member: Member):
     )
     short_game_id: str = short_uuid(game.id)
     embed.title = f"⚠️ New Teams for Game {short_game_id})"
-    embed.description = (
-        f"Substituted **{caller.display_name}** in for **{callee.display_name}**"
-    )
+    if callee_game:
+        embed.description = (
+            f"Substituted **{caller.display_name}** in for **{callee.display_name}**"
+        )
+    else:
+        embed.description = (
+            f"Substituted **{callee.display_name}** in for **{caller.display_name}**"
+        )
     embed.color = discord.Color.yellow()
     results = (
         session.query(Player.id, Player.name)
