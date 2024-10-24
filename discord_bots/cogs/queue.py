@@ -891,36 +891,61 @@ class QueueCommands(BaseCog):
                 )
                 return
 
-            map_infos = (
-                session.query(Map.short_name, RotationMap.random_weight, RotationMap.stop_rotation)
+            query_ordering = (
+                [RotationMap.random_weight.desc()]
+                if rotation.is_random
+                else [RotationMap.ordinal.asc()]
+            )
+            result: list[tuple[Map, bool, float]] | None = (
+                session.query(Map, RotationMap.is_next, RotationMap.random_weight)
                 .join(RotationMap, RotationMap.map_id == Map.id)
                 .filter(RotationMap.rotation_id == rotation.id)
-                .order_by(RotationMap.ordinal.asc())
+                .order_by(*query_ordering)
                 .all()
             )
-
-            if not map_infos:
-                display_weights = False
-                maps = ["None"]
-            else:
-                first_weight = map_infos[0][1]
-                display_weights = rotation.is_random and any(x[1] != first_weight for x in map_infos)
-                if display_weights:
-                    maps = [f"{x[0]}{'*' if x[2] else ''} ({x[1]})" for x in map_infos]
+            embed: Embed = Embed(
+                title=f"Queue '{queue.name}'",
+                colour=Colour.blue(),
+            )
+            if result:
+                if rotation.is_random:
+                    map_names = ["`[Weight] Map Name`"]
+                    for map, is_next, random_weight in result:
+                        if is_next:
+                            map_names.append(
+                                f"[{random_weight}] **{map.full_name} ({map.short_name})**"
+                            )
+                            embed.set_thumbnail(url=map.image_url)
+                        else:
+                            map_names.append(
+                                f"[{random_weight}] {map.full_name} ({map.short_name})"
+                            )
                 else:
-                    maps = [f"{x[0]}{'*' if x[2] else ''}" for x in map_infos]
+                    map_names = []
+                    for i, r in enumerate(result, start=1):
+                        map, is_next, random_weight = r
+                        if is_next:
+                            map_names.append(
+                                f"{i}. **{map.full_name} ({map.short_name})**"
+                            )
+                            embed.set_thumbnail(url=map.image_url)
+                        else:
+                            map_names.append(f"{i}. {map.full_name} ({map.short_name})")
 
-            output = f"**{queue.name}** is assigned to **{rotation.name}**\n"
-            if rotation.is_random:
-                output += f"- Rotation is random\n"
-            output += f"- _Maps{' (random weight)' if display_weights else ''}: {', '.join(maps)}_"
-            if any([x[2] for x in map_infos]):
-                output += f"\n- Rotation stop on maps with *"
+            embed.set_footer(text="The next map is in bold")
+            newline = "\n"
+            embed.add_field(
+                name=(
+                    f"Rotation: {rotation.name} (random)"
+                    if rotation.is_random
+                    else f"Rotation: {rotation.name}"
+                ),
+                value=(f">>> {newline.join(map_names)}" if map_names else "*None*"),
+                inline=True,
+            )
             await interaction.response.send_message(
-                embed=Embed(
-                    description=output,
-                    colour=Colour.blue(),
-                )
+                embed=embed,
+                ephemeral=False,  # leaving as False for now, since it may be useful for other users to see
             )
 
     @group.command(

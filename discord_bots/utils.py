@@ -608,12 +608,12 @@ async def create_in_progress_game_embed(
     embed: discord.Embed
     if queue:
         embed = Embed(
-            title=f"⏳In Progress Game '{queue.name}' ({short_uuid(game.id)})",
+            title=f"🚩 In Progress Game '{queue.name}' ({short_uuid(game.id)})",
             color=discord.Color.blue(),
         )
     else:
         embed = Embed(
-            title=f"⏳In Progress Game ({short_uuid(game.id)})",
+            title=f"️🚩 In Progress Game ({short_uuid(game.id)})",
             color=discord.Color.blue(),
         )
 
@@ -716,12 +716,12 @@ async def create_condensed_in_progress_game_embed(
     embed: discord.Embed
     if queue:
         embed = Embed(
-            title=f"⏳In Progress Game '{queue.name}' ({short_uuid(game.id)})",
+            title=f"🚩 In Progress Game '{queue.name}' ({short_uuid(game.id)})",
             color=discord.Color.blue(),
         )
     else:
         embed = Embed(
-            title=f"⏳In Progress Game ({short_uuid(game.id)})",
+            title=f"🚩 In Progress Game ({short_uuid(game.id)})",
             color=discord.Color.blue(),
         )
 
@@ -773,6 +773,18 @@ async def create_condensed_in_progress_game_embed(
     )
     content += f"\n*{timestamp}*"
     embed.description = content
+    map: Map | None = (
+        session.query(Map)
+        .filter(
+            or_(
+                Map.full_name == game.map_full_name,
+                Map.short_name == game.map_short_name,
+            )
+        )
+        .first()
+    )
+    if map and map.image_url:
+        embed.set_thumbnail(url=map.image_url)
     return embed
 
 
@@ -1751,6 +1763,26 @@ async def queue_autocomplete(interaction: Interaction, current: str):
                     )
     return result
 
+
+async def unlocked_queue_autocomplete(interaction: Interaction, current: str):
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        queues: list[Queue] | None = (
+            session.query(Queue)
+            .filter(Queue.is_locked == False)
+            .order_by(Queue.ordinal)
+            .limit(25)
+            .all()
+        )
+        if queues:
+            current_casefold = current.casefold()
+            for queue in queues:
+                if current_casefold in queue.name.casefold():
+                    result.append(
+                        discord.app_commands.Choice(name=queue.name, value=queue.name)
+                    )
+    return result
 
 async def in_progress_game_autocomplete(interaction: Interaction, current: str):
     result = []
