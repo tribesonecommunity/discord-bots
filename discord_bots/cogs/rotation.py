@@ -568,16 +568,6 @@ class RotationCommands(BaseCog):
     ):
         session: SQLAlchemySession
         with Session() as session:
-            if value is None:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description="value must be exist",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
-                return
-
             try:
                 rotation = (
                     session.query(Rotation)
