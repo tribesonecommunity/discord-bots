@@ -720,9 +720,37 @@ class VoteCommands(BaseCog):
 
                 session.commit()
             else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Added vote to skip the current map.\n`/vote unskip` to remove your vote.\nVotes to skip: [{skip_map_votes_count}/{config.MAP_VOTE_THRESHOLD}]",
-                        colour=Colour.green(),
+                embed = Embed(
+                    colour=Colour.green(),
+                )
+                current_map: Map | None = (
+                    session.query(Map)
+                    .join(RotationMap, RotationMap.map_id == Map.id)
+                    .filter(RotationMap.is_next)
+                    .first()
+                )
+                next_rotation_map: RotationMap | None = (
+                    session.query(RotationMap)
+                    .filter(RotationMap.rotation_id == rotation.id)
+                    .filter(RotationMap.is_next == True)
+                    .first()
+                )
+                if next_rotation_map:
+                    next_map: Map | None = (
+                        session.query(Map)
+                        .join(RotationMap, RotationMap.map_id == Map.id)
+                        .filter(next_rotation_map.map_id == Map.id)
+                        .first()
                     )
+                queue_names = [f"**{queue.name}**" for queue in rotation.queues]
+                description = ""
+                if next_map:
+                    description += f"The next map is **{next_map.full_name} ({next_map.short_name})**\n"
+                description += f"Queues affected: {', '.join(queue_names)}"
+                embed.title = f"[{skip_map_votes_count}/{config.MAP_VOTE_THRESHOLD}]** votes to skip **{current_map.full_name} ({current_map.short_name})"
+                embed.description = description
+                embed.set_thumbnail(url=current_map.image_url)
+                embed.set_footer(text=f"Use /vote unskip to remove your vote")
+                await interaction.response.send_message(
+                    embed=embed,
                 )
