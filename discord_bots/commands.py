@@ -74,6 +74,7 @@ from .models import (
     Rotation,
     RotationMap,
     Session,
+    SkipMapVote,
     VotePassedWaitlist,
     VotePassedWaitlistPlayer,
 )
@@ -224,18 +225,9 @@ async def create_game(
                 .all()
             )
         if player_category_trueskills:
-            average_trueskill = mean(
-                list(map(lambda x: x.mu, player_category_trueskills))
-            )
+            average_trueskill = mean([x.mu for x in player_category_trueskills])
         else:
-            average_trueskill = mean(
-                list(
-                    map(
-                        lambda x: x.rated_trueskill_mu,
-                        players,
-                    )
-                )
-            )
+            average_trueskill = mean([x.rated_trueskill_mu for x in players])
 
         next_rotation_map: RotationMap | None = (
             session.query(RotationMap)
@@ -297,7 +289,7 @@ async def create_game(
 
         short_game_id = short_uuid(game.id)
         embed: Embed = await create_in_progress_game_embed(session, game, guild)
-        embed.title = f"⏳Game '{queue.name}' ({short_uuid(game.id)}) has begun!"
+        embed.title = f"🚩 Game '{queue.name}' ({short_uuid(game.id)}) has begun!"
 
         category_channel: discord.abc.GuildChannel | None = guild.get_channel(
             config.TRIBES_VOICE_CATEGORY_CHANNEL_ID
@@ -826,7 +818,7 @@ async def autosub(ctx: Context, member: Member = None):
         session, game, guild, False
     )
     short_game_id: str = short_uuid(game.id)
-    embed.title = f"New Teams for Game {short_game_id})"
+    embed.title = f"⚠️ New Teams for Game ({short_game_id})"
     embed.description = (
         f"Auto-subbed **{subbed_in_player.name}** in for **{subbed_out_player_name}**"
     )
@@ -938,19 +930,16 @@ async def del_(ctx: Context, *args):
         )
         for queue in queues_del_from:
             # TODO: generify this into queue status util
-            players_in_queue = (
-                session.query(Player)
-                .join(
-                    QueuePlayer,
-                    and_(
-                        QueuePlayer.queue_id == queue.id,
-                        QueuePlayer.player_id == Player.id,
-                    ),
-                )
+            queue_players = (
+                session.query(QueuePlayer, Player.name)
+                .join(Player, QueuePlayer.player_id == Player.id)
+                .filter(QueuePlayer.queue_id == queue.id)
                 .order_by(QueuePlayer.added_at.asc())
                 .all()
             )
-            player_names: list[str] = [player.name for player in players_in_queue]
+            player_names: list[str] = (
+                [name[1] for name in queue_players] if queue_players else []
+            )
             queue_title_str = (
                 f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
             )
@@ -970,7 +959,6 @@ async def del_(ctx: Context, *args):
             add_empty_field(embed)
             await message.channel.send(embed=embed)
             session.commit()
-
 
 
 # @bot.command()
@@ -1099,6 +1087,7 @@ async def status(ctx: Context, *args):
                 .first()
             )
             next_map_str = f"{next_map.full_name} ({next_map.short_name})"
+            embed.set_thumbnail(url=next_map.image_url)
             if config.ENABLE_RAFFLE:
                 has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
                 raffle_reward = (
@@ -1114,11 +1103,28 @@ async def status(ctx: Context, *args):
                     value=f"```asciidoc\n* {rotation.name}```",
                     inline=False,
                 )
-                embed.add_field(
-                    name=f"🗺️ Next Map",
-                    value=next_map_str,
-                    inline=False,
+                skip_map_votes_count = (
+                    session.query(SkipMapVote)
+                    .filter(SkipMapVote.rotation_id == rotation.id)
+                    .count()
                 )
+                if skip_map_votes_count:
+                    embed.add_field(
+                        name=f"🗺️ ️Next Map",
+                        value=next_map_str,
+                        inline=True,
+                    )
+                    embed.add_field(
+                        name="Votes to Skip",
+                        value=f"[{skip_map_votes_count}/{config.MAP_VOTE_THRESHOLD}]",
+                    )
+                    embed.add_field(name="", value="")
+                else:
+                    embed.add_field(
+                        name=f"🗺️ ️Next Map",
+                        value=next_map_str,
+                        inline=False,
+                    )
 
             for i, queue in enumerate(rotation_queues):
                 if queue.is_locked:
@@ -1248,6 +1254,22 @@ async def _rebalance_game(
     for game_player in game_players:
         session.delete(game_player)
     game.win_probability = win_prob
+    category = session.query(Category).filter(Category.id == queue.category_id).first()
+    player_category_trueskills = None
+    if category:
+        player_category_trueskills: list[PlayerCategoryTrueskill] = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(
+                PlayerCategoryTrueskill.category_id == category.id,
+                PlayerCategoryTrueskill.player_id.in_(player_ids),
+            )
+            .all()
+        )
+    if player_category_trueskills:
+        average_trueskill = mean([x.mu for x in player_category_trueskills])
+    else:
+        average_trueskill = mean([x.rated_trueskill_mu for x in players])
+    game.average_trueskill = average_trueskill
     team0_players = players[: len(players) // 2]
     team1_players = players[len(players) // 2 :]
     for player in team0_players:
@@ -1429,7 +1451,7 @@ async def sub(ctx: Context, member: Member):
         session, game, guild, False
     )
     short_game_id: str = short_uuid(game.id)
-    embed.title = f"New Teams for Game {short_game_id})"
+    embed.title = f"⚠️ New Teams for Game {short_game_id})"
     embed.description = (
         f"Substituted **{caller.display_name}** in for **{callee.display_name}**"
     )

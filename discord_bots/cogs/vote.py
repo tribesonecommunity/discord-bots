@@ -32,6 +32,7 @@ from discord_bots.utils import (
     map_short_name_autocomplete,
     queue_autocomplete,
     short_uuid,
+    unlocked_queue_autocomplete,
     update_next_map,
 )
 
@@ -634,7 +635,7 @@ class VoteCommands(BaseCog):
     @app_commands.guild_only()
     @app_commands.describe(queue_name="Queue to cast a vote for.")
     @app_commands.rename(queue_name="queue")
-    @app_commands.autocomplete(queue_name=queue_autocomplete)
+    @app_commands.autocomplete(queue_name=unlocked_queue_autocomplete)
     async def voteskip(self, interaction: Interaction, queue_name: str):
         """
         Vote to skip a map in a queue
@@ -719,9 +720,27 @@ class VoteCommands(BaseCog):
 
                 session.commit()
             else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Added vote to skip the current map.\n`/vote unskip` to remove your vote.\nVotes to skip: [{skip_map_votes_count}/{config.MAP_VOTE_THRESHOLD}]",
-                        colour=Colour.green(),
+                current_map: Map | None = (
+                    session.query(Map)
+                    .join(RotationMap, RotationMap.map_id == Map.id)
+                    .filter(RotationMap.is_next)
+                    .first()
+                )
+                if not current_map:
+                    await interaction.response.send_message(
+                        "Something went wrong", ephemeral=True
                     )
+                    return
+                queue_names = [f"**{queue.name}**" for queue in rotation.queues]
+                description = ""
+                description += f"Queues affected: {', '.join(queue_names)}"
+                embed = Embed(
+                    colour=Colour.green(),
+                )
+                embed.title = f"[{skip_map_votes_count}/{config.MAP_VOTE_THRESHOLD}]** votes to skip **{current_map.full_name} ({current_map.short_name})"
+                embed.description = description
+                embed.set_thumbnail(url=current_map.image_url)
+                embed.set_footer(text=f"Use /vote unskip to remove your vote")
+                await interaction.response.send_message(
+                    embed=embed,
                 )

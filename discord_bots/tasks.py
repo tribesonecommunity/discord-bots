@@ -34,6 +34,7 @@ from .models import (
     Category,
     InProgressGame,
     InProgressGameChannel,
+    Map,
     MapVote,
     Player,
     PlayerCategoryTrueskill,
@@ -69,6 +70,7 @@ async def add_players(session: sqlalchemy.orm.Session):
     queue_by_id: dict[str, Queue] = {queue.id: queue for queue in queues}
     queues_added_to_by_player_id: dict[int, list[Queue]] = {}
     queues_added_to_by_id: dict[str, Queue] = {}
+    rotations_added_to_by_id: dict[str, Rotation] = {}
     player_name_by_id: dict[int, str] = {}
     message: AddPlayerQueueMessage | None = None
     embed = discord.Embed()
@@ -98,6 +100,7 @@ async def add_players(session: sqlalchemy.orm.Session):
                 queues_added_to.append(queue)
         for queue in queues_added_to:
             queues_added_to_by_id[queue.id] = queue
+            rotations_added_to_by_id[queue.rotation_id] = queue.rotation
         if message.player_id not in queues_added_to_by_player_id:
             queues_added_to_by_player_id[message.player_id] = queues_added_to
         else:
@@ -106,31 +109,98 @@ async def add_players(session: sqlalchemy.orm.Session):
     if not queue_popped:
         queue: Queue
         embed_description = ""
-        for queue in queues_added_to_by_id.values():
-            if queue.is_locked:
+        len_rotations_added_to = len(rotations_added_to_by_id.keys())
+        for i, rotation in enumerate(rotations_added_to_by_id.values()):
+            if i >= 1:
+                embed.add_field(name="", value="", inline=False)
+            if len_rotations_added_to > 1:
+                # add the rotation header to differentiate the next/map_after information
+                embed.add_field(
+                    name=f"",
+                    value=f"```asciidoc\n* {rotation.name}```",
+                    inline=False,
+                )
+            next_rotation_map: RotationMap | None = (
+                session.query(RotationMap)
+                .filter(RotationMap.rotation_id == rotation.id)
+                .filter(RotationMap.is_next == True)
+                .first()
+            )
+            if not next_rotation_map:
                 continue
-            # select from the QueuePlayer table to preserve the order in which players were added
-            result = (
-                session.query(QueuePlayer, Player.name)
-                .join(Player, QueuePlayer.player_id == Player.id)
-                .filter(QueuePlayer.queue_id == queue.id)
-                .order_by(QueuePlayer.added_at.asc())
-                .all()
+            next_map: Map | None = (
+                session.query(Map)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .filter(next_rotation_map.map_id == Map.id)
+                .first()
             )
-            player_names: list[str] = [name[1] for name in result] if result else []
-            queue_title_str = (
-                f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
-            )
-            newline = "\n"
-            embed.add_field(
-                name=queue_title_str,
-                value=(
-                    f">>> {newline.join(player_names)}"
-                    if player_names
-                    else "> \n** **"  # creates an empty quote
-                ),
-                inline=True,
-            )
+            if next_map:
+                next_map_str = f"{next_map.full_name} ({next_map.short_name})"
+                skip_map_votes_count = (
+                    session.query(SkipMapVote)
+                    .filter(SkipMapVote.rotation_id == rotation.id)
+                    .count()
+                )
+                if skip_map_votes_count:
+                    embed.add_field(
+                        name=f"🗺️ ️Next Map",
+                        value=next_map_str,
+                        inline=True,
+                    )
+                    embed.add_field(
+                        name="Votes to Skip",
+                        value=f"[{skip_map_votes_count}/{config.MAP_VOTE_THRESHOLD}]",
+                    )
+                    embed.add_field(name="", value="")
+                else:
+                    embed.add_field(
+                        name=f"🗺️ ️Next Map",
+                        value=next_map_str,
+                        inline=False,
+                    )
+            for queue_id in set(queues_added_to_by_id.keys()) & set(
+                [queue.id for queue in rotation.queues]
+            ):
+                queue: Queue = session.query(Queue).filter(Queue.id == queue_id).one()
+                if queue.is_locked:
+                    continue
+
+                queue_players = (
+                    session.query(QueuePlayer, Player.name)
+                    .join(Player, QueuePlayer.player_id == Player.id)
+                    .filter(QueuePlayer.queue_id == queue.id)
+                    .order_by(QueuePlayer.added_at.asc())
+                    .all()
+                )
+                player_names: list[str] = (
+                    [name[1] for name in queue_players] if queue_players else []
+                )
+                next_rotation_map: RotationMap | None = (
+                    session.query(RotationMap)
+                    .filter(RotationMap.rotation_id == queue.rotation_id)
+                    .filter(RotationMap.is_next == True)
+                    .first()
+                )
+                if next_rotation_map:
+                    next_map: Map | None = (
+                        session.query(Map)
+                        .join(RotationMap, RotationMap.map_id == Map.id)
+                        .filter(next_rotation_map.map_id == Map.id)
+                        .first()
+                    )
+                    if next_map:
+                        next_map_str = f"{next_map.full_name} ({next_map.short_name})"
+                queue_title_str = f"(**{queue.ordinal}**) {queue.name} [{len(player_names)}/{queue.size}]"
+                newline = "\n"
+                embed.add_field(
+                    name=queue_title_str,
+                    value=(
+                        f">>> {newline.join(player_names)}"
+                        if player_names
+                        else "> \n** **"  # creates an empty quote
+                    ),
+                    inline=True,
+                )
 
         for player_id in queues_added_to_by_player_id.keys():
             if is_in_game(player_id):
@@ -392,17 +462,6 @@ async def queue_waitlist_task():
         ):
             if not channel:
                 channel = bot.get_channel(queue_waitlist.channel_id)
-                if isinstance(channel, TextChannel) and waitlist_messages:
-                    # TODO: delete_messages can only delete a max of 100 messages
-                    # so add logic to chunk waitlist_messages
-                    try:
-                        await channel.delete_messages(waitlist_messages)
-                    except:
-                        _log.exception(
-                            f"[queue_waitlist_task] Ignoring exception in delete_messages"
-                        )
-                    finally:
-                        waitlist_messages.clear()
             if not guild:
                 guild = bot.get_guild(queue_waitlist.guild_id)
 
@@ -445,6 +504,17 @@ async def queue_waitlist_task():
                                 guild,
                             )
                         )
+            if isinstance(channel, TextChannel) and waitlist_messages:
+                # TODO: delete_messages can only delete a max of 100 messages
+                # so add logic to chunk waitlist_messages
+                try:
+                    await channel.delete_messages(waitlist_messages)
+                except:
+                    _log.exception(
+                        f"[queue_waitlist_task] Ignoring exception in delete_messages"
+                    )
+                finally:
+                    waitlist_messages.clear()
             ipg_channels: list[InProgressGameChannel] = (
                 session.query(InProgressGameChannel)
                 .filter(
