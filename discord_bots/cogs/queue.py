@@ -896,8 +896,8 @@ class QueueCommands(BaseCog):
                 if rotation.is_random
                 else [RotationMap.ordinal.asc()]
             )
-            result: list[tuple[Map, bool, float]] | None = (
-                session.query(Map, RotationMap.is_next, RotationMap.random_weight)
+            map_infos: list[tuple[Map, bool, float, bool]] | None = (
+                session.query(Map, RotationMap.is_next, RotationMap.random_weight, RotationMap.stop_rotation)
                 .join(RotationMap, RotationMap.map_id == Map.id)
                 .filter(RotationMap.rotation_id == rotation.id)
                 .order_by(*query_ordering)
@@ -907,32 +907,32 @@ class QueueCommands(BaseCog):
                 title=f"Queue '{queue.name}'",
                 colour=Colour.blue(),
             )
-            if result:
+            if map_infos:
                 if rotation.is_random:
                     map_names = ["`[Weight] Map Name`"]
-                    for map, is_next, random_weight in result:
+                    for map, is_next, random_weight, stop_rotation in map_infos:
                         if is_next:
                             map_names.append(
-                                f"[{random_weight}] **{map.full_name} ({map.short_name})**"
+                                f"[{random_weight}] **{map.full_name} ({map.short_name}){' ⏯️' if stop_rotation else ''}**"
                             )
                             embed.set_thumbnail(url=map.image_url)
                         else:
                             map_names.append(
-                                f"[{random_weight}] {map.full_name} ({map.short_name})"
+                                f"[{random_weight}] {map.full_name} ({map.short_name}){' ⏯️' if stop_rotation else ''}"
                             )
                 else:
                     map_names = []
-                    for i, r in enumerate(result, start=1):
-                        map, is_next, random_weight = r
+                    for i, r in enumerate(map_infos, start=1):
+                        map, is_next, random_weight, stop_rotation = r
                         if is_next:
                             map_names.append(
-                                f"{i}. **{map.full_name} ({map.short_name})**"
+                                f"{i}. **{map.full_name} ({map.short_name}){' ⏯️' if stop_rotation else ''}**"
                             )
                             embed.set_thumbnail(url=map.image_url)
                         else:
-                            map_names.append(f"{i}. {map.full_name} ({map.short_name})")
+                            map_names.append(f"{i}. {map.full_name} ({map.short_name}){' ⏯️' if stop_rotation else ''}")
 
-            embed.set_footer(text="The next map is in bold")
+            embed.set_footer(text="The next map is **bold**. Rotation stops on map with ⏯️")
             newline = "\n"
             embed.add_field(
                 name=(
