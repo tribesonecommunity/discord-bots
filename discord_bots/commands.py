@@ -225,18 +225,9 @@ async def create_game(
                 .all()
             )
         if player_category_trueskills:
-            average_trueskill = mean(
-                list(map(lambda x: x.mu, player_category_trueskills))
-            )
+            average_trueskill = mean([x.mu for x in player_category_trueskills])
         else:
-            average_trueskill = mean(
-                list(
-                    map(
-                        lambda x: x.rated_trueskill_mu,
-                        players,
-                    )
-                )
-            )
+            average_trueskill = mean([x.rated_trueskill_mu for x in players])
 
         next_rotation_map: RotationMap | None = (
             session.query(RotationMap)
@@ -827,7 +818,7 @@ async def autosub(ctx: Context, member: Member = None):
         session, game, guild, False
     )
     short_game_id: str = short_uuid(game.id)
-    embed.title = f"New Teams for Game ({short_game_id})"
+    embed.title = f"⚠️ New Teams for Game ({short_game_id})"
     embed.description = (
         f"Auto-subbed **{subbed_in_player.name}** in for **{subbed_out_player_name}**"
     )
@@ -1263,6 +1254,22 @@ async def _rebalance_game(
     for game_player in game_players:
         session.delete(game_player)
     game.win_probability = win_prob
+    category = session.query(Category).filter(Category.id == queue.category_id).first()
+    player_category_trueskills = None
+    if category:
+        player_category_trueskills: list[PlayerCategoryTrueskill] = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(
+                PlayerCategoryTrueskill.category_id == category.id,
+                PlayerCategoryTrueskill.player_id.in_(player_ids),
+            )
+            .all()
+        )
+    if player_category_trueskills:
+        average_trueskill = mean([x.mu for x in player_category_trueskills])
+    else:
+        average_trueskill = mean([x.rated_trueskill_mu for x in players])
+    game.average_trueskill = average_trueskill
     team0_players = players[: len(players) // 2]
     team1_players = players[len(players) // 2 :]
     for player in team0_players:
@@ -1444,7 +1451,7 @@ async def sub(ctx: Context, member: Member):
         session, game, guild, False
     )
     short_game_id: str = short_uuid(game.id)
-    embed.title = f"New Teams for Game {short_game_id})"
+    embed.title = f"⚠️ New Teams for Game {short_game_id})"
     embed.description = (
         f"Substituted **{caller.display_name}** in for **{callee.display_name}**"
     )
