@@ -1087,7 +1087,6 @@ async def status(ctx: Context, *args):
                 .first()
             )
             next_map_str = f"{next_map.full_name} ({next_map.short_name})"
-            embed.set_thumbnail(url=next_map.image_url)
             if config.ENABLE_RAFFLE:
                 has_raffle_reward = next_rotation_map.raffle_ticket_reward > 0
                 raffle_reward = (
