@@ -27,6 +27,7 @@ def upgrade():
                 nullable=False,
             )
         )
+    op.execute("UPDATE rotation_map SET stop_rotation = true WHERE ordinal = 1")
 
     # ### end Alembic commands ###
 

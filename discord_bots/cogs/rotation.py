@@ -543,7 +543,7 @@ class RotationCommands(BaseCog):
             )
 
     @group.command(
-        name="setrotationmapstoprotation",
+        name="set-stop",
         description="Whether to stop auto-rotation when reaching this map",
     )
     @app_commands.check(is_admin_app_command)
@@ -559,7 +559,7 @@ class RotationCommands(BaseCog):
     @app_commands.rename(
         rotation_name="rotation", map_short_name="map", value="value"
     )
-    async def setrotationmapstoprotation(
+    async def set_stop(
             self,
             interaction: Interaction,
             rotation_name: str,
