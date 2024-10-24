@@ -462,17 +462,6 @@ async def queue_waitlist_task():
         ):
             if not channel:
                 channel = bot.get_channel(queue_waitlist.channel_id)
-                if isinstance(channel, TextChannel) and waitlist_messages:
-                    # TODO: delete_messages can only delete a max of 100 messages
-                    # so add logic to chunk waitlist_messages
-                    try:
-                        await channel.delete_messages(waitlist_messages)
-                    except:
-                        _log.exception(
-                            f"[queue_waitlist_task] Ignoring exception in delete_messages"
-                        )
-                    finally:
-                        waitlist_messages.clear()
             if not guild:
                 guild = bot.get_guild(queue_waitlist.guild_id)
 
@@ -515,6 +504,17 @@ async def queue_waitlist_task():
                                 guild,
                             )
                         )
+            if isinstance(channel, TextChannel) and waitlist_messages:
+                # TODO: delete_messages can only delete a max of 100 messages
+                # so add logic to chunk waitlist_messages
+                try:
+                    await channel.delete_messages(waitlist_messages)
+                except:
+                    _log.exception(
+                        f"[queue_waitlist_task] Ignoring exception in delete_messages"
+                    )
+                finally:
+                    waitlist_messages.clear()
             ipg_channels: list[InProgressGameChannel] = (
                 session.query(InProgressGameChannel)
                 .filter(
