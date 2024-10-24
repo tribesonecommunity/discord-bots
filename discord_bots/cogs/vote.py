@@ -32,6 +32,7 @@ from discord_bots.utils import (
     map_short_name_autocomplete,
     queue_autocomplete,
     short_uuid,
+    unlocked_queue_autocomplete,
     update_next_map,
 )
 
@@ -634,7 +635,7 @@ class VoteCommands(BaseCog):
     @app_commands.guild_only()
     @app_commands.describe(queue_name="Queue to cast a vote for.")
     @app_commands.rename(queue_name="queue")
-    @app_commands.autocomplete(queue_name=queue_autocomplete)
+    @app_commands.autocomplete(queue_name=unlocked_queue_autocomplete)
     async def voteskip(self, interaction: Interaction, queue_name: str):
         """
         Vote to skip a map in a queue
