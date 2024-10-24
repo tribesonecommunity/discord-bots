@@ -1294,6 +1294,10 @@ class RotationMap:
         default=1,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("1"))},
     )
+    stop_rotation: bool = field(
+        default=False,
+        metadata={"sa": Column(Boolean, nullable=False, server_default=expression.false())}
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,

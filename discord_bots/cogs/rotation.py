@@ -542,6 +542,101 @@ class RotationCommands(BaseCog):
                 )
             )
 
+    @group.command(
+        name="setrotationmapstoprotation",
+        description="Whether to stop auto-rotation when reaching this map",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(
+        rotation_name="Existing rotation",
+        map_short_name="Existing map",
+        value="Whether to stop auto-rotation",
+    )
+    @app_commands.autocomplete(
+        rotation_name=rotation_autocomplete, map_short_name=map_short_name_autocomplete
+    )
+    @app_commands.rename(
+        rotation_name="rotation", map_short_name="map", value="value"
+    )
+    async def setrotationmapstoprotation(
+            self,
+            interaction: Interaction,
+            rotation_name: str,
+            map_short_name: str,
+            value: bool,
+    ):
+        session: SQLAlchemySession
+        with Session() as session:
+            if value is None:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="value must be exist",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                rotation = (
+                    session.query(Rotation)
+                    .filter(Rotation.name.ilike(rotation_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find rotation **{rotation_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                map = (
+                    session.query(Map)
+                    .filter(Map.short_name.ilike(map_short_name))
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Could not find map **{map_short_name}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            try:
+                rotation_map_to_set: RotationMap = (
+                    session.query(RotationMap)
+                    .filter(RotationMap.rotation_id == rotation.id)
+                    .filter(RotationMap.map_id == map.id)
+                    .one()
+                )
+            except NoResultFound:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Map **{map.short_name}** is not in rotation **{rotation.name}**\nPlease add it with `!addrotationmap`.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            rotation_map_to_set.stop_rotation = value
+            session.commit()
+
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Map **{map.short_name}** in rotation **{rotation.name}** set to ordinal stop rotation: **{value}**.",
+                    colour=Colour.green(),
+                )
+            )
+
     @group.command(name="setname", description="Set rotation name")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)

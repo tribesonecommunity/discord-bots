@@ -329,8 +329,7 @@ async def map_rotation_task():
                 .filter(RotationMap.is_next == True)
                 .first()
             )
-            stop_rotating = next_rotation_map.ordinal == 1 and config.END_ROTATION_AFTER_CYCLE
-            if next_rotation_map and not stop_rotating:
+            if next_rotation_map and not next_rotation_map.stop_rotation:
                 time_since_update: timedelta = datetime.now(
                     timezone.utc
                 ) - next_rotation_map.updated_at.replace(tzinfo=timezone.utc)
