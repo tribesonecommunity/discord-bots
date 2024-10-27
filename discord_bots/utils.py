@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import statistics
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from heapq import heappop, heappush
 from itertools import combinations
@@ -57,6 +58,7 @@ from discord_bots.models import (
     QueueWaitlistPlayer,
     Rotation,
     RotationMap,
+    RotationMapHistory,
     Session,
     SkipMapVote,
 )
@@ -1133,31 +1135,65 @@ async def execute_map_rotation(rotation_id: str, is_verbose: bool):
             return
 
         if rotation.is_random:
-            # Follow-Up:
-            #  - introduce backlog of previous maps per rotation -> RotationMapHistory
-            #     update whenever a new map is chosen regardless of reason
-            #     -> vote
-            #     -> skip
-            #     -> admin force
-            #     -> game start
-            #     -> autorotation
-            #  - introduce Rotation.min_maps_before_requeue (int)
-            #       -> not eligible if maps are available that haven't been queue recently
-            #  - introduce Rotation.weight_increase (float)
-            #       -> weight increases to weight + Math.floor(value*x) x = times not selected since eligible
-            #  - refactoring: introduce  "update_next_map_to" function parallel to this that is called rather than the "manual" updates we have now scattered all over tha place
-            eligible_maps: list[RotationMap] = (
+            all_rotation_maps: list[RotationMap] = (
                 session.query(RotationMap)
                 .filter(RotationMap.rotation_id == rotation_id)
-                .filter(RotationMap.is_next == False)
                 .all()
             )
+
+            history_length = (
+                session.query(RotationMapHistory)
+                .filter(RotationMapHistory.rotation_id == rotation_id)
+                .count()
+            )
+            rank_subquery = (
+                session.query(
+                    RotationMapHistory.rotation_map_id,
+                    func.rank().over(order_by=RotationMapHistory.selected_at.desc()).label('rank'))
+                .filter(RotationMapHistory.rotation_id == rotation_id)
+                .subquery()
+            )
+            history = (
+                session.query(rank_subquery.c.rotation_map_id, func.min(rank_subquery.c.rank))
+                .group_by(
+                    rank_subquery.c.rotation_map_id)
+                .all()
+            )
+
+            maps_for_random = []
+            for m in all_rotation_maps:
+                try:
+                    # rank for the currently selected map is 1
+                    # subtract 1 from rank to get "maps inbetween"
+                    maps_inbetween = [h[1] for h in history if h[0] == m.id][0] - 1
+                    eligible_since = max(0, maps_inbetween - rotation.min_maps_before_requeue)
+                except IndexError:
+                    eligible_since = history_length
+
+
+                weight = m.random_weight + math.floor(eligible_since * rotation.weight_increase)
+                blocked = m.is_next or eligible_since == 0
+                maps_for_random.append(
+                    _MapForRandom(rotation_map_id=m.id, random_weight=weight, is_blocked=blocked)
+                )
+
+            eligible_maps = [m for m in maps_for_random if not m.is_blocked]
+            if not eligible_maps:
+                _log.warning(
+                    f"[execute_map_rotation] No non-blocked map available for rotation {rotation.name}."
+                )
+                eligible_maps = maps_for_random
             if not eligible_maps:
                 _log.error(
-                    f"[execute_map_rotation] Could not find a random rotation_map for rotation {rotation.id}. There are likely no rotation_maps to pick from"
+                    f"[execute_map_rotation] No map available for rotation {rotation.name} even when considering blocked maps."
                 )
                 return
-            following_map = choices(eligible_maps, weights=[x.random_weight for x in eligible_maps])[0]
+            following_rotation_map_id = (
+                choices(
+                    [x.rotation_map_id for x in eligible_maps],
+                    weights=[x.random_weight for x in eligible_maps]
+                )[0]
+            )
         else:
             current_rotation_map: RotationMap | None = (
                 session.query(RotationMap)
@@ -1185,11 +1221,14 @@ async def execute_map_rotation(rotation_id: str, is_verbose: bool):
                     f"[execute_map_rotation] Could not find a rotation_map after next with ordinal {following_ordinal} for rotation {rotation.id}"
                 )
                 return
+            following_rotation_map_id = following_map.id
 
-    await update_next_map(rotation.id, following_map.id, is_verbose)
+    await update_next_map(rotation.id, following_rotation_map_id, is_verbose)
 
 
-async def update_next_map(rotation_id: str, new_rotation_map_id: str, is_verbose: bool = True):
+async def update_next_map(
+    rotation_id: str, new_rotation_map_id: str, is_verbose: bool = True
+):
     """
     Central function to update next rotation.
     Removes all votes
@@ -1211,6 +1250,11 @@ async def update_next_map(rotation_id: str, new_rotation_map_id: str, is_verbose
             .filter(RotationMap.is_next == True) \
             .update({"is_next": False})
         next_rotation_map.is_next = True
+
+        history = RotationMapHistory(
+            rotation_id=rotation_id, rotation_map_id=new_rotation_map_id
+        )
+        session.add(history)
 
         map_votes: list[MapVote] = (
             session.query(MapVote)
@@ -1239,9 +1283,7 @@ async def update_next_map(rotation_id: str, new_rotation_map_id: str, is_verbose
                     .all()
                 )
                 affected_queue_names = (
-                    [q.name for q in affected_queues]
-                    if affected_queues
-                    else []
+                    [q.name for q in affected_queues] if affected_queues else []
                 )
                 await send_message(
                     channel,
@@ -1784,6 +1826,7 @@ async def unlocked_queue_autocomplete(interaction: Interaction, current: str):
                     )
     return result
 
+
 async def in_progress_game_autocomplete(interaction: Interaction, current: str):
     result = []
     session: SQLAlchemySession
@@ -1962,7 +2005,7 @@ def get_team_voice_channels(
         .all()
     )
     for ipg_channel in ipg_channels or []:
-        discord_channel: GuildChannel | None = guild.get_channel(ipg_channel.channel_id)
+        discord_channel: discord.abc.GuildChannel | None = guild.get_channel(ipg_channel.channel_id)
         if isinstance(discord_channel, VoiceChannel):
             # This is suboptimal and fragile solution but it's good enough for now. We should keep track of each team's VC in the database
             if in_progress_game.team0_name in discord_channel.name:
@@ -1970,3 +2013,10 @@ def get_team_voice_channels(
             elif in_progress_game.team1_name in discord_channel.name:
                 team1_vc = discord_channel
     return team0_vc, team1_vc
+
+
+@dataclass
+class _MapForRandom:
+    rotation_map_id: str
+    random_weight: int
+    is_blocked: bool

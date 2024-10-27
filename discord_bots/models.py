@@ -1236,6 +1236,14 @@ class Rotation:
             "sa": Column(Boolean, nullable=False, server_default=expression.false())
         },
     )
+    min_maps_before_requeue: int = field(
+        default=1,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("1"))},
+    )
+    weight_increase: float = field(
+        default=0,
+        metadata={"sa": Column(Float, nullable=False, server_default=text("0.0"))},
+    )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
@@ -1249,6 +1257,7 @@ class Rotation:
 
     rotation_maps = relationship("RotationMap", cascade="all, delete-orphan")
     queues = relationship("Queue", back_populates="rotation")
+    rotation_map_history = relationship("RotationMapHistory", cascade="all, delete-orphan")
 
 
 @mapper_registry.mapped
@@ -1286,7 +1295,7 @@ class RotationMap:
             "sa": Column(Boolean, nullable=False, server_default=expression.false())
         },
     )
-    random_probability: float = field(
+    random_probability: int = field(
         default=0,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
     )
@@ -1331,6 +1340,41 @@ class RotationMap:
     )
 
     map_votes = relationship("MapVote", cascade="all, delete-orphan")
+    rotation_map_history = relationship("RotationMapHistory", cascade="all, delete-orphan")
+
+
+@mapper_registry.mapped
+@dataclass
+class RotationMapHistory:
+    """
+    Stores the last maps that were selected
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "rotation_map_history"
+
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+    rotation_id: str = field(
+        default=None,
+        metadata={"sa": Column(String, ForeignKey("rotation.id"), index=True)},
+    )
+    rotation_map_id: str = field(
+        default=None,
+        metadata={"sa": Column(String, ForeignKey("rotation_map.id"), index=True)},
+    )
+    selected_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={
+            "sa": Column(
+                DateTime, nullable=False, server_default=func.now(), index=True
+            )
+        },
+    )
 
 
 @mapper_registry.mapped

@@ -1,5 +1,7 @@
 import logging
+from datetime import datetime, timezone
 
+import discord
 from discord import Colour, Embed, Interaction, app_commands
 from discord.ext.commands import Bot
 from sqlalchemy.exc import IntegrityError
@@ -8,7 +10,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import Map, Rotation, RotationMap, Session
+from discord_bots.models import Map, Rotation, RotationMap, Session, RotationMapHistory
 from discord_bots.utils import (
     execute_map_rotation,
     map_short_name_autocomplete,
@@ -21,6 +23,8 @@ _log = logging.getLogger(__name__)
 class RotationCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
+
+    _show_rotation_limit = 20
 
     group = app_commands.Group(name="rotation", description="Rotation commands")
 
@@ -643,15 +647,32 @@ class RotationCommands(BaseCog):
         """
         await self.setname(interaction, Rotation, old_rotation_name, new_rotation_name)
 
-    @group.command(name="setrandom", description="Chooses rotation's maps at random")
+    @group.command(name="configure-random", description="Configures the rotations random map properties")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(rotation_name="Existing rotation")
+    @app_commands.describe(
+        rotation_name="Existing rotation",
+        is_random="Whether to chooses rotation's maps at random",
+        min_maps_before_requeue="Minimum number of maps before requeuing is allowed",
+        weight_increase="Linear weight increase every time the map isn't picked"
+    )
     @app_commands.autocomplete(rotation_name=rotation_autocomplete)
-    @app_commands.rename(rotation_name="rotation")
-    async def setrotationrandom(self, interaction: Interaction, rotation_name: str):
+    @app_commands.rename(
+        rotation_name="rotation",
+        is_random="random",
+        min_maps_before_requeue="min_maps_before_requeue",
+        weight_increase="weight_increase"
+    )
+    async def configure_random(
+            self,
+            interaction: Interaction,
+            rotation_name: str,
+            is_random: bool | None,
+            min_maps_before_requeue: int | None,
+            weight_increase: float | None
+    ):
         """
-        Chooses rotation's maps at random
+        Configures the rotations random map properties
         """
         session: SQLAlchemySession
         with Session() as session:
@@ -670,24 +691,41 @@ class RotationCommands(BaseCog):
                 )
                 return
 
-            rotation.is_random = True
+            if is_random is not None:
+                rotation.is_random = is_random
+            if min_maps_before_requeue is not None:
+                rotation.min_maps_before_requeue = min_maps_before_requeue
+            if weight_increase is not None:
+                rotation.weight_increase = weight_increase
+
             session.commit()
             await interaction.response.send_message(
                 embed=Embed(
-                    description=f"**{rotation.name}** rotation set to random",
+                    description=f"**{rotation.name}** rotation set to random {rotation.is_random}, min maps before requeue {rotation.min_maps_before_requeue}, weight increase {rotation.weight_increase}",
                     colour=Colour.green(),
                 )
             )
 
-    @group.command(name="unsetrandom", description="Chooses rotation's maps in order")
+    @group.command(name="show-history", description="Shows the history of selected maps")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
-    @app_commands.describe(rotation_name="Existing rotation")
+    @app_commands.describe(
+        rotation_name="Existing rotation",
+        limit=f"How many entries to show. Max: {_show_rotation_limit}",
+    )
     @app_commands.autocomplete(rotation_name=rotation_autocomplete)
-    @app_commands.rename(rotation_name="rotation")
-    async def unsetrotationrandom(self, interaction: Interaction, rotation_name: str):
+    @app_commands.rename(
+        rotation_name="rotation",
+        limit="limit",
+    )
+    async def show_history(
+            self,
+            interaction: Interaction,
+            rotation_name: str,
+            limit: int | None,
+    ):
         """
-        Chooses rotation's maps in order
+        Shows the last selected maps for a rotation
         """
         session: SQLAlchemySession
         with Session() as session:
@@ -706,11 +744,34 @@ class RotationCommands(BaseCog):
                 )
                 return
 
-            rotation.is_random = False
-            session.commit()
+            if limit is None or limit <= 0 or limit > self._show_rotation_limit:
+                limit = self._show_rotation_limit
+
+            map_history: list[tuple[Map, datetime]] = (
+                session.query(Map, RotationMapHistory.selected_at)
+                .join(RotationMap, RotationMap.map_id == Map.id)
+                .join(RotationMapHistory, RotationMapHistory.rotation_map_id == RotationMap.id)
+                .filter(RotationMapHistory.rotation_id == rotation.id)
+                .order_by(RotationMapHistory.selected_at.desc())
+                .limit(limit)
+                .all()
+            )
+
+            history = []
+            for m in map_history:
+                # timezones aren't stored in the DB, so add it ourselves
+                aware_db_datetime: datetime = m[1].replace(tzinfo=timezone.utc)
+                timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
+                history.append(f"* {m[0].full_name} ({m[0].short_name}) {timestamp}")
+
+            newline = "\n"
+            embed = Embed(
+                title=f"History of {rotation.name}",
+                description=f"{newline.join(history)}" if history else "*None*",
+                colour=Colour.blue(),
+            )
+            embed.set_footer(text=f"Limited to last {self._show_rotation_limit} maps")
             await interaction.response.send_message(
-                embed=Embed(
-                    description=f"**{rotation.name}** rotation unset from random",
-                    colour=Colour.green(),
-                )
+                embed=embed,
+                ephemeral=True,
             )
