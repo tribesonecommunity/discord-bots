@@ -907,8 +907,11 @@ class QueueCommands(BaseCog):
                 title=f"Queue '{queue.name}'",
                 colour=Colour.blue(),
             )
+            footer = "The next map is bold. Rotation stops on maps with ⏯️"
             if map_infos:
                 if rotation.is_random:
+                    footer += f"\nMaps before requeuing: {rotation.min_maps_before_requeue}\n"
+                    footer += f"Weight increase every time the map is not selected: {rotation.weight_increase}"
                     map_names = ["`[Weight] Map Name`"]
                     for map, is_next, random_weight, stop_rotation in map_infos:
                         if is_next:
@@ -932,13 +935,13 @@ class QueueCommands(BaseCog):
                         else:
                             map_names.append(f"{i}. {map.full_name} ({map.short_name}){' ⏯️' if stop_rotation else ''}")
 
-            embed.set_footer(text="The next map is **bold**. Rotation stops on map with ⏯️")
+            embed.set_footer(text=footer)
             newline = "\n"
             embed.add_field(
                 name=(
                     f"Rotation: {rotation.name} (random)"
                     if rotation.is_random
-                    else f"Rotation: {rotation.name}"
+                    else f"Rotation: {rotation.name} (sequential)"
                 ),
                 value=(f">>> {newline.join(map_names)}" if map_names else "*None*"),
                 inline=True,
