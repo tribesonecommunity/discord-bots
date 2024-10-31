@@ -313,7 +313,8 @@ class AdminCommands(BaseCog):
                 # TODO: generify this into queue status util
                 players_in_queue = (
                     session.query(Player)
-                    .join(QueuePlayer, QueuePlayer.queue_id == queue.id)
+                    .join(QueuePlayer)
+                    .filter(QueuePlayer.queue_id == queue.id)
                     .order_by(QueuePlayer.added_at.asc())
                     .all()
                 )
