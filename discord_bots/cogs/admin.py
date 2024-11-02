@@ -3,13 +3,12 @@ import os
 import sys
 from datetime import datetime, timezone
 from shutil import copyfile
-from typing import List, Literal
+from typing import Literal
 
 import discord
 from discord import Colour, Embed, Interaction, Member, Role, TextChannel, app_commands
 from discord.ext.commands import Bot
 from discord.utils import escape_markdown
-from sqlalchemy import and_
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
@@ -25,14 +24,16 @@ from discord_bots.models import (
     FinishedGamePlayer,
     InProgressGame,
     Map,
+    MapVote,
     Player,
     Queue,
     QueuePlayer,
-    QueueWaitlist,
     QueueWaitlistPlayer,
     Rotation,
     RotationMap,
     Session,
+    SkipMapVote,
+    VotePassedWaitlistPlayer,
 )
 from discord_bots.utils import (
     add_empty_field,
@@ -143,7 +144,6 @@ class AdminCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be banned")
     async def ban(self, interaction: Interaction, member: Member):
-        """TODO: remove player from queues"""
         session: SQLAlchemySession
         with Session() as session:
             player: Player | None = session.query(Player).filter(Player.id == member.id).first()
@@ -155,13 +155,13 @@ class AdminCommands(BaseCog):
                         is_banned=True,
                     )
                 )
+                session.commit()
                 await interaction.response.send_message(
                     embed=Embed(
                         description=f"{escape_markdown(member.name)} banned",
                         colour=Colour.green(),
                     )
                 )
-                session.commit()
             else:
                 if player.is_banned:
                     await interaction.response.send_message(
@@ -172,13 +172,19 @@ class AdminCommands(BaseCog):
                     )
                 else:
                     player.is_banned = True
+                    session.query(MapVote).filter(MapVote.player_id == player.id).delete()
+                    session.query(SkipMapVote).filter(SkipMapVote.player_id == player.id).delete()
+                    session.query(VotePassedWaitlistPlayer).filter(
+                        VotePassedWaitlistPlayer.player_id == player.id).delete()
+                    session.query(QueueWaitlistPlayer).filter(QueueWaitlistPlayer.player_id == player.id).delete()
+                    session.query(QueuePlayer).filter(QueuePlayer.player_id == player.id).delete()
+                    session.commit()
                     await interaction.response.send_message(
                         embed=Embed(
                             description=f"{escape_markdown(player.name)} banned",
                             colour=Colour.green(),
                         )
                     )
-                    session.commit()
 
     @group.command(
         name="configure", description="Initially configure the bot for this server"
