@@ -723,6 +723,7 @@ class VoteCommands(BaseCog):
                 current_map: Map | None = (
                     session.query(Map)
                     .join(RotationMap, RotationMap.map_id == Map.id)
+                    .filter(RotationMap.rotation_id == rotation.id)
                     .filter(RotationMap.is_next)
                     .first()
                 )
