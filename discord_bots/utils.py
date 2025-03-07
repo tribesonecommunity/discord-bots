@@ -1278,21 +1278,30 @@ async def update_next_map(
                     .one()
                 )
                 affected_queues: list[Queue] = (
-                    session.query(Queue.name)
-                    .filter(Queue.rotation_id == rotation_id)
-                    .all()
+                    session.query(Queue).filter(Queue.rotation_id == rotation_id).all()
                 )
-                affected_queue_names = (
-                    [q.name for q in affected_queues] if affected_queues else []
-                )
-                await send_message(
-                    channel,
-                    embed_title=f"Next Map rotated to {next_map.full_name}",
-                    embed_description=f"Queues affected: **{', '.join(affected_queue_names)}**",
-                    embed_footer="All votes removed",
-                    image_url=next_map.image_url,
-                    colour=Colour.blue(),
-                )
+                affected_queue_names = [queue.name for queue in affected_queues]
+
+                queue_is_empty: bool = True
+                for queue in affected_queues:
+                    queue_players: list[QueuePlayer] = (
+                        session.query(QueuePlayer)
+                        .filter(QueuePlayer.queue_id == queue.id)
+                        .all()
+                    )
+                    if len(queue_players) != 0:
+                        queue_is_empty = False
+                        break
+
+                if not queue_is_empty:
+                    await send_message(
+                        channel,
+                        embed_title=f"Next Map rotated to {next_map.full_name}",
+                        embed_description=f"Queues affected: **{', '.join(affected_queue_names)}**",
+                        embed_footer="All votes removed",
+                        image_url=next_map.image_url,
+                        colour=Colour.blue(),
+                    )
 
 
 async def send_in_guild_message(
