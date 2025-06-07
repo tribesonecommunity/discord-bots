@@ -375,13 +375,18 @@ class PlayerCommands(BaseCog):
                 player_category_trueskill.mu = mu
 
             session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Player **{member.name}** mu set to **{mu}**",
-                    colour=Colour.blue(),
-                ),
-                ephemeral=True,
+            embed = Embed(
+                description=f"Player **{member.name}** mu set to **{mu}** by **{interaction.user.name}**",
+                colour=Colour.blue(),
             )
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=False,
+            )
+            if config.ADMIN_LOG_CHANNEL:
+                admin_log_channel = bot.get_channel(config.ADMIN_LOG_CHANNEL)
+                if isinstance(admin_log_channel, TextChannel):
+                    await admin_log_channel.send(embed=embed)
 
     @group.command(name="setsigma", description="Directly set a player's sigma")
     @app_commands.check(is_command_channel)
@@ -420,10 +425,15 @@ class PlayerCommands(BaseCog):
             for player_category_trueskill in player_category_trueskills:
                 player_category_trueskill.sigma = sigma
             session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Player **{member.name}** sigma set to **{sigma}**",
-                    colour=Colour.blue(),
-                ),
-                ephemeral=True,
+            embed = Embed(
+                description=f"Player **{member.name}** sigma set to **{sigma}** by **{interaction.user.name}**",
+                colour=Colour.blue(),
             )
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=False,
+            )
+            if config.ADMIN_LOG_CHANNEL:
+                admin_log_channel = bot.get_channel(config.ADMIN_LOG_CHANNEL)
+                if isinstance(admin_log_channel, TextChannel):
+                    await admin_log_channel.send(embed=embed)
