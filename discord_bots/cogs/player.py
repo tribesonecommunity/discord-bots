@@ -10,7 +10,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import select
 
 from discord_bots.bot import bot
-from discord_bots.checks import is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import ENABLE_VOICE_MOVE, LEADERBOARD_CHANNEL
 from discord_bots.models import (
@@ -349,8 +349,8 @@ class PlayerCommands(BaseCog):
 
     @group.command(name="setmu", description="Directly set a player's mu")
     @app_commands.check(is_command_channel)
-    @app_commands.describe(member="Player to be adjusted")
-    @app_commands.describe(mu="Mu value")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Player to be adjusted", mu="Mu value")
     async def setmu(self, interaction: Interaction, member: Member, mu: float):
         session: SQLAlchemySession
         with Session() as session:
@@ -384,8 +384,8 @@ class PlayerCommands(BaseCog):
 
     @group.command(name="setsigma", description="Directly set a player's sigma")
     @app_commands.check(is_command_channel)
-    @app_commands.describe(member="Player to be adjusted")
-    @app_commands.describe(sigma="Sigma value")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Player to be adjusted", sigma="Sigma value")
     async def setsigma(self, interaction: Interaction, member: Member, sigma: float):
         session: SQLAlchemySession
         with Session() as session:
