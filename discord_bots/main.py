@@ -7,6 +7,7 @@ from discord import Colour, Embed, Interaction, Member, Message, Reaction
 from discord.abc import User
 from discord.app_commands import AppCommandError, errors
 from discord.ext.commands import CommandError, Context, UserInputError
+from trueskill import setup as trueskill_setup
 
 import discord_bots.config as config
 from discord_bots.cogs.admin import AdminCommands
@@ -280,6 +281,11 @@ async def setup():
     if config.ECONOMY_ENABLED:
         prediction_task.start()
     sigma_decay_task.start()
+    trueskill_setup(
+        mu=config.DEFAULT_TRUESKILL_MU,
+        sigma=config.DEFAULT_TRUESKILL_SIGMA,
+        tau=config.DEFAULT_TRUESKILL_TAU,
+    )
 
 
 async def main():
