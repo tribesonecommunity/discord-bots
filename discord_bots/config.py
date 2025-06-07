@@ -120,7 +120,7 @@ def _to_time(
         CONFIG_IS_VALID = False
         _log.error(f"{key} must be specified correctly, was '{value}'")
         return None
-    
+
     try:
         return datetime.time.fromisoformat(value or "")
     except:
@@ -203,4 +203,8 @@ GAME_HISTORY_CHANNEL: int = _to_int(key="GAME_HISTORY_CHANNEL", required=True)
 ADMIN_AUTOSUB: bool = _to_bool(key="ADMIN_AUTOSUB", default=False)
 POP_RANDOM_QUEUE: bool = _to_bool(key="POP_RANDOM_QUEUE", default=False)
 MM_SIGMA_MULT: float = _to_float(key="MM_SIGMA_MULT", default=0)
+
+# The lowest sigma floor value a player can have
+SIGMA_FLOOR: float = _to_float(key="SIGMA_FLOOR", default=1.5)
+
 # TODO grouping here and in docs

@@ -9,6 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import select
 
+from discord_bots import config
 from discord_bots.bot import bot
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
@@ -399,10 +400,12 @@ class PlayerCommands(BaseCog):
                     ephemeral=True,
                 )
                 return
-            if sigma < 1.5 or sigma > 8.33:
+            min_sigma = max(1.5, config.SIGMA_FLOOR)
+            max_sigma = min(8.33, config.DEFAULT_TRUESKILL_SIGMA)
+            if sigma < min_sigma or sigma > max_sigma:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Sigma value must be between **1.5** and **8.33**: **{sigma}**",
+                        description=f"Sigma value must be between **{min_sigma}** and **{max_sigma}**: **{sigma}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,

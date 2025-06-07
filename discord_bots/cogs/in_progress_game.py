@@ -563,6 +563,7 @@ class InProgressGameCommands(commands.Cog):
         ):
             for i, team_gip in enumerate(team_players):
                 player = players_by_id[team_gip.player_id]
+                sigma_after = max(config.SIGMA_FLOOR, ratings_after[i].sigma)
                 finished_game_player = FinishedGamePlayer(
                     finished_game_id=finished_game.id,
                     player_id=player.id,
@@ -571,18 +572,18 @@ class InProgressGameCommands(commands.Cog):
                     rated_trueskill_mu_before=ratings_before[i].mu,
                     rated_trueskill_sigma_before=ratings_before[i].sigma,
                     rated_trueskill_mu_after=ratings_after[i].mu,
-                    rated_trueskill_sigma_after=ratings_after[i].sigma,
+                    rated_trueskill_sigma_after=sigma_after,
                 )
                 trueskill_rating = ratings_after[i]
                 # Regardless of category, always update the master trueskill. That way
                 # when we create new categories off of it the data isn't completely
                 # stale
                 player.rated_trueskill_mu = trueskill_rating.mu
-                player.rated_trueskill_sigma = trueskill_rating.sigma
+                player.rated_trueskill_sigma = sigma_after
                 if player.id in player_category_trueskills_by_id:
                     pct = player_category_trueskills_by_id[player.id]
                     pct.mu = trueskill_rating.mu
-                    pct.sigma = trueskill_rating.sigma
+                    pct.sigma = sigma_after
                     pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
                     pct.last_game_finished_at = game_finished_at
                 else:
@@ -591,7 +592,7 @@ class InProgressGameCommands(commands.Cog):
                             player_id=player.id,
                             category_id=queue.category_id,
                             mu=trueskill_rating.mu,
-                            sigma=trueskill_rating.sigma,
+                            sigma=sigma_after,
                             rank=trueskill_rating.mu - 3 * trueskill_rating.sigma,
                             last_game_finished_at=game_finished_at,
                         )
