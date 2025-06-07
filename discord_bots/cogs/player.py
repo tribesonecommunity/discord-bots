@@ -376,7 +376,7 @@ class PlayerCommands(BaseCog):
 
             session.commit()
             embed = Embed(
-                description=f"Player **{member.name}** mu set to **{mu}** by **{interaction.user.name}**",
+                description=f"Player <@{member.id}> mu set to **{mu}** by <@{interaction.user.id}>",
                 colour=Colour.blue(),
             )
             await interaction.response.send_message(
@@ -426,7 +426,7 @@ class PlayerCommands(BaseCog):
                 player_category_trueskill.sigma = sigma
             session.commit()
             embed = Embed(
-                description=f"Player **{member.name}** sigma set to **{sigma}** by **{interaction.user.name}**",
+                description=f"Player <@{member.id}> sigma set to **{sigma}** by <@{interaction.user.id}>",
                 colour=Colour.blue(),
             )
             await interaction.response.send_message(
