@@ -1,23 +1,16 @@
 import logging
 from random import choice
+from typing import List
+
+from discord import Colour, Embed, Interaction, Member, TextChannel, app_commands
+from discord.ext.commands import Bot
+from discord.utils import escape_markdown
 from sqlalchemy import func
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import select
-from typing import List
-
-from discord import (
-    app_commands,
-    Colour,
-    Embed,
-    Interaction,
-    Member,
-    TextChannel,
-)
-from discord.ext.commands import Bot
-from discord.utils import escape_markdown
 
 from discord_bots.bot import bot
-from discord_bots.checks import is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import ENABLE_VOICE_MOVE, LEADERBOARD_CHANNEL
 from discord_bots.models import (
@@ -25,6 +18,7 @@ from discord_bots.models import (
     FinishedGame,
     FinishedGamePlayer,
     Player,
+    PlayerCategoryTrueskill,
     Session,
 )
 
@@ -348,6 +342,84 @@ class PlayerCommands(BaseCog):
             await interaction.response.send_message(
                 embed=Embed(
                     description="Player moving disabled",
+                    colour=Colour.blue(),
+                ),
+                ephemeral=True,
+            )
+
+    @group.command(name="setmu", description="Directly set a player's mu")
+    @app_commands.check(is_command_channel)
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Player to be adjusted", mu="Mu value")
+    async def setmu(self, interaction: Interaction, member: Member, mu: float):
+        session: SQLAlchemySession
+        with Session() as session:
+            player = session.query(Player).filter(Player.id == member.id).first()
+            if not player:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Player **{member.name}** not found",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            player.rated_trueskill_mu = mu
+            player_category_trueskills = (
+                session.query(PlayerCategoryTrueskill)
+                .filter(PlayerCategoryTrueskill.player_id == player.id)
+                .all()
+            )
+            for player_category_trueskill in player_category_trueskills:
+                player_category_trueskill.mu = mu
+
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Player **{member.name}** mu set to **{mu}**",
+                    colour=Colour.blue(),
+                ),
+                ephemeral=True,
+            )
+
+    @group.command(name="setsigma", description="Directly set a player's sigma")
+    @app_commands.check(is_command_channel)
+    @app_commands.check(is_admin_app_command)
+    @app_commands.describe(member="Player to be adjusted", sigma="Sigma value")
+    async def setsigma(self, interaction: Interaction, member: Member, sigma: float):
+        session: SQLAlchemySession
+        with Session() as session:
+            player = session.query(Player).filter(Player.id == member.id).first()
+            if not player:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Player **{member.name}** not found",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            if sigma < 1.5 or sigma > 8.33:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=f"Sigma value must be between **1.5** and **8.33**: **{sigma}**",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            player.rated_trueskill_sigma = sigma
+            player_category_trueskills = (
+                session.query(PlayerCategoryTrueskill)
+                .filter(PlayerCategoryTrueskill.player_id == player.id)
+                .all()
+            )
+            for player_category_trueskill in player_category_trueskills:
+                player_category_trueskill.sigma = sigma
+            session.commit()
+            await interaction.response.send_message(
+                embed=Embed(
+                    description=f"Player **{member.name}** sigma set to **{sigma}**",
                     colour=Colour.blue(),
                 ),
                 ephemeral=True,
