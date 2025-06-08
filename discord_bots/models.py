@@ -1117,6 +1117,53 @@ class QueuePlayer:
 
 @mapper_registry.mapped
 @dataclass
+class QueuePosition:
+    """
+    Assign positions to a queue
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "queue_position"
+    __table_args__ = (UniqueConstraint("queue_id", "position_id"),)
+
+    queue_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("queue.id"), nullable=False, index=True)
+        },
+    )
+    position_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("position.id"), nullable=False, index=True)
+        },
+    )
+    count: int = field(
+        metadata={
+            "sa": Column(Integer, nullable=False),
+        },
+    )
+    updated_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={
+            "sa": Column(
+                DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+            )
+        },
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class QueueRole:
     """
     :role_id: Discord id, used like guild.get_role(role_id)
