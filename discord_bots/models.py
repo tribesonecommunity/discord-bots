@@ -919,6 +919,40 @@ class PlayerCategoryTrueskill:
 
 @mapper_registry.mapped
 @dataclass
+class Position:
+    """
+    A position in a game - like offense, defense, etc.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "position"
+
+    name: str = field(
+        metadata={"sa": Column(String, nullable=False, unique=True, index=True)},
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    updated_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={
+            "sa": Column(
+                DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+            )
+        },
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class Queue:
     """
     :is_isolated: A queue that doesn't interact with the other queues. No
