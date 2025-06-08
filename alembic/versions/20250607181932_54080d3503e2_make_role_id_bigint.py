@@ -1,7 +1,7 @@
 """Make role_id bigint
 
-Revision ID: 4aa167bcf1b8
-Revises: e64a149b226f
+Revision ID: 54080d3503e2
+Revises: 4aa167bcf1b8
 Create Date: 2025-06-07 18:19:32.272390
 
 """
@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "54080d3503e2"
-down_revision = "e64a149b226f"
+down_revision = "4aa167bcf1b8"
 branch_labels = None
 depends_on = None
 
