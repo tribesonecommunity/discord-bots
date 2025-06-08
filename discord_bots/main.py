@@ -19,6 +19,7 @@ from discord_bots.cogs.list import ListCommands
 from discord_bots.cogs.map import MapCommands
 from discord_bots.cogs.notification import NotificationCommands
 from discord_bots.cogs.player import PlayerCommands
+from discord_bots.cogs.position import PositionCommands
 from discord_bots.cogs.queue import QueueCommands
 from discord_bots.cogs.raffle import RaffleCommands
 from discord_bots.cogs.random import RandomCommands
@@ -262,6 +263,7 @@ async def setup():
     await bot.add_cog(ListCommands(bot))
     await bot.add_cog(MapCommands(bot))
     await bot.add_cog(PlayerCommands(bot))
+    await bot.add_cog(PositionCommands(bot))
     await bot.add_cog(QueueCommands(bot))
     await bot.add_cog(RaffleCommands(bot))
     await bot.add_cog(RandomCommands(bot))
