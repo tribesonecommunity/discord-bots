@@ -19,6 +19,24 @@ class PositionCommands(BaseCog):
 
     group = app_commands.Group(name="position", description="Position commands")
 
+    async def position_autocomplete(self, interaction: Interaction, current: str):
+        """
+        Autocomplete for position names
+        """
+        session: SQLAlchemySession
+        with Session() as session:
+            positions = (
+                session.query(Position)
+                .filter(Position.name.ilike(f"%{current}%"))
+                .order_by(Position.name)
+                .limit(24)
+                .all()
+            )
+            return [
+                app_commands.Choice(name=position.name, value=position.name)
+                for position in positions
+            ]
+
     @group.command(name="add", description="Add a new position")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
