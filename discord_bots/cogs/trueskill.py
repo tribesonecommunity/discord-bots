@@ -9,7 +9,11 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
-from discord_bots.config import DEFAULT_TRUESKILL_MU, DEFAULT_TRUESKILL_SIGMA
+from discord_bots.config import (
+    DEFAULT_TRUESKILL_MU,
+    DEFAULT_TRUESKILL_SIGMA,
+    DEFAULT_TRUESKILL_TAU,
+)
 from discord_bots.models import Player, PlayerCategoryTrueskill, Queue, Session
 from discord_bots.utils import mean, print_leaderboard
 
@@ -26,8 +30,9 @@ class TrueskillCommands(BaseCog):
     @app_commands.check(is_command_channel)
     async def trueskill(self, interaction: Interaction):
         output = ""
-        output += "**mu (μ)**: The average skill of the gamer"
-        output += "\n**sigma (σ)**: The degree of uncertainty in the gamer's skill"
+        output += f"**mu (μ)**: The average skill of the gamer (default: {DEFAULT_TRUESKILL_MU:.1f})\n"
+        output += f"\n**sigma (σ)**: The degree of uncertainty in the gamer's skill (default: {DEFAULT_TRUESKILL_SIGMA:.1f})\n"
+        output += f'\n**tau (τ)**: The "dynamics" factor, greater values increase player position volatility (default: {DEFAULT_TRUESKILL_TAU:.1f})\n'
         output += "\n**Reference**: https://www.microsoft.com/en-us/research/project/trueskill-ranking-system"
         output += "\n**Implementation**: https://trueskill.org/"
         thumbnail = "https://www.microsoft.com/en-us/research/uploads/prod/2016/02/trueskill-skilldia.jpg"

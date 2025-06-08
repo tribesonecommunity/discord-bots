@@ -405,7 +405,7 @@ class PlayerCommands(BaseCog):
                     ephemeral=True,
                 )
                 return
-            min_sigma = max(1.5, config.SIGMA_FLOOR)
+            min_sigma = 1.0
             max_sigma = min(8.33, config.DEFAULT_TRUESKILL_SIGMA)
             if sigma < min_sigma or sigma > max_sigma:
                 await interaction.response.send_message(
