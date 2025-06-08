@@ -9,6 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import select
 
+from discord_bots import config
 from discord_bots.bot import bot
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
@@ -374,13 +375,18 @@ class PlayerCommands(BaseCog):
                 player_category_trueskill.mu = mu
 
             session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Player **{member.name}** mu set to **{mu}**",
-                    colour=Colour.blue(),
-                ),
-                ephemeral=True,
+            embed = Embed(
+                description=f"Player <@{member.id}> mu set to **{mu}** by <@{interaction.user.id}>",
+                colour=Colour.blue(),
             )
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=False,
+            )
+            if config.ADMIN_LOG_CHANNEL:
+                admin_log_channel = bot.get_channel(config.ADMIN_LOG_CHANNEL)
+                if isinstance(admin_log_channel, TextChannel):
+                    await admin_log_channel.send(embed=embed)
 
     @group.command(name="setsigma", description="Directly set a player's sigma")
     @app_commands.check(is_command_channel)
@@ -399,10 +405,12 @@ class PlayerCommands(BaseCog):
                     ephemeral=True,
                 )
                 return
-            if sigma < 1.5 or sigma > 8.33:
+            min_sigma = 1.0
+            max_sigma = min(8.33, config.DEFAULT_TRUESKILL_SIGMA)
+            if sigma < min_sigma or sigma > max_sigma:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Sigma value must be between **1.5** and **8.33**: **{sigma}**",
+                        description=f"Sigma value must be between **{min_sigma}** and **{max_sigma}**: **{sigma}**",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -417,10 +425,15 @@ class PlayerCommands(BaseCog):
             for player_category_trueskill in player_category_trueskills:
                 player_category_trueskill.sigma = sigma
             session.commit()
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"Player **{member.name}** sigma set to **{sigma}**",
-                    colour=Colour.blue(),
-                ),
-                ephemeral=True,
+            embed = Embed(
+                description=f"Player <@{member.id}> sigma set to **{sigma}** by <@{interaction.user.id}>",
+                colour=Colour.blue(),
             )
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=False,
+            )
+            if config.ADMIN_LOG_CHANNEL:
+                admin_log_channel = bot.get_channel(config.ADMIN_LOG_CHANNEL)
+                if isinstance(admin_log_channel, TextChannel):
+                    await admin_log_channel.send(embed=embed)

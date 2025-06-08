@@ -120,7 +120,7 @@ def _to_time(
         CONFIG_IS_VALID = False
         _log.error(f"{key} must be specified correctly, was '{value}'")
         return None
-    
+
     try:
         return datetime.time.fromisoformat(value or "")
     except:
@@ -178,6 +178,9 @@ DEFAULT_TRUESKILL_MU: float = _to_float(key="DEFAULT_TRUESKILL_MU", default=25)
 DEFAULT_TRUESKILL_SIGMA: float = _to_float(
     key="DEFAULT_TRUESKILL_SIGMA", default=DEFAULT_TRUESKILL_MU / 3
 )
+DEFAULT_TRUESKILL_TAU: float = _to_float(
+    key="DEFAULT_TRUESKILL_TAU", default=DEFAULT_TRUESKILL_SIGMA / 100
+)
 DEFAULT_TRUESKILL_BETA: float = DEFAULT_TRUESKILL_SIGMA / 2
 TRUESKILL_SIGMA_DECAY_JOB_SCHEDULED_TIME: datetime.time = _to_time(key="TRUESKILL_SIGMA_DECAY_JOB_SCHEDULED_TIME", default=datetime.time(0, 0, tzinfo=datetime.timezone.utc))
 AFK_TIME_MINUTES: int = _to_int(key="AFK_TIME_MINUTES", default=45)
@@ -200,7 +203,9 @@ STARTING_CURRENCY: int = _to_int(key="STARTING_CURRENCY", default=100)
 PREDICTION_TIMEOUT: int = _to_int(key="PREDICTION_TIMEOUT", default=300)
 CURRENCY_AWARD: int = _to_int(key="CURRENCY_AWARD", default=25)
 GAME_HISTORY_CHANNEL: int = _to_int(key="GAME_HISTORY_CHANNEL", required=True)
+ADMIN_LOG_CHANNEL: int = _to_int(key="ADMIN_LOG_CHANNEL")
 ADMIN_AUTOSUB: bool = _to_bool(key="ADMIN_AUTOSUB", default=False)
 POP_RANDOM_QUEUE: bool = _to_bool(key="POP_RANDOM_QUEUE", default=False)
 MM_SIGMA_MULT: float = _to_float(key="MM_SIGMA_MULT", default=0)
+
 # TODO grouping here and in docs

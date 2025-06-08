@@ -25,6 +25,7 @@ from discord.ext import commands
 from discord.ui import Button, button
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from trueskill import Rating, rate
+from trueskill import setup as trueskill_setup
 
 from discord_bots import config
 from discord_bots.checks import is_admin_app_command, is_command_channel
