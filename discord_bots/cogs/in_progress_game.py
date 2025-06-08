@@ -40,6 +40,7 @@ from discord_bots.models import (
     Map,
     Player,
     PlayerCategoryTrueskill,
+    Position,
     Queue,
     QueueWaitlist,
     Rotation,
@@ -564,6 +565,15 @@ class InProgressGameCommands(commands.Cog):
         ):
             for i, team_gip in enumerate(team_players):
                 player = players_by_id[team_gip.player_id]
+                if team_gip.position_id:
+                    position_name = (
+                        session.query(Position)
+                        .filter(Position.id == team_gip.position_id)
+                        .first()
+                        .short_name
+                    )
+                else:
+                    position_name = None
                 finished_game_player = FinishedGamePlayer(
                     finished_game_id=finished_game.id,
                     player_id=player.id,
@@ -572,6 +582,7 @@ class InProgressGameCommands(commands.Cog):
                     rated_trueskill_mu_before=ratings_before[i].mu,
                     rated_trueskill_sigma_before=ratings_before[i].sigma,
                     rated_trueskill_mu_after=ratings_after[i].mu,
+                    position_name=position_name,
                     rated_trueskill_sigma_after=ratings_after[i].sigma,
                 )
                 trueskill_rating = ratings_after[i]
@@ -586,6 +597,7 @@ class InProgressGameCommands(commands.Cog):
                     pct.sigma = trueskill_rating.sigma
                     pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
                     pct.last_game_finished_at = game_finished_at
+                    pct.position_id = team_gip.position_id
                 else:
                     session.add(
                         PlayerCategoryTrueskill(
@@ -595,6 +607,7 @@ class InProgressGameCommands(commands.Cog):
                             sigma=trueskill_rating.sigma,
                             rank=trueskill_rating.mu - 3 * trueskill_rating.sigma,
                             last_game_finished_at=game_finished_at,
+                            position_id=team_gip.position_id,
                         )
                     )
                 session.add(finished_game_player)

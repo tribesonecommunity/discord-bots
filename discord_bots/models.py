@@ -513,6 +513,9 @@ class FinishedGamePlayer:
     rated_trueskill_sigma_before: float = field(
         metadata={"sa": Column(Float, nullable=False)}
     )
+    position_name: str | None = field(
+        metadata={"sa": Column(String, nullable=True)},
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -613,6 +616,12 @@ class InProgressGamePlayer:
         },
     )
     team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
+    position_id: str | None = field(
+        default=None,
+        metadata={
+            "sa": Column(String, ForeignKey("position.id"), nullable=True, index=True)
+        },
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -833,6 +842,9 @@ class Player:
     def __lt__(self, other: Player):
         return self.id < other.id
 
+    def __hash__(self):
+        return hash(self.id)
+
 
 @mapper_registry.mapped
 @dataclass
@@ -897,6 +909,16 @@ class PlayerCategoryTrueskill:
             )
         },
     )
+    position_id: str = field(
+        metadata={
+            "sa": Column(
+                String,
+                ForeignKey("position.id"),
+                nullable=True,
+                index=True,
+            )
+        },
+    )
     mu: float = field(metadata={"sa": Column(Float, nullable=False)})
     sigma: float = field(metadata={"sa": Column(Float, nullable=False)})
     rank: float = field(metadata={"sa": Column(Float, nullable=False)})
@@ -928,6 +950,9 @@ class Position:
     __tablename__ = "position"
 
     name: str = field(
+        metadata={"sa": Column(String, nullable=False, unique=True, index=True)},
+    )
+    short_name: str = field(
         metadata={"sa": Column(String, nullable=False, unique=True, index=True)},
     )
     created_at: datetime = field(

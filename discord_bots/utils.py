@@ -53,6 +53,7 @@ from discord_bots.models import (
     MapVote,
     Player,
     PlayerCategoryTrueskill,
+    Position,
     Queue,
     QueuePlayer,
     QueueWaitlistPlayer,
@@ -624,18 +625,22 @@ async def create_in_progress_game_embed(
     )  # timezones aren't stored in the DB, so add it ourselves
     timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
     result: list[str] | None = (
-        session.query(Player.name)
-        .join(InProgressGamePlayer)
+        session.query(Player.name, Position.short_name)
+        .join(InProgressGamePlayer, Player.id == InProgressGamePlayer.player_id)
+        .join(Position, InProgressGamePlayer.position_id == Position.id)
         .filter(
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 0,
         )
         .all()
     )
-    team0_player_names = [name[0] for name in result if name] if result else []
+    team0_player_names = (
+        [f"**{name[0]}** (**{name[1]}**)" for name in result if name] if result else []
+    )
     result: list[str] | None = (
-        session.query(Player.name)
-        .join(InProgressGamePlayer)
+        session.query(Player.name, Position.short_name)
+        .join(InProgressGamePlayer, Player.id == InProgressGamePlayer.player_id)
+        .join(Position, InProgressGamePlayer.position_id == Position.id)
         .filter(
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 1,
@@ -643,7 +648,7 @@ async def create_in_progress_game_embed(
         .all()
     )
     team1_player_names: list[str] = (
-        [name[0] for name in result if name] if result else []
+        [f"**{name[0]}** (**{name[1]}**)" for name in result if name] if result else []
     )
     if config.SHOW_CAPTAINS:
         if team0_player_names:
@@ -732,17 +737,31 @@ async def create_condensed_in_progress_game_embed(
     )  # timezones aren't stored in the DB, so add it ourselves
     timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
     result: list[str] | None = (
-        session.query(Player.name)
-        .join(InProgressGamePlayer)
+        session.query(
+            Player.name, InProgressGamePlayer.position_id, Position.short_name
+        )
+        .join(InProgressGamePlayer, Player.id == InProgressGamePlayer.player_id)
+        .join(Position, InProgressGamePlayer.position_id == Position.id)
         .filter(
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 0,
         )
         .all()
     )
-    team0_player_names = [f"**{name[0]}**" for name in result if name] if result else []
+    team0_player_names: list[str] = []
+    for igp in result:
+        if igp.position_id:
+            position = (
+                session.query(Position).filter(Position.id == igp.position_id).first()
+            )
+            if position:
+                team0_player_names.append(f"**{igp.name}** (**{position.short_name}**)")
+            else:
+                team0_player_names.append(f"**{igp.name}**")
+        else:
+            team0_player_names.append(f"**{igp.name}**")
     result: list[str] | None = (
-        session.query(Player.name)
+        session.query(Player.name, InProgressGamePlayer.position_id)
         .join(InProgressGamePlayer)
         .filter(
             InProgressGamePlayer.in_progress_game_id == game.id,
@@ -750,14 +769,25 @@ async def create_condensed_in_progress_game_embed(
         )
         .all()
     )
-    team1_player_names: list[str] = (
-        [f"**{name[0]}**" for name in result if name] if result else []
-    )
+    team1_player_names: list[str] = []
+    for igp in result:
+        if igp.position_id:
+            position = (
+                session.query(Position).filter(Position.id == igp.position_id).first()
+            )
+            if position:
+                team1_player_names.append(f"**{igp.name}** (**{position.short_name}**)")
+            else:
+                team1_player_names.append(f"**{igp.name}**")
+        else:
+            team1_player_names.append(f"**{igp.name}**")
+
     if config.SHOW_CAPTAINS:
         if team0_player_names:
             team0_player_names[0] = "(C) " + team0_player_names[0]
         if team1_player_names:
             team1_player_names[0] = "(C) " + team1_player_names[0]
+
     # sort the names alphabetically and caselessly to make them easier to read
     team0_player_names.sort(key=str.casefold)
     team1_player_names.sort(key=str.casefold)
@@ -825,23 +855,33 @@ def create_finished_game_embed(
         user_name, display_name = name_tuple[0], name_tuple[1]
         embed.set_footer(text=f"Finished by {display_name} ({user_name})")
     result = (
-        session.query(FinishedGamePlayer.player_name)
+        session.query(FinishedGamePlayer)
         .filter(
             FinishedGamePlayer.finished_game_id == finished_game.id,
             FinishedGamePlayer.team == 0,
         )
         .all()
     )
-    team0_player_names: list[str] = [p.player_name for p in result] if result else []
+    team0_player_names: list[str] = []
+    for p in result:
+        if p.position_name:
+            team0_player_names.append(f"**{p.player_name}** (**{p.position_name}**)")
+        else:
+            team0_player_names.append(f"**{p.player_name}**")
     result = (
-        session.query(FinishedGamePlayer.player_name)
+        session.query(FinishedGamePlayer)
         .filter(
             FinishedGamePlayer.finished_game_id == finished_game.id,
             FinishedGamePlayer.team == 1,
         )
         .all()
     )
-    team1_player_names: list[str] = [p.player_name for p in result] if result else []
+    team1_player_names: list[str] = []
+    for p in result:
+        if p.position_name:
+            team1_player_names.append(f"**{p.player_name}** (**{p.position_name}**)")
+        else:
+            team1_player_names.append(f"**{p.player_name}**")
     # sort the names alphabetically and caselessly to make them easier to read
     team0_player_names.sort(key=str.casefold)
     team1_player_names.sort(key=str.casefold)
@@ -2022,6 +2062,10 @@ def get_team_voice_channels(
             elif in_progress_game.team1_name in discord_channel.name:
                 team1_vc = discord_channel
     return team0_vc, team1_vc
+
+
+def flatten_list(l: list[list[any]]) -> list[any]:
+    return [item for sublist in l for item in sublist]
 
 
 @dataclass

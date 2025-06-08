@@ -41,19 +41,20 @@ class PositionCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(name="Name of the position")
-    async def add(self, interaction: Interaction, name: str):
+    @app_commands.describe(short_name="Short hand name of the position")
+    async def add(self, interaction: Interaction, name: str, short_name: str):
         """
         Add a new position
         """
         session: SQLAlchemySession
         with Session() as session:
             try:
-                position = Position(name=name)
+                position = Position(name=name, short_name=short_name)
                 session.add(position)
                 session.commit()
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Added position **{name}**",
+                        description=f"Added position **{name}** (**{short_name}**)",
                         colour=Colour.green(),
                     )
                 )
@@ -61,7 +62,7 @@ class PositionCommands(BaseCog):
                 session.rollback()
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Error adding position **{name}**: {str(e)}",
+                        description=f"Error adding position **{name}** (**{short_name}**): {str(e)}",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -71,6 +72,7 @@ class PositionCommands(BaseCog):
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(name="Name of the position")
+    @app_commands.autocomplete(name=position_autocomplete)
     async def remove(self, interaction: Interaction, name: str):
         """
         Remove a position
@@ -123,7 +125,12 @@ class PositionCommands(BaseCog):
                 )
                 return
 
-            position_list = "\n".join([f"• {position.name}" for position in positions])
+            position_list = "\n".join(
+                [
+                    f"• {position.name} (**{position.short_name}**)"
+                    for position in positions
+                ]
+            )
             await interaction.response.send_message(
                 embed=Embed(
                     title="Positions",
