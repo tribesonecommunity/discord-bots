@@ -100,15 +100,16 @@ async def get_position_combinations(
     """
     assert 2 * sum([qp.count for qp in queue_positions]) == len(players)
 
-    # Randomly assign a position to each player
-    position_to_player = defaultdict(list)
-    player_to_position: dict[Player, QueuePosition] = {}
-
     # Avoid mutating the original list
     players = [p for p in players]
     shuffle(players)
 
+    position_to_player = defaultdict(list)
+    player_to_position: dict[Player, QueuePosition] = {}
+
     # Randomly assign a position to each player
+    # This ensures that we prioritize giving players a truly random distribution
+    # of positions over trying to find the maximally fair teams
     for queue_position in queue_positions:
         for _ in range(queue_position.count * 2):
             player = players.pop()
@@ -118,15 +119,18 @@ async def get_position_combinations(
     # For each position, we need to get all the combinations of players for that position
     position_combinations: list[list[Player]] = []
     for players_at_position in position_to_player.values():
-        # Get all possible combinations of players for this position
+        # Divide by 2 because we're only generating the first half of the combinations
         combos = list(combinations(players_at_position, len(players_at_position) // 2))
         position_combinations.append(combos)
 
-    _log.info(f"position_combinations: {position_combinations}")
+    # Take every combination of positions and multiply them with every other
+    # combination of positions.
+    # The final result is a list of lists, where each inner list represents one
+    # possible game combination and the entire object represents every valid
+    # combination given the positions assigned
     final_combinations: list[list[Player]] = []
     final_combinations = position_combinations.pop()
     while len(position_combinations) > 0:
-        print(final_combinations)
         next_combinations = position_combinations.pop()
         final_combinations = list(product(final_combinations, next_combinations))
         final_combinations = [flatten_list(l) for l in final_combinations]
