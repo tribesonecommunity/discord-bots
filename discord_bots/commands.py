@@ -1382,8 +1382,30 @@ async def _rebalance_game(
         session.delete(game_player)
     game.win_probability = win_prob
     category = session.query(Category).filter(Category.id == queue.category_id).first()
-    player_category_trueskills = None
-    if category:
+    player_category_trueskills: list[PlayerCategoryTrueskill] = []
+    if len(player_to_position) > 0:
+        for player, queue_position in player_to_position.items():
+            pct = (
+                session.query(PlayerCategoryTrueskill)
+                .filter(
+                    PlayerCategoryTrueskill.player_id == player.id,
+                    PlayerCategoryTrueskill.category_id == queue.category_id,
+                    PlayerCategoryTrueskill.position_id == queue_position.position_id,
+                )
+                .first()
+            )
+            if not pct:
+                pct = (
+                    session.query(PlayerCategoryTrueskill)
+                    .filter(
+                        PlayerCategoryTrueskill.player_id == player.id,
+                        PlayerCategoryTrueskill.category_id == queue.category_id,
+                    )
+                    .first()
+                )
+            if pct:
+                player_category_trueskills.append(pct)
+    elif category:
         player_category_trueskills: list[PlayerCategoryTrueskill] = (
             session.query(PlayerCategoryTrueskill)
             .filter(
@@ -1396,6 +1418,7 @@ async def _rebalance_game(
         average_trueskill = mean([x.mu for x in player_category_trueskills])
     else:
         average_trueskill = mean([x.rated_trueskill_mu for x in players])
+
     game.average_trueskill = average_trueskill
     team0_players = players[: len(players) // 2]
     team1_players = players[len(players) // 2 :]
@@ -1403,6 +1426,11 @@ async def _rebalance_game(
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
+            position_id=(
+                player_to_position[player].position_id
+                if player in player_to_position
+                else None
+            ),
             team=0,
         )
         session.add(game_player)
@@ -1410,6 +1438,11 @@ async def _rebalance_game(
         game_player = InProgressGamePlayer(
             in_progress_game_id=game.id,
             player_id=player.id,
+            position_id=(
+                player_to_position[player].position_id
+                if player in player_to_position
+                else None
+            ),
             team=1,
         )
         session.add(game_player)
