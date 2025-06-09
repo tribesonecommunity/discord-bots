@@ -624,7 +624,16 @@ async def create_in_progress_game_embed(
         tzinfo=timezone.utc
     )  # timezones aren't stored in the DB, so add it ourselves
     timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
-    result: list[str] | None = (
+    non_position_result: list[str] | None = (
+        session.query(Player.name)
+        .join(InProgressGamePlayer, Player.id == InProgressGamePlayer.player_id)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 0,
+        )
+        .all()
+    )
+    position_result: list[str] | None = (
         session.query(Player.name, Position.short_name)
         .join(InProgressGamePlayer, Player.id == InProgressGamePlayer.player_id)
         .join(Position, InProgressGamePlayer.position_id == Position.id)
@@ -634,10 +643,28 @@ async def create_in_progress_game_embed(
         )
         .all()
     )
-    team0_player_names = (
-        [f"**{name[0]}** (**{name[1]}**)" for name in result if name] if result else []
+    if position_result:
+        team0_player_names: list[str] = (
+            [f"{name[0]} ({name[1]})" for name in position_result if name]
+            if position_result
+            else []
+        )
+    else:
+        team0_player_names: list[str] = (
+            [f"{name[0]}" for name in non_position_result if name]
+            if non_position_result
+            else []
+        )
+    non_position_result: list[str] | None = (
+        session.query(Player.name)
+        .join(InProgressGamePlayer, Player.id == InProgressGamePlayer.player_id)
+        .filter(
+            InProgressGamePlayer.in_progress_game_id == game.id,
+            InProgressGamePlayer.team == 1,
+        )
+        .all()
     )
-    result: list[str] | None = (
+    position_result: list[str] | None = (
         session.query(Player.name, Position.short_name)
         .join(InProgressGamePlayer, Player.id == InProgressGamePlayer.player_id)
         .join(Position, InProgressGamePlayer.position_id == Position.id)
@@ -647,9 +674,18 @@ async def create_in_progress_game_embed(
         )
         .all()
     )
-    team1_player_names: list[str] = (
-        [f"**{name[0]}** (**{name[1]}**)" for name in result if name] if result else []
-    )
+    if position_result:
+        team1_player_names: list[str] = (
+            [f"{name[0]} ({name[1]})" for name in position_result if name]
+            if position_result
+            else []
+        )
+    else:
+        team1_player_names: list[str] = (
+            [f"{name[0]}" for name in non_position_result if name]
+            if non_position_result
+            else []
+        )
     if config.SHOW_CAPTAINS:
         if team0_player_names:
             team0_player_names[0] = "(C) " + team0_player_names[0]
@@ -737,11 +773,8 @@ async def create_condensed_in_progress_game_embed(
     )  # timezones aren't stored in the DB, so add it ourselves
     timestamp = discord.utils.format_dt(aware_db_datetime, style="R")
     result: list[str] | None = (
-        session.query(
-            Player.name, InProgressGamePlayer.position_id, Position.short_name
-        )
+        session.query(Player.name, InProgressGamePlayer.position_id)
         .join(InProgressGamePlayer, Player.id == InProgressGamePlayer.player_id)
-        .join(Position, InProgressGamePlayer.position_id == Position.id)
         .filter(
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 0,
@@ -755,14 +788,14 @@ async def create_condensed_in_progress_game_embed(
                 session.query(Position).filter(Position.id == igp.position_id).first()
             )
             if position:
-                team0_player_names.append(f"**{igp.name}** (**{position.short_name}**)")
+                team0_player_names.append(f"{igp.name} ({position.short_name})")
             else:
-                team0_player_names.append(f"**{igp.name}**")
+                team0_player_names.append(f"{igp.name}")
         else:
-            team0_player_names.append(f"**{igp.name}**")
+            team0_player_names.append(f"{igp.name}")
     result: list[str] | None = (
         session.query(Player.name, InProgressGamePlayer.position_id)
-        .join(InProgressGamePlayer)
+        .join(InProgressGamePlayer, Player.id == InProgressGamePlayer.player_id)
         .filter(
             InProgressGamePlayer.in_progress_game_id == game.id,
             InProgressGamePlayer.team == 1,
@@ -776,11 +809,11 @@ async def create_condensed_in_progress_game_embed(
                 session.query(Position).filter(Position.id == igp.position_id).first()
             )
             if position:
-                team1_player_names.append(f"**{igp.name}** (**{position.short_name}**)")
+                team1_player_names.append(f"{igp.name} ({position.short_name})")
             else:
-                team1_player_names.append(f"**{igp.name}**")
+                team1_player_names.append(f"{igp.name}")
         else:
-            team1_player_names.append(f"**{igp.name}**")
+            team1_player_names.append(f"{igp.name}")
 
     if config.SHOW_CAPTAINS:
         if team0_player_names:
@@ -865,9 +898,9 @@ def create_finished_game_embed(
     team0_player_names: list[str] = []
     for p in result:
         if p.position_name:
-            team0_player_names.append(f"**{p.player_name}** (**{p.position_name}**)")
+            team0_player_names.append(f"{p.player_name} ({p.position_name})")
         else:
-            team0_player_names.append(f"**{p.player_name}**")
+            team0_player_names.append(f"{p.player_name}")
     result = (
         session.query(FinishedGamePlayer)
         .filter(
@@ -879,9 +912,9 @@ def create_finished_game_embed(
     team1_player_names: list[str] = []
     for p in result:
         if p.position_name:
-            team1_player_names.append(f"**{p.player_name}** (**{p.position_name}**)")
+            team1_player_names.append(f"{p.player_name} ({p.position_name})")
         else:
-            team1_player_names.append(f"**{p.player_name}**")
+            team1_player_names.append(f"{p.player_name}")
     # sort the names alphabetically and caselessly to make them easier to read
     team0_player_names.sort(key=str.casefold)
     team1_player_names.sort(key=str.casefold)
