@@ -452,24 +452,31 @@ class InProgressGameCommands(commands.Cog):
         ).all()
         player_ids: list[str] = [player.id for player in players]
         players_by_id: dict[int, Player] = {player.id: player for player in players}
-        player_category_trueskills_by_id: dict[int, PlayerCategoryTrueskill] = {}
-        if queue.category_id:
-            player_category_trueskills: list[PlayerCategoryTrueskill] = (
-                session.query(PlayerCategoryTrueskill)
-                .filter(
-                    PlayerCategoryTrueskill.player_id.in_(player_ids),
-                    PlayerCategoryTrueskill.category_id == queue.category_id,
-                )
-                .all()
-            )
-            player_category_trueskills_by_id = {
-                pct.player_id: pct for pct in player_category_trueskills
-            }
+
         in_progress_game_players = (
             session.query(InProgressGamePlayer)
             .filter(InProgressGamePlayer.in_progress_game_id == in_progress_game.id)
             .all()
         )
+
+        player_category_trueskills: list[PlayerCategoryTrueskill] = []
+        for ipgp in in_progress_game_players:
+            pct = (
+                session.query(PlayerCategoryTrueskill)
+                .filter(
+                    PlayerCategoryTrueskill.player_id == ipgp.player_id,
+                    PlayerCategoryTrueskill.category_id == queue.category_id,
+                    PlayerCategoryTrueskill.position_id == ipgp.position_id,
+                )
+                .first()
+            )
+            if pct:
+                player_category_trueskills.append(pct)
+
+        player_category_trueskills_by_id = {
+            pct.player_id: pct for pct in player_category_trueskills
+        }
+
         team0_rated_ratings_before = []
         team1_rated_ratings_before = []
         team0_players: list[InProgressGamePlayer] = []
@@ -591,14 +598,17 @@ class InProgressGameCommands(commands.Cog):
                 # stale
                 player.rated_trueskill_mu = trueskill_rating.mu
                 player.rated_trueskill_sigma = trueskill_rating.sigma
+
+                # There's already an appropriate category/position trueskill so
+                # just update it
                 if player.id in player_category_trueskills_by_id:
                     pct = player_category_trueskills_by_id[player.id]
                     pct.mu = trueskill_rating.mu
                     pct.sigma = trueskill_rating.sigma
                     pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
                     pct.last_game_finished_at = game_finished_at
-                    pct.position_id = team_gip.position_id
                 else:
+                    # Write a new category/position trueskill
                     session.add(
                         PlayerCategoryTrueskill(
                             player_id=player.id,
