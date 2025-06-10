@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from bisect import bisect
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -27,6 +28,7 @@ from discord_bots.models import (
     InProgressGamePlayer,
     Player,
     PlayerCategoryTrueskill,
+    Position,
     Session,
 )
 from discord_bots.utils import (
@@ -365,7 +367,6 @@ class CommonCommands(BaseCog):
                     cols.append(col)
                 return cols
 
-            embeds: list[Embed] = []
             message_content = ""  # TODO: temp fix
             footer_text = f"Rating = {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}"
             cols = []
@@ -380,13 +381,26 @@ class CommonCommands(BaseCog):
                 .order_by(Category.name)
                 .all()
             )
+            player_category_trueskills_by_category = defaultdict(list)
+            for pct in player_category_trueskills:
+                player_category_trueskills_by_category[pct.category_id].append(pct)
+
             # assume that if a guild uses categories, they will use them exclusively, i.e., no mixing categorized and uncategorized queues
             if player_category_trueskills:
-                num_pct = len(player_category_trueskills)
-                for i, pct in enumerate(player_category_trueskills):
+                for category_id, pcts in player_category_trueskills_by_category.items():
+                    non_position_pcts = filter(
+                        lambda x: x.position_id is None,
+                        pcts,
+                    )
+                    position_pcts = filter(
+                        lambda x: x.position_id is not None,
+                        pcts,
+                    )
+                    # Order the non-position trueskill first
+                    pcts = list(non_position_pcts) + list(position_pcts)
                     category: Category | None = (
                         session.query(Category)
-                        .filter(Category.id == pct.category_id)
+                        .filter(Category.id == category_id)
                         .first()
                     )
                     if not category:
@@ -398,15 +412,29 @@ class CommonCommands(BaseCog):
                             embed=Embed(description="Could not find your stats")
                         )
                         return
-                    title = f"TrueSkill for {category.name}"
-                    if category.is_rated and SHOW_TRUESKILL:
-                        description = (
-                            f"Rating: **{round(pct.rank, 1)}**"
-                            f" `{MU_LOWER_UNICODE}: {round(pct.mu, 1)}`, "
-                            f"`{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}` "
-                        )
-                    else:
-                        description = f"Rating: {trueskill_pct}"
+
+                    for pct in pcts:
+                        if pct.position_id:
+                            position = (
+                                session.query(Position)
+                                .filter(Position.id == pct.position_id)
+                                .first()
+                            )
+                            title = (
+                                f"TrueSkill for {category.name} ({position.short_name})"
+                            )
+                        else:
+                            title = f"TrueSkill for {category.name}"
+                        if category.is_rated and SHOW_TRUESKILL:
+                            description = (
+                                f"Rating: **{round(pct.rank, 1)}**"
+                                f" `{MU_LOWER_UNICODE}: {round(pct.mu, 1)}`, "
+                                f"`{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}` "
+                            )
+                        else:
+                            description = f"Rating: {trueskill_pct}"
+
+                        message_content += f"\n{title}\n{description}"  # TODO: temp fix
 
                     category_games = [
                         game
@@ -428,15 +456,8 @@ class CommonCommands(BaseCog):
                             Alignment.RIGHT,
                         ],
                     )
-                    description += code_block(table)
-                    embed = Embed(
-                        title=title, description=description, color=Colour.dark_embed()
-                    )
-                    message_content += f"\n{title}\n{description}"  # TODO: temp fix
-                    if i == (num_pct - 1):
-                        # only add the footer to the last embed so we don't duplicate the information
-                        embed.set_footer(text=footer_text)
-                    embeds.append(embed)
+                    description = code_block(table)
+                    message_content += f"\n{description}"  # TODO: temp fix
             else:
                 # no categories defined, display their global trueskill stats
                 description = ""
@@ -465,13 +486,6 @@ class CommonCommands(BaseCog):
                     ],
                 )
                 description += code_block(table)
-                embed = Embed(
-                    title="Overall Stats",
-                    description=description,
-                    color=Colour.dark_embed(),
-                )
-                embed.set_footer(text=footer_text)
-                embeds.append(embed)
                 message_content = (
                     f"Overall Stats\n{description}\n{footer_text}"  # TODO: temp fix
                 )
