@@ -49,7 +49,6 @@ class CommonCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-
     @app_commands.command(
         name="setgamecode", description="Sets lobby code for your current game"
     )
@@ -372,53 +371,41 @@ class CommonCommands(BaseCog):
             cols = []
             conditions = []
             conditions.append(PlayerCategoryTrueskill.player_id == player.id)
+            categories = []
             if category_name:
-                conditions.append(Category.name == category_name)
-            player_category_trueskills: list[PlayerCategoryTrueskill] | None = (
-                session.query(PlayerCategoryTrueskill)
-                .join(Category)
-                .filter(*conditions)
-                .order_by(Category.name)
-                .all()
-            )
-            player_category_trueskills_by_category = defaultdict(list)
-            for pct in player_category_trueskills:
-                player_category_trueskills_by_category[pct.category_id].append(pct)
+                category = (
+                    session.query(Category)
+                    .filter(Category.name == category_name, Category.is_rated)
+                    .first()
+                )
+                if category:
+                    categories.append(category)
+            else:
+                categories = session.query(Category).filter(Category.is_rated).all()
 
             # assume that if a guild uses categories, they will use them exclusively, i.e., no mixing categorized and uncategorized queues
-            if player_category_trueskills:
-                for i_pct, (category_id, pcts) in enumerate(
-                    player_category_trueskills_by_category.items()
-                ):
+            if categories:
+                categories = sorted(categories, key=lambda x: x.name)
+                for i_category, category in enumerate(categories):
+                    player_category_trueskills = (
+                        session.query(PlayerCategoryTrueskill)
+                        .filter(
+                            PlayerCategoryTrueskill.category_id == category.id,
+                            PlayerCategoryTrueskill.player_id == player.id,
+                        )
+                        .all()
+                    )
                     non_position_pcts = filter(
                         lambda x: x.position_id is None,
-                        pcts,
+                        player_category_trueskills,
                     )
                     position_pcts = filter(
                         lambda x: x.position_id is not None,
-                        pcts,
+                        player_category_trueskills,
                     )
+
                     # Order the non-position trueskill first
                     pcts = list(non_position_pcts) + list(position_pcts)
-                    category: Category | None = (
-                        session.query(Category)
-                        .filter(Category.id == category_id)
-                        .first()
-                    )
-                    if not category:
-                        # should never happen
-                        _log.error(
-                            f"No Category found for player_category_trueskill with id {pct.id}"
-                        )
-                        await interaction.response.send_message(
-                            embed=Embed(description="Could not find your stats")
-                        )
-                        return
-
-                    # Don't show stats for unrated categories
-                    if not category.is_rated:
-                        continue
-
                     for pct in pcts:
                         if pct.position_id:
                             position = (
@@ -454,7 +441,7 @@ class CommonCommands(BaseCog):
                             )
                         if category.is_rated and SHOW_TRUESKILL:
                             description = (
-                                f"Rating: **{round(pct.rank, 1)}**"
+                                f"Rating: **{round(pct.rank, 1)}** "
                                 f" `{MU_LOWER_UNICODE}: {round(pct.mu, 1)}`, "
                                 f"`{SIGMA_LOWER_UNICODE}: {round(pct.sigma, 1)}` "
                             )
@@ -480,9 +467,9 @@ class CommonCommands(BaseCog):
                         )
                         description = code_block(table)
                         message_content += f"\n{description}"  # TODO: temp fix
-                    if i_pct < (len(player_category_trueskills_by_category) - 1):
-                        message_content += f"\n{footer_text}"
 
+                    if i_category == len(categories) - 1:
+                        message_content += f"\n{footer_text}"
             else:
                 # no categories defined, display their global trueskill stats
                 description = ""
