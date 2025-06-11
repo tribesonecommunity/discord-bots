@@ -368,7 +368,7 @@ class CommonCommands(BaseCog):
                 return cols
 
             message_content = ""  # TODO: temp fix
-            footer_text = f"Rating = {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}"
+            footer_text = f"-# Rating = {MU_LOWER_UNICODE} - 3*{SIGMA_LOWER_UNICODE}"
             cols = []
             conditions = []
             conditions.append(PlayerCategoryTrueskill.player_id == player.id)
@@ -387,7 +387,9 @@ class CommonCommands(BaseCog):
 
             # assume that if a guild uses categories, they will use them exclusively, i.e., no mixing categorized and uncategorized queues
             if player_category_trueskills:
-                for category_id, pcts in player_category_trueskills_by_category.items():
+                for i_pct, (category_id, pcts) in enumerate(
+                    player_category_trueskills_by_category.items()
+                ):
                     non_position_pcts = filter(
                         lambda x: x.position_id is None,
                         pcts,
@@ -413,6 +415,10 @@ class CommonCommands(BaseCog):
                         )
                         return
 
+                    # Don't show stats for unrated categories
+                    if not category.is_rated:
+                        continue
+
                     for pct in pcts:
                         if pct.position_id:
                             position = (
@@ -423,8 +429,29 @@ class CommonCommands(BaseCog):
                             title = (
                                 f"TrueSkill for {category.name} ({position.short_name})"
                             )
+                            category_games = (
+                                session.query(FinishedGame)
+                                .join(FinishedGamePlayer)
+                                .filter(
+                                    FinishedGame.category_name == category.name,
+                                    FinishedGamePlayer.position_name
+                                    == position.short_name,
+                                    FinishedGamePlayer.player_id == player.id,
+                                )
+                                .all()
+                            )
                         else:
                             title = f"TrueSkill for {category.name}"
+                            category_games = (
+                                session.query(FinishedGame)
+                                .join(FinishedGamePlayer)
+                                .filter(
+                                    FinishedGame.category_name == category.name,
+                                    FinishedGamePlayer.player_id == player.id,
+                                    FinishedGamePlayer.position_name == None,
+                                )
+                                .all()
+                            )
                         if category.is_rated and SHOW_TRUESKILL:
                             description = (
                                 f"Rating: **{round(pct.rank, 1)}**"
@@ -436,28 +463,26 @@ class CommonCommands(BaseCog):
 
                         message_content += f"\n{title}\n{description}"  # TODO: temp fix
 
-                    category_games = [
-                        game
-                        for game in fgs
-                        if game.category_name and category.name == game.category_name
-                    ]
-                    cols = get_table_col(category_games)
-                    table = table2ascii(
-                        header=["Last", "W", "L", "T", "Total", "WR"],
-                        body=cols,
-                        first_col_heading=True,
-                        style=PresetStyle.plain,
-                        alignments=[
-                            Alignment.RIGHT,
-                            Alignment.DECIMAL,
-                            Alignment.DECIMAL,
-                            Alignment.DECIMAL,
-                            Alignment.DECIMAL,
-                            Alignment.RIGHT,
-                        ],
-                    )
-                    description = code_block(table)
-                    message_content += f"\n{description}"  # TODO: temp fix
+                        cols = get_table_col(category_games)
+                        table = table2ascii(
+                            header=["Last", "W", "L", "T", "Total", "WR"],
+                            body=cols,
+                            first_col_heading=True,
+                            style=PresetStyle.plain,
+                            alignments=[
+                                Alignment.RIGHT,
+                                Alignment.DECIMAL,
+                                Alignment.DECIMAL,
+                                Alignment.DECIMAL,
+                                Alignment.DECIMAL,
+                                Alignment.RIGHT,
+                            ],
+                        )
+                        description = code_block(table)
+                        message_content += f"\n{description}"  # TODO: temp fix
+                    if i_pct < (len(player_category_trueskills_by_category) - 1):
+                        message_content += f"\n{footer_text}"
+
             else:
                 # no categories defined, display their global trueskill stats
                 description = ""
