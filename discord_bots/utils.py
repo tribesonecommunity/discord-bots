@@ -1955,7 +1955,10 @@ async def category_autocomplete_with_user_id(interaction: Interaction, current: 
         result = (
             session.query(Category.name, PlayerCategoryTrueskill.player_id)
             .join(PlayerCategoryTrueskill)
-            .filter(PlayerCategoryTrueskill.player_id == interaction.user.id)
+            .filter(
+                PlayerCategoryTrueskill.player_id == interaction.user.id,
+                Category.is_rated,
+            )
             .order_by(Category.name)
             .limit(25)  # discord only supports up to 25 choices
             .all()
