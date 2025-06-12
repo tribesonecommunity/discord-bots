@@ -43,6 +43,7 @@ import discord_bots.config as config
 from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
+    Config,
     CustomCommand,
     FinishedGame,
     FinishedGamePlayer,
@@ -2099,6 +2100,18 @@ def get_team_voice_channels(
 
 def flatten_list(l: list[list[any]]) -> list[any]:
     return [item for sublist in l for item in sublist]
+
+
+def get_config() -> Config:
+    with Session() as session:
+        config = session.query(Config).first()
+        if config:
+            return config
+        config = Config()
+        session.add(config)
+        session.commit()
+
+        return session.query(Config).first()
 
 
 @dataclass

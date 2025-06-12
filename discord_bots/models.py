@@ -165,6 +165,45 @@ class Commend:
 
 @mapper_registry.mapped
 @dataclass
+class Config:
+    """
+    Stores global configuration values for the bot
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "config"
+
+    default_trueskill_mu: float = field(
+        default=25.0,
+        metadata={"sa": Column(Float, nullable=False, server_default=text("25.0"))},
+    )
+    default_trueskill_sigma: float = field(
+        default=8.333,
+        metadata={"sa": Column(Float, nullable=False, server_default=text("8.333"))},
+    )
+    default_trueskill_tau: float = field(
+        default=0.0833,
+        metadata={"sa": Column(Float, nullable=False, server_default=text("0.0833"))},
+    )
+    updated_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
 class CustomCommand:
     """
     A way for users to add custom text commands to the bot

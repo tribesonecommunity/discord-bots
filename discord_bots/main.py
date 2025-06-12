@@ -30,7 +30,14 @@ from discord_bots.cogs.trueskill import TrueskillCommands
 from discord_bots.cogs.vote import VoteCommands
 
 from .bot import bot
-from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
+from .models import (
+    Config,
+    CustomCommand,
+    Player,
+    QueuePlayer,
+    QueueWaitlistPlayer,
+    Session,
+)
 from .tasks import (
     add_player_task,
     afk_timer_task,
@@ -42,6 +49,7 @@ from .tasks import (
     sigma_decay_task,
     vote_passed_waitlist_task,
 )
+from .utils import get_config
 
 _log = logging.getLogger(__name__)
 
@@ -285,10 +293,12 @@ async def setup():
     if config.ECONOMY_ENABLED:
         prediction_task.start()
     sigma_decay_task.start()
+    db_config = get_config()
+    _log.info(f"db_config: {db_config}")
     trueskill_setup(
-        mu=config.DEFAULT_TRUESKILL_MU,
-        sigma=config.DEFAULT_TRUESKILL_SIGMA,
-        tau=config.DEFAULT_TRUESKILL_TAU,
+        mu=db_config.default_trueskill_mu,
+        sigma=db_config.default_trueskill_sigma,
+        tau=db_config.default_trueskill_tau,
     )
 
 
