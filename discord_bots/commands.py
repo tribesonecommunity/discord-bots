@@ -142,7 +142,6 @@ async def get_position_combinations(
 async def get_even_teams(
     player_ids: list[int],
     team_size: int,
-    is_rated: bool,
     queue_id: str,
     queue_category_id: str | None,
 ) -> tuple[list[Player], float, dict[Player, QueuePosition]]:
@@ -324,7 +323,6 @@ async def create_game(
             players, win_prob, player_to_position = await get_even_teams(
                 player_ids,
                 len(player_ids) // 2,
-                queue.is_rated,
                 queue.id,
                 queue.category_id,
             )
@@ -1389,7 +1387,7 @@ async def _rebalance_game(
         win_prob = result[1]
     """
     players, win_prob, player_to_position = await get_even_teams(
-        player_ids, len(player_ids) // 2, queue.is_rated, queue.id, queue.category_id
+        player_ids, len(player_ids) // 2, queue.id, queue.category_id
     )
     for game_player in game_players:
         session.delete(game_player)
