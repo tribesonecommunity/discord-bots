@@ -114,5 +114,38 @@ class ConfigCommands(commands.Cog):
                 value=f"`{config.default_trueskill_tau}`",
                 inline=True,
             )
+            embed.add_field(
+                name="Position-based trueskill",
+                value=f"`{config.enable_position_trueskill}`",
+                inline=True,
+            )
 
             await interaction.response.send_message(embed=embed)
+
+    @group.command(
+        name="togglepositiontrueskill",
+        description="Enable/disable position-based trueskill",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(option="True/False")
+    async def togglepositiontrueskill(self, interaction: Interaction, option: bool):
+        """
+        Toggle position-based trueskill
+        """
+        with Session() as session:
+            config = session.query(Config).first()
+            config.enable_position_trueskill = option
+            session.commit()
+
+            embed = Embed(
+                description=f"Position-based trueskill set to {option} by <@{interaction.user.id}>",
+                colour=Colour.blue(),
+            )
+
+            await interaction.response.send_message(embed=embed)
+
+            if env_config.ADMIN_LOG_CHANNEL:
+                admin_log_channel = bot.get_channel(env_config.ADMIN_LOG_CHANNEL)
+                if isinstance(admin_log_channel, TextChannel):
+                    await admin_log_channel.send(embed=embed)

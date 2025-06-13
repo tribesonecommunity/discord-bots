@@ -58,6 +58,7 @@ from .cogs.economy import EconomyCommands
 from .cogs.in_progress_game import InProgressGameCommands, InProgressGameView
 from .models import (
     Category,
+    Config,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -157,6 +158,7 @@ async def get_even_teams(
     """
     session: sqlalchemy.orm.Session
     with Session() as session:
+        db_config: Config = session.query(Config).first()
         players: list[Player] = (
             session.query(Player).filter(Player.id.in_(player_ids)).all()
         )
@@ -181,16 +183,27 @@ async def get_even_teams(
                 queue_positions, players
             )
             for player, queue_position in player_to_position.items():
-                pct = (
-                    session.query(PlayerCategoryTrueskill)
-                    .filter(
-                        PlayerCategoryTrueskill.player_id == player.id,
-                        PlayerCategoryTrueskill.category_id == queue_category_id,
-                        PlayerCategoryTrueskill.position_id
-                        == queue_position.position_id,
+                pct = None
+                if db_config.enable_position_trueskill:
+                    pct = (
+                        session.query(PlayerCategoryTrueskill)
+                        .filter(
+                            PlayerCategoryTrueskill.player_id == player.id,
+                            PlayerCategoryTrueskill.category_id == queue_category_id,
+                            PlayerCategoryTrueskill.position_id
+                            == queue_position.position_id,
+                        )
+                        .first()
                     )
-                    .first()
-                )
+                else:
+                    pct = (
+                        session.query(PlayerCategoryTrueskill)
+                        .filter(
+                            PlayerCategoryTrueskill.player_id == player.id,
+                            PlayerCategoryTrueskill.category_id == queue_category_id,
+                        )
+                        .first()
+                    )
                 if not pct:
                     pct = (
                         session.query(PlayerCategoryTrueskill)

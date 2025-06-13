@@ -14,11 +14,10 @@ from trueskill import Rating
 from discord_bots.bot import bot
 from discord_bots.checks import is_command_channel
 from discord_bots.cogs.base import BaseCog
-from discord_bots.config import (
-    SHOW_TRUESKILL,
-)
+from discord_bots.config import SHOW_TRUESKILL
 from discord_bots.models import (
     Category,
+    Config,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -403,7 +402,10 @@ class CommonCommands(BaseCog):
                     )
 
                     # Order the non-position trueskill first
-                    pcts = list(non_position_pcts) + list(position_pcts)
+                    if config.enable_position_trueskill:
+                        pcts = list(non_position_pcts) + list(position_pcts)
+                    else:
+                        pcts = list(non_position_pcts)
                     for pct in pcts:
                         if pct.position_id:
                             position = (
