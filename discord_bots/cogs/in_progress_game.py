@@ -11,13 +11,10 @@ from discord import (
     Client,
     Colour,
     Embed,
-    Guild,
     Interaction,
     Member,
     Message,
-    Role,
     TextChannel,
-    VoiceChannel,
     app_commands,
 )
 from discord.abc import GuildChannel
@@ -25,13 +22,13 @@ from discord.ext import commands
 from discord.ui import Button, button
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from trueskill import Rating, rate
-from trueskill import setup as trueskill_setup
 
 from discord_bots import config
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.economy import EconomyCommands
 from discord_bots.models import (
     Category,
+    Config,
     FinishedGame,
     FinishedGamePlayer,
     InProgressGame,
@@ -450,7 +447,6 @@ class InProgressGameCommands(commands.Cog):
                 InProgressGamePlayer.in_progress_game_id == in_progress_game.id,
             )
         ).all()
-        player_ids: list[str] = [player.id for player in players]
         players_by_id: dict[int, Player] = {player.id: player for player in players}
 
         in_progress_game_players = (
@@ -459,17 +455,29 @@ class InProgressGameCommands(commands.Cog):
             .all()
         )
 
+        db_config: Config = session.query(Config).first()
+
         player_category_trueskills: list[PlayerCategoryTrueskill] = []
         for ipgp in in_progress_game_players:
-            pct = (
-                session.query(PlayerCategoryTrueskill)
-                .filter(
-                    PlayerCategoryTrueskill.player_id == ipgp.player_id,
-                    PlayerCategoryTrueskill.category_id == queue.category_id,
-                    PlayerCategoryTrueskill.position_id == ipgp.position_id,
+            if db_config.enable_position_trueskill:
+                pct = (
+                    session.query(PlayerCategoryTrueskill)
+                    .filter(
+                        PlayerCategoryTrueskill.player_id == ipgp.player_id,
+                        PlayerCategoryTrueskill.category_id == queue.category_id,
+                        PlayerCategoryTrueskill.position_id == ipgp.position_id,
+                    )
+                    .first()
                 )
-                .first()
-            )
+            else:
+                pct = (
+                    session.query(PlayerCategoryTrueskill)
+                    .filter(
+                        PlayerCategoryTrueskill.player_id == ipgp.player_id,
+                        PlayerCategoryTrueskill.category_id == queue.category_id,
+                    )
+                    .first()
+                )
             if pct:
                 player_category_trueskills.append(pct)
 
@@ -609,6 +617,10 @@ class InProgressGameCommands(commands.Cog):
                     pct.last_game_finished_at = game_finished_at
                 else:
                     # Write a new category/position trueskill
+                    if db_config.enable_position_trueskill:
+                        position_id = team_gip.position_id
+                    else:
+                        position_id = None
                     session.add(
                         PlayerCategoryTrueskill(
                             player_id=player.id,
@@ -617,7 +629,7 @@ class InProgressGameCommands(commands.Cog):
                             sigma=trueskill_rating.sigma,
                             rank=trueskill_rating.mu - 3 * trueskill_rating.sigma,
                             last_game_finished_at=game_finished_at,
-                            position_id=team_gip.position_id,
+                            position_id=position_id,
                         )
                     )
                 session.add(finished_game_player)

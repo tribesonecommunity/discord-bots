@@ -203,6 +203,13 @@ class Config:
             )
         },
     )
+    # If enabled, the bot will use position-based trueskill for matchmaking,
+    enable_position_trueskill: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false()),
+        },
+    )
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
