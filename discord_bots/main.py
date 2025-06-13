@@ -13,6 +13,7 @@ import discord_bots.config as config
 from discord_bots.cogs.admin import AdminCommands
 from discord_bots.cogs.category import CategoryCommands
 from discord_bots.cogs.common import CommonCommands
+from discord_bots.cogs.config import ConfigCommands
 from discord_bots.cogs.economy import EconomyCommands
 from discord_bots.cogs.in_progress_game import InProgressGameCommands
 from discord_bots.cogs.list import ListCommands
@@ -30,7 +31,14 @@ from discord_bots.cogs.trueskill import TrueskillCommands
 from discord_bots.cogs.vote import VoteCommands
 
 from .bot import bot
-from .models import CustomCommand, Player, QueuePlayer, QueueWaitlistPlayer, Session
+from .models import (
+    Config,
+    CustomCommand,
+    Player,
+    QueuePlayer,
+    QueueWaitlistPlayer,
+    Session,
+)
 from .tasks import (
     add_player_task,
     afk_timer_task,
@@ -255,6 +263,17 @@ async def after_invoke(context: Context):
     context.session.close()
 
 
+def init_config():
+    with Session() as session:
+        config = session.query(Config).first()
+        if config:
+            return
+
+        config = Config()
+        session.add(config)
+        session.commit()
+
+
 async def setup():
     await bot.add_cog(AdminCommands(bot))
     await bot.add_cog(CategoryCommands(bot))
@@ -274,6 +293,7 @@ async def setup():
     await bot.add_cog(TrueskillCommands(bot))
     await bot.add_cog(VoteCommands(bot))
     await bot.add_cog(NotificationCommands(bot))
+    await bot.add_cog(ConfigCommands(bot))
     add_player_task.start()
     afk_timer_task.start()
     leaderboard_task.start()
@@ -285,11 +305,14 @@ async def setup():
     if config.ECONOMY_ENABLED:
         prediction_task.start()
     sigma_decay_task.start()
-    trueskill_setup(
-        mu=config.DEFAULT_TRUESKILL_MU,
-        sigma=config.DEFAULT_TRUESKILL_SIGMA,
-        tau=config.DEFAULT_TRUESKILL_TAU,
-    )
+    init_config()
+    with Session() as session:
+        db_config = session.query(Config).first()
+        trueskill_setup(
+            mu=db_config.default_trueskill_mu,
+            sigma=db_config.default_trueskill_sigma,
+            tau=db_config.default_trueskill_tau,
+        )
 
 
 async def main():

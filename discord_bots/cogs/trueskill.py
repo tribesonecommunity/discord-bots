@@ -9,12 +9,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
-from discord_bots.config import (
-    DEFAULT_TRUESKILL_MU,
-    DEFAULT_TRUESKILL_SIGMA,
-    DEFAULT_TRUESKILL_TAU,
-)
-from discord_bots.models import Player, PlayerCategoryTrueskill, Queue, Session
+from discord_bots.models import Config, Player, PlayerCategoryTrueskill, Queue, Session
 from discord_bots.utils import mean, print_leaderboard
 
 _log = logging.getLogger(__name__)
@@ -29,16 +24,19 @@ class TrueskillCommands(BaseCog):
     @group.command(name="info", description="Explanation of Trueskill")
     @app_commands.check(is_command_channel)
     async def trueskill(self, interaction: Interaction):
-        output = ""
-        output += f"**mu (μ)**: The average skill of the gamer (default: {DEFAULT_TRUESKILL_MU:.1f})\n"
-        output += f"\n**sigma (σ)**: The degree of uncertainty in the gamer's skill (default: {DEFAULT_TRUESKILL_SIGMA:.1f})\n"
-        output += f'\n**tau (τ)**: The "dynamics" factor, greater values increase player position volatility (default: {DEFAULT_TRUESKILL_TAU:.1f})\n'
-        output += "\n**Reference**: https://www.microsoft.com/en-us/research/project/trueskill-ranking-system"
-        output += "\n**Implementation**: https://trueskill.org/"
-        thumbnail = "https://www.microsoft.com/en-us/research/uploads/prod/2016/02/trueskill-skilldia.jpg"
-        embed = Embed(title="Trueskill", description=output, colour=Colour.blue())
-        embed.set_thumbnail(url=thumbnail)
-        await interaction.response.send_message(embed=embed)
+        with Session() as session:
+            config = session.query(Config).first()
+
+            output = ""
+            output += f"**mu (μ)**: The average skill of the gamer (default: {config.default_trueskill_mu:.1f})\n"
+            output += f"\n**sigma (σ)**: The degree of uncertainty in the gamer's skill (default: {config.default_trueskill_sigma:.1f})\n"
+            output += f'\n**tau (τ)**: The "dynamics" factor, greater values increase player position volatility (default: {config.default_trueskill_tau:.1f})\n'
+            output += "\n**Reference**: https://www.microsoft.com/en-us/research/project/trueskill-ranking-system"
+            output += "\n**Implementation**: https://trueskill.org/"
+            thumbnail = "https://www.microsoft.com/en-us/research/uploads/prod/2016/02/trueskill-skilldia.jpg"
+            embed = Embed(title="Trueskill", description=output, colour=Colour.blue())
+            embed.set_thumbnail(url=thumbnail)
+            await interaction.response.send_message(embed=embed)
 
     @group.command(
         name="resetplayer", description="Resets a players trueskill values to default"
@@ -49,6 +47,7 @@ class TrueskillCommands(BaseCog):
     async def resetplayertrueskill(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
         with Session() as session:
+            config = session.query(Config).first()
             player: Player | None = (
                 session.query(Player).filter(Player.id == member.id).first()
             )
@@ -68,12 +67,12 @@ class TrueskillCommands(BaseCog):
                 .all()
             )
             for pct in pcts:
-                pct.mu = DEFAULT_TRUESKILL_MU
-                pct.sigma = DEFAULT_TRUESKILL_SIGMA
+                pct.mu = config.default_trueskill_mu
+                pct.sigma = config.default_trueskill_sigma
                 pct.rank = pct.mu - (3 * pct.sigma)
 
-            player.rated_trueskill_mu = DEFAULT_TRUESKILL_MU
-            player.rated_trueskill_sigma = DEFAULT_TRUESKILL_SIGMA
+            player.rated_trueskill_mu = config.default_trueskill_mu
+            player.rated_trueskill_sigma = config.default_trueskill_sigma
 
             session.commit()
         await interaction.response.send_message(

@@ -43,6 +43,7 @@ import discord_bots.config as config
 from discord_bots.bot import bot
 from discord_bots.models import (
     Category,
+    Config,
     CustomCommand,
     FinishedGame,
     FinishedGamePlayer,
