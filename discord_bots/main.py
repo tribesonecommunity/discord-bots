@@ -50,7 +50,6 @@ from .tasks import (
     sigma_decay_task,
     vote_passed_waitlist_task,
 )
-from .utils import get_config
 
 _log = logging.getLogger(__name__)
 
@@ -264,6 +263,17 @@ async def after_invoke(context: Context):
     context.session.close()
 
 
+def init_config():
+    with Session() as session:
+        config = session.query(Config).first()
+        if config:
+            return
+
+        config = Config()
+        session.add(config)
+        session.commit()
+
+
 async def setup():
     await bot.add_cog(AdminCommands(bot))
     await bot.add_cog(CategoryCommands(bot))
@@ -295,13 +305,14 @@ async def setup():
     if config.ECONOMY_ENABLED:
         prediction_task.start()
     sigma_decay_task.start()
-    db_config = get_config()
-    _log.info(f"db_config: {db_config}")
-    trueskill_setup(
-        mu=db_config.default_trueskill_mu,
-        sigma=db_config.default_trueskill_sigma,
-        tau=db_config.default_trueskill_tau,
-    )
+    init_config()
+    with Session() as session:
+        db_config = session.query(Config).first()
+        trueskill_setup(
+            mu=db_config.default_trueskill_mu,
+            sigma=db_config.default_trueskill_sigma,
+            tau=db_config.default_trueskill_tau,
+        )
 
 
 async def main():

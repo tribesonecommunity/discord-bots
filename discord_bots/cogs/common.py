@@ -15,9 +15,6 @@ from discord_bots.bot import bot
 from discord_bots.checks import is_command_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
-    DEFAULT_RAFFLE_VALUE,
-    DEFAULT_TRUESKILL_MU,
-    DEFAULT_TRUESKILL_SIGMA,
     SHOW_TRUESKILL,
 )
 from discord_bots.models import (
@@ -213,6 +210,7 @@ class CommonCommands(BaseCog):
         """
         session: SQLAlchemySession
         with Session() as session:
+            config = session.query(Config).first()
             player: Player | None = (
                 session.query(Player).filter(Player.id == interaction.user.id).first()
             )
@@ -283,8 +281,8 @@ class CommonCommands(BaseCog):
                         and x.rated_trueskill_sigma != default_rating.sigma
                     )
                     and (
-                        x.rated_trueskill_mu != DEFAULT_TRUESKILL_MU
-                        and x.rated_trueskill_sigma != DEFAULT_TRUESKILL_SIGMA
+                        x.rated_trueskill_mu != config.default_trueskill_mu
+                        and x.rated_trueskill_sigma != config.default_trueskill_sigma
                     ),
                     players,
                 )

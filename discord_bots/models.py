@@ -174,16 +174,34 @@ class Config:
     __tablename__ = "config"
 
     default_trueskill_mu: float = field(
-        default=25.0,
-        metadata={"sa": Column(Float, nullable=False, server_default=text("25.0"))},
+        default=config.DEFAULT_TRUESKILL_MU,
+        metadata={
+            "sa": Column(
+                Float,
+                nullable=False,
+                server_default=text(str(config.DEFAULT_TRUESKILL_MU)),
+            )
+        },
     )
     default_trueskill_sigma: float = field(
-        default=8.333,
-        metadata={"sa": Column(Float, nullable=False, server_default=text("8.333"))},
+        default=config.DEFAULT_TRUESKILL_SIGMA,
+        metadata={
+            "sa": Column(
+                Float,
+                nullable=False,
+                server_default=text(str(config.DEFAULT_TRUESKILL_SIGMA)),
+            )
+        },
     )
     default_trueskill_tau: float = field(
-        default=0.0833,
-        metadata={"sa": Column(Float, nullable=False, server_default=text("0.0833"))},
+        default=config.DEFAULT_TRUESKILL_TAU,
+        metadata={
+            "sa": Column(
+                Float,
+                nullable=False,
+                server_default=text(str(config.DEFAULT_TRUESKILL_TAU)),
+            )
+        },
     )
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -1402,7 +1420,9 @@ class Rotation:
 
     rotation_maps = relationship("RotationMap", cascade="all, delete-orphan")
     queues = relationship("Queue", back_populates="rotation")
-    rotation_map_history = relationship("RotationMapHistory", cascade="all, delete-orphan")
+    rotation_map_history = relationship(
+        "RotationMapHistory", cascade="all, delete-orphan"
+    )
 
 
 @mapper_registry.mapped
@@ -1450,7 +1470,9 @@ class RotationMap:
     )
     stop_rotation: bool = field(
         default=False,
-        metadata={"sa": Column(Boolean, nullable=False, server_default=expression.false())}
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
     )
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -1485,7 +1507,9 @@ class RotationMap:
     )
 
     map_votes = relationship("MapVote", cascade="all, delete-orphan")
-    rotation_map_history = relationship("RotationMapHistory", cascade="all, delete-orphan")
+    rotation_map_history = relationship(
+        "RotationMapHistory", cascade="all, delete-orphan"
+    )
 
 
 @mapper_registry.mapped
