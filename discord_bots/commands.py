@@ -329,16 +329,20 @@ async def create_game(
         category = (
             session.query(Category).filter(Category.id == queue.category_id).first()
         )
+        db_config: Config = session.query(Config).first()
         player_category_trueskills: list[PlayerCategoryTrueskill] = []
         if len(player_to_position) > 0:
             for player, queue_position in player_to_position.items():
+                if db_config.enable_position_trueskill:
+                    position_id = queue_position.position_id
+                else:
+                    position_id = None
                 pct = (
                     session.query(PlayerCategoryTrueskill)
                     .filter(
                         PlayerCategoryTrueskill.player_id == player.id,
                         PlayerCategoryTrueskill.category_id == queue.category_id,
-                        PlayerCategoryTrueskill.position_id
-                        == queue_position.position_id,
+                        PlayerCategoryTrueskill.position_id == position_id,
                     )
                     .first()
                 )
@@ -1364,6 +1368,7 @@ async def _rebalance_game(
     assert message.guild
     assert message.channel
     queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
+    db_config: Config = session.query(Config).first()
 
     game_players = (
         session.query(InProgressGamePlayer)
@@ -1396,12 +1401,16 @@ async def _rebalance_game(
     player_category_trueskills: list[PlayerCategoryTrueskill] = []
     if len(player_to_position) > 0:
         for player, queue_position in player_to_position.items():
+            if db_config.enable_position_trueskill:
+                position_id = queue_position.position_id
+            else:
+                position_id = None
             pct = (
                 session.query(PlayerCategoryTrueskill)
                 .filter(
                     PlayerCategoryTrueskill.player_id == player.id,
                     PlayerCategoryTrueskill.category_id == queue.category_id,
-                    PlayerCategoryTrueskill.position_id == queue_position.position_id,
+                    PlayerCategoryTrueskill.position_id == position_id,
                 )
                 .first()
             )
