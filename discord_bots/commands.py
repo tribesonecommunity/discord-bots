@@ -40,6 +40,7 @@ from discord_bots.utils import (
     del_player_from_queues_and_waitlists,
     execute_map_rotation,
     flatten_list,
+    get_category_trueskill,
     get_player_game,
     get_team_name_diff,
     get_team_voice_channels,
@@ -140,6 +141,7 @@ async def get_position_combinations(
 
 
 async def get_even_teams(
+    session: SQLAlchemySession,
     player_ids: list[int],
     team_size: int,
     queue_id: str,
@@ -155,131 +157,101 @@ async def get_even_teams(
 
     :returns: list of players and win probability for the first team
     """
-    session: sqlalchemy.orm.Session
-    with Session() as session:
-        db_config: Config = session.query(Config).first()
-        players: list[Player] = (
-            session.query(Player).filter(Player.id.in_(player_ids)).all()
-        )
-        queue_positions = (
-            session.query(QueuePosition)
-            .filter(QueuePosition.queue_id == queue_id)
-            .all()
-        )
+    db_config: Config = session.query(Config).first()
+    players: list[Player] = (
+        session.query(Player).filter(Player.id.in_(player_ids)).all()
+    )
+    queue_positions = (
+        session.query(QueuePosition).filter(QueuePosition.queue_id == queue_id).all()
+    )
 
-        # Shuffling is important! This ensures captains and/or positions are randomly distributed!
-        shuffle(players)
+    # Shuffling is important! This ensures captains and/or positions are randomly distributed!
+    shuffle(players)
 
-        player_category_trueskills = {}
-        queue_position_count = 2 * sum([qp.count for qp in queue_positions])
-        should_use_positions = len(queue_positions) > 0 and queue_position_count == len(
-            player_ids
+    player_category_trueskills = {}
+    queue_position_count = 2 * sum([qp.count for qp in queue_positions])
+    should_use_positions = len(queue_positions) > 0 and queue_position_count == len(
+        player_ids
+    )
+    player_to_position: dict[Player, QueuePosition] = {}
+    _log.info(f"[get_even_teams] should_use_positions: {should_use_positions}")
+    if should_use_positions:
+        player_combinations, player_to_position = await get_position_combinations(
+            queue_positions, players
         )
-        player_to_position: dict[Player, QueuePosition] = {}
-        _log.info(f"[get_even_teams] should_use_positions: {should_use_positions}")
-        if should_use_positions:
-            player_combinations, player_to_position = await get_position_combinations(
-                queue_positions, players
+        for player, queue_position in player_to_position.items():
+            pct = get_category_trueskill(
+                session,
+                db_config,
+                player.id,
+                queue_category_id,
+                queue_position.position_id,
             )
-            for player, queue_position in player_to_position.items():
-                pct = None
-                if db_config.enable_position_trueskill:
-                    pct = (
-                        session.query(PlayerCategoryTrueskill)
-                        .filter(
-                            PlayerCategoryTrueskill.player_id == player.id,
-                            PlayerCategoryTrueskill.category_id == queue_category_id,
-                            PlayerCategoryTrueskill.position_id
-                            == queue_position.position_id,
-                        )
-                        .first()
-                    )
-                else:
-                    pct = (
-                        session.query(PlayerCategoryTrueskill)
-                        .filter(
-                            PlayerCategoryTrueskill.player_id == player.id,
-                            PlayerCategoryTrueskill.category_id == queue_category_id,
-                        )
-                        .first()
-                    )
-                if not pct:
-                    pct = (
-                        session.query(PlayerCategoryTrueskill)
-                        .filter(
-                            PlayerCategoryTrueskill.player_id == player.id,
-                            PlayerCategoryTrueskill.category_id == queue_category_id,
-                        )
-                        .first()
-                    )
-                if pct:
-                    player_category_trueskills[player.id] = pct
-            all_combinations: list[list[Player]] = player_combinations
-        else:
-            if queue_category_id:
-                pcts = session.query(PlayerCategoryTrueskill).filter(
-                    PlayerCategoryTrueskill.player_id.in_(player_ids),
-                    PlayerCategoryTrueskill.category_id == queue_category_id,
+            player_category_trueskills[player.id] = pct
+        all_combinations: list[list[Player]] = player_combinations
+    else:
+        if queue_category_id:
+            for player_id in player_ids:
+                pct = get_category_trueskill(
+                    session,
+                    db_config,
+                    player_id,
+                    queue_category_id,
                 )
-                player_category_trueskills = {prt.player_id: prt for prt in pcts}
+                player_category_trueskills[player_id] = pct
+        all_combinations: list[list[Player]] = list(combinations(players, team_size))
+
+    best_win_prob_so_far: float = 0.0
+    best_teams_so_far: list[Player] = []
+
+    if config.MAXIMUM_TEAM_COMBINATIONS:
+        all_combinations = all_combinations[: config.MAXIMUM_TEAM_COMBINATIONS]
+    for i, team0 in enumerate(all_combinations):
+        team1 = [p for p in players if p not in team0]
+        team0_ratings = []
+        for player in team0:
+            if queue_category_id and player.id in player_category_trueskills:
+                player_category_trueskill: PlayerCategoryTrueskill = (
+                    player_category_trueskills[player.id]
+                )
+                team0_ratings.append(
+                    Rating(
+                        player_category_trueskill.mu,
+                        player_category_trueskill.sigma,
+                    )
+                )
             else:
-                player_category_trueskills = {}
-            all_combinations: list[list[Player]] = list(
-                combinations(players, team_size)
-            )
+                team0_ratings.append(
+                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                )
+        team1_ratings = []
+        for player in team1:
+            if queue_category_id and player.id in player_category_trueskills:
+                player_category_trueskill: PlayerCategoryTrueskill = (
+                    player_category_trueskills[player.id]
+                )
+                team1_ratings.append(
+                    Rating(
+                        player_category_trueskill.mu,
+                        player_category_trueskill.sigma,
+                    )
+                )
+            else:
+                team1_ratings.append(
+                    Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
+                )
+        win_prob = win_probability_matchmaking(team0_ratings, team1_ratings)
+        current_team_evenness = abs(0.50 - win_prob)
+        best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
+        if current_team_evenness < best_team_evenness_so_far:
+            best_win_prob_so_far = win_prob
+            best_teams_so_far = list(team0[:]) + list(team1[:])
+        if best_team_evenness_so_far < 0.001:
+            break
 
-        best_win_prob_so_far: float = 0.0
-        best_teams_so_far: list[Player] = []
+    _log.debug(f"Found team evenness: {best_team_evenness_so_far} interations: {i}")
 
-        if config.MAXIMUM_TEAM_COMBINATIONS:
-            all_combinations = all_combinations[: config.MAXIMUM_TEAM_COMBINATIONS]
-        for i, team0 in enumerate(all_combinations):
-            team1 = [p for p in players if p not in team0]
-            team0_ratings = []
-            for player in team0:
-                if queue_category_id and player.id in player_category_trueskills:
-                    player_category_trueskill: PlayerCategoryTrueskill = (
-                        player_category_trueskills[player.id]
-                    )
-                    team0_ratings.append(
-                        Rating(
-                            player_category_trueskill.mu,
-                            player_category_trueskill.sigma,
-                        )
-                    )
-                else:
-                    team0_ratings.append(
-                        Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-                    )
-            team1_ratings = []
-            for player in team1:
-                if queue_category_id and player.id in player_category_trueskills:
-                    player_category_trueskill: PlayerCategoryTrueskill = (
-                        player_category_trueskills[player.id]
-                    )
-                    team1_ratings.append(
-                        Rating(
-                            player_category_trueskill.mu,
-                            player_category_trueskill.sigma,
-                        )
-                    )
-                else:
-                    team1_ratings.append(
-                        Rating(player.rated_trueskill_mu, player.rated_trueskill_sigma)
-                    )
-            win_prob = win_probability_matchmaking(team0_ratings, team1_ratings)
-            current_team_evenness = abs(0.50 - win_prob)
-            best_team_evenness_so_far = abs(0.50 - best_win_prob_so_far)
-            if current_team_evenness < best_team_evenness_so_far:
-                best_win_prob_so_far = win_prob
-                best_teams_so_far = list(team0[:]) + list(team1[:])
-            if best_team_evenness_so_far < 0.001:
-                break
-
-        _log.debug(
-            f"Found team evenness: {best_team_evenness_so_far} interations: {i}"
-        )
-        return best_teams_so_far, best_win_prob_so_far, player_to_position
+    return best_teams_so_far, best_win_prob_so_far, player_to_position
 
 
 async def create_game(
@@ -321,6 +293,7 @@ async def create_game(
                 win_prob = result[1]
             """
             players, win_prob, player_to_position = await get_even_teams(
+                session,
                 player_ids,
                 len(player_ids) // 2,
                 queue.id,
@@ -333,21 +306,14 @@ async def create_game(
         player_category_trueskills: list[PlayerCategoryTrueskill] = []
         if len(player_to_position) > 0:
             for player, queue_position in player_to_position.items():
-                if db_config.enable_position_trueskill:
-                    position_id = queue_position.position_id
-                else:
-                    position_id = None
-                pct = (
-                    session.query(PlayerCategoryTrueskill)
-                    .filter(
-                        PlayerCategoryTrueskill.player_id == player.id,
-                        PlayerCategoryTrueskill.category_id == queue.category_id,
-                        PlayerCategoryTrueskill.position_id == position_id,
-                    )
-                    .first()
+                pct = get_category_trueskill(
+                    session,
+                    db_config,
+                    player.id,
+                    queue.category_id,
+                    queue_position.position_id,
                 )
-                if pct:
-                    player_category_trueskills.append(pct)
+                player_category_trueskills.append(pct)
         elif category:
             player_category_trueskills: list[PlayerCategoryTrueskill] = (
                 session.query(PlayerCategoryTrueskill)
@@ -1392,7 +1358,7 @@ async def _rebalance_game(
         win_prob = result[1]
     """
     players, win_prob, player_to_position = await get_even_teams(
-        player_ids, len(player_ids) // 2, queue.id, queue.category_id
+        session, player_ids, len(player_ids) // 2, queue.id, queue.category_id
     )
     for game_player in game_players:
         session.delete(game_player)
@@ -1401,30 +1367,14 @@ async def _rebalance_game(
     player_category_trueskills: list[PlayerCategoryTrueskill] = []
     if len(player_to_position) > 0:
         for player, queue_position in player_to_position.items():
-            if db_config.enable_position_trueskill:
-                position_id = queue_position.position_id
-            else:
-                position_id = None
-            pct = (
-                session.query(PlayerCategoryTrueskill)
-                .filter(
-                    PlayerCategoryTrueskill.player_id == player.id,
-                    PlayerCategoryTrueskill.category_id == queue.category_id,
-                    PlayerCategoryTrueskill.position_id == position_id,
-                )
-                .first()
+            pct = get_category_trueskill(
+                session,
+                db_config,
+                player.id,
+                queue.category_id,
+                queue_position.position_id,
             )
-            if not pct:
-                pct = (
-                    session.query(PlayerCategoryTrueskill)
-                    .filter(
-                        PlayerCategoryTrueskill.player_id == player.id,
-                        PlayerCategoryTrueskill.category_id == queue.category_id,
-                    )
-                    .first()
-                )
-            if pct:
-                player_category_trueskills.append(pct)
+            player_category_trueskills.append(pct)
     elif category:
         player_category_trueskills: list[PlayerCategoryTrueskill] = (
             session.query(PlayerCategoryTrueskill)

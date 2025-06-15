@@ -2105,6 +2105,87 @@ def flatten_list(l: list[list[any]]) -> list[any]:
     return [item for sublist in l for item in sublist]
 
 
+def get_category_trueskill(
+    session: SQLAlchemySession,
+    config: Config,
+    player_id: int,
+    category_id: str,
+    position_id: str | None = None,
+) -> PlayerCategoryTrueskill:
+    """
+    Fetch the appropriate category trueskill given the parameters.
+
+    This will create the appropriate PlayerCategoryTrueskill if not found.
+    """
+    if not config.enable_position_trueskill:
+        position_id = None
+
+    pct = (
+        session.query(PlayerCategoryTrueskill)
+        .filter(
+            PlayerCategoryTrueskill.player_id == player_id,
+            PlayerCategoryTrueskill.category_id == category_id,
+            PlayerCategoryTrueskill.position_id == position_id,
+        )
+        .first()
+    )
+    if pct:
+        return pct
+
+    # We couldn't find a matching PCT, so find the nearest parent and create
+    # a new one based on that
+    mu_to_use = config.default_trueskill_mu
+    sigma_to_use = config.default_trueskill_sigma
+
+    if position_id:
+        # This means that we couldn't find a PCT for this position, so lets
+        # try to find one without a position
+        positionless_pct = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(
+                PlayerCategoryTrueskill.player_id == player_id,
+                PlayerCategoryTrueskill.category_id == category_id,
+                PlayerCategoryTrueskill.position_id == None,
+            )
+            .first()
+        )
+        if positionless_pct:
+            mu_to_use = positionless_pct.mu
+            # Juice up the sigma so it can adjust quicker
+            sigma_to_use = min(
+                2 * positionless_pct.sigma, config.default_trueskill_sigma
+            )
+        else:
+            # We couldn't find a positionless one for the category, so use the global player one
+            # Assume this always exists
+            player: Player = (
+                session.query(Player).filter(Player.id == player_id).first()
+            )
+            mu_to_use = player.rated_trueskill_mu
+            sigma_to_use = min(
+                2 * player.rated_trueskill_sigma, config.default_trueskill_sigma
+            )
+    else:
+        # We couldn't find a positionless one for the category, so use the global player one
+        player: Player = session.query(Player).filter(Player.id == player_id).first()
+        mu_to_use = player.rated_trueskill_mu
+        sigma_to_use = min(
+            2 * player.rated_trueskill_sigma, config.default_trueskill_sigma
+        )
+
+    new_pct = PlayerCategoryTrueskill(
+        player_id=player_id,
+        category_id=category_id,
+        position_id=position_id,
+        mu=mu_to_use,
+        sigma=sigma_to_use,
+        rank=mu_to_use - 3 * sigma_to_use,
+        last_game_finished_at=datetime.now(timezone.utc),
+    )
+    session.add(new_pct)
+    session.commit()
+    return new_pct
+
 @dataclass
 class _MapForRandom:
     rotation_map_id: str
