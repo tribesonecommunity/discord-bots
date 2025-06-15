@@ -2203,6 +2203,7 @@ def get_category_trueskill(
     session: SQLAlchemySession,
     config: Config,
     player_id: int,
+    queue_enabled_map_trueskill: bool,
     category_id: str,
     map_id: str,
     position_id: str | None = None,
@@ -2214,7 +2215,7 @@ def get_category_trueskill(
     """
     if not config.enable_position_trueskill:
         position_id = None
-    if not config.enable_map_trueskill:
+    if not config.enable_map_trueskill or not queue_enabled_map_trueskill:
         map_id = None
 
     pct = (

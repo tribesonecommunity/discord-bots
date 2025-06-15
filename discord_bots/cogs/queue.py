@@ -1,23 +1,21 @@
 import logging
-import numpy
 from datetime import datetime, timedelta, timezone
+
+import numpy
+from discord import Colour, Embed, Interaction, Role, TextChannel, app_commands
+from discord.ext.commands import Bot
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord import (
-    app_commands,
-    Colour,
-    Embed,
-    Interaction,
-    Role,
-    TextChannel,
+from discord_bots.checks import (
+    is_admin_app_command,
+    is_command_channel,
+    is_mock_user_app_command,
 )
-from discord.ext.commands import Bot
-
-from discord_bots.checks import is_admin_app_command, is_command_channel, is_mock_user_app_command
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
+    ADMIN_LOG_CHANNEL,
     CURRENCY_AWARD,
     CURRENCY_NAME,
     ECONOMY_ENABLED,
@@ -763,34 +761,34 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(name="setsweaty", description="Make a queue sweaty")
-    @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
-    @app_commands.describe(queue_name="Name of queue")
-    async def setqueuesweaty(self, interaction: Interaction, queue_name: str):
-        """
-        Make a queue sweaty
-        """
-        session: SQLAlchemySession
-        with Session() as session:
-            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                queue.is_sweaty = True
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue.name} is now sweaty",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue not found: {queue_name}",
-                        colour=Colour.red(),
-                    ),
-                    ephemeral=True,
-                )
+    # @group.command(name="setsweaty", description="Make a queue sweaty")
+    # @app_commands.check(is_admin_app_command)
+    # @app_commands.check(is_command_channel)
+    # @app_commands.describe(queue_name="Name of queue")
+    # async def setqueuesweaty(self, interaction: Interaction, queue_name: str):
+    #     """
+    #     Make a queue sweaty
+    #     """
+    #     session: SQLAlchemySession
+    #     with Session() as session:
+    #         queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    #         if queue:
+    #             queue.is_sweaty = True
+    #             session.commit()
+    #             await interaction.response.send_message(
+    #                 embed=Embed(
+    #                     description=f"Queue {queue.name} is now sweaty",
+    #                     colour=Colour.green(),
+    #                 )
+    #             )
+    #         else:
+    #             await interaction.response.send_message(
+    #                 embed=Embed(
+    #                     description=f"Queue not found: {queue_name}",
+    #                     colour=Colour.red(),
+    #                 ),
+    #                 ephemeral=True,
+    #             )
 
     @group.command(
         name="setvotethreshold", description="Set the vote threshold for a queue"
@@ -1015,27 +1013,52 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(name="unsetsweaty", description="Make a queue not sweaty")
+    # @group.command(name="unsetsweaty", description="Make a queue not sweaty")
+    # @app_commands.check(is_admin_app_command)
+    # @app_commands.check(is_command_channel)
+    # @app_commands.describe(queue_name="Name of queue")
+    # async def unsetqueuesweaty(self, interaction: Interaction, queue_name: str):
+    #     """
+    #     Make a queue not sweaty
+    #     """
+    #     session: SQLAlchemySession
+    #     with Session() as session:
+    #         queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+    #         if queue:
+    #             queue.is_sweaty = False
+    #             session.commit()
+    #             await interaction.response.send_message(
+    #                 embed=Embed(
+    #                     description=f"Queue {queue.name} is no longer sweaty",
+    #                     colour=Colour.green(),
+    #                 )
+    #             )
+    #         else:
+    #             await interaction.response.send_message(
+    #                 embed=Embed(
+    #                     description=f"Queue not found: {queue_name}",
+    #                     colour=Colour.red(),
+    #                 ),
+    #                 ephemeral=True,
+    #             )
+
+    @group.command(
+        name="togglemaptrueskill",
+        description="Enable/disable map-based trueskill for this queue",
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
-    async def unsetqueuesweaty(self, interaction: Interaction, queue_name: str):
+    async def togglemaptrueskill(
+        self, interaction: Interaction, queue_name: str, option: bool
+    ):
         """
-        Make a queue not sweaty
+        Toggle map true skill
         """
         session: SQLAlchemySession
         with Session() as session:
-            queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
-            if queue:
-                queue.is_sweaty = False
-                session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"Queue {queue.name} is no longer sweaty",
-                        colour=Colour.green(),
-                    )
-                )
-            else:
+            queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
+            if not queue:
                 await interaction.response.send_message(
                     embed=Embed(
                         description=f"Queue not found: {queue_name}",
@@ -1043,6 +1066,18 @@ class QueueCommands(BaseCog):
                     ),
                     ephemeral=True,
                 )
+
+            queue.map_trueskill_enabled = option
+            session.commit()
+            embed = Embed(
+                description=f"Map-based trueskill for queue {queue.name} set to {option} by <@{interaction.user.id}>",
+                colour=Colour.green(),
+            )
+            await interaction.response.send_message(embed=embed)
+            if ADMIN_LOG_CHANNEL:
+                admin_log_channel = self.bot.get_channel(ADMIN_LOG_CHANNEL)
+                if isinstance(admin_log_channel, TextChannel):
+                    await admin_log_channel.send(embed=embed)
 
     @setqueuecategory.autocomplete("category_name")
     async def category_autocomplete(self, interaction: Interaction, current: str):
@@ -1060,6 +1095,8 @@ class QueueCommands(BaseCog):
                         )
         return result
 
+    # @setqueuesweaty.autocomplete("queue_name")
+    # @unsetqueuesweaty.autocomplete("queue_name")
     @addqueuerole.autocomplete("queue_name")
     @clearqueuecategory.autocomplete("queue_name")
     @clearqueue.autocomplete("queue_name")
@@ -1077,13 +1114,12 @@ class QueueCommands(BaseCog):
     @setqueuerange.autocomplete("queue_name")
     @setqueuerotation.autocomplete("queue_name")
     @setqueuesize.autocomplete("queue_name")
-    @setqueuesweaty.autocomplete("queue_name")
     @setqueuevotethreshold.autocomplete("queue_name")
     @showqueuerange.autocomplete("queue_name")
     @showqueuerotation.autocomplete("queue_name")
+    @togglemaptrueskill.autocomplete("queue_name")
     @unisolatequeue.autocomplete("queue_name")
     @unlockqueue.autocomplete("queue_name")
-    @unsetqueuesweaty.autocomplete("queue_name")
     async def queue_autocomplete(self, interaction: Interaction, current: str):
         result = []
         session: SQLAlchemySession

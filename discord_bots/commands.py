@@ -165,6 +165,7 @@ async def get_even_teams(
     queue_positions = (
         session.query(QueuePosition).filter(QueuePosition.queue_id == queue_id).all()
     )
+    queue = session.query(Queue).filter(Queue.id == queue_id).first()
 
     # Shuffling is important! This ensures captains and/or positions are randomly distributed!
     shuffle(players)
@@ -185,6 +186,7 @@ async def get_even_teams(
                 session,
                 db_config,
                 player.id,
+                queue.map_trueskill_enabled,
                 queue_category_id,
                 map_id,
                 queue_position.position_id,
@@ -198,6 +200,7 @@ async def get_even_teams(
                     session,
                     db_config,
                     player_id,
+                    queue.map_trueskill_enabled,
                     queue_category_id,
                     map_id,
                     None,
@@ -342,6 +345,7 @@ async def create_game(
                     session,
                     db_config,
                     player.id,
+                    queue.map_trueskill_enabled,
                     queue.category_id,
                     next_map.id,
                     queue_position.position_id,
@@ -1385,6 +1389,7 @@ async def _rebalance_game(
                 session,
                 db_config,
                 player.id,
+                queue.map_trueskill_enabled,
                 queue.category_id,
                 game.map_id,
                 queue_position.position_id,

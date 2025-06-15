@@ -1144,6 +1144,12 @@ class Queue:
     currency_award: int = field(
         default=None, metadata={"sa": Column(Integer, nullable=True)}
     )
+    map_trueskill_enabled: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
+    )
 
     rotation = relationship("Rotation", back_populates="queues")
 
