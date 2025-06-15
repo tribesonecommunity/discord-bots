@@ -465,6 +465,7 @@ class InProgressGameCommands(commands.Cog):
                 db_config,
                 ipgp.player_id,
                 queue.category_id,
+                in_progress_game.map_id,
                 ipgp.position_id,
             )
             player_category_trueskills.append(pct)

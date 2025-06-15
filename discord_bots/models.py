@@ -608,6 +608,9 @@ class InProgressGame:
     __tablename__ = "in_progress_game"
 
     average_trueskill: float = field(metadata={"sa": Column(Float, nullable=True)})
+    map_id: str = field(
+        metadata={"sa": Column(String, ForeignKey("map.id"), index=True)},
+    )
     map_full_name: str = field(metadata={"sa": Column(String, server_default="")})
     map_short_name: str = field(
         metadata={"sa": Column(String, index=True, server_default="")}
