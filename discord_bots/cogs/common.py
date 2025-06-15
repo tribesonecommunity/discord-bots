@@ -410,12 +410,12 @@ class CommonCommands(BaseCog):
                             x[2].name if x[2] else "",
                         ),
                     )
-                    if not config.enable_position_trueskill:
+                    if not config.enable_map_trueskill:
                         player_category_trueskills = filter(
-                            lambda x: x[2] is None,
+                            lambda x: x[1] is None,
                             player_category_trueskills,
                         )
-                    if not config.enable_map_trueskill:
+                    if not config.enable_position_trueskill:
                         player_category_trueskills = filter(
                             lambda x: x[2] is None,
                             player_category_trueskills,
