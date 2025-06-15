@@ -464,6 +464,7 @@ class InProgressGameCommands(commands.Cog):
                 session,
                 db_config,
                 ipgp.player_id,
+                queue.map_trueskill_enabled,
                 queue.category_id,
                 in_progress_game.map_id,
                 ipgp.position_id,
