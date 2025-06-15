@@ -754,6 +754,7 @@ class AdminCommands(BaseCog):
                 )
                 return
 
+            game.map_id = map.id
             game.map_full_name = map.full_name
             game.map_short_name = map.short_name
             session.commit()

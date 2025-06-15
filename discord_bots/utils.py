@@ -2110,6 +2110,7 @@ def get_category_trueskill(
     config: Config,
     player_id: int,
     category_id: str,
+    map_id: str,
     position_id: str | None = None,
 ) -> PlayerCategoryTrueskill:
     """
@@ -2119,6 +2120,8 @@ def get_category_trueskill(
     """
     if not config.enable_position_trueskill:
         position_id = None
+    if not config.enable_map_trueskill:
+        map_id = None
 
     pct = (
         session.query(PlayerCategoryTrueskill)
@@ -2126,6 +2129,7 @@ def get_category_trueskill(
             PlayerCategoryTrueskill.player_id == player_id,
             PlayerCategoryTrueskill.category_id == category_id,
             PlayerCategoryTrueskill.position_id == position_id,
+            PlayerCategoryTrueskill.map_id == map_id,
         )
         .first()
     )
@@ -2134,49 +2138,71 @@ def get_category_trueskill(
 
     # We couldn't find a matching PCT, so find the nearest parent and create
     # a new one based on that
-    mu_to_use = config.default_trueskill_mu
-    sigma_to_use = config.default_trueskill_sigma
+    mu_to_use = None
+    sigma_to_use = None
 
     if position_id:
-        # This means that we couldn't find a PCT for this position, so lets
-        # try to find one without a position
+        # Try to find a one with a map but no position
         positionless_pct = (
             session.query(PlayerCategoryTrueskill)
             .filter(
                 PlayerCategoryTrueskill.player_id == player_id,
                 PlayerCategoryTrueskill.category_id == category_id,
                 PlayerCategoryTrueskill.position_id == None,
+                PlayerCategoryTrueskill.map_id == map_id,
             )
             .first()
         )
         if positionless_pct:
             mu_to_use = positionless_pct.mu
-            # Juice up the sigma so it can adjust quicker
-            sigma_to_use = min(
-                2 * positionless_pct.sigma, config.default_trueskill_sigma
+            sigma_to_use = positionless_pct.sigma
+
+    elif map_id:
+        # Try to find a one with a position but no map
+        mapless_pct = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(
+                PlayerCategoryTrueskill.player_id == player_id,
+                PlayerCategoryTrueskill.category_id == category_id,
+                PlayerCategoryTrueskill.position_id == position_id,
+                PlayerCategoryTrueskill.map_id == None,
             )
-        else:
-            # We couldn't find a positionless one for the category, so use the global player one
-            # Assume this always exists
-            player: Player = (
-                session.query(Player).filter(Player.id == player_id).first()
+            .first()
+        )
+        if mapless_pct:
+            mu_to_use = mapless_pct.mu
+            sigma_to_use = mapless_pct.sigma
+
+    if mu_to_use is None and sigma_to_use is None:
+        # Try category alone, no position or map
+        category_only_pct = (
+            session.query(PlayerCategoryTrueskill)
+            .filter(
+                PlayerCategoryTrueskill.player_id == player_id,
+                PlayerCategoryTrueskill.category_id == category_id,
+                PlayerCategoryTrueskill.position_id == None,
+                PlayerCategoryTrueskill.map_id == None,
             )
-            mu_to_use = player.rated_trueskill_mu
-            sigma_to_use = min(
-                2 * player.rated_trueskill_sigma, config.default_trueskill_sigma
-            )
-    else:
-        # We couldn't find a positionless one for the category, so use the global player one
+            .first()
+        )
+        if category_only_pct:
+            mu_to_use = category_only_pct.mu
+            sigma_to_use = category_only_pct.sigma
+
+    # We couldn't find any player_category_trueskill, so use the global player one
+    if mu_to_use is None and sigma_to_use is None:
         player: Player = session.query(Player).filter(Player.id == player_id).first()
         mu_to_use = player.rated_trueskill_mu
-        sigma_to_use = min(
-            2 * player.rated_trueskill_sigma, config.default_trueskill_sigma
-        )
+        sigma_to_use = player.rated_trueskill_sigma
+
+    # Since this is a new PCT, juice up the sigma so it can adjust quicker
+    sigma_to_use = min(2 * sigma_to_use, config.default_trueskill_sigma)
 
     new_pct = PlayerCategoryTrueskill(
         player_id=player_id,
         category_id=category_id,
         position_id=position_id,
+        map_id=map_id,
         mu=mu_to_use,
         sigma=sigma_to_use,
         rank=mu_to_use - 3 * sigma_to_use,

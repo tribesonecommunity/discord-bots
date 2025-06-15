@@ -145,6 +145,7 @@ async def get_even_teams(
     player_ids: list[int],
     team_size: int,
     queue_id: str,
+    map_id: str,
     queue_category_id: str | None,
 ) -> tuple[list[Player], float, dict[Player, QueuePosition]]:
     """
@@ -185,6 +186,7 @@ async def get_even_teams(
                 db_config,
                 player.id,
                 queue_category_id,
+                map_id,
                 queue_position.position_id,
             )
             player_category_trueskills[player.id] = pct
@@ -197,6 +199,8 @@ async def get_even_teams(
                     db_config,
                     player_id,
                     queue_category_id,
+                    map_id,
+                    None,
                 )
                 player_category_trueskills[player_id] = pct
         all_combinations: list[list[Player]] = list(combinations(players, team_size))
@@ -272,6 +276,33 @@ async def create_game(
         if not queue:
             _log.error(f"[create_game] could not find queue with id {queue_id}")
             return
+
+        next_rotation_map: RotationMap | None = (
+            session.query(RotationMap)
+            .join(Rotation, Rotation.id == RotationMap.rotation_id)
+            .join(Queue, Queue.rotation_id == Rotation.id)
+            .filter(Queue.id == queue.id)
+            .filter(RotationMap.is_next == True)
+            .first()
+        )
+        if not next_rotation_map:
+            raise Exception("No next map!")
+
+        rolled_random_map = False
+        if next_rotation_map.is_random:
+            # Roll for random map
+            rolled_random_map = uniform(0, 1) < next_rotation_map.random_probability
+
+        next_map = None
+        if rolled_random_map:
+            maps: List[Map] = session.query(Map).all()
+            random_map = choice(maps)
+            next_map = random_map
+        else:
+            next_map: Map | None = (
+                session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
+            )
+
         if len(player_ids) == 1:
             # Useful for debugging, no real world application
             players = session.query(Player).filter(Player.id == player_ids[0]).all()
@@ -297,6 +328,7 @@ async def create_game(
                 player_ids,
                 len(player_ids) // 2,
                 queue.id,
+                next_map.id,
                 queue.category_id,
             )
         category = (
@@ -311,6 +343,7 @@ async def create_game(
                     db_config,
                     player.id,
                     queue.category_id,
+                    next_map.id,
                     queue_position.position_id,
                 )
                 player_category_trueskills.append(pct)
@@ -319,6 +352,7 @@ async def create_game(
                 session.query(PlayerCategoryTrueskill)
                 .filter(
                     PlayerCategoryTrueskill.category_id == category.id,
+                    PlayerCategoryTrueskill.map_id == map_id,
                     PlayerCategoryTrueskill.player_id.in_(player_ids),
                 )
                 .all()
@@ -328,38 +362,11 @@ async def create_game(
         else:
             average_trueskill = mean([x.rated_trueskill_mu for x in players])
 
-        next_rotation_map: RotationMap | None = (
-            session.query(RotationMap)
-            .join(Rotation, Rotation.id == RotationMap.rotation_id)
-            .join(Queue, Queue.rotation_id == Rotation.id)
-            .filter(Queue.id == queue.id)
-            .filter(RotationMap.is_next == True)
-            .first()
-        )
-        if not next_rotation_map:
-            raise Exception("No next map!")
-
-        rolled_random_map = False
-        if next_rotation_map.is_random:
-            # Roll for random map
-            rolled_random_map = uniform(0, 1) < next_rotation_map.random_probability
-
-        if rolled_random_map:
-            maps: List[Map] = session.query(Map).all()
-            random_map = choice(maps)
-            next_map_full_name = random_map.full_name
-            next_map_short_name = random_map.short_name
-        else:
-            next_map: Map | None = (
-                session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
-            )
-            next_map_full_name = next_map.full_name
-            next_map_short_name = next_map.short_name
-
         game = InProgressGame(
             average_trueskill=average_trueskill,
-            map_full_name=next_map_full_name,
-            map_short_name=next_map_short_name,
+            map_id=next_map.id,
+            map_full_name=next_map.full_name,
+            map_short_name=next_map.short_name,
             queue_id=queue.id,
             team0_name=generate_be_name(),
             team1_name=generate_ds_name(),
@@ -1326,7 +1333,9 @@ async def streams(ctx: Context):
 
 
 async def _rebalance_game(
-    game: InProgressGame, session: SQLAlchemySession, message: Message
+    game: InProgressGame,
+    session: SQLAlchemySession,
+    message: Message,
 ):
     """
     Recreate the players on each team - use this after subbing a player
@@ -1358,7 +1367,12 @@ async def _rebalance_game(
         win_prob = result[1]
     """
     players, win_prob, player_to_position = await get_even_teams(
-        session, player_ids, len(player_ids) // 2, queue.id, queue.category_id
+        session,
+        player_ids,
+        len(player_ids) // 2,
+        queue.id,
+        game.map_id,
+        queue.category_id,
     )
     for game_player in game_players:
         session.delete(game_player)
@@ -1372,6 +1386,7 @@ async def _rebalance_game(
                 db_config,
                 player.id,
                 queue.category_id,
+                game.map_id,
                 queue_position.position_id,
             )
             player_category_trueskills.append(pct)

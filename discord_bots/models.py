@@ -210,6 +210,13 @@ class Config:
             "sa": Column(Boolean, nullable=False, server_default=expression.false()),
         },
     )
+    # If enabled, the bot will use map-based trueskill for matchmaking,
+    enable_map_trueskill: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false()),
+        },
+    )
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
         init=False,
@@ -601,6 +608,9 @@ class InProgressGame:
     __tablename__ = "in_progress_game"
 
     average_trueskill: float = field(metadata={"sa": Column(Float, nullable=True)})
+    map_id: str = field(
+        metadata={"sa": Column(String, ForeignKey("map.id"), index=True)},
+    )
     map_full_name: str = field(metadata={"sa": Column(String, server_default="")})
     map_short_name: str = field(
         metadata={"sa": Column(String, index=True, server_default="")}
@@ -981,6 +991,11 @@ class PlayerCategoryTrueskill:
                 nullable=True,
                 index=True,
             )
+        },
+    )
+    map_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("map.id"), nullable=True, index=True)
         },
     )
     mu: float = field(metadata={"sa": Column(Float, nullable=False)})
