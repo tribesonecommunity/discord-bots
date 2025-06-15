@@ -48,6 +48,7 @@ from discord_bots.utils import (
     create_cancelled_game_embed,
     create_finished_game_embed,
     finished_game_str,
+    get_category_trueskill,
     get_n_best_finished_game_teams,
     get_n_best_teams,
     get_n_worst_finished_game_teams,
@@ -459,27 +460,14 @@ class InProgressGameCommands(commands.Cog):
 
         player_category_trueskills: list[PlayerCategoryTrueskill] = []
         for ipgp in in_progress_game_players:
-            if db_config.enable_position_trueskill:
-                pct = (
-                    session.query(PlayerCategoryTrueskill)
-                    .filter(
-                        PlayerCategoryTrueskill.player_id == ipgp.player_id,
-                        PlayerCategoryTrueskill.category_id == queue.category_id,
-                        PlayerCategoryTrueskill.position_id == ipgp.position_id,
-                    )
-                    .first()
-                )
-            else:
-                pct = (
-                    session.query(PlayerCategoryTrueskill)
-                    .filter(
-                        PlayerCategoryTrueskill.player_id == ipgp.player_id,
-                        PlayerCategoryTrueskill.category_id == queue.category_id,
-                    )
-                    .first()
-                )
-            if pct:
-                player_category_trueskills.append(pct)
+            pct = get_category_trueskill(
+                session,
+                db_config,
+                ipgp.player_id,
+                queue.category_id,
+                ipgp.position_id,
+            )
+            player_category_trueskills.append(pct)
 
         player_category_trueskills_by_id = {
             pct.player_id: pct for pct in player_category_trueskills
@@ -607,31 +595,14 @@ class InProgressGameCommands(commands.Cog):
                 player.rated_trueskill_mu = trueskill_rating.mu
                 player.rated_trueskill_sigma = trueskill_rating.sigma
 
-                # There's already an appropriate category/position trueskill so
-                # just update it
-                if player.id in player_category_trueskills_by_id:
-                    pct = player_category_trueskills_by_id[player.id]
-                    pct.mu = trueskill_rating.mu
-                    pct.sigma = trueskill_rating.sigma
-                    pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
-                    pct.last_game_finished_at = game_finished_at
-                else:
-                    # Write a new category/position trueskill
-                    if db_config.enable_position_trueskill:
-                        position_id = team_gip.position_id
-                    else:
-                        position_id = None
-                    session.add(
-                        PlayerCategoryTrueskill(
-                            player_id=player.id,
-                            category_id=queue.category_id,
-                            mu=trueskill_rating.mu,
-                            sigma=trueskill_rating.sigma,
-                            rank=trueskill_rating.mu - 3 * trueskill_rating.sigma,
-                            last_game_finished_at=game_finished_at,
-                            position_id=position_id,
-                        )
-                    )
+                # We assume that every player has a player_category_trueskill
+                # because get_category_trueskill is supposed to create it
+                pct = player_category_trueskills_by_id[player.id]
+                pct.mu = trueskill_rating.mu
+                pct.sigma = trueskill_rating.sigma
+                pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
+                pct.last_game_finished_at = game_finished_at
+                session.add(pct)
                 session.add(finished_game_player)
 
         update_ratings(
