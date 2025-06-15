@@ -68,9 +68,9 @@ from discord_bots.models import (
 _log = logging.getLogger(__name__)
 
 
-MU_LOWER_UNICODE = "\u03BC"
-SIGMA_LOWER_UNICODE = "\u03C3"
-DELTA_UPPER_UNICODE = "\u03B4"
+MU_LOWER_UNICODE = "\u03bc"
+SIGMA_LOWER_UNICODE = "\u03c3"
+DELTA_UPPER_UNICODE = "\u03b4"
 
 
 def build_category_str(category: Category) -> str:
@@ -80,8 +80,12 @@ def build_category_str(category: Category) -> str:
     output += "- _Sigma decay settings:_\n"
     output += f" - _Decay amount: {category.sigma_decay_amount}_\n"
     output += f" - _Grace days: {category.sigma_decay_grace_days}_\n"
-    output += f" - _Max decay proportion: {category.sigma_decay_max_decay_proportion}_\n"
-    output += f"- _Minimum games for leaderboard: {category.min_games_for_leaderboard}_\n"
+    output += (
+        f" - _Max decay proportion: {category.sigma_decay_max_decay_proportion}_\n"
+    )
+    output += (
+        f"- _Minimum games for leaderboard: {category.min_games_for_leaderboard}_\n"
+    )
     session: SQLAlchemySession
     with Session() as session:
         queue_names = [
@@ -1170,7 +1174,7 @@ def win_probability_matchmaking(team0: list[Rating], team1: list[Rating]) -> flo
     """
     mmu = lambda p: p.mu - config.MM_SIGMA_MULT * p.sigma
     delta_mu = sum(mmu(r) for r in team0) - sum(mmu(r) for r in team1)
-    sum_sigma = sum(r.sigma ** 2 for r in itertools.chain(team0, team1))
+    sum_sigma = sum(r.sigma**2 for r in itertools.chain(team0, team1))
     size = len(team0) + len(team1)
     denom = math.sqrt(size * config.DEFAULT_TRUESKILL_BETA**2 + sum_sigma)
     trueskill = global_env()
@@ -1184,7 +1188,7 @@ def win_probability(team0: list[Rating], team1: list[Rating]) -> float:
     Taken from https://trueskill.org/#win-probability
     """
     delta_mu = sum(r.mu for r in team0) - sum(r.mu for r in team1)
-    sum_sigma = sum(r.sigma ** 2 for r in itertools.chain(team0, team1))
+    sum_sigma = sum(r.sigma**2 for r in itertools.chain(team0, team1))
     size = len(team0) + len(team1)
     denom = math.sqrt(size * config.DEFAULT_TRUESKILL_BETA**2 + sum_sigma)
     trueskill = global_env()
@@ -1223,14 +1227,18 @@ async def execute_map_rotation(rotation_id: str, is_verbose: bool):
             rank_subquery = (
                 session.query(
                     RotationMapHistory.rotation_map_id,
-                    func.rank().over(order_by=RotationMapHistory.selected_at.desc()).label('rank'))
+                    func.rank()
+                    .over(order_by=RotationMapHistory.selected_at.desc())
+                    .label("rank"),
+                )
                 .filter(RotationMapHistory.rotation_id == rotation_id)
                 .subquery()
             )
             history = (
-                session.query(rank_subquery.c.rotation_map_id, func.min(rank_subquery.c.rank))
-                .group_by(
-                    rank_subquery.c.rotation_map_id)
+                session.query(
+                    rank_subquery.c.rotation_map_id, func.min(rank_subquery.c.rank)
+                )
+                .group_by(rank_subquery.c.rotation_map_id)
                 .all()
             )
 
@@ -1240,15 +1248,20 @@ async def execute_map_rotation(rotation_id: str, is_verbose: bool):
                     # rank for the currently selected map is 1
                     # subtract 1 from rank to get "maps inbetween"
                     maps_inbetween = [h[1] for h in history if h[0] == m.id][0] - 1
-                    eligible_since = max(0, maps_inbetween - rotation.min_maps_before_requeue)
+                    eligible_since = max(
+                        0, maps_inbetween - rotation.min_maps_before_requeue
+                    )
                 except IndexError:
                     eligible_since = history_length
 
-
-                weight = m.random_weight + math.floor(eligible_since * rotation.weight_increase)
+                weight = m.random_weight + math.floor(
+                    eligible_since * rotation.weight_increase
+                )
                 blocked = m.is_next or eligible_since == 0
                 maps_for_random.append(
-                    _MapForRandom(rotation_map_id=m.id, random_weight=weight, is_blocked=blocked)
+                    _MapForRandom(
+                        rotation_map_id=m.id, random_weight=weight, is_blocked=blocked
+                    )
                 )
 
             eligible_maps = [m for m in maps_for_random if not m.is_blocked]
@@ -1262,12 +1275,10 @@ async def execute_map_rotation(rotation_id: str, is_verbose: bool):
                     f"[execute_map_rotation] No map available for rotation {rotation.name} even when considering blocked maps."
                 )
                 return
-            following_rotation_map_id = (
-                choices(
-                    [x.rotation_map_id for x in eligible_maps],
-                    weights=[x.random_weight for x in eligible_maps]
-                )[0]
-            )
+            following_rotation_map_id = choices(
+                [x.rotation_map_id for x in eligible_maps],
+                weights=[x.random_weight for x in eligible_maps],
+            )[0]
         else:
             current_rotation_map: RotationMap | None = (
                 session.query(RotationMap)
@@ -1280,7 +1291,9 @@ async def execute_map_rotation(rotation_id: str, is_verbose: bool):
                 .filter(RotationMap.rotation_id == rotation_id)
                 .count()
             )
-            following_ordinal = current_rotation_map.ordinal + 1 if current_rotation_map else 1
+            following_ordinal = (
+                current_rotation_map.ordinal + 1 if current_rotation_map else 1
+            )
             if following_ordinal > rotation_map_length:
                 following_ordinal = 1
 
@@ -1319,10 +1332,9 @@ async def update_next_map(
             .filter(RotationMap.id == new_rotation_map_id)
             .one()
         )
-        session.query(RotationMap) \
-            .filter(RotationMap.rotation_id == rotation_id) \
-            .filter(RotationMap.is_next == True) \
-            .update({"is_next": False})
+        session.query(RotationMap).filter(
+            RotationMap.rotation_id == rotation_id
+        ).filter(RotationMap.is_next == True).update({"is_next": False})
         next_rotation_map.is_next = True
 
         history = RotationMapHistory(
@@ -1338,18 +1350,16 @@ async def update_next_map(
         )
         for map_vote in map_votes:
             session.delete(map_vote)
-        session.query(SkipMapVote) \
-            .filter(SkipMapVote.rotation_id == rotation_id) \
-            .delete()
+        session.query(SkipMapVote).filter(
+            SkipMapVote.rotation_id == rotation_id
+        ).delete()
         session.commit()
 
         channel = bot.get_channel(config.CHANNEL_ID)
         if isinstance(channel, discord.TextChannel):
             if is_verbose:
                 next_map: Map = (
-                    session.query(Map)
-                    .filter(Map.id == next_rotation_map.map_id)
-                    .one()
+                    session.query(Map).filter(Map.id == next_rotation_map.map_id).one()
                 )
                 affected_queues: list[Queue] = (
                     session.query(Queue).filter(Queue.rotation_id == rotation_id).all()
@@ -1960,6 +1970,7 @@ async def category_autocomplete_with_user_id(interaction: Interaction, current: 
                 PlayerCategoryTrueskill.player_id == interaction.user.id,
                 Category.is_rated,
             )
+            .distinct(Category.name)
             .order_by(Category.name)
             .limit(25)  # discord only supports up to 25 choices
             .all()
@@ -1986,6 +1997,8 @@ async def category_name_autocomplete_without_user_id(
     with Session() as session:
         categories: list[Category] | None = (
             session.query(Category)
+            .filter(Category.is_rated)
+            .distinct(Category.name)
             .order_by(Category.name)
             .limit(25)  # discord only supports up to 25 choices
             .all()
@@ -1999,6 +2012,85 @@ async def category_name_autocomplete_without_user_id(
                     discord.app_commands.Choice(
                         name=category.name,
                         value=category.name,
+                    )
+                )
+    return choices
+
+
+async def position_autocomplete_with_user_id(interaction: Interaction, current: str):
+    # useful for when you want to filter the positions based on the ones the author has games played in
+    choices = []
+    session: SQLAlchemySession
+    with Session() as session:
+        player_category_trueskills: list[PlayerCategoryTrueskill] = (
+            session.query(PlayerCategoryTrueskill)
+            .join(Category, Category.id == PlayerCategoryTrueskill.category_id)
+            .filter(
+                PlayerCategoryTrueskill.player_id == interaction.user.id,
+                PlayerCategoryTrueskill.position_id != None,
+                Category.is_rated,
+            )
+            .all()
+        )
+        position_ids: list[str] = [
+            pct.position_id for pct in player_category_trueskills
+        ]
+        result = (
+            session.query(Position)
+            .filter(
+                Position.id.in_(position_ids),
+            )
+            .distinct(Position.name)
+            .order_by(Position.name)
+            .limit(25)  # discord only supports up to 25 choices
+            .all()
+        )
+        positions: list[Position] = result if result else []
+        current_casefold = current.casefold()
+        for position in positions:
+            if current_casefold in position.name.casefold():
+                choices.append(
+                    discord.app_commands.Choice(
+                        name=position.name,
+                        value=position.short_name,
+                    )
+                )
+    return choices
+
+
+async def map_autocomplete_with_user_id(interaction: Interaction, current: str):
+    # useful for when you want to filter the maps based on the ones the author has games played in
+    choices = []
+    session: SQLAlchemySession
+    with Session() as session:
+        player_category_trueskills: list[PlayerCategoryTrueskill] = (
+            session.query(PlayerCategoryTrueskill)
+            .join(Category, Category.id == PlayerCategoryTrueskill.category_id)
+            .filter(
+                PlayerCategoryTrueskill.player_id == interaction.user.id,
+                PlayerCategoryTrueskill.map_id != None,
+                Category.is_rated,
+            )
+            .limit(25)  # discord only supports up to 25 choices
+            .all()
+        )
+        map_ids: list[str] = [pct.map_id for pct in player_category_trueskills]
+        result = (
+            session.query(Map)
+            .filter(Map.id.in_(map_ids))
+            .distinct(Map.full_name)
+            .order_by(Map.full_name)
+            .limit(25)  # discord only supports up to 25 choices
+            .all()
+        )
+        maps: list[Map] = result if result else []
+        current_casefold = current.casefold()
+        for map in maps:
+            if current_casefold in map.full_name.casefold():
+                choices.append(
+                    discord.app_commands.Choice(
+                        name=map.full_name,
+                        value=map.full_name,
                     )
                 )
     return choices
@@ -2091,7 +2183,9 @@ def get_team_voice_channels(
         .all()
     )
     for ipg_channel in ipg_channels or []:
-        discord_channel: discord.abc.GuildChannel | None = guild.get_channel(ipg_channel.channel_id)
+        discord_channel: discord.abc.GuildChannel | None = guild.get_channel(
+            ipg_channel.channel_id
+        )
         if isinstance(discord_channel, VoiceChannel):
             # This is suboptimal and fragile solution but it's good enough for now. We should keep track of each team's VC in the database
             if in_progress_game.team0_name in discord_channel.name:
@@ -2211,6 +2305,7 @@ def get_category_trueskill(
     session.add(new_pct)
     session.commit()
     return new_pct
+
 
 @dataclass
 class _MapForRandom:
