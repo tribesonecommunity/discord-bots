@@ -356,7 +356,7 @@ async def create_game(
                 session.query(PlayerCategoryTrueskill)
                 .filter(
                     PlayerCategoryTrueskill.category_id == category.id,
-                    PlayerCategoryTrueskill.map_id == map_id,
+                    PlayerCategoryTrueskill.map_id == next_map.id,
                     PlayerCategoryTrueskill.player_id.in_(player_ids),
                 )
                 .all()
