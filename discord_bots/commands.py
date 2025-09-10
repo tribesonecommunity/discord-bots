@@ -310,6 +310,9 @@ async def create_game(
             # Useful for debugging, no real world application
             players = session.query(Player).filter(Player.id == player_ids[0]).all()
             win_prob = 0.0
+            player_to_position = (
+                {}
+            )  # TODO: Should get the position, but not immediate need right now
         else:
             """
             # run get_even_teams in a separate process, so that it doesn't block the event loop
@@ -568,14 +571,17 @@ async def add_player_to_queue(
                 )
                 .first()
             )
-        player_mu = player.rated_trueskill_mu
+        # TODO: This should be done in the calling function so that the user can given a proper message indicating that they don't meet the requirements
+        player_rank = player.rated_trueskill_mu - (3 * player.rated_trueskill_sigma)
         if player_category_trueskill:
-            player_mu = player_category_trueskill.mu
-        if queue.mu_max is not None:
-            if player_mu > queue.mu_max:
+            player_rank = player_category_trueskill.mu - (
+                3 * player_category_trueskill.sigma
+            )
+        if queue.rank_max is not None:
+            if player_rank > queue.rank_max:
                 return False, False
-        if queue.mu_min is not None:
-            if player_mu < queue.mu_min:
+        if queue.rank_min is not None:
+            if player_rank < queue.rank_min:
                 return False, False
 
         session.add(
