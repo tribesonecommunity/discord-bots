@@ -148,20 +148,22 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(name="clearrange", description="Clear the mu range for a queue")
+    @group.command(
+        name="clearrange", description="Clear the Trueskill Rank range for a queue"
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def clearqueuerange(self, interaction: Interaction, queue_name: str):
         """
-        Clear the mu range for a queue
+        Clear the Trueskill Rank range for a queue
         """
         session: SQLAlchemySession
         with Session() as session:
             queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
             if queue:
-                queue.mu_min = None
-                queue.mu_max = None
+                queue.rank_min = None
+                queue.rank_max = None
                 session.commit()
                 await interaction.response.send_message(
                     embed=Embed(
@@ -640,24 +642,26 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(name="setrange", description="Set the mu range for a queue")
+    @group.command(
+        name="setrange", description="Set the Trueskill Rank range for a queue"
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(
-        queue_name="Name of queue", min="Minimum mu", max="Maximum mu"
+        queue_name="Name of queue", min="Minimum Rank", max="Maximum Rank"
     )
     async def setqueuerange(
         self, interaction: Interaction, queue_name: str, min: float, max: float
     ):
         """
-        Set the mu range for a queue
+        Set the TS Rank range for a queue
         """
         session: SQLAlchemySession
         with Session() as session:
             queue: Queue = session.query(Queue).filter(Queue.name.ilike(queue_name)).first()  # type: ignore
             if queue:
-                queue.mu_min = min
-                queue.mu_max = max
+                queue.rank_min = min
+                queue.rank_max = max
                 session.commit()
                 await interaction.response.send_message(
                     embed=Embed(
@@ -847,7 +851,7 @@ class QueueCommands(BaseCog):
                 return
             await interaction.response.send_message(
                 embed=Embed(
-                    description=f"Queue range: [{queue.mu_min}, {queue.mu_max}]",
+                    description=f"Queue range: [{queue.rank_min}, {queue.rank_max}]",
                     colour=Colour.blue(),
                 )
             )
