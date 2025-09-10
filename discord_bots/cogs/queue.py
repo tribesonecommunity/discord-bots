@@ -44,9 +44,23 @@ class QueueCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    group = app_commands.Group(name="queue", description="Queue commands")
+    queue_group = app_commands.Group(name="queue", description="Queue commands")
+    config_group = app_commands.Group(
+        name="config", parent=queue_group, description="Configuration Commands"
+    )
+    show_group = app_commands.Group(
+        name="show", parent=queue_group, description="Display Commands"
+    )
+    clear_group = app_commands.Group(
+        name="clear", parent=queue_group, description="Clear Commands"
+    )
+    dev_group = app_commands.Group(
+        name="dev", parent=queue_group, description="Development Commands"
+    )
 
-    @group.command(name="addrole", description="Associate a discord role with a queue")
+    @config_group.command(
+        name="role", description="Associate a discord role with a queue"
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", role="Discord role")
@@ -87,7 +101,7 @@ class QueueCommands(BaseCog):
                     )
                 )
 
-    @group.command(name="clearcategory", description="Remove category from queue")
+    @clear_group.command(name="category", description="Remove category from queue")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of existing queue")
@@ -117,7 +131,7 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(name="clear", description="Clear all players out of a queue")
+    @clear_group.command(name="players", description="Clear all players out of a queue")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
@@ -148,8 +162,8 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(
-        name="clearrange", description="Clear the Trueskill Rank range for a queue"
+    @clear_group.command(
+        name="range", description="Clear the Trueskill Rank range for a queue"
     )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
@@ -180,7 +194,7 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(name="create", description="Create a queue")
+    @queue_group.command(name="create", description="Create a queue")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", size="Size of queue")
@@ -212,7 +226,7 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(name="isolate", description="Isolate a queue (no auto-adds)")
+    @queue_group.command(name="isolate", description="Isolate a queue (no auto-adds)")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
@@ -241,7 +255,9 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(name="lock", description="Prevent players from adding to a queue")
+    @queue_group.command(
+        name="lock", description="Prevent players from adding to a queue"
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
@@ -273,7 +289,7 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(
+    @dev_group.command(
         name="mock",
         description="Helper test method for adding random players to queues",
     )
@@ -337,7 +353,7 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(name="remove", description="Remove a queue")
+    @queue_group.command(name="remove", description="Remove a queue")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
@@ -381,7 +397,9 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(name="removerole", description="Remove a discord role from a queue")
+    @queue_group.command(
+        name="removerole", description="Remove a discord role from a queue"
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", role="Discord role")
@@ -443,7 +461,9 @@ class QueueCommands(BaseCog):
                 )
                 session.commit()
 
-    @group.command(name="setcategory", description="Set category on queue")
+    @config_group.command(
+        name="category", description="Configure the category of a queue"
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(
@@ -491,7 +511,7 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(
+    @config_group.command(
         name="currencyaward",
         description="Set how much currency is awarded for games in queue",
     )
@@ -541,8 +561,8 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(
-        name="moveenabled",
+    @config_group.command(
+        name="voicemove",
         description="Enables automatic moving of people in game when queue pops",
     )
     @app_commands.check(is_admin_app_command)
@@ -597,7 +617,7 @@ class QueueCommands(BaseCog):
                     )
                 )
 
-    @group.command(name="setname", description="Set queue name")
+    @config_group.command(name="name", description="Set queue name")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(
@@ -611,7 +631,7 @@ class QueueCommands(BaseCog):
         """
         await self.setname(interaction, Queue, old_queue_name, new_queue_name)
 
-    @group.command(name="setordinal", description="Set queue ordinal")
+    @config_group.command(name="ordinal", description="Set queue ordinal")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", ordinal="Queue ordinal")
@@ -642,8 +662,8 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(
-        name="setrange", description="Set the Trueskill Rank range for a queue"
+    @config_group.command(
+        name="range", description="Configure the Trueskill Rank range for a queue"
     )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
@@ -678,7 +698,9 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(name="setrotation", description="Assign a map rotation to a queue")
+    @config_group.command(
+        name="rotation", description="Assign a map rotation to a queue"
+    )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue", rotation_name="Name of rotation")
@@ -727,8 +749,8 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(
-        name="setsize",
+    @config_group.command(
+        name="size",
         description="Set the number of players to pop a queue.  Also updates queue vote threshold.",
     )
     @app_commands.check(is_admin_app_command)
@@ -794,8 +816,8 @@ class QueueCommands(BaseCog):
     #                 ephemeral=True,
     #             )
 
-    @group.command(
-        name="setvotethreshold", description="Set the vote threshold for a queue"
+    @config_group.command(
+        name="votethreshold", description="Set the vote threshold for a queue"
     )
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
@@ -830,7 +852,7 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(name="showrange", description="Show the mu range for a queue")
+    @show_group.command(name="range", description="Displays the mu range")
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def showqueuerange(self, interaction: Interaction, queue_name: str):
@@ -856,9 +878,7 @@ class QueueCommands(BaseCog):
                 )
             )
 
-    @group.command(
-        name="showrotation", description="Show the map rotation assigned to a queue"
-    )
+    @show_group.command(name="rotation", description="Displays the map rotation")
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def showqueuerotation(self, interaction: Interaction, queue_name: str):
@@ -953,7 +973,7 @@ class QueueCommands(BaseCog):
                 ephemeral=False,  # leaving as False for now, since it may be useful for other users to see
             )
 
-    @group.command(
+    @queue_group.command(
         name="unisolate",
         description="Unisolate a queue (rated, map rotation, auto-adds)",
     )
@@ -985,7 +1005,7 @@ class QueueCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(name="unlock", description="Allow players to add to a queue")
+    @queue_group.command(name="unlock", description="Allow players to add to a queue")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(queue_name="Name of queue")
@@ -1046,8 +1066,8 @@ class QueueCommands(BaseCog):
     #                 ephemeral=True,
     #             )
 
-    @group.command(
-        name="togglemaptrueskill",
+    @config_group.command(
+        name="maptrueskill",
         description="Enable/disable map-based trueskill for this queue",
     )
     @app_commands.check(is_admin_app_command)
