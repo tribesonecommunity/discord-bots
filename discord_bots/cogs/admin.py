@@ -47,6 +47,8 @@ from discord_bots.utils import (
     queue_autocomplete,
 )
 
+from discord_bots.views.embed_builder_view import EmbedBuilderView
+
 _log = logging.getLogger(__name__)
 
 
@@ -54,9 +56,28 @@ class AdminCommands(BaseCog):
     def __init__(self, bot: Bot):
         super().__init__(bot)
 
-    group = app_commands.Group(name="admin", description="Admin commands")
+    admin_group = app_commands.Group(name="admin", description="Admin commands")
+    create_group = app_commands.Group(
+        name="create", parent=admin_group, description="Creation commands"
+    )
 
-    @group.command(name="add", description="Add an admin")
+    @create_group.command(
+        name="embed", description="Create a custom embed in this channel"
+    )
+    @app_commands.check(is_admin_app_command)
+    async def create_embed(self, interaction: Interaction):
+        view = EmbedBuilderView()
+        embed = view.create_embed()
+        await interaction.response.send_message(
+            content="Embed Builder: Use the buttons below to customize your embed.",
+            embed=embed,
+            view=view,
+            ephemeral=True,
+        )
+        # Store reference to the original message for updates
+        view.original_message = await interaction.original_response()
+
+    @admin_group.command(name="add", description="Add an admin")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be made admin")
@@ -99,7 +120,7 @@ class AdminCommands(BaseCog):
                     )
                     session.commit()
 
-    @group.command(name="addrole", description="Add an admin role")
+    @admin_group.command(name="addrole", description="Add an admin role")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(role="Role to be made admin")
@@ -139,7 +160,7 @@ class AdminCommands(BaseCog):
                     )
                     session.commit()
 
-    @group.command(name="ban", description="Bans player from queues")
+    @admin_group.command(name="ban", description="Bans player from queues")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be banned")
@@ -186,7 +207,7 @@ class AdminCommands(BaseCog):
                         )
                     )
 
-    @group.command(
+    @admin_group.command(
         name="configure", description="Initially configure the bot for this server"
     )
     @app_commands.check(is_admin_app_command)
@@ -222,7 +243,7 @@ class AdminCommands(BaseCog):
                 )
                 session.commit()
 
-    @group.command(description="Create or Edit a custom command")
+    @admin_group.command(description="Create or Edit a custom command")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(name="New or Existing command name")
@@ -234,7 +255,7 @@ class AdminCommands(BaseCog):
             await interaction.response.send_modal(custom_command_modal)
             await custom_command_modal.wait()
 
-    @group.command(
+    @admin_group.command(
         name="createdbbackup", description="Creates a backup of the database"
     )
     @app_commands.check(is_admin_app_command)
@@ -264,7 +285,7 @@ class AdminCommands(BaseCog):
             ephemeral=True,
         )
 
-    @group.command(name="deletegame", description="Deletes a finished game")
+    @admin_group.command(name="deletegame", description="Deletes a finished game")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(game_id="Finished game id")
@@ -297,7 +318,7 @@ class AdminCommands(BaseCog):
             )
             session.commit()
 
-    @group.command(
+    @admin_group.command(
         name="delplayer", description="Admin command to delete player from all queues"
     )
     @app_commands.check(is_admin_app_command)
@@ -347,7 +368,7 @@ class AdminCommands(BaseCog):
                 embed.color = discord.Color.yellow()
                 await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @group.command(
+    @admin_group.command(
         name="editgamewinner", description="Edit the winner of a finished game"
     )
     @app_commands.check(is_admin_app_command)
@@ -403,7 +424,7 @@ class AdminCommands(BaseCog):
             )
             session.commit()
 
-    @group.command(name="remove", description="Remove an admin")
+    @admin_group.command(name="remove", description="Remove an admin")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be removed as admin")
@@ -429,7 +450,7 @@ class AdminCommands(BaseCog):
             )
             session.commit()
 
-    @group.command(name="removerole", description="Remove an admin role")
+    @admin_group.command(name="removerole", description="Remove an admin role")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.guild_only()
@@ -472,7 +493,7 @@ class AdminCommands(BaseCog):
                     ephemeral=True,
                 )
 
-    @group.command(name="removecommand", description="Remove a custom command")
+    @admin_group.command(name="removecommand", description="Remove a custom command")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(name="Name of existing custom command")
@@ -506,7 +527,7 @@ class AdminCommands(BaseCog):
                 f"[removecommand] Command {name} removed by {interaction.user.name} ({interaction.user.id})"
             )
 
-    @group.command(name="removedbbackup", description="Remove a database backup")
+    @admin_group.command(name="removedbbackup", description="Remove a database backup")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(db_filename="Name of backup file")
@@ -557,7 +578,7 @@ class AdminCommands(BaseCog):
                 )
             )
 
-    @group.command(name="restart", description="Restart the bot")
+    @admin_group.command(name="restart", description="Restart the bot")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     async def restart(self, interaction: Interaction):
@@ -569,7 +590,7 @@ class AdminCommands(BaseCog):
         )
         os.execv(sys.executable, ["python", "-m", "discord_bots.main"])
 
-    @group.command(name="setbias", description="Set team bias")
+    @admin_group.command(name="setbias", description="Set team bias")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Member to bias", amount="Bias value")
@@ -590,7 +611,7 @@ class AdminCommands(BaseCog):
             )
         )
 
-    @group.command(name="setcaptainbias", description="Set captain bias")
+    @admin_group.command(name="setcaptainbias", description="Set captain bias")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Member to bias", amount="Bias value")
@@ -613,7 +634,7 @@ class AdminCommands(BaseCog):
             )
         )
 
-    @group.command(
+    @admin_group.command(
         name="setcommandprefix", description="Sets the prefix for context commands"
     )
     @app_commands.check(is_admin_app_command)
@@ -630,7 +651,7 @@ class AdminCommands(BaseCog):
             )
         )
 
-    @group.command(name="unban", description="Unban player")
+    @admin_group.command(name="unban", description="Unban player")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be unbanned")
@@ -657,7 +678,7 @@ class AdminCommands(BaseCog):
             )
             session.commit()
 
-    @group.command(
+    @admin_group.command(
         name="resetleaderboard", description="Resets & updates the leaderboards"
     )
     @app_commands.check(is_command_channel)
@@ -698,7 +719,7 @@ class AdminCommands(BaseCog):
                 ephemeral=True,
             )
 
-    @group.command(description="Set the map for a game")
+    @admin_group.command(description="Set the map for a game")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(game_id="In progress game id", map_short_name="Map name")
@@ -765,7 +786,7 @@ class AdminCommands(BaseCog):
                 )
             )
 
-    @group.command(
+    @admin_group.command(
         description="Set the map for a queue (note: affects all queues sharing the same rotation)",
     )
     @app_commands.check(is_admin_app_command)
@@ -850,7 +871,7 @@ class AdminCommands(BaseCog):
                 ephemeral=True
             )
 
-    @group.command(name="cancel", description="Cancels the specified game")
+    @admin_group.command(name="cancel", description="Cancels the specified game")
     @app_commands.check(is_admin_app_command)
     @app_commands.check(is_command_channel)
     @app_commands.describe(game_id="The game ID")
