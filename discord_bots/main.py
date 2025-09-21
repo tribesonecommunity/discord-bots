@@ -1,15 +1,21 @@
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 
-import sqlalchemy
+import discord
 from discord import Colour, Embed, Interaction, Member, Message, Reaction
 from discord.abc import User
 from discord.app_commands import AppCommandError, errors
-from discord.ext.commands import CommandError, Context, UserInputError
+from discord.ext.commands import CommandError, CommandNotFound, Context, UserInputError
 from trueskill import setup as trueskill_setup
 
 import discord_bots.config as config
+from discord_bots.async_db_utils import (
+    async_delete_by_id,
+    async_query_first,
+    async_session,
+)
 from discord_bots.cogs.admin import AdminCommands
 from discord_bots.cogs.category import CategoryCommands
 from discord_bots.cogs.common import CommonCommands
@@ -29,9 +35,11 @@ from discord_bots.cogs.rotation import RotationCommands
 from discord_bots.cogs.schedule import ScheduleCommands, ScheduleUtils
 from discord_bots.cogs.trueskill import TrueskillCommands
 from discord_bots.cogs.vote import VoteCommands
+from discord_bots.utils import utc_now_naive
 
 from .bot import bot
 from .models import (
+    AsyncSessionLocal,
     Config,
     CustomCommand,
     Player,
@@ -55,9 +63,11 @@ _log = logging.getLogger(__name__)
 
 
 async def create_seed_admins():
-    with Session() as session:
+    async with async_session() as session:
         for seed_admin_id in config.SEED_ADMIN_IDS:
-            player = session.query(Player).filter(Player.id == seed_admin_id).first()
+            player = await async_query_first(
+                session, Player, Player.id == seed_admin_id
+            )
             if player:
                 player.is_admin = True
             else:
@@ -66,11 +76,11 @@ async def create_seed_admins():
                         id=seed_admin_id,
                         is_admin=True,
                         name="AUTO_GENERATED_ADMIN",
-                        last_activity_at=datetime.now(timezone.utc),
+                        last_activity_at=utc_now_naive(),
                         currency=config.STARTING_CURRENCY,
                     )
                 )
-        session.commit()
+        await session.commit()
 
 
 @bot.event
@@ -129,13 +139,27 @@ async def on_command_error(ctx: Context, error: CommandError):
                     colour=Colour.red(),
                 )
             )
+    elif isinstance(error, CommandNotFound):
+        # Handle custom commands when built-in command is not found
+        command_name = ctx.message.content.split(" ")[0][1:]  # Remove prefix
+        try:
+            async with async_session() as session:
+                custom_command: CustomCommand | None = await async_query_first(
+                    session, CustomCommand, CustomCommand.name == command_name
+                )
+                if custom_command:
+                    await ctx.channel.send(content=custom_command.output)
+        except Exception as e:
+            _log.error(
+                f"[on_command_error]: Error checking custom command '{command_name}': {e}"
+            )
     else:
         if ctx.command:
-            _log.exception(
+            _log.warning(
                 f"[on_command_error]: Ignoring exception in command {ctx.command.name}: {error}"
             )
         else:
-            _log.exception(f"[on_command_error]: Ignoring exception: {error}")
+            _log.warning(f"[on_command_error]: Ignoring exception: {error}")
 
 
 @bot.event
@@ -162,13 +186,12 @@ async def on_message(message: Message):
     if (config.CHANNEL_ID and message.channel.id == config.CHANNEL_ID) or (
         config.LEADERBOARD_CHANNEL and message.channel.id == config.LEADERBOARD_CHANNEL
     ):
-        session: sqlalchemy.orm.Session
-        with Session() as session:
-            player: Player | None = (
-                session.query(Player).filter(Player.id == message.author.id).first()
+        async with async_session() as session:
+            player: Player | None = await async_query_first(
+                session, Player, Player.id == message.author.id
             )
             if player:
-                player.last_activity_at = datetime.now(timezone.utc)
+                player.last_activity_at = utc_now_naive()
                 if player.name != message.author.display_name:
                     player.name = message.author.display_name
             else:
@@ -176,60 +199,47 @@ async def on_message(message: Message):
                     Player(
                         id=message.author.id,
                         name=message.author.display_name,
-                        last_activity_at=datetime.now(timezone.utc),
+                        last_activity_at=utc_now_naive(),
                         currency=config.STARTING_CURRENCY,
                     )
                 )
-            session.commit()
-        await bot.process_commands(message)
+            await session.commit()
+        try:
+            await bot.process_commands(message)
+        except Exception as e:
+            _log.error(f"[on_message] Error processing command: {e}")
 
-        # Custom commands below
-        if not message.content.startswith(config.COMMAND_PREFIX):
-            return
-
-        bot_commands = {command.name for command in bot.commands}
-        command_name = message.content.split(" ")[0][1:]
-        with Session() as session:
-            if command_name not in bot_commands:
-                custom_command: CustomCommand | None = (
-                    session.query(CustomCommand)
-                    .filter(CustomCommand.name == command_name)
-                    .first()
-                )
-                if custom_command:
-                    await message.channel.send(content=custom_command.output)
+        # Custom commands are now handled in on_command_error() for CommandNotFound
 
 
 @bot.event
 async def on_reaction_add(reaction: Reaction, user: User | Member):
-    session: sqlalchemy.orm.Session
-    with Session() as session:
-        player: Player | None = (
-            session.query(Player).filter(Player.id == user.id).first()
+    async with async_session() as session:
+        player: Player | None = await async_query_first(
+            session, Player, Player.id == user.id
         )
         if player:
-            player.last_activity_at = datetime.now(timezone.utc)
+            player.last_activity_at = utc_now_naive()
             player.name = user.display_name
-            session.commit()
+            await session.commit()
         else:
             session.add(
                 Player(
-                    id=reaction.message.author.id,
-                    name=reaction.message.author.display_name,
-                    last_activity_at=datetime.now(timezone.utc),
+                    id=user.id,
+                    name=user.display_name,
+                    last_activity_at=utc_now_naive(),
                     currency=config.STARTING_CURRENCY,
                 )
             )
-
+            await session.commit()
 
 @bot.event
 async def on_member_join(member: Member):
-    session: sqlalchemy.orm.Session
-    with Session() as session:
-        player = session.query(Player).filter(Player.id == member.id).first()
+    async with async_session() as session:
+        player = await async_query_first(session, Player, Player.id == member.id)
         if player:
             player.name = member.name
-            session.commit()
+            await session.commit()
         else:
             session.add(
                 Player(
@@ -238,40 +248,41 @@ async def on_member_join(member: Member):
                     currency=config.STARTING_CURRENCY,
                 )
             )
-            session.commit()
+            await session.commit()
 
 
 @bot.event
 async def on_member_remove(member: Member):
-    session: sqlalchemy.orm.Session
-    with Session() as session:
-        session.query(QueuePlayer).filter(QueuePlayer.player_id == member.id).delete()
-        session.query(QueueWaitlistPlayer).filter(
-            QueueWaitlistPlayer.player_id == member.id
-        ).delete()
-        session.commit()
+    async with async_session() as session:
+        await async_delete_by_id(session, QueuePlayer, member.id)
+        await async_delete_by_id(session, QueueWaitlistPlayer, member.id)
+        await session.commit()
 
 
 @bot.before_invoke
 async def before_invoke(context: Context):
     session = Session()
     context.session = session
+    if AsyncSessionLocal:
+        context.asyncSession = AsyncSessionLocal()
 
 
 @bot.after_invoke
 async def after_invoke(context: Context):
     context.session.close()
+    if context.asyncSession:
+        await context.asyncSession.close()
 
 
-def init_config():
-    with Session() as session:
-        config = session.query(Config).first()
+async def init_config():
+    async with async_session() as session:
+        config = await async_query_first(session, Config)
         if config:
             return
 
         config = Config()
         session.add(config)
-        session.commit()
+        await session.commit()
 
 
 async def setup():
@@ -305,14 +316,15 @@ async def setup():
     if config.ECONOMY_ENABLED:
         prediction_task.start()
     sigma_decay_task.start()
-    init_config()
-    with Session() as session:
-        db_config = session.query(Config).first()
-        trueskill_setup(
-            mu=db_config.default_trueskill_mu,
-            sigma=db_config.default_trueskill_sigma,
-            tau=db_config.default_trueskill_tau,
-        )
+    await init_config()
+    async with async_session() as session:
+        db_config = await async_query_first(session, Config)
+        if db_config:
+            trueskill_setup(
+                mu=db_config.default_trueskill_mu,
+                sigma=db_config.default_trueskill_sigma,
+                tau=db_config.default_trueskill_tau,
+            )
 
 
 async def main():
