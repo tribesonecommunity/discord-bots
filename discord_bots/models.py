@@ -19,8 +19,9 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncSession  # type: ignore
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.ext.hybrid import hybrid_property
-
 # pylance issue with sqlalchemy:
 # https://github.com/microsoft/pylance-release/issues/845
 from sqlalchemy.orm import relationship  # type: ignore
@@ -41,9 +42,25 @@ else:
 
 # RDS free tier has max 81 connections
 if db_url.startswith("postgresql://"):
+    # Postgres configuration - support both sync and async
     engine = create_engine(db_url, echo=False, pool_size=40, max_overflow=50)
+
+    # Convert postgresql:// to postgresql+asyncpg:// for async support
+    # Doesn't require any new .env variables
+    async_db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+    async_engine = create_async_engine(
+        async_db_url, echo=False, pool_size=40, max_overflow=50
+    )
 else:
+    # SQLite configuration - support both sync and async
     engine = create_engine(db_url, echo=False, connect_args={"timeout": 15})
+
+    # Convert sqlite:/// to sqlite+aiosqlite:/// for async support
+    # Doesn't require any new .env variables
+    async_db_url = db_url.replace("sqlite://", "sqlite+aiosqlite://")
+    async_engine = create_async_engine(
+        async_db_url, echo=False, connect_args={"timeout": 15}
+    )
 naming_convention = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -1682,3 +1699,10 @@ class VotePassedWaitlistPlayer:
 
 Session: sessionmaker = sessionmaker(bind=engine)
 ScopedSession = scoped_session(Session)
+
+# Async session factory
+AsyncSessionLocal = (
+    async_sessionmaker(bind=async_engine, expire_on_commit=False)
+    if async_engine
+    else None
+)

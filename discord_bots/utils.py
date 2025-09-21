@@ -571,6 +571,17 @@ def short_uuid(uuid: str) -> str:
     return uuid.split("-")[0]
 
 
+def utc_now_naive() -> datetime:
+    """
+    Get current UTC time as timezone-naive datetime.
+
+    Returns timezone-naive datetime representing current UTC time.
+    Safe for database storage in TIMESTAMP WITHOUT TIME ZONE columns.
+    Use this for all database timestamp fields to ensure consistency.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 async def upload_stats_screenshot_selenium(ctx: Context, cleanup=True):
     # Assume the most recently modified HTML file is the correct stat sheet
     if not config.STATS_DIR:
@@ -1400,8 +1411,11 @@ async def send_in_guild_message(
         if member:
             try:
                 await member.send(content=message_content, embed=embed)
-            except Exception:
-                _log.exception("[send_in_guild_message] exception:")
+            except Exception as e:
+                _log.warning(
+                    "[send_in_guild_message] Could not send DM to user {user_id} due to: {e}",
+                    exc_info=True,
+                )
 
 
 def get_guild_partial_message(
