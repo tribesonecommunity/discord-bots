@@ -114,7 +114,7 @@ class Category:
     )
     is_rated: bool = field(metadata={"sa": Column(Boolean, nullable=False)})
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -235,12 +235,12 @@ class Config:
         },
     )
     updated_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -310,7 +310,7 @@ class DiscordGuild:
     discord_id: int = field(metadata={"sa": Column(BigInteger, nullable=False)})
     name: str = field(metadata={"sa": Column(String, nullable=False, unique=True)})
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -508,7 +508,7 @@ class EconomyTransaction:
         },
     )
     transacted_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -648,7 +648,7 @@ class InProgressGame:
         metadata={"sa": Column(String, nullable=False, server_default="Diamond Sword")},
     )
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -765,7 +765,7 @@ class Map:
     full_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
     short_name: str = field(metadata={"sa": Column(String, unique=True, index=True)})
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -871,7 +871,7 @@ class Player:
         default=False, metadata={"sa": Column(Boolean, nullable=False)}
     )
     last_activity_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         metadata={"sa": Column(DateTime)},
     )
     rated_trueskill_mu: float = field(
@@ -963,7 +963,7 @@ class PlayerDecay:
     )
     decayed_at: datetime = field(
         init=False,
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         metadata={"sa": Column(DateTime)},
     )
     id: str = field(
@@ -1024,7 +1024,7 @@ class PlayerCategoryTrueskill:
         }
     )
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -1052,12 +1052,12 @@ class Position:
         metadata={"sa": Column(String, nullable=False, unique=True, index=True)},
     )
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
     updated_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={
             "sa": Column(
@@ -1139,7 +1139,7 @@ class Queue:
         },
     )
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -1195,7 +1195,7 @@ class QueueNotification:
     )
     size: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -1269,7 +1269,7 @@ class QueuePosition:
         },
     )
     updated_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={
             "sa": Column(
@@ -1278,7 +1278,7 @@ class QueuePosition:
         },
     )
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -1414,7 +1414,7 @@ class Raffle:
         default=0, metadata={"sa": Column(Integer, index=True, nullable=False)}
     )
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -1453,7 +1453,7 @@ class Rotation:
         metadata={"sa": Column(Float, nullable=False, server_default=text("0.0"))},
     )
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
@@ -1520,12 +1520,12 @@ class RotationMap:
         },
     )
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={"sa": Column(DateTime, index=True)},
     )
     updated_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={
             "sa": Column(
@@ -1581,7 +1581,7 @@ class RotationMapHistory:
         metadata={"sa": Column(String, ForeignKey("rotation_map.id"), index=True)},
     )
     selected_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
         metadata={
             "sa": Column(
@@ -1603,7 +1603,7 @@ class Schedule:
 
     datetime: datetime = field(
         metadata={"sa": Column(DateTime, nullable=False, unique=True)},
-        default_factory=datetime.now(timezone.utc),
+        default_factory=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     message_id: int | None = field(
         default=None, metadata={"sa": Column(BigInteger, nullable=True)}
