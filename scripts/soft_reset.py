@@ -3,7 +3,6 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-import numpy
 from dateutil.parser import parse as parse_date
 from sqlalchemy import or_
 from table2ascii import Alignment, PresetStyle, table2ascii
@@ -220,7 +219,7 @@ def map_ratings_to_entities(
     )
     old_pcts: list[PlayerCategoryTrueskill] = [x[0] for x in old_ratings_result]
     old_players: list[Player] = [x[1] for x in old_ratings_result]
-    all_players = numpy.unique(old_players + new_players)
+    all_players = list(set(old_players + new_players))
 
     result: list[
         tuple[Player, PlayerCategoryTrueskill | None, PlayerCategoryTrueskill | None]

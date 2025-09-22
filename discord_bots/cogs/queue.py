@@ -1,7 +1,7 @@
 import logging
+import random
 from datetime import datetime, timedelta, timezone
 
-import numpy
 from discord import Colour, Embed, Interaction, Role, TextChannel, app_commands
 from discord.ext.commands import Bot
 from sqlalchemy.exc import IntegrityError
@@ -328,9 +328,7 @@ class QueueCommands(BaseCog):
                 )
                 return
             # This throws an error if people haven't played in 30 days
-            for player in numpy.random.choice(
-                players_from_last_30_days, size=int(count), replace=False
-            ):
+            for player in random.sample(players_from_last_30_days, k=int(count)):
                 if isinstance(interaction.channel, TextChannel) and interaction.guild:
                     add_player_queue.put(
                         AddPlayerQueueMessage(

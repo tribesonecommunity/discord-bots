@@ -1,10 +1,10 @@
 import logging
+import statistics
 from typing import List
 
 from discord import Colour, Embed, Interaction, Member, app_commands
 from discord.ext.commands import Bot
 from discord.utils import escape_markdown
-from numpy import std
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.checks import is_admin_app_command, is_command_channel
@@ -161,7 +161,7 @@ class TrueskillCommands(BaseCog):
                 )
                 trueskill_mus = [p.rated_trueskill_mu for p in players]
 
-        std_dev = std(trueskill_mus)
+        std_dev = statistics.stdev(trueskill_mus)
         average = mean(trueskill_mus)
         output = []
         output.append(f"**Data points**: {len(trueskill_mus)}")
