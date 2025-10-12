@@ -9,6 +9,7 @@ import discord
 from discord import Colour, Embed, Interaction, Member, Role, TextChannel, app_commands
 from discord.ext.commands import Bot
 from discord.utils import escape_markdown
+from matplotlib.image import thumbnail
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
@@ -43,10 +44,10 @@ from discord_bots.utils import (
     in_progress_game_autocomplete,
     map_short_name_autocomplete,
     print_leaderboard,
-    update_next_map,
     queue_autocomplete,
+    update_next_map,
+    utc_now_naive,
 )
-
 from discord_bots.views.embed_builder_view import EmbedBuilderView
 
 _log = logging.getLogger(__name__)
@@ -177,20 +178,16 @@ class AdminCommands(BaseCog):
                     )
                 )
                 session.commit()
-                await interaction.response.send_message(
-                    embed=Embed(
-                        description=f"{escape_markdown(member.name)} banned",
-                        colour=Colour.green(),
-                    )
-                )
             else:
                 if player.is_banned:
                     await interaction.response.send_message(
                         embed=Embed(
-                            description=f"{escape_markdown(player.name)} is already banned",
+                            description=f"{member.mention} is already banned",
                             colour=Colour.red(),
-                        )
+                        ),
+                        ephemeral=True,
                     )
+                    return
                 else:
                     player.is_banned = True
                     session.query(MapVote).filter(MapVote.player_id == player.id).delete()
@@ -200,12 +197,35 @@ class AdminCommands(BaseCog):
                     session.query(QueueWaitlistPlayer).filter(QueueWaitlistPlayer.player_id == player.id).delete()
                     session.query(QueuePlayer).filter(QueuePlayer.player_id == player.id).delete()
                     session.commit()
-                    await interaction.response.send_message(
-                        embed=Embed(
-                            description=f"{escape_markdown(player.name)} banned",
-                            colour=Colour.green(),
-                        )
-                    )
+
+        embed = Embed(
+            description=f"{member.mention} banned",
+            colour=Colour.yellow(),
+            timestamp=discord.utils.utcnow(),
+        )
+        # For the embed sent to the main channel, use the banned member's display name and avatar
+        embed.set_author(
+            name=member.display_name,
+            icon_url=member.display_avatar.url if member.display_avatar else None,
+        )
+        await interaction.response.send_message(embed=embed)
+
+        if config.ADMIN_LOG_CHANNEL:
+            admin_log_channel = bot.get_channel(config.ADMIN_LOG_CHANNEL)
+            ban_message = await interaction.original_response()
+            if isinstance(admin_log_channel, TextChannel):
+                admin_log_embed = Embed(
+                    title=f"Banned {member.display_name} ({member.name})",
+                    description=f"{ban_message.jump_url}",
+                    colour=Colour.yellow(),
+                    timestamp=discord.utils.utcnow(),
+                )
+                # For the admin log embed, use the interaction user's display name and avatar, since we are logging who performed the unban
+                admin_log_embed.set_author(
+                    name=interaction.user.display_name,
+                    icon_url=interaction.user.display_avatar.url,
+                )
+                await admin_log_channel.send(embed=admin_log_embed)
 
     @admin_group.command(
         name="configure", description="Initially configure the bot for this server"
@@ -662,7 +682,7 @@ class AdminCommands(BaseCog):
             if not player or not player.is_banned:
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"{escape_markdown(member.name)} is not banned",
+                        description=f"{member.mention} is not banned",
                         colour=Colour.red(),
                     ),
                     ephemeral=True,
@@ -670,13 +690,37 @@ class AdminCommands(BaseCog):
                 return
 
             player.is_banned = False
-            await interaction.response.send_message(
-                embed=Embed(
-                    description=f"{escape_markdown(member.name)} unbanned",
-                    colour=Colour.green(),
-                )
-            )
             session.commit()
+        embed = Embed(
+            description=f"{member.mention} unbanned",
+            colour=Colour.green(),
+            timestamp=discord.utils.utcnow(),
+        )
+        # For the embed sent to the main channel, use the banned member's display name and avatar
+        embed.set_author(
+            name=member.display_name,
+            icon_url=member.display_avatar.url if member.display_avatar else None,
+        )
+        await interaction.response.send_message(embed=embed)
+        if config.ADMIN_LOG_CHANNEL:
+            admin_log_channel = bot.get_channel(config.ADMIN_LOG_CHANNEL)
+            unban_message = await interaction.original_response()
+            if isinstance(admin_log_channel, TextChannel):
+                admin_log_embed = Embed(
+                    title=f"Unbanned {member.display_name} ({member.name})",
+                    description=f"{unban_message.jump_url}",
+                    colour=Colour.yellow(),
+                    timestamp=discord.utils.utcnow(),
+                )
+                # For the admin log embed, use the interaction user's display name and avatar, since we are logging who performed the unban
+                admin_log_embed.set_author(
+                    name=interaction.user.display_name,
+                    icon_url=interaction.user.display_avatar.url,
+                )
+                await admin_log_channel.send(
+                    embed=admin_log_embed,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
 
     @admin_group.command(
         name="resetleaderboard", description="Resets & updates the leaderboards"
