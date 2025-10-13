@@ -188,6 +188,72 @@ async def async_delete_by_id(
     return result.rowcount > 0
 
 
+async def async_delete_where(
+    session: AsyncSession, model_class: type, *conditions
+) -> int:
+    """
+    Delete records matching conditions asynchronously.
+
+    Args:
+        session: The async session to use
+        model_class: The SQLAlchemy model class
+        *conditions: One or more filter conditions
+                    - Multiple conditions are automatically combined with AND
+                    - Use or_() explicitly for OR logic
+                    - Use and_() explicitly for complex nested conditions
+
+    Returns:
+        Number of deleted records
+
+    Examples:
+        async with async_session() as session:
+            # Single condition
+            deleted_count = await async_delete_where(session, MapVote, MapVote.player_id == 123)
+
+            # Multiple conditions = automatic AND
+            deleted_count = await async_delete_where(
+                session,
+                QueuePlayer,
+                QueuePlayer.player_id == 123,        # AND
+                QueuePlayer.queue_id == "queue-uuid" # AND this
+            )
+            # SQL: WHERE player_id = 123 AND queue_id = 'queue-uuid'
+
+            # OR conditions (explicit)
+            from sqlalchemy import or_
+            deleted_count = await async_delete_where(
+                session,
+                Player,
+                or_(Player.is_banned == True, Player.last_activity_at < cutoff_date)
+            )
+            # SQL: WHERE (is_banned = true OR last_activity_at < cutoff_date)
+
+            # Mixed AND + OR
+            deleted_count = await async_delete_where(
+                session,
+                MapVote,
+                MapVote.player_id == 123,  # AND
+                or_(                       # (this OR that)
+                    MapVote.queue_id == "queue1",
+                    MapVote.queue_id == "queue2"
+                )
+            )
+            # SQL: WHERE player_id = 123 AND (queue_id = 'queue1' OR queue_id = 'queue2')
+
+            await session.commit()
+    """
+    if not conditions:
+        raise ValueError("At least one condition must be provided for safety")
+
+    if len(conditions) == 1:
+        stmt = delete(model_class).where(conditions[0])  # type: ignore
+    else:
+        stmt = delete(model_class).where(and_(*conditions))  # type: ignore
+
+    result = await session.execute(stmt)
+    return result.rowcount
+
+
 def run_async_in_sync(async_func: Callable[..., Any], *args, **kwargs):
     """
     Helper to run async functions in sync code during migration.

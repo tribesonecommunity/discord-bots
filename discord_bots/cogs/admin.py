@@ -9,10 +9,15 @@ import discord
 from discord import Colour, Embed, Interaction, Member, Role, TextChannel, app_commands
 from discord.ext.commands import Bot
 from discord.utils import escape_markdown
-from matplotlib.image import thumbnail
+from sqlalchemy import delete
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 import discord_bots.config as config
+from discord_bots.async_db_utils import (
+    async_delete_where,
+    async_query_first,
+    async_session,
+)
 from discord_bots.bot import bot
 from discord_bots.checks import is_admin_app_command, is_command_channel
 from discord_bots.cogs.base import BaseCog
@@ -166,9 +171,10 @@ class AdminCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be banned")
     async def ban(self, interaction: Interaction, member: Member):
-        session: SQLAlchemySession
-        with Session() as session:
-            player: Player | None = session.query(Player).filter(Player.id == member.id).first()
+        async with async_session() as session:
+            player: Player | None = await async_query_first(
+                session, Player, Player.id == member.id
+            )
             if not player:
                 session.add(
                     Player(
@@ -177,7 +183,7 @@ class AdminCommands(BaseCog):
                         is_banned=True,
                     )
                 )
-                session.commit()
+                await session.commit()
             else:
                 if player.is_banned:
                     await interaction.response.send_message(
@@ -190,13 +196,26 @@ class AdminCommands(BaseCog):
                     return
                 else:
                     player.is_banned = True
-                    session.query(MapVote).filter(MapVote.player_id == player.id).delete()
-                    session.query(SkipMapVote).filter(SkipMapVote.player_id == player.id).delete()
-                    session.query(VotePassedWaitlistPlayer).filter(
-                        VotePassedWaitlistPlayer.player_id == player.id).delete()
-                    session.query(QueueWaitlistPlayer).filter(QueueWaitlistPlayer.player_id == player.id).delete()
-                    session.query(QueuePlayer).filter(QueuePlayer.player_id == player.id).delete()
-                    session.commit()
+                    await async_delete_where(
+                        session, MapVote, MapVote.player_id == player.id
+                    )
+                    await async_delete_where(
+                        session, SkipMapVote, SkipMapVote.player_id == player.id
+                    )
+                    await async_delete_where(
+                        session,
+                        VotePassedWaitlistPlayer,
+                        VotePassedWaitlistPlayer.player_id == player.id,
+                    )
+                    await async_delete_where(
+                        session,
+                        QueueWaitlistPlayer,
+                        QueueWaitlistPlayer.player_id == player.id,
+                    )
+                    await async_delete_where(
+                        session, QueuePlayer, QueuePlayer.player_id == player.id
+                    )
+                    await session.commit()
 
         embed = Embed(
             description=f"{member.mention} banned",
@@ -676,9 +695,10 @@ class AdminCommands(BaseCog):
     @app_commands.check(is_command_channel)
     @app_commands.describe(member="Player to be unbanned")
     async def unban(self, interaction: Interaction, member: Member):
-        session: SQLAlchemySession
-        with Session() as session:
-            player: Player | None = session.query(Player).filter(Player.id == member.id).first()
+        async with async_session() as session:
+            player: Player | None = await async_query_first(
+                session, Player, Player.id == member.id
+            )
             if not player or not player.is_banned:
                 await interaction.response.send_message(
                     embed=Embed(
@@ -690,7 +710,7 @@ class AdminCommands(BaseCog):
                 return
 
             player.is_banned = False
-            session.commit()
+            await session.commit()
         embed = Embed(
             description=f"{member.mention} unbanned",
             colour=Colour.green(),

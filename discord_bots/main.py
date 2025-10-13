@@ -12,7 +12,7 @@ from trueskill import setup as trueskill_setup
 
 import discord_bots.config as config
 from discord_bots.async_db_utils import (
-    async_delete_by_id,
+    async_delete_where,
     async_query_first,
     async_session,
 )
@@ -42,10 +42,13 @@ from .models import (
     AsyncSessionLocal,
     Config,
     CustomCommand,
+    MapVote,
     Player,
     QueuePlayer,
     QueueWaitlistPlayer,
     Session,
+    SkipMapVote,
+    VotePassedWaitlistPlayer,
 )
 from .tasks import (
     add_player_task,
@@ -254,8 +257,21 @@ async def on_member_join(member: Member):
 @bot.event
 async def on_member_remove(member: Member):
     async with async_session() as session:
-        await async_delete_by_id(session, QueuePlayer, member.id)
-        await async_delete_by_id(session, QueueWaitlistPlayer, member.id)
+        await async_delete_where(session, MapVote, MapVote.player_id == member.id)
+        await async_delete_where(
+            session, SkipMapVote, SkipMapVote.player_id == member.id
+        )
+        await async_delete_where(
+            session,
+            VotePassedWaitlistPlayer,
+            VotePassedWaitlistPlayer.player_id == member.id,
+        )
+        await async_delete_where(
+            session, QueueWaitlistPlayer, QueueWaitlistPlayer.player_id == member.id
+        )
+        await async_delete_where(
+            session, QueuePlayer, QueuePlayer.player_id == member.id
+        )
         await session.commit()
 
 
