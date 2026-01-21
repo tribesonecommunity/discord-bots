@@ -1506,6 +1506,13 @@ async def sub(ctx: Context, member: Member):
         return
     caller_game = get_player_game(caller.id, session)
     callee = member
+    if member.bot:
+        await send_message(
+            channel=message.channel,
+            embed_description=f"You cannot sub a bot",
+            colour=Colour.red(),
+        )
+        return
     callee_game = get_player_game(callee.id, session)
 
     if caller_game and callee_game:
