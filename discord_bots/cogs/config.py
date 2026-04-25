@@ -5,7 +5,11 @@ from discord.ext import commands
 
 import discord_bots.config as env_config
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import (
+    is_admin_app_command,
+    is_command_channel,
+    update_captain_channel_id_cache,
+)
 from discord_bots.models import Config, Session
 
 _log = logging.getLogger(__name__)
@@ -119,6 +123,16 @@ class ConfigCommands(commands.Cog):
                 value=f"`{config.enable_position_trueskill}`",
                 inline=True,
             )
+            captain_channel_value = (
+                f"<#{config.captain_channel_id}>"
+                if config.captain_channel_id
+                else "`Not set`"
+            )
+            embed.add_field(
+                name="Captain channel",
+                value=captain_channel_value,
+                inline=True,
+            )
 
             await interaction.response.send_message(embed=embed)
 
@@ -177,3 +191,54 @@ class ConfigCommands(commands.Cog):
                 admin_log_channel = bot.get_channel(env_config.ADMIN_LOG_CHANNEL)
                 if isinstance(admin_log_channel, TextChannel):
                     await admin_log_channel.send(embed=embed)
+
+    @group.command(
+        name="setcaptainchannel",
+        description="Register a channel as the captain pick lobby",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    @app_commands.describe(channel="Channel to register as the captain pick lobby")
+    async def setcaptainchannel(self, interaction: Interaction, channel: TextChannel):
+        with Session() as session:
+            config = session.query(Config).first()
+            config.captain_channel_id = channel.id
+            session.commit()
+        update_captain_channel_id_cache(channel.id)
+
+        embed = Embed(
+            description=(
+                f"Captain channel set to {channel.mention} by "
+                f"<@{interaction.user.id}>. New queues created in that channel "
+                f"will be captain-pick queues."
+            ),
+            colour=Colour.green(),
+        )
+        await interaction.response.send_message(embed=embed)
+        if env_config.ADMIN_LOG_CHANNEL:
+            admin_log_channel = bot.get_channel(env_config.ADMIN_LOG_CHANNEL)
+            if isinstance(admin_log_channel, TextChannel):
+                await admin_log_channel.send(embed=embed)
+
+    @group.command(
+        name="clearcaptainchannel",
+        description="Unregister the captain pick lobby channel",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_channel)
+    async def clearcaptainchannel(self, interaction: Interaction):
+        with Session() as session:
+            config = session.query(Config).first()
+            config.captain_channel_id = None
+            session.commit()
+        update_captain_channel_id_cache(None)
+
+        embed = Embed(
+            description=f"Captain channel cleared by <@{interaction.user.id}>",
+            colour=Colour.green(),
+        )
+        await interaction.response.send_message(embed=embed)
+        if env_config.ADMIN_LOG_CHANNEL:
+            admin_log_channel = bot.get_channel(env_config.ADMIN_LOG_CHANNEL)
+            if isinstance(admin_log_channel, TextChannel):
+                await admin_log_channel.send(embed=embed)

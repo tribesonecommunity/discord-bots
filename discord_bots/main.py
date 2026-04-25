@@ -16,6 +16,7 @@ from discord_bots.async_db_utils import (
     async_query_first,
     async_session,
 )
+from discord_bots.checks import get_cached_captain_channel_id
 from discord_bots.cogs.admin import AdminCommands
 from discord_bots.cogs.category import CategoryCommands
 from discord_bots.cogs.common import CommonCommands
@@ -186,8 +187,14 @@ async def on_message(message: Message):
             await message.channel.send(content="\n".join(content))
             return
 
-    if (config.CHANNEL_ID and message.channel.id == config.CHANNEL_ID) or (
-        config.LEADERBOARD_CHANNEL and message.channel.id == config.LEADERBOARD_CHANNEL
+    captain_channel_id = get_cached_captain_channel_id()
+    if (
+        (config.CHANNEL_ID and message.channel.id == config.CHANNEL_ID)
+        or (
+            config.LEADERBOARD_CHANNEL
+            and message.channel.id == config.LEADERBOARD_CHANNEL
+        )
+        or (captain_channel_id is not None and message.channel.id == captain_channel_id)
     ):
         async with async_session() as session:
             player: Player | None = await async_query_first(
