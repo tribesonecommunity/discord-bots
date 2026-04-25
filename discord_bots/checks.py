@@ -36,6 +36,17 @@ def update_captain_channel_id_cache(value: int | None) -> None:
     _captain_channel_id_cache_loaded = True
 
 
+def queue_is_captain_pick_for_channel(channel_id: int) -> bool:
+    """
+    Whether queues visible from `channel_id` should be captain-pick queues.
+    True if `channel_id` is the registered captain channel; False otherwise.
+    Use this to derive a Queue.is_captain_pick filter from the invocation
+    channel.
+    """
+    captain_channel_id = get_cached_captain_channel_id()
+    return captain_channel_id is not None and channel_id == captain_channel_id
+
+
 def __has_admin_role(user_id: int, member: Member) -> bool:
     session: sqlalchemy.orm.Session
     with Session() as session:
