@@ -1596,19 +1596,66 @@ async def sub(ctx: Context, member: Member):
         )
         return
 
-    # Sub-during-draft is not yet implemented (the proper behavior is to
-    # restart the draft from scratch with the new player set; that's a
-    # follow-up). For now, block /sub on drafting games to avoid leaving the
-    # draft in a half-broken state.
+    # Sub-during-draft: do the player swap inline (preserving team/is_captain
+    # on the new IGP) and then restart the draft from scratch. The
+    # restart_draft_after_sub helper clears DraftPick rows, resets non-
+    # captain teams, re-picks captains if needed, and re-posts the
+    # FirstPickChoiceView.
     sub_target_game = caller_game or callee_game
     if sub_target_game and sub_target_game.is_drafting:
+        from discord_bots.captain_pick import restart_draft_after_sub
+
+        subbed_out_player_id = caller.id if caller_game else callee.id
+        subbed_in_player_id = callee.id if caller_game else caller.id
+        subbed_out_igp = (
+            session.query(InProgressGamePlayer)
+            .filter(
+                InProgressGamePlayer.in_progress_game_id == sub_target_game.id,
+                InProgressGamePlayer.player_id == subbed_out_player_id,
+            )
+            .first()
+        )
+        if not subbed_out_igp:
+            return
+        was_captain = subbed_out_igp.is_captain
+
+        # Ensure the subbing-in player exists in the players table.
+        if not session.query(Player).filter(Player.id == subbed_in_player_id).first():
+            subbed_in_name = (
+                callee.name if subbed_in_player_id == callee.id else caller.name
+            )
+            session.add(Player(id=subbed_in_player_id, name=subbed_in_name))
+
+        # Replace the IGP. Keep team/is_captain on the new row; if a captain
+        # was subbed, those values get overwritten when captains are re-
+        # selected by restart_draft_after_sub.
+        session.add(
+            InProgressGamePlayer(
+                in_progress_game_id=sub_target_game.id,
+                player_id=subbed_in_player_id,
+                team=subbed_out_igp.team,
+                is_captain=subbed_out_igp.is_captain,
+            )
+        )
+        session.delete(subbed_out_igp)
+        session.query(QueuePlayer).filter(
+            QueuePlayer.player_id == subbed_in_player_id
+        ).delete()
+        session.commit()
+
+        await restart_draft_after_sub(
+            sub_target_game.id, was_captain_subbed=was_captain
+        )
+
+        subbed_out_name = caller.display_name if caller_game else callee.display_name
+        subbed_in_name = callee.display_name if caller_game else caller.display_name
         await send_message(
             channel=message.channel,
             embed_description=(
-                "Substitutions during a captain pick draft aren't supported "
-                "yet. Wait for the draft to finish before subbing."
+                f"🔁 Draft restarted: {escape_markdown(subbed_in_name)} "
+                f"subbed in for {escape_markdown(subbed_out_name)}."
             ),
-            colour=Colour.red(),
+            colour=Colour.yellow(),
         )
         return
 
