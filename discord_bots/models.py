@@ -234,6 +234,10 @@ class Config:
             "sa": Column(Boolean, nullable=False, server_default=expression.false()),
         },
     )
+    captain_channel_id: int | None = field(
+        default=None,
+        metadata={"sa": Column(BigInteger, nullable=True)},
+    )
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
@@ -558,6 +562,17 @@ class FinishedGame:
         default=None,
         metadata={"sa": Column(String, index=True, nullable=True)},
     )
+    is_captain_pick: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(
+                Boolean,
+                index=True,
+                nullable=False,
+                server_default=expression.false(),
+            )
+        },
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -672,6 +687,17 @@ class InProgressGame:
         default=False,
         metadata={"sa": Column(Boolean, nullable=False, server_default="0")},
     )
+    is_drafting: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(
+                Boolean,
+                index=True,
+                nullable=False,
+                server_default=expression.false(),
+            )
+        },
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
@@ -706,11 +732,20 @@ class InProgressGamePlayer:
             )
         },
     )
-    team: int = field(metadata={"sa": Column(Integer, nullable=False, index=True)})
+    team: int | None = field(
+        default=None,
+        metadata={"sa": Column(Integer, nullable=True, index=True)},
+    )
     position_id: str | None = field(
         default=None,
         metadata={
             "sa": Column(String, ForeignKey("position.id"), nullable=True, index=True)
+        },
+    )
+    is_captain: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.false())
         },
     )
     id: str = field(
@@ -744,6 +779,58 @@ class InProgressGameChannel:
     )
     channel_id: int = field(
         metadata={"sa": Column(BigInteger, nullable=False)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class DraftPick:
+    """
+    Records a single pick in a captain-pick draft. Captains are not stored
+    here — they're identified by InProgressGamePlayer.is_captain. This
+    table is purely the pick log used for ordering and audit history.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "draft_pick"
+    __table_args__ = (UniqueConstraint("in_progress_game_id", "pick_number"),)
+
+    in_progress_game_id: str = field(
+        metadata={
+            "sa": Column(
+                String,
+                ForeignKey("in_progress_game.id"),
+                nullable=False,
+                index=True,
+            )
+        },
+    )
+    pick_number: int = field(
+        metadata={"sa": Column(Integer, nullable=False)},
+    )
+    captain_player_id: int = field(
+        metadata={
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
+        },
+    )
+    picked_player_id: int = field(
+        metadata={
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), nullable=False, index=True
+            )
+        },
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        init=False,
+        metadata={"sa": Column(DateTime, nullable=False)},
     )
     id: str = field(
         init=False,
@@ -1113,6 +1200,17 @@ class Queue:
         default=False,
         metadata={
             "sa": Column(Boolean, nullable=False, server_default=expression.false())
+        },
+    )
+    is_captain_pick: bool = field(
+        default=False,
+        metadata={
+            "sa": Column(
+                Boolean,
+                index=True,
+                nullable=False,
+                server_default=expression.false(),
+            )
         },
     )
     rank_max: float | None = field(
