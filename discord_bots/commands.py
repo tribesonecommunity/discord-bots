@@ -1010,19 +1010,31 @@ async def autosub(ctx: Context, member: Member = None):
         team1_player_names_before,
         team1_player_names_after,
     )
+    sub_queue_for_embed: Queue | None = (
+        session.query(Queue).filter(Queue.id == game.queue_id).first()
+    )
+    sub_hide_winprob = (
+        sub_queue_for_embed is not None and sub_queue_for_embed.is_captain_pick
+    )
+    sub_team0_winprob = (
+        "" if sub_hide_winprob else f" ({round(100 * game.win_probability, 1)}%)"
+    )
+    sub_team1_winprob = (
+        "" if sub_hide_winprob else f" ({round(100 * (1 - game.win_probability), 1)}%)"
+    )
     for i, field in enumerate(embed.fields):
         # brute force iteration through the embed's fields until we find the original team0 and team1 embeds to update
         if field.name and game.team0_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"🔴 {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
+                name=f"🔴 {game.team0_name}{sub_team0_winprob}",
                 value=team0_diff_vaules,
                 inline=True,
             )
         if field.name and game.team1_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"🔵 {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
+                name=f"🔵 {game.team1_name}{sub_team1_winprob}",
                 value=team1_diff_values,
                 inline=True,
             )
@@ -1389,6 +1401,11 @@ async def _rebalance_game(
     assert message.guild
     assert message.channel
     queue: Queue = session.query(Queue).filter(Queue.id == game.queue_id).first()
+    if queue and queue.is_captain_pick:
+        # Captain pick games have hand-picked rosters; don't re-balance via
+        # TrueSkill on a sub. The replacement player slots into the same
+        # team as the player they're replacing (handled by /sub itself).
+        return
     db_config: Config = session.query(Config).first()
 
     game_players = (
@@ -1690,19 +1707,31 @@ async def sub(ctx: Context, member: Member):
         team1_player_names_before,
         team1_player_names_after,
     )
+    sub_queue_for_embed: Queue | None = (
+        session.query(Queue).filter(Queue.id == game.queue_id).first()
+    )
+    sub_hide_winprob = (
+        sub_queue_for_embed is not None and sub_queue_for_embed.is_captain_pick
+    )
+    sub_team0_winprob = (
+        "" if sub_hide_winprob else f" ({round(100 * game.win_probability, 1)}%)"
+    )
+    sub_team1_winprob = (
+        "" if sub_hide_winprob else f" ({round(100 * (1 - game.win_probability), 1)}%)"
+    )
     for i, field in enumerate(embed.fields):
         # brute force iteration through the embed's fields until we find the original team0 and team1 embeds to update
         if field.name and game.team0_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"🔴 {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
+                name=f"🔴 {game.team0_name}{sub_team0_winprob}",
                 value=team0_diff_vaules,
                 inline=True,
             )
         if field.name and game.team1_name in field.name:
             embed.set_field_at(
                 i,
-                name=f"🔵 {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
+                name=f"🔵 {game.team1_name}{sub_team1_winprob}",
                 value=team1_diff_values,
                 inline=True,
             )
