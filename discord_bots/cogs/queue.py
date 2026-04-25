@@ -9,6 +9,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.checks import (
+    get_cached_captain_channel_id,
     is_admin_app_command,
     is_command_or_captain_channel,
     is_mock_user_app_command,
@@ -200,19 +201,57 @@ class QueueCommands(BaseCog):
     @app_commands.describe(queue_name="Name of queue", size="Size of queue")
     async def createqueue(self, interaction: Interaction, queue_name: str, size: int):
         """
-        Create a queue
+        Create a queue. Queues created from the registered captain channel
+        are flagged as captain-pick automatically.
         """
+        captain_channel_id = get_cached_captain_channel_id()
+        is_captain_pick = (
+            captain_channel_id is not None
+            and interaction.channel is not None
+            and interaction.channel.id == captain_channel_id
+        )
+        if is_captain_pick:
+            if size < 4:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description=(
+                            "Captain pick queues must have a size of at least 4 "
+                            "(two captains plus at least two picks)."
+                        ),
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            if size % 2 != 0:
+                await interaction.response.send_message(
+                    embed=Embed(
+                        description="Captain pick queues must have an even size.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
         vote_threshold: int = round(float(size) * 2 / 3)
-        queue = Queue(name=queue_name, size=size, vote_threshold=vote_threshold)
+        queue = Queue(
+            name=queue_name,
+            size=size,
+            vote_threshold=vote_threshold,
+            is_captain_pick=is_captain_pick,
+        )
 
         session: SQLAlchemySession
         with Session() as session:
             try:
                 session.add(queue)
                 session.commit()
+                description = f"Queue created: {queue.name}"
+                if is_captain_pick:
+                    description += " (captain pick)"
                 await interaction.response.send_message(
                     embed=Embed(
-                        description=f"Queue created: {queue.name}",
+                        description=description,
                         colour=Colour.green(),
                     )
                 )
