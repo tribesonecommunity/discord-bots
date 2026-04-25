@@ -5,10 +5,35 @@ from discord import Colour, Embed, Interaction, Member, Message
 from discord.ext.commands.context import Context
 
 from discord_bots.utils import send_message
-from . import config
 
+from . import config
 from .config import CHANNEL_ID, ECONOMY_ENABLED
-from .models import AdminRole, Player, Session
+from .models import AdminRole, Config, Player, Session
+
+_captain_channel_id_cache: int | None = None
+_captain_channel_id_cache_loaded: bool = False
+
+
+def _load_captain_channel_id_cache() -> None:
+    global _captain_channel_id_cache, _captain_channel_id_cache_loaded
+    with Session() as session:
+        config_row = session.query(Config).first()
+        _captain_channel_id_cache = (
+            config_row.captain_channel_id if config_row else None
+        )
+    _captain_channel_id_cache_loaded = True
+
+
+def get_cached_captain_channel_id() -> int | None:
+    if not _captain_channel_id_cache_loaded:
+        _load_captain_channel_id_cache()
+    return _captain_channel_id_cache
+
+
+def update_captain_channel_id_cache(value: int | None) -> None:
+    global _captain_channel_id_cache, _captain_channel_id_cache_loaded
+    _captain_channel_id_cache = value
+    _captain_channel_id_cache_loaded = True
 
 
 def __has_admin_role(user_id: int, member: Member) -> bool:
@@ -154,6 +179,30 @@ async def is_command_channel(interaction: Interaction) -> bool:
         return False
     else:
         return True
+
+
+async def is_command_or_captain_channel(interaction: Interaction) -> bool:
+    """
+    Check that interactions are performed from the command channel or the
+    registered captain pick channel (Config.captain_channel_id).
+    """
+    if interaction.channel:
+        captain_channel_id = get_cached_captain_channel_id()
+        if interaction.channel.id == CHANNEL_ID or (
+            captain_channel_id is not None
+            and interaction.channel.id == captain_channel_id
+        ):
+            return True
+
+    description = "Interactions must be performed from the command channel"
+    if get_cached_captain_channel_id() is not None:
+        description += " or the captain channel"
+    embed = Embed(description=description, colour=Colour.red())
+    if not interaction.response.is_done():
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    return False
 
 
 class HasName(Protocol):

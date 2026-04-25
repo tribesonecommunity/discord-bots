@@ -5,10 +5,10 @@ from discord.ext.commands import Bot
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Category, PlayerCategoryTrueskill, Queue, Session
-from discord_bots.utils import default_sigma_decay_amount, build_category_str
+from discord_bots.utils import build_category_str, default_sigma_decay_amount
 from discord_bots.views.configure_category import CategoryConfigureView
 
 _log = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="configure", description="Create/Edit a category")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(category_name="New or existing category")
     async def configure(self, interaction: Interaction, category_name: str):
         assert interaction.guild
@@ -79,7 +79,7 @@ class CategoryCommands(BaseCog):
 
     @group.command(name="remove", description="Remove an existing category")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(name="Category to be removed")
     @app_commands.rename(name="category")
     async def removecategory(self, interaction: Interaction, name: str):
@@ -111,7 +111,7 @@ class CategoryCommands(BaseCog):
             session.commit()
 
     @group.command(name="show", description="Show category details")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(category_name="Existing category")
     @app_commands.rename(category_name="category")
     async def showcategory(self, interaction: Interaction, category_name: str):

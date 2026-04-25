@@ -6,7 +6,7 @@ from discord.ext.commands import Bot
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Position, Session
 
@@ -39,7 +39,7 @@ class PositionCommands(BaseCog):
 
     @group.command(name="add", description="Add a new position")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(name="Name of the position")
     @app_commands.describe(short_name="Short hand name of the position")
     async def add(self, interaction: Interaction, name: str, short_name: str):
@@ -70,7 +70,7 @@ class PositionCommands(BaseCog):
 
     @group.command(name="remove", description="Remove a position")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(name="Name of the position")
     @app_commands.autocomplete(name=position_autocomplete)
     async def remove(self, interaction: Interaction, name: str):

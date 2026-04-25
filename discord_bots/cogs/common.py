@@ -10,7 +10,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from table2ascii import Alignment, PresetStyle, table2ascii
 from trueskill import Rating
 
-from discord_bots.checks import is_command_channel
+from discord_bots.checks import is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import SHOW_TRUESKILL
 from discord_bots.models import (
@@ -49,7 +49,7 @@ class CommonCommands(BaseCog):
     @app_commands.command(
         name="setgamecode", description="Sets lobby code for your current game"
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     @app_commands.describe(code="Game lobby code")
     async def setgamecode(self, interaction: Interaction, code: str):
@@ -197,7 +197,7 @@ class CommonCommands(BaseCog):
     @app_commands.command(
         name="stats", description="Privately displays your TrueSkill statistics"
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(category_name="Category to show stats for")
     @app_commands.autocomplete(category_name=category_autocomplete_with_user_id)
     @app_commands.rename(category_name="category")

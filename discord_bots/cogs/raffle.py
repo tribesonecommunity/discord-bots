@@ -6,7 +6,7 @@ from emoji import emojize
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from sqlalchemy.sql import functions
 
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Map, Player, Rotation, RotationMap, Session
 from discord_bots.utils import map_short_name_autocomplete, rotation_autocomplete
@@ -74,7 +74,7 @@ class RaffleCommands(BaseCog):
     @group.command(
         name="showtickets", description="Displays how many raffle tickets you have"
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Discord member")
     async def myraffle(self, interaction: Interaction, *, member: Member | None = None):
         """
@@ -104,7 +104,7 @@ class RaffleCommands(BaseCog):
         name="status",
         description="Displays raffle ticket information and raffle leaderboard",
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Discord member")
     async def rafflestatus(
         self, interaction: Interaction, *, member: Member | None = None
@@ -146,7 +146,7 @@ class RaffleCommands(BaseCog):
         description="Set the raffle ticket reward for a map in a rotation",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
         map_short_name="Existing map",
@@ -208,7 +208,7 @@ class RaffleCommands(BaseCog):
 
     @group.command(name="create", description="TODO: Implementation")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Discord member")
     async def createraffle(
         self, interaction: Interaction, *, member: Member | None = None
@@ -220,7 +220,7 @@ class RaffleCommands(BaseCog):
 
     @group.command(name="run", description="TODO: Implementation")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Discord member")
     async def runraffle(
         self, interaction: Interaction, *, member: Member | None = None

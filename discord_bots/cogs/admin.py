@@ -19,7 +19,7 @@ from discord_bots.async_db_utils import (
     async_session,
 )
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.cogs.in_progress_game import InProgressGameCommands
 from discord_bots.models import (
@@ -85,7 +85,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="add", description="Add an admin")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Player to be made admin")
     async def addadmin(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
@@ -128,7 +128,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="addrole", description="Add an admin role")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(role="Role to be made admin")
     async def addadminrole(self, interaction: Interaction, role: Role):
         if interaction.guild:
@@ -168,7 +168,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="ban", description="Bans player from queues")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Player to be banned")
     async def ban(self, interaction: Interaction, member: Member):
         async with async_session() as session:
@@ -250,7 +250,7 @@ class AdminCommands(BaseCog):
         name="configure", description="Initially configure the bot for this server"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     async def configure(self, interaction: Interaction):
         assert interaction.guild
@@ -284,7 +284,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(description="Create or Edit a custom command")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(name="New or Existing command name")
     @app_commands.autocomplete(name=command_autocomplete)
     async def customcommand(self, interaction: Interaction, name: str):
@@ -298,7 +298,7 @@ class AdminCommands(BaseCog):
         name="createdbbackup", description="Creates a backup of the database"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def createdbbackup(self, interaction: Interaction):
         # Only functions for SQLite
         # TODO: Covert to work for Postgres
@@ -326,7 +326,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="deletegame", description="Deletes a finished game")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(game_id="Finished game id")
     async def deletegame(self, interaction: Interaction, game_id: str):
         session: SQLAlchemySession
@@ -361,7 +361,7 @@ class AdminCommands(BaseCog):
         name="delplayer", description="Admin command to delete player from all queues"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Player to be removed from queues")
     async def delplayer(
         self,
@@ -411,7 +411,7 @@ class AdminCommands(BaseCog):
         name="editgamewinner", description="Edit the winner of a finished game"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(game_id="Finished game id", outcome="Tie, BE, DS")
     async def editgamewinner(
         self,
@@ -465,7 +465,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="remove", description="Remove an admin")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Player to be removed as admin")
     async def removeadmin(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
@@ -491,7 +491,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="removerole", description="Remove an admin role")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     @app_commands.describe(role="Role to be removed as admin")
     async def removeadminrole(self, interaction: Interaction, role: Role):
@@ -534,7 +534,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="removecommand", description="Remove a custom command")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(name="Name of existing custom command")
     @app_commands.autocomplete(name=command_autocomplete)
     async def removecommand(self, interaction: Interaction, name: str):
@@ -568,7 +568,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="removedbbackup", description="Remove a database backup")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(db_filename="Name of backup file")
     async def removedbbackup(self, interaction: Interaction, db_filename: str):
         # Only functions for SQLite
@@ -619,7 +619,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="restart", description="Restart the bot")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def restart(self, interaction: Interaction):
         await interaction.response.send_message(
             embed=Embed(
@@ -631,7 +631,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="setbias", description="Set team bias")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Member to bias", amount="Bias value")
     async def setbias(self, interaction: Interaction, member: Member, amount: float):
         if amount < -100 or amount > 100:
@@ -652,7 +652,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="setcaptainbias", description="Set captain bias")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Member to bias", amount="Bias value")
     async def setcaptainbias(
         self, interaction: Interaction, member: Member, amount: float
@@ -677,7 +677,7 @@ class AdminCommands(BaseCog):
         name="setcommandprefix", description="Sets the prefix for context commands"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(prefix="New command prefix")
     async def setcommandprefix(self, interaction: Interaction, prefix: str):
         # TODO move to db-config
@@ -692,7 +692,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="unban", description="Unban player")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Player to be unbanned")
     async def unban(self, interaction: Interaction, member: Member):
         async with async_session() as session:
@@ -745,7 +745,7 @@ class AdminCommands(BaseCog):
     @admin_group.command(
         name="resetleaderboard", description="Resets & updates the leaderboards"
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.check(is_admin_app_command)
     async def resetleaderboardchannel(self, interaction: Interaction):
         if not config.LEADERBOARD_CHANNEL:
@@ -785,7 +785,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(description="Set the map for a game")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(game_id="In progress game id", map_short_name="Map name")
     @app_commands.autocomplete(
         game_id=in_progress_game_autocomplete,
@@ -854,7 +854,7 @@ class AdminCommands(BaseCog):
         description="Set the map for a queue (note: affects all queues sharing the same rotation)",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(queue_name="Queue Name", map_short_name="Map Name")
     @app_commands.rename(queue_name="queue", map_short_name="map")
     @app_commands.autocomplete(
@@ -937,7 +937,7 @@ class AdminCommands(BaseCog):
 
     @admin_group.command(name="cancel", description="Cancels the specified game")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(game_id="The game ID")
     @app_commands.autocomplete(game_id=in_progress_game_autocomplete)
     @app_commands.rename(game_id="game")

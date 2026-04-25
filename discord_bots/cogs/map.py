@@ -7,7 +7,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 from table2ascii import Alignment, PresetStyle, table2ascii
 
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
     Category,
@@ -146,7 +146,7 @@ class MapCommands(BaseCog):
 
     @group.command(name="configure", description="Create or Edit a map")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(map_full_name="New or existing map")
     @app_commands.autocomplete(map_full_name=map_full_name_autocomplete)
     @app_commands.rename(map_full_name="map")
@@ -175,7 +175,7 @@ class MapCommands(BaseCog):
 
     @group.command(name="remove", description="Remove a map from the map pool")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(map_short_name="Short name of map")
     @app_commands.autocomplete(map_short_name=map_short_name_autocomplete)
     @app_commands.rename(map_short_name="map")

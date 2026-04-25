@@ -7,7 +7,7 @@ from discord.ext.commands import Bot
 from discord.utils import escape_markdown
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Config, Player, PlayerCategoryTrueskill, Queue, Session
 from discord_bots.utils import mean, print_leaderboard
@@ -22,7 +22,7 @@ class TrueskillCommands(BaseCog):
     group = app_commands.Group(name="trueskill", description="Trueskill commands")
 
     @group.command(name="info", description="Explanation of Trueskill")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def trueskill(self, interaction: Interaction):
         with Session() as session:
             config = session.query(Config).first()
@@ -42,7 +42,7 @@ class TrueskillCommands(BaseCog):
         name="resetplayer", description="Resets a players trueskill values to default"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Player to be reset")
     async def resetplayertrueskill(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
@@ -84,7 +84,7 @@ class TrueskillCommands(BaseCog):
 
     @group.command(name="showsigma", description="Returns the player's base sigma")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Existing player")
     async def showsigma(self, interaction: Interaction, member: Member):
         """
@@ -122,7 +122,7 @@ class TrueskillCommands(BaseCog):
         description="Print the normal distribution of the trueskill in a given queue",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(queue_name="Name of queue")
     async def showtrueskillnormdist(self, interaction: Interaction, queue_name: str):
         """
@@ -186,7 +186,7 @@ class TrueskillCommands(BaseCog):
         )
 
     @group.command(name="testleaderboard", description="Test print the leaderboard")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def testleaderboard(self, interaction: Interaction):
         await print_leaderboard()
 
