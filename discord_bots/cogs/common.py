@@ -252,6 +252,7 @@ class CommonCommands(BaseCog):
             fgs: List[FinishedGame] | None = (
                 session.query(FinishedGame)
                 .filter(FinishedGame.id.in_(finished_game_ids))
+                .filter(FinishedGame.is_captain_pick == False)
                 .all()
             )
             if not fgs:

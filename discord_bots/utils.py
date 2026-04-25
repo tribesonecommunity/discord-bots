@@ -1503,6 +1503,7 @@ async def print_leaderboard():
                         > (datetime.now(timezone.utc) - timedelta(days=30))
                     )
                     .filter(FinishedGame.category_name == category.name)
+                    .filter(FinishedGame.is_captain_pick == False)
                     .group_by(FinishedGamePlayer.player_id)
                     .having(func.count() >= category.min_games_for_leaderboard)
                     .subquery()
