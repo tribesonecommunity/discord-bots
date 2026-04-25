@@ -24,7 +24,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from trueskill import Rating, rate
 
 from discord_bots import config
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.economy import EconomyCommands
 from discord_bots.models import (
     Category,
@@ -275,7 +275,7 @@ class InProgressGameCommands(commands.Cog):
         name="history",
         description="Privately displays your game history",
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     async def gamehistory(self, interaction: Interaction, count: int):
         assert interaction.guild
@@ -341,7 +341,7 @@ class InProgressGameCommands(commands.Cog):
             )
 
     @group.command(name="finish", description="Ends the current game you are in")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(outcome="win, loss, or tie")
     @app_commands.guild_only()
     async def finishgame(
@@ -696,7 +696,7 @@ class InProgressGameCommands(commands.Cog):
     )
     @app_commands.guild_only()
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.autocomplete(game_id=in_progress_game_autocomplete)
     @app_commands.rename(game_id="game")
     async def movegameplayers(self, interaction: Interaction, game_id: str):
@@ -733,7 +733,7 @@ class InProgressGameCommands(commands.Cog):
                 )
 
     @group.command(name="show", description="Show game details")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(game_id="Finished game id")
     async def showgame(self, interaction: Interaction, game_id: str):
         session: SQLAlchemySession
@@ -763,7 +763,7 @@ class InProgressGameCommands(commands.Cog):
 
     @group.command(name="showdebug", description="Show game details")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(game_id="Finished game id")
     async def showgamedebug(self, interaction: Interaction, game_id: str):
         player_id = interaction.user.id

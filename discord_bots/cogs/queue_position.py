@@ -4,7 +4,7 @@ from discord import Colour, Embed, Interaction, app_commands
 from discord.ext.commands import Bot
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.cogs.position import PositionCommands
 from discord_bots.cogs.queue import QueueCommands
@@ -23,7 +23,7 @@ class QueuePositionCommands(BaseCog):
 
     @group.command(name="add", description="Add a position to a queue")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         queue_name="Name of queue",
         position_name="Name of position",
@@ -97,7 +97,7 @@ class QueuePositionCommands(BaseCog):
 
     @group.command(name="update", description="Update a position's count in a queue")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         queue_name="Name of queue",
         position_name="Name of position",
@@ -166,7 +166,7 @@ class QueuePositionCommands(BaseCog):
 
     @group.command(name="remove", description="Remove a position from a queue")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(queue_name="Name of queue", position_name="Name of position")
     @app_commands.autocomplete(queue_name=QueueCommands.queue_autocomplete)
     @app_commands.autocomplete(position_name=PositionCommands.position_autocomplete)
@@ -230,7 +230,7 @@ class QueuePositionCommands(BaseCog):
             )
 
     @group.command(name="list", description="List positions for a queue")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(queue_name="Name of queue")
     @app_commands.autocomplete(queue_name=QueueCommands.queue_autocomplete)
     async def listqueuepositions(self, interaction: Interaction, queue_name: str):

@@ -11,7 +11,7 @@ from sqlalchemy.sql import select
 
 from discord_bots import config
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import ENABLE_VOICE_MOVE, LEADERBOARD_CHANNEL
 from discord_bots.models import (
@@ -33,7 +33,7 @@ class PlayerCommands(BaseCog):
     group = app_commands.Group(name="player", description="Player commands")
 
     @group.command(name="commend", description="Commend player")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Player to be commended")
     async def commend(self, interaction: Interaction, member: Member):
         session: SQLAlchemySession
@@ -156,7 +156,7 @@ class PlayerCommands(BaseCog):
             )
 
     @group.command(name="commendstats", description="Show commend stats")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def commendstats(self, interaction: Interaction):
         session: SQLAlchemySession
         with Session() as session:
@@ -224,7 +224,7 @@ class PlayerCommands(BaseCog):
     @group.command(
         name="toggleleaderboard", description="Enable/disable showing on leaderbaord"
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(option="True/False")
     async def toggleleaderboard(self, interaction: Interaction, option: bool):
         session: SQLAlchemySession
@@ -262,7 +262,7 @@ class PlayerCommands(BaseCog):
             )
 
     @group.command(name="togglestats", description="Enable/disable player stats")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(option="True/False")
     async def togglestats(self, interaction: Interaction, option: bool):
         session: SQLAlchemySession
@@ -300,7 +300,7 @@ class PlayerCommands(BaseCog):
             )
 
     @group.command(name="togglevoicemove", description="Enable/disable voice movement")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(option="True/False")
     async def togglevoicemove(self, interaction: Interaction, option: bool):
         if not ENABLE_VOICE_MOVE:
@@ -349,7 +349,7 @@ class PlayerCommands(BaseCog):
             )
 
     @group.command(name="setmu", description="Directly set a player's mu")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.check(is_admin_app_command)
     @app_commands.describe(member="Player to be adjusted", mu="Mu value")
     async def setmu(self, interaction: Interaction, member: Member, mu: float):
@@ -389,7 +389,7 @@ class PlayerCommands(BaseCog):
                     await admin_log_channel.send(embed=embed)
 
     @group.command(name="setsigma", description="Directly set a player's sigma")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.check(is_admin_app_command)
     @app_commands.describe(member="Player to be adjusted", sigma="Sigma value")
     async def setsigma(self, interaction: Interaction, member: Member, sigma: float):

@@ -7,7 +7,7 @@ import discord_bots.config as env_config
 from discord_bots.bot import bot
 from discord_bots.checks import (
     is_admin_app_command,
-    is_command_channel,
+    is_command_or_captain_channel,
     update_captain_channel_id_cache,
 )
 from discord_bots.models import Config, Session
@@ -25,7 +25,7 @@ class ConfigCommands(commands.Cog):
         name="setdefaultmu", description="Set the default mu for new players"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def setdefaultmu(self, interaction: Interaction, value: float):
         """
         Set the default mu for new players
@@ -48,7 +48,7 @@ class ConfigCommands(commands.Cog):
         name="setdefaultsigma", description="Set the default sigma for new players"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def setdefaultsigma(self, interaction: Interaction, value: float):
         """
         Set the default sigma for new players
@@ -70,7 +70,7 @@ class ConfigCommands(commands.Cog):
         name="setdefaulttau", description="Set the default tau for new players"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def setdefaulttau(self, interaction: Interaction, value: float):
         """
         Set the default tau for new players
@@ -91,7 +91,7 @@ class ConfigCommands(commands.Cog):
 
     @group.command(name="list", description="List current configuration values")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def listconfig(self, interaction: Interaction):
         """
         List current configuration values
@@ -141,7 +141,7 @@ class ConfigCommands(commands.Cog):
         description="Enable/disable position-based trueskill",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(option="True/False")
     async def togglepositiontrueskill(self, interaction: Interaction, option: bool):
         """
@@ -169,7 +169,7 @@ class ConfigCommands(commands.Cog):
         description="Enable/disable map-based trueskill",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(option="True/False")
     async def togglemaptrueskill(self, interaction: Interaction, option: bool):
         """
@@ -197,7 +197,7 @@ class ConfigCommands(commands.Cog):
         description="Register a channel as the captain pick lobby",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(channel="Channel to register as the captain pick lobby")
     async def setcaptainchannel(self, interaction: Interaction, channel: TextChannel):
         with Session() as session:
@@ -225,7 +225,7 @@ class ConfigCommands(commands.Cog):
         description="Unregister the captain pick lobby channel",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def clearcaptainchannel(self, interaction: Interaction):
         with Session() as session:
             config = session.query(Config).first()

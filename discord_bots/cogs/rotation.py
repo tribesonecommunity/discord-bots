@@ -8,9 +8,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord_bots.checks import is_admin_app_command, is_command_channel
+from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
-from discord_bots.models import Map, Rotation, RotationMap, Session, RotationMapHistory
+from discord_bots.models import Map, Rotation, RotationMap, RotationMapHistory, Session
 from discord_bots.utils import (
     execute_map_rotation,
     map_short_name_autocomplete,
@@ -30,7 +30,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="add", description="Add a rotation to the rotation pool")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(rotation_name="Existing rotation")
     @app_commands.autocomplete(rotation_name=rotation_autocomplete)
     @app_commands.rename(rotation_name="rotation")
@@ -65,7 +65,7 @@ class RotationCommands(BaseCog):
         description="Add a map to a rotation at a specific ordinal (position)",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
         map_short_name="Existing map",
@@ -192,7 +192,7 @@ class RotationCommands(BaseCog):
         name="remove", description="Remove a rotation from the rotation pool"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(rotation_name="Existing rotation")
     @app_commands.autocomplete(rotation_name=rotation_autocomplete)
     @app_commands.rename(rotation_name="rotation")
@@ -230,7 +230,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="removemap", description="Remove a map from a rotation")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.autocomplete(
         rotation_name=rotation_autocomplete, map_short_name=map_short_name_autocomplete
     )
@@ -322,7 +322,7 @@ class RotationCommands(BaseCog):
         description="Set the ordinal (position) for a map in a rotation",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
         map_short_name="Existing map",
@@ -452,7 +452,7 @@ class RotationCommands(BaseCog):
         description="Set the random weight for a map in a rotation",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
         map_short_name="Existing map",
@@ -551,7 +551,7 @@ class RotationCommands(BaseCog):
         description="Whether to stop auto-rotation when reaching this map",
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
         map_short_name="Existing map",
@@ -633,7 +633,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="setname", description="Set rotation name")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.autocomplete(old_rotation_name=rotation_autocomplete)
     @app_commands.rename(old_rotation_name="old_name", new_rotation_name="new_name")
     @app_commands.describe(
@@ -649,7 +649,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="configure-random", description="Configures the rotations random map properties")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
         is_random="Whether to chooses rotation's maps at random",
@@ -708,7 +708,7 @@ class RotationCommands(BaseCog):
 
     @group.command(name="show-history", description="Shows the history of selected maps")
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         rotation_name="Existing rotation",
         limit=f"How many entries to show. Max: {_show_rotation_limit}",

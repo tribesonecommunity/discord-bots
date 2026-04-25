@@ -4,7 +4,7 @@ from discord import Colour, Embed, Interaction, app_commands
 from discord.ext.commands import Bot
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
-from discord_bots.checks import is_command_channel
+from discord_bots.checks import is_command_or_captain_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import Queue, QueueNotification, Session
 from discord_bots.utils import queue_autocomplete
@@ -22,7 +22,7 @@ class NotificationCommands(BaseCog):
         name="queue",
         description="Get DM when a queue reaches the specified number of players. You will only be notified once.",
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         queue_name="Queue name",
         size="A one-time notification will be sent when the queue reaches this number of players",
@@ -69,7 +69,7 @@ class NotificationCommands(BaseCog):
             session.commit()
 
     @group.command(name="remove", description="Remove all your notifications")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def removenotifications(self, interaction: Interaction):
         session: SQLAlchemySession
         with Session() as session:

@@ -10,7 +10,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 import discord_bots.config as config
 from discord_bots.checks import (
     is_admin_app_command,
-    is_command_channel,
+    is_command_or_captain_channel,
     is_mock_user_app_command,
 )
 from discord_bots.cogs.base import BaseCog
@@ -53,7 +53,7 @@ class VoteCommands(BaseCog):
         name="setmapthreshold", description="Set the number of votes required to pass"
     )
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     @app_commands.describe(threshold="Number of votes required")
     async def setmapvotethreshold(self, interaction: Interaction, threshold: int):
@@ -75,7 +75,7 @@ class VoteCommands(BaseCog):
         name="skipgamemap",
         description="Vote to skip to the next map for an in-progress game",
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     async def skipgamemap(self, interaction: Interaction):
         """
@@ -238,7 +238,7 @@ class VoteCommands(BaseCog):
                 )
 
     @group.command(name="unvote", description="Remove all of a player's votes")
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     async def unvote(self, interaction: Interaction):
         """
@@ -264,7 +264,7 @@ class VoteCommands(BaseCog):
     @group.command(
         name="unvotemap", description="Remove all of a player's votes for a map"
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     @app_commands.describe(map_short_name="Map to remove votes from")
     @app_commands.rename(map_short_name="map")
@@ -322,7 +322,7 @@ class VoteCommands(BaseCog):
     @group.command(
         name="unskip", description="Remove all of a player's votes to skip the next map"
     )
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     async def unvoteskip(self, interaction: Interaction):
         """
@@ -358,7 +358,7 @@ class VoteCommands(BaseCog):
 
     @group.command(name="mock", description="Generates 6 mock votes for testing")
     @app_commands.check(is_mock_user_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.guild_only()
     @app_commands.describe(
         type="Map: Mocks MapVote for first rotation_map | skip: Mocks SkipMapVote for first rotation",

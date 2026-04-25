@@ -1,13 +1,9 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from operator import itemgetter
-from pytz import utc
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm.session import Session as SQLAlchemySession
 from typing import Any, Literal, Optional
 
 from discord import (
-    app_commands,
     ButtonStyle,
     Client,
     Colour,
@@ -17,17 +13,21 @@ from discord import (
     TextChannel,
     TextStyle,
     VoiceChannel,
+    app_commands,
 )
 from discord.ext.commands import Bot
 from discord.member import Member
 from discord.ui import Button, Modal, TextInput, View
 from discord.utils import get
+from pytz import utc
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.bot import bot
 from discord_bots.checks import (
     economy_enabled,
     is_admin_app_command,
-    is_command_channel,
+    is_command_or_captain_channel,
 )
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import (
@@ -89,7 +89,7 @@ class EconomyCommands(BaseCog):
     @group.command(name="add", description=f"Admin; Add {CURRENCY_NAME} to a player")
     @app_commands.check(economy_enabled)
     @app_commands.check(is_admin_app_command)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(member="Discord member", add_value="Currency to be added")
     async def addcurrency(
         self, interaction: Interaction, member: Member, add_value: int
@@ -442,7 +442,7 @@ class EconomyCommands(BaseCog):
         name="donate", description=f"Donate {CURRENCY_NAME} to another player"
     )
     @app_commands.check(economy_enabled)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     @app_commands.describe(
         member="Discord member", donation_value="Currency value to donate"
     )
@@ -785,7 +785,7 @@ class EconomyCommands(BaseCog):
 
     @group.command(name="show", description=f"Show how many {CURRENCY_NAME} you have")
     @app_commands.check(economy_enabled)
-    @app_commands.check(is_command_channel)
+    @app_commands.check(is_command_or_captain_channel)
     async def showcurrency(self, interaction: Interaction):
         session: SQLAlchemySession
         with Session() as session:
