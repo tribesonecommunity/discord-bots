@@ -7,7 +7,11 @@ from discord.utils import escape_markdown
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
 from discord_bots.bot import bot
-from discord_bots.checks import is_admin_app_command, is_command_or_captain_channel
+from discord_bots.checks import (
+    is_admin_app_command,
+    is_command_or_captain_channel,
+    queue_is_captain_pick_for_channel,
+)
 from discord_bots.cogs.base import BaseCog
 from discord_bots.config import DB_NAME
 from discord_bots.models import (
@@ -212,7 +216,14 @@ class ListCommands(BaseCog):
         """
         session: SQLAlchemySession
         with Session() as session:
-            queues: list[Queue] | None = session.query(Queue).all()
+            queues: list[Queue] | None = (
+                session.query(Queue)
+                .filter(
+                    Queue.is_captain_pick
+                    == queue_is_captain_pick_for_channel(interaction.channel_id)
+                )
+                .all()
+            )
             if not queues:
                 await interaction.response.send_message(
                     embed=Embed(

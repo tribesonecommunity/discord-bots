@@ -32,7 +32,7 @@ from sqlalchemy.orm.session import Session as SQLAlchemySession
 from trueskill import Rating
 
 import discord_bots.config as config
-from discord_bots.checks import is_admin
+from discord_bots.checks import is_admin, queue_is_captain_pick_for_channel
 from discord_bots.utils import (
     add_empty_field,
     create_condensed_in_progress_game_embed,
@@ -680,6 +680,7 @@ async def add(ctx: Context, *args):
         .first()
     )
 
+    is_captain_channel = queue_is_captain_pick_for_channel(message.channel.id)
     queues_to_add: list[Queue] = []
     if len(args) == 0:
         if config.REQUIRE_ADD_TARGET:
@@ -693,14 +694,21 @@ async def add(ctx: Context, *args):
         # Don't auto-add to isolated queues
         queues_to_add += (
             session.query(Queue)
-            .filter(Queue.is_isolated == False, Queue.is_locked == False)
+            .filter(
+                Queue.is_isolated == False,
+                Queue.is_locked == False,
+                Queue.is_captain_pick == is_captain_channel,
+            )
             .order_by(Queue.ordinal.asc())
             .all()
         )  # type: ignore
     else:
         all_queues = (
             session.query(Queue)
-            .filter(Queue.is_locked == False)
+            .filter(
+                Queue.is_locked == False,
+                Queue.is_captain_pick == is_captain_channel,
+            )
             .order_by(Queue.ordinal.asc())
             .all()
         )  # type: ignore
@@ -714,7 +722,14 @@ async def add(ctx: Context, *args):
                 for queue_to_add in queues_with_ordinal:
                     queues_to_add.append(queue_to_add)
             except ValueError:
-                queue: Queue | None = session.query(Queue).filter(Queue.name.ilike(arg)).first()  # type: ignore
+                queue: Queue | None = (
+                    session.query(Queue)
+                    .filter(
+                        Queue.name.ilike(arg),
+                        Queue.is_captain_pick == is_captain_channel,
+                    )
+                    .first()
+                )  # type: ignore
                 if queue:
                     queues_to_add.append(queue)
             except IndexError:
@@ -1173,11 +1188,16 @@ async def status(ctx: Context, *args):
             await ctx.channel.send("No Rotations")
             return
 
+        is_captain_channel = queue_is_captain_pick_for_channel(ctx.channel.id)
         embed = Embed(title="Queues", color=Colour.blue())
         ipg_embeds: list[Embed] = []
         rotation_queues: list[Queue] | None
         for rotation in all_rotations:
-            conditions = [Queue.rotation_id == rotation.id, Queue.is_locked == False]
+            conditions = [
+                Queue.rotation_id == rotation.id,
+                Queue.is_locked == False,
+                Queue.is_captain_pick == is_captain_channel,
+            ]
             if queue_indices:
                 conditions.append(Queue.ordinal.in_(queue_indices))
             if queue_names:
