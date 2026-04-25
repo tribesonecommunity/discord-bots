@@ -21,6 +21,7 @@ from discord_bots.cogs.admin import AdminCommands
 from discord_bots.cogs.category import CategoryCommands
 from discord_bots.cogs.common import CommonCommands
 from discord_bots.cogs.config import ConfigCommands
+from discord_bots.cogs.draft import DraftCommands
 from discord_bots.cogs.economy import EconomyCommands
 from discord_bots.cogs.in_progress_game import InProgressGameCommands
 from discord_bots.cogs.list import ListCommands
@@ -328,6 +329,7 @@ async def setup():
     await bot.add_cog(VoteCommands(bot))
     await bot.add_cog(NotificationCommands(bot))
     await bot.add_cog(ConfigCommands(bot))
+    await bot.add_cog(DraftCommands(bot))
     add_player_task.start()
     afk_timer_task.start()
     leaderboard_task.start()

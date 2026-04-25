@@ -306,6 +306,22 @@ async def create_game(
                 session.query(Map).filter(Map.id == next_rotation_map.map_id).first()
             )
 
+        if queue.is_captain_pick:
+            # Lazy import to avoid circular: captain_pick imports from
+            # cogs.in_progress_game which can drag in commands during init.
+            from discord_bots.captain_pick import start_draft as _start_draft
+
+            await _start_draft(
+                session,
+                queue,
+                next_map,
+                rolled_random_map,
+                player_ids,
+                channel,
+                guild,
+            )
+            return
+
         if len(player_ids) == 1:
             # Useful for debugging, no real world application
             players = session.query(Player).filter(Player.id == player_ids[0]).all()
