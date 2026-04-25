@@ -901,6 +901,19 @@ async def autosub(ctx: Context, member: Member = None):
         .filter(InProgressGame.id == ipg_player.in_progress_game_id)
         .first()
     )
+    autosub_queue: Queue | None = (
+        session.query(Queue).filter(Queue.id == game.queue_id).first()
+    )
+    if autosub_queue and autosub_queue.is_captain_pick:
+        await send_message(
+            message.channel,
+            embed_description=(
+                "Autosub is not supported for captain pick games. Use `!sub` "
+                "to manually substitute (this will restart the draft)."
+            ),
+            colour=Colour.red(),
+        )
+        return
     results = (
         session.query(Player.id, Player.name)
         .join(InProgressGamePlayer)
@@ -1562,6 +1575,22 @@ async def sub(ctx: Context, member: Member):
         await send_message(
             channel=message.channel,
             embed_description=f"{escape_markdown(caller.name)} and {escape_markdown(callee.name)} are not in a game",
+            colour=Colour.red(),
+        )
+        return
+
+    # Sub-during-draft is not yet implemented (the proper behavior is to
+    # restart the draft from scratch with the new player set; that's a
+    # follow-up). For now, block /sub on drafting games to avoid leaving the
+    # draft in a half-broken state.
+    sub_target_game = caller_game or callee_game
+    if sub_target_game and sub_target_game.is_drafting:
+        await send_message(
+            channel=message.channel,
+            embed_description=(
+                "Substitutions during a captain pick draft aren't supported "
+                "yet. Wait for the draft to finish before subbing."
+            ),
             colour=Colour.red(),
         )
         return
