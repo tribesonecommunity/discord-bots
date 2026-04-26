@@ -1160,7 +1160,7 @@ async def imagetest2(ctx: Context):
 
 @bot.command()
 async def lt(ctx: Context):
-    query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=207.148.13.132:28006&port=28006"
+    query_url = "http://tribesquery.toocrooked.com/hostQuery.php?server=104.128.49.65:28006&port=28006"
     await ctx.message.channel.send(query_url)
 
     ntf = NamedTemporaryFile(delete=True, suffix=".png")
