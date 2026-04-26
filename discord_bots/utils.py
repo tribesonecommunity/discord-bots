@@ -503,10 +503,14 @@ def finished_game_str(finished_game: FinishedGame, debug: bool = False) -> str:
             team1_names = ", ".join(
                 sorted([escape_markdown(player.name) for player in team1_players])
             )
-        team0_win_prob = round(100 * finished_game.win_probability, 1)
-        team1_win_prob = round(100 - team0_win_prob, 1)
-        team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
-        team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
+        if finished_game.is_captain_pick:
+            team0_str = f"{finished_game.team0_name}: {team0_names}"
+            team1_str = f"{finished_game.team1_name}: {team1_names}"
+        else:
+            team0_win_prob = round(100 * finished_game.win_probability, 1)
+            team1_win_prob = round(100 - team0_win_prob, 1)
+            team0_str = f"{finished_game.team0_name} ({team0_win_prob}%): {team0_names}"
+            team1_str = f"{finished_game.team1_name} ({team1_win_prob}%): {team1_names}"
 
         if finished_game.winning_team == 0:
             output += f"\n**{team0_str}**"
@@ -711,8 +715,15 @@ async def create_in_progress_game_embed(
     team0_player_names.sort(key=str.casefold)
     team1_player_names.sort(key=str.casefold)
     newline = "\n"
+    hide_winprob = queue is not None and queue.is_captain_pick
+    team0_winprob_suffix = (
+        "" if hide_winprob else f" ({round(100 * game.win_probability, 1)}%)"
+    )
+    team1_winprob_suffix = (
+        "" if hide_winprob else f" ({round(100 * (1 - game.win_probability), 1)}%)"
+    )
     embed.add_field(
-        name=f"🔴 {game.team0_name} ({round(100 * game.win_probability, 1)}%)",
+        name=f"🔴 {game.team0_name}{team0_winprob_suffix}",
         value=(
             f"\n>>> {newline.join(team0_player_names)}"
             if team0_player_names
@@ -721,7 +732,7 @@ async def create_in_progress_game_embed(
         inline=True,
     )
     embed.add_field(
-        name=f"🔵 {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%)",
+        name=f"🔵 {game.team1_name}{team1_winprob_suffix}",
         value=(
             f"\n>>> {newline.join(team1_player_names)}"
             if team1_player_names
@@ -842,13 +853,18 @@ async def create_condensed_in_progress_game_embed(
     team1_player_names.sort(key=str.casefold)
     content = ""
     content += f"🗺️ Map: **{game.map_full_name} ({game.map_short_name})**"
-    content += f"\n🔴 {game.team0_name} ({round(100 * game.win_probability, 1)}%):"
+    hide_winprob = queue is not None and queue.is_captain_pick
+    team0_winprob_suffix = (
+        "" if hide_winprob else f" ({round(100 * game.win_probability, 1)}%)"
+    )
+    team1_winprob_suffix = (
+        "" if hide_winprob else f" ({round(100 * (1 - game.win_probability), 1)}%)"
+    )
+    content += f"\n🔴 {game.team0_name}{team0_winprob_suffix}:"
     content += (
         f'\n> {", ".join(team0_player_names)}' if team0_player_names else "\n> ** **"
     )
-    content += (
-        f"\n🔵 {game.team1_name} ({round(100 * (1 - game.win_probability), 1)}%):"
-    )
+    content += f"\n🔵 {game.team1_name}{team1_winprob_suffix}:"
     content += (
         f'\n> {", ".join(team1_player_names)}' if team1_player_names else "\n> ** **"
     )
@@ -958,13 +974,23 @@ def create_finished_game_embed(
             team0_embed_value = f"\n>>> {newline.join(team0_player_names)}"
         if team1_player_names:
             team1_embed_value = f"\n>>> {newline.join(team1_player_names)}"
+    fg_team0_winprob_suffix = (
+        ""
+        if finished_game.is_captain_pick
+        else f" ({round(100 * finished_game.win_probability, 1)}%)"
+    )
+    fg_team1_winprob_suffix = (
+        ""
+        if finished_game.is_captain_pick
+        else f" ({round(100*(1 - finished_game.win_probability), 1)}%)"
+    )
     embed.add_field(
-        name=f"{be_str} ({round(100 * finished_game.win_probability, 1)}%)",
+        name=f"{be_str}{fg_team0_winprob_suffix}",
         value=team0_embed_value,
         inline=True,
     )
     embed.add_field(
-        name=f"{ds_str} ({round(100*(1 - finished_game.win_probability), 1)}%)",
+        name=f"{ds_str}{fg_team1_winprob_suffix}",
         value=team1_embed_value,
         inline=True,
     )
@@ -1037,13 +1063,24 @@ def create_cancelled_game_embed(
         )
         .all()
     )
+    cancel_hide_winprob = queue is not None and queue.is_captain_pick
+    cancel_team0_winprob_suffix = (
+        ""
+        if cancel_hide_winprob
+        else f" ({round(100 * in_progress_game.win_probability, 1)}%)"
+    )
+    cancel_team1_winprob_suffix = (
+        ""
+        if cancel_hide_winprob
+        else f" ({round(100*(1 - in_progress_game.win_probability), 1)}%)"
+    )
     embed.add_field(
-        name=f"{in_progress_game.team0_name} ({round(100 * in_progress_game.win_probability, 1)}%)",
+        name=f"{in_progress_game.team0_name}{cancel_team0_winprob_suffix}",
         value="\n".join([f"> {ipgp.player.name}" for ipgp in team0_fg_players]),
         inline=True,
     )
     embed.add_field(
-        name=f"{in_progress_game.team1_name} ({round(100*(1 - in_progress_game.win_probability), 1)}%)",
+        name=f"{in_progress_game.team1_name}{cancel_team1_winprob_suffix}",
         value="\n".join([f"> {ipgp.player.name}" for ipgp in team1_fg_players]),
         inline=True,
     )
