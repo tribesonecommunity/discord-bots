@@ -528,6 +528,7 @@ class InProgressGameCommands(commands.Cog):
             finished_at=game_finished_at,
             game_id=in_progress_game.id,
             is_rated=queue.is_rated,
+            is_captain_pick=queue.is_captain_pick,
             map_full_name=in_progress_game.map_full_name,
             map_short_name=in_progress_game.map_short_name,
             queue_name=queue.name,
@@ -550,7 +551,15 @@ class InProgressGameCommands(commands.Cog):
 
         team0_rated_ratings_after: list[Rating]
         team1_rated_ratings_after: list[Rating]
-        if len(players) > 1:
+        if queue.is_captain_pick:
+            # Captain pick games are unrated. We still write FinishedGamePlayer
+            # rows for history (with _after equal to _before, since ratings
+            # don't move) and refresh the per-category last_game_finished_at
+            # so sigma decay treats the player as active. See update_ratings
+            # below for the gating.
+            team0_rated_ratings_after = list(team0_rated_ratings_before)
+            team1_rated_ratings_after = list(team1_rated_ratings_before)
+        elif len(players) > 1:
             team0_rated_ratings_after, team1_rated_ratings_after = rate(
                 [team0_rated_ratings_before, team1_rated_ratings_before], result
             )
@@ -590,20 +599,24 @@ class InProgressGameCommands(commands.Cog):
                     position_name=position_name,
                     rated_trueskill_sigma_after=ratings_after[i].sigma,
                 )
-                trueskill_rating = ratings_after[i]
-                # Regardless of category, always update the master trueskill. That way
-                # when we create new categories off of it the data isn't completely
-                # stale
-                player.rated_trueskill_mu = trueskill_rating.mu
-                player.rated_trueskill_sigma = trueskill_rating.sigma
-
                 # We assume that every player has a player_category_trueskill
-                # because get_category_trueskill is supposed to create it
+                # because get_category_trueskill is supposed to create it.
+                # Always refresh last_game_finished_at so sigma decay treats
+                # captain-pick games as activity too.
                 pct = player_category_trueskills_by_id[player.id]
-                pct.mu = trueskill_rating.mu
-                pct.sigma = trueskill_rating.sigma
-                pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
                 pct.last_game_finished_at = game_finished_at
+
+                if not queue.is_captain_pick:
+                    trueskill_rating = ratings_after[i]
+                    # Regardless of category, always update the master trueskill.
+                    # That way when we create new categories off of it the data
+                    # isn't completely stale.
+                    player.rated_trueskill_mu = trueskill_rating.mu
+                    player.rated_trueskill_sigma = trueskill_rating.sigma
+                    pct.mu = trueskill_rating.mu
+                    pct.sigma = trueskill_rating.sigma
+                    pct.rank = trueskill_rating.mu - 3 * trueskill_rating.sigma
+
                 session.add(pct)
                 session.add(finished_game_player)
 
@@ -620,7 +633,7 @@ class InProgressGameCommands(commands.Cog):
             game_finished_at,
         )
         session.commit()  # temporary solution until the foreign key constraint is resolved on EconomyPredictions/EconomyTransactions
-        if config.ECONOMY_ENABLED:
+        if config.ECONOMY_ENABLED and not queue.is_captain_pick:
             economy_cog = self.bot.get_cog("EconomyCommands")
             if economy_cog is not None and isinstance(economy_cog, EconomyCommands):
                 await economy_cog.resolve_predictions(
@@ -645,22 +658,24 @@ class InProgressGameCommands(commands.Cog):
             )
         )
 
-        # Reward raffle tickets
-        reward = (
-            session.query(RotationMap.raffle_ticket_reward)
-            .join(Map, Map.id == RotationMap.map_id)
-            .join(Rotation, Rotation.id == RotationMap.rotation_id)
-            .join(Queue, Queue.rotation_id == Rotation.id)
-            .filter(Map.short_name == in_progress_game.map_short_name)
-            .filter(Queue.id == in_progress_game.queue_id)
-            .scalar()
-        )
-        if not reward:
-            reward = config.DEFAULT_RAFFLE_VALUE
+        # Reward raffle tickets — skipped for captain pick games (unrated /
+        # economy-disabled).
+        if not queue.is_captain_pick:
+            reward = (
+                session.query(RotationMap.raffle_ticket_reward)
+                .join(Map, Map.id == RotationMap.map_id)
+                .join(Rotation, Rotation.id == RotationMap.rotation_id)
+                .join(Queue, Queue.rotation_id == Rotation.id)
+                .filter(Map.short_name == in_progress_game.map_short_name)
+                .filter(Queue.id == in_progress_game.queue_id)
+                .scalar()
+            )
+            if not reward:
+                reward = config.DEFAULT_RAFFLE_VALUE
 
-        for player in players:
-            player.raffle_tickets = (player.raffle_tickets or 0) + reward
-            session.add(player)
+            for player in players:
+                player.raffle_tickets = (player.raffle_tickets or 0) + reward
+                session.add(player)
         session.commit()
 
         finished_game_embed = create_finished_game_embed(

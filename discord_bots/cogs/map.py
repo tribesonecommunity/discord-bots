@@ -293,7 +293,10 @@ class MapCommands(BaseCog):
                 )
                 return
             finished_game_ids: List[str] | None = [fgp.finished_game_id for fgp in fgps]
-            conditions = [FinishedGame.id.in_(finished_game_ids)]
+            conditions = [
+                FinishedGame.id.in_(finished_game_ids),
+                FinishedGame.is_captain_pick == False,
+            ]
             if category_name:
                 conditions.append(FinishedGame.category_name == category_name)
             fgs: List[FinishedGame] | None = (
@@ -396,7 +399,10 @@ class MapCommands(BaseCog):
 
             cols = []
             for m in maps:
-                conditions = [FinishedGame.map_full_name == m.full_name]
+                conditions = [
+                    FinishedGame.map_full_name == m.full_name,
+                    FinishedGame.is_captain_pick == False,
+                ]
                 if category_name:
                     conditions.append(FinishedGame.category_name == category_name)
                 finished_games = session.query(FinishedGame).filter(*conditions).all()
