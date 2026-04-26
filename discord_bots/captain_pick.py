@@ -568,6 +568,121 @@ async def finalize_draft(game_id: str) -> None:
             await move_game_players(short_uuid(game.id), None, guild)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Sub-during-draft restart
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+async def restart_draft_after_sub(
+    game_id: str,
+    was_captain_subbed: bool,
+) -> None:
+    """
+    Reset a drafting game's pick state and re-prompt for first-pick choice.
+
+    Called by /sub when a substitution happens mid-draft. Per the design:
+    - Always: clear DraftPick rows, reset non-captain teams to NULL.
+    - If a captain was subbed out: also clear is_captain on all rows and
+      re-run captain selection on the new player set. The replacement
+      player isn't auto-promoted to captain — the algorithm decides who
+      the top two are from the post-sub roster.
+    - The old draft message has its view stripped (so stale buttons can't
+      be clicked) and a fresh FirstPickChoiceView is posted in its place;
+      InProgressGame.message_id is updated.
+    """
+    from discord_bots.views.draft import FirstPickChoiceView
+
+    session: SQLAlchemySession
+    with Session() as session:
+        game = (
+            session.query(InProgressGame).filter(InProgressGame.id == game_id).first()
+        )
+        if not game or not game.is_drafting:
+            return
+
+        # 1. Clear pick history.
+        session.query(DraftPick).filter(
+            DraftPick.in_progress_game_id == game_id
+        ).delete()
+
+        # 2. Reset team assignments (and captains, if needed).
+        igps: list[InProgressGamePlayer] = (
+            session.query(InProgressGamePlayer)
+            .filter(InProgressGamePlayer.in_progress_game_id == game_id)
+            .all()
+        )
+        if was_captain_subbed:
+            for igp in igps:
+                igp.team = None
+                igp.is_captain = False
+            queue: Queue | None = (
+                session.query(Queue).filter(Queue.id == game.queue_id).first()
+            )
+            if not queue:
+                return
+            player_ids = [igp.player_id for igp in igps]
+            players: list[Player] = (
+                session.query(Player).filter(Player.id.in_(player_ids)).all()
+            )
+            captain_a, captain_b = select_captains(session, players, queue, game.map_id)
+            for igp in igps:
+                if igp.player_id == captain_a.id:
+                    igp.team = 0
+                    igp.is_captain = True
+                elif igp.player_id == captain_b.id:
+                    igp.team = 1
+                    igp.is_captain = True
+        else:
+            for igp in igps:
+                if not igp.is_captain:
+                    igp.team = None
+
+        session.commit()
+
+        # 3. Strip the old draft message's view; post a fresh first-pick
+        # choice view and update message_id.
+        guild = bot.get_guild(_guild_id_for_game(game))
+        match_channel = (
+            guild.get_channel(game.channel_id) if guild and game.channel_id else None
+        )
+        if not isinstance(match_channel, TextChannel):
+            return
+
+        if game.message_id:
+            try:
+                old_message = await match_channel.fetch_message(game.message_id)
+                await old_message.edit(view=None)
+            except Exception as e:
+                _log.warning(
+                    f"[restart_draft_after_sub] couldn't disable old "
+                    f"message {game.message_id}: {e}"
+                )
+
+        captain_b_igp = (
+            session.query(InProgressGamePlayer)
+            .filter(
+                InProgressGamePlayer.in_progress_game_id == game_id,
+                InProgressGamePlayer.is_captain == True,
+                InProgressGamePlayer.team == 1,
+            )
+            .first()
+        )
+        if not captain_b_igp:
+            return
+
+        draft_cog = bot.get_cog("DraftCommands")
+        embed = create_draft_embed(session, game)
+        embed.description = (
+            "🔁 Draft restarted due to a substitution. "
+            f"<@{captain_b_igp.player_id}>, do you want to pick first or "
+            f"second?"
+        )
+        view = FirstPickChoiceView(game_id, captain_b_igp.player_id, draft_cog)
+        message = await match_channel.send(embed=embed, view=view)
+        game.message_id = message.id
+        session.commit()
+
+
 def _guild_id_for_game(game: InProgressGame) -> int:
     """
     Derive the guild_id from the bot's guilds. We don't store guild_id on
