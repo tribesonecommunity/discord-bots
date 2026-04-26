@@ -1108,7 +1108,10 @@ async def del_(ctx: Context, *args):
     session: SQLAlchemySession
     with Session() as session:
         queues_del_from = del_player_from_queues_and_waitlists(
-            session, ctx.author.id, *args
+            session,
+            ctx.author.id,
+            *args,
+            is_captain_pick=queue_is_captain_pick_for_channel(ctx.channel.id),
         )
         for queue in queues_del_from:
             # TODO: generify this into queue status util
