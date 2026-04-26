@@ -2167,7 +2167,10 @@ async def command_autocomplete(interaction: Interaction, current: str):
 
 
 def del_player_from_queues_and_waitlists(
-    session: sqlalchemy.orm.Session, player_id: int, *args: str
+    session: sqlalchemy.orm.Session,
+    player_id: int,
+    *args: str,
+    is_captain_pick: bool | None = None,
 ) -> list[Queue]:
     queues_del_from_by_id: dict[str, Queue] = {}
     if args:
@@ -2182,6 +2185,8 @@ def del_player_from_queues_and_waitlists(
         ]
     else:
         conditions = []
+    if is_captain_pick is not None:
+        conditions.append(Queue.is_captain_pick == is_captain_pick)
     queues: List[Queue] = (
         session.query(Queue)
         .join(
