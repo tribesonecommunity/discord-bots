@@ -1,4 +1,6 @@
 import logging
+import random
+from datetime import datetime, timezone
 
 from discord import Colour, Embed, Interaction, Member, TextChannel, app_commands
 from discord.ext.commands import Bot
@@ -7,16 +9,20 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as SQLAlchemySession
 
+from discord_bots.bot import bot as discord_bot
 from discord_bots.checks import is_admin_app_command, is_ladder_channel
 from discord_bots.cogs.base import BaseCog
 from discord_bots.models import (
     Ladder,
     LadderMatch,
+    LadderMatchGame,
     LadderTeam,
     LadderTeamInvite,
     LadderTeamPlayer,
+    Map,
     Player,
     Rotation,
+    RotationMap,
     Session,
 )
 from discord_bots.utils import (
@@ -98,6 +104,157 @@ def _next_position(session: SQLAlchemySession, ladder_id: str) -> int:
         .scalar()
     )
     return (max_pos or 0) + 1
+
+
+def _team_in_flight_match(
+    session: SQLAlchemySession, team_id: str
+) -> LadderMatch | None:
+    return (
+        session.query(LadderMatch)
+        .filter(
+            LadderMatch.status.in_(IN_FLIGHT_STATUSES),
+            (LadderMatch.challenger_team_id == team_id)
+            | (LadderMatch.defender_team_id == team_id),
+        )
+        .first()
+    )
+
+
+def _team_outgoing_pending(
+    session: SQLAlchemySession, team_id: str
+) -> LadderMatch | None:
+    return (
+        session.query(LadderMatch)
+        .filter(
+            LadderMatch.status == "pending",
+            LadderMatch.challenger_team_id == team_id,
+        )
+        .first()
+    )
+
+
+def _team_incoming_pending(
+    session: SQLAlchemySession, team_id: str
+) -> LadderMatch | None:
+    return (
+        session.query(LadderMatch)
+        .filter(
+            LadderMatch.status == "pending",
+            LadderMatch.defender_team_id == team_id,
+        )
+        .first()
+    )
+
+
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+async def _post_history(ladder: Ladder, embed: Embed) -> None:
+    """Post an embed to the ladder's history channel, if configured."""
+    if not ladder.history_channel_id:
+        return
+    channel = discord_bot.get_channel(ladder.history_channel_id)
+    if isinstance(channel, TextChannel):
+        try:
+            await channel.send(embed=embed)
+        except Exception:
+            _log.exception(
+                "Failed to post to ladder history channel %s", ladder.history_channel_id
+            )
+
+
+def _build_leaderboard_embed(session: SQLAlchemySession, ladder: Ladder) -> Embed:
+    teams: list[LadderTeam] = (
+        session.query(LadderTeam)
+        .filter(LadderTeam.ladder_id == ladder.id)
+        .order_by(LadderTeam.position)
+        .all()
+    )
+
+    # Pre-fetch team-name lookup for opponent annotations.
+    team_by_id = {t.id: t for t in teams}
+
+    in_flight: list[LadderMatch] = (
+        session.query(LadderMatch)
+        .filter(
+            LadderMatch.ladder_id == ladder.id,
+            LadderMatch.status.in_(IN_FLIGHT_STATUSES),
+        )
+        .all()
+    )
+    annotation_by_team: dict[str, str] = {}
+    for match in in_flight:
+        challenger = team_by_id.get(match.challenger_team_id)
+        defender = team_by_id.get(match.defender_team_id)
+        if not challenger or not defender:
+            continue
+        if match.status == "pending":
+            annotation_by_team[challenger.id] = f"[challenging {defender.name}]"
+            annotation_by_team[defender.id] = f"[challenged by {challenger.name}]"
+        else:
+            annotation_by_team[challenger.id] = (
+                f"[challenge accepted vs {defender.name}]"
+            )
+            annotation_by_team[defender.id] = (
+                f"[challenge accepted vs {challenger.name}]"
+            )
+
+    if not teams:
+        body = "*No teams yet.*"
+    else:
+        lines = []
+        for t in teams:
+            ann = annotation_by_team.get(t.id, "")
+            line = (
+                f"`{t.position:>2}.` **{escape_markdown(t.name)}** "
+                f"— {t.wins}-{t.losses}-{t.draws}"
+            )
+            if ann:
+                line += f"  {ann}"
+            lines.append(line)
+        body = "\n".join(lines)
+
+    header = (
+        f"maps/match: **{ladder.maps_per_match}**   "
+        f"roster: **{ladder.max_team_size}**   "
+        f"challenge range: **{ladder.max_challenge_distance}**"
+    )
+    embed = Embed(
+        title=f"Ladder: {ladder.name}",
+        description=f"{header}\n\n{body}",
+        colour=Colour.gold(),
+    )
+    return embed
+
+
+async def _refresh_leaderboard(ladder: Ladder) -> None:
+    """Edit (or post) the per-ladder leaderboard message."""
+    if not ladder.leaderboard_channel_id:
+        return
+    channel = discord_bot.get_channel(ladder.leaderboard_channel_id)
+    if not isinstance(channel, TextChannel):
+        return
+    with Session() as session:
+        # Re-fetch ladder to ensure fresh state for the embed.
+        fresh = session.query(Ladder).filter(Ladder.id == ladder.id).first()
+        if not fresh:
+            return
+        embed = _build_leaderboard_embed(session, fresh)
+        try:
+            if fresh.leaderboard_message_id:
+                try:
+                    msg = await channel.fetch_message(fresh.leaderboard_message_id)
+                    await msg.edit(embed=embed)
+                    return
+                except Exception:
+                    # Fall through to send a new message.
+                    pass
+            sent = await channel.send(embed=embed)
+            fresh.leaderboard_message_id = sent.id
+            session.commit()
+        except Exception:
+            _log.exception("Failed to refresh ladder leaderboard for %s", ladder.name)
 
 
 async def _err(interaction: Interaction, msg: str) -> None:
@@ -1089,3 +1246,374 @@ class LadderCommands(BaseCog):
         )
         for team in below:
             team.position -= 1
+
+    # ------------------------------------------------------------------
+    # Challenge / accept / decline / cancel
+    # ------------------------------------------------------------------
+
+    @ladder_group.command(
+        name="challenge", description="Challenge another team to a match"
+    )
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(
+        ladder=ladder_autocomplete, opponent=ladder_team_autocomplete
+    )
+    @app_commands.describe(ladder="Ladder", opponent="Team to challenge")
+    async def challenge(self, interaction: Interaction, ladder: str, opponent: str):
+        await interaction.response.defer()
+        ladder_snapshot: Ladder | None = None
+        history_embed: Embed | None = None
+        with Session() as session:
+            ladder_row = _find_ladder(session, ladder)
+            if not ladder_row:
+                await _err(interaction, f"Ladder **{ladder}** not found.")
+                return
+            if not ladder_row.is_active:
+                await _err(interaction, f"Ladder **{ladder}** is inactive.")
+                return
+
+            challenger = _find_player_team_in_ladder(
+                session, ladder_row.id, interaction.user.id
+            )
+            if not challenger:
+                await _err(interaction, "You are not on a team in this ladder.")
+                return
+            if challenger.captain_id != interaction.user.id:
+                await _err(interaction, "Only the team captain can issue challenges.")
+                return
+            defender = _find_team(session, ladder_row.id, opponent)
+            if not defender:
+                await _err(
+                    interaction, f"Team **{opponent}** not found in this ladder."
+                )
+                return
+            if defender.id == challenger.id:
+                await _err(interaction, "You can't challenge your own team.")
+                return
+
+            if defender.position >= challenger.position:
+                await _err(
+                    interaction,
+                    "You can only challenge teams ranked above yours.",
+                )
+                return
+            distance = challenger.position - defender.position
+            if distance > ladder_row.max_challenge_distance:
+                await _err(
+                    interaction,
+                    (
+                        f"Defender is {distance} positions above you. "
+                        f"Max challenge distance is "
+                        f"{ladder_row.max_challenge_distance}."
+                    ),
+                )
+                return
+
+            for team, label in (
+                (challenger, "Your team"),
+                (defender, "The defender"),
+            ):
+                roster_size = _team_roster_size(session, team.id)
+                if roster_size < ladder_row.max_team_size:
+                    await _err(
+                        interaction,
+                        (
+                            f"{label} ({team.name}) has {roster_size}/"
+                            f"{ladder_row.max_team_size} players. Both rosters "
+                            f"must be full to challenge."
+                        ),
+                    )
+                    return
+                in_flight = _team_in_flight_match(session, team.id)
+                if in_flight:
+                    await _err(
+                        interaction,
+                        (f"{label} ({team.name}) already has an in-flight " f"match."),
+                    )
+                    return
+
+            match = LadderMatch(
+                ladder_id=ladder_row.id,
+                challenger_team_id=challenger.id,
+                defender_team_id=defender.id,
+                challenger_position_at_challenge=challenger.position,
+                defender_position_at_challenge=defender.position,
+            )
+            session.add(match)
+            session.commit()
+
+            ladder_snapshot = (
+                session.query(Ladder).filter(Ladder.id == ladder_row.id).first()
+            )
+
+            history_embed = Embed(
+                title="Challenge issued",
+                description=(
+                    f"**{escape_markdown(challenger.name)}** "
+                    f"(#{challenger.position}) challenges "
+                    f"**{escape_markdown(defender.name)}** "
+                    f"(#{defender.position}) on ladder "
+                    f"**{ladder_row.name}**."
+                ),
+                colour=Colour.orange(),
+            )
+            await _ok(
+                interaction,
+                (
+                    f"Challenge sent to **{escape_markdown(defender.name)}**. "
+                    f"Their captain can `/ladder team accept` or `decline`."
+                ),
+            )
+
+        if history_embed and ladder_snapshot:
+            await _post_history(ladder_snapshot, history_embed)
+            await _refresh_leaderboard(ladder_snapshot)
+
+    @ladder_group.command(
+        name="accept",
+        description="Accept the pending challenge against your team",
+    )
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(ladder=ladder_autocomplete)
+    @app_commands.describe(ladder="Ladder")
+    async def accept(self, interaction: Interaction, ladder: str):
+        await interaction.response.defer()
+        ladder_snapshot: Ladder | None = None
+        history_embed: Embed | None = None
+        with Session() as session:
+            ladder_row = _find_ladder(session, ladder)
+            if not ladder_row:
+                await _err(interaction, f"Ladder **{ladder}** not found.")
+                return
+            if not ladder_row.is_active:
+                await _err(interaction, f"Ladder **{ladder}** is inactive.")
+                return
+
+            team = _find_player_team_in_ladder(
+                session, ladder_row.id, interaction.user.id
+            )
+            if not team or team.captain_id != interaction.user.id:
+                await _err(
+                    interaction,
+                    "Only the team captain can accept challenges.",
+                )
+                return
+            match = _team_incoming_pending(session, team.id)
+            if not match:
+                await _err(
+                    interaction,
+                    "Your team has no pending challenge to accept.",
+                )
+                return
+
+            challenger = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.challenger_team_id)
+                .first()
+            )
+            if not challenger:
+                await _err(interaction, "Challenger team is missing.")
+                return
+
+            for t in (team, challenger):
+                if _team_roster_size(session, t.id) < ladder_row.max_team_size:
+                    await _err(
+                        interaction,
+                        (
+                            f"Team **{t.name}** is below the roster cap. "
+                            f"Match cannot start until both teams are full."
+                        ),
+                    )
+                    return
+
+            rotation_pairs: list[tuple[RotationMap, Map]] = (
+                session.query(RotationMap, Map)
+                .join(Map, Map.id == RotationMap.map_id)
+                .filter(RotationMap.rotation_id == ladder_row.rotation_id)
+                .all()
+            )
+            map_options: list[Map] = [m for _, m in rotation_pairs]
+            if not map_options:
+                await _err(
+                    interaction,
+                    (
+                        "The ladder's rotation has no maps. Add maps to the "
+                        "rotation before accepting challenges."
+                    ),
+                )
+                return
+
+            duplicates_used = False
+            if len(map_options) >= ladder_row.maps_per_match:
+                chosen_maps = random.sample(map_options, k=ladder_row.maps_per_match)
+            else:
+                chosen_maps = random.choices(map_options, k=ladder_row.maps_per_match)
+                duplicates_used = True
+
+            for ordinal, m in enumerate(chosen_maps, start=1):
+                session.add(
+                    LadderMatchGame(
+                        match_id=match.id,
+                        ordinal=ordinal,
+                        map_id=m.id,
+                    )
+                )
+
+            match.status = "accepted"
+            match.accepted_at = _utc_now_naive()
+            session.commit()
+
+            ladder_snapshot = (
+                session.query(Ladder).filter(Ladder.id == ladder_row.id).first()
+            )
+
+            map_list = "\n".join(
+                f"{i}. {escape_markdown(m.full_name)}"
+                for i, m in enumerate(chosen_maps, start=1)
+            )
+            history_embed = Embed(
+                title="Match accepted",
+                description=(
+                    f"**{escape_markdown(challenger.name)}** vs "
+                    f"**{escape_markdown(team.name)}** on ladder "
+                    f"**{ladder_row.name}**.\n\nMaps:\n{map_list}"
+                ),
+                colour=Colour.green(),
+            )
+            if duplicates_used:
+                history_embed.add_field(
+                    name="Note",
+                    value=(
+                        "Rotation has fewer maps than `maps_per_match`; "
+                        "duplicates were allowed."
+                    ),
+                    inline=False,
+                )
+            await _ok(
+                interaction,
+                (
+                    f"Challenge accepted. Maps:\n{map_list}\n\nWhen all maps "
+                    f"are played, either captain can run `/ladder report`."
+                ),
+            )
+
+        if history_embed and ladder_snapshot:
+            await _post_history(ladder_snapshot, history_embed)
+            await _refresh_leaderboard(ladder_snapshot)
+
+    @ladder_group.command(
+        name="decline",
+        description="Decline the pending challenge against your team",
+    )
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(ladder=ladder_autocomplete)
+    @app_commands.describe(ladder="Ladder")
+    async def decline(self, interaction: Interaction, ladder: str):
+        await interaction.response.defer()
+        ladder_snapshot: Ladder | None = None
+        history_embed: Embed | None = None
+        with Session() as session:
+            ladder_row = _find_ladder(session, ladder)
+            if not ladder_row:
+                await _err(interaction, f"Ladder **{ladder}** not found.")
+                return
+            team = _find_player_team_in_ladder(
+                session, ladder_row.id, interaction.user.id
+            )
+            if not team or team.captain_id != interaction.user.id:
+                await _err(
+                    interaction,
+                    "Only the team captain can decline challenges.",
+                )
+                return
+            match = _team_incoming_pending(session, team.id)
+            if not match:
+                await _err(interaction, "Your team has no pending challenge.")
+                return
+            challenger = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.challenger_team_id)
+                .first()
+            )
+            match.status = "cancelled"
+            match.completed_at = _utc_now_naive()
+            session.commit()
+
+            ladder_snapshot = (
+                session.query(Ladder).filter(Ladder.id == ladder_row.id).first()
+            )
+
+            history_embed = Embed(
+                title="Challenge declined",
+                description=(
+                    f"**{escape_markdown(team.name)}** declined a challenge "
+                    f"from **{escape_markdown(challenger.name) if challenger else '(missing)'}** "
+                    f"on ladder **{ladder_row.name}**."
+                ),
+                colour=Colour.dark_grey(),
+            )
+            await _ok(interaction, "Challenge declined.")
+
+        if history_embed and ladder_snapshot:
+            await _post_history(ladder_snapshot, history_embed)
+            await _refresh_leaderboard(ladder_snapshot)
+
+    @ladder_group.command(
+        name="cancel",
+        description="Cancel your team's outgoing pending challenge",
+    )
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(ladder=ladder_autocomplete)
+    @app_commands.describe(ladder="Ladder")
+    async def cancel(self, interaction: Interaction, ladder: str):
+        await interaction.response.defer()
+        ladder_snapshot: Ladder | None = None
+        history_embed: Embed | None = None
+        with Session() as session:
+            ladder_row = _find_ladder(session, ladder)
+            if not ladder_row:
+                await _err(interaction, f"Ladder **{ladder}** not found.")
+                return
+            team = _find_player_team_in_ladder(
+                session, ladder_row.id, interaction.user.id
+            )
+            if not team or team.captain_id != interaction.user.id:
+                await _err(
+                    interaction,
+                    "Only the team captain can cancel challenges.",
+                )
+                return
+            match = _team_outgoing_pending(session, team.id)
+            if not match:
+                await _err(
+                    interaction,
+                    "Your team has no outgoing pending challenge.",
+                )
+                return
+            defender = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.defender_team_id)
+                .first()
+            )
+            match.status = "cancelled"
+            match.completed_at = _utc_now_naive()
+            session.commit()
+
+            ladder_snapshot = (
+                session.query(Ladder).filter(Ladder.id == ladder_row.id).first()
+            )
+
+            history_embed = Embed(
+                title="Challenge cancelled",
+                description=(
+                    f"**{escape_markdown(team.name)}** cancelled their "
+                    f"challenge to **{escape_markdown(defender.name) if defender else '(missing)'}** "
+                    f"on ladder **{ladder_row.name}**."
+                ),
+                colour=Colour.dark_grey(),
+            )
+            await _ok(interaction, "Challenge cancelled.")
+
+        if history_embed and ladder_snapshot:
+            await _post_history(ladder_snapshot, history_embed)
+            await _refresh_leaderboard(ladder_snapshot)
