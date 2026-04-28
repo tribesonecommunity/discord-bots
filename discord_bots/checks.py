@@ -12,6 +12,8 @@ from .models import AdminRole, Config, Player, Session
 
 _captain_channel_id_cache: int | None = None
 _captain_channel_id_cache_loaded: bool = False
+_ladder_channel_id_cache: int | None = None
+_ladder_channel_id_cache_loaded: bool = False
 
 
 def _load_captain_channel_id_cache() -> None:
@@ -34,6 +36,26 @@ def update_captain_channel_id_cache(value: int | None) -> None:
     global _captain_channel_id_cache, _captain_channel_id_cache_loaded
     _captain_channel_id_cache = value
     _captain_channel_id_cache_loaded = True
+
+
+def _load_ladder_channel_id_cache() -> None:
+    global _ladder_channel_id_cache, _ladder_channel_id_cache_loaded
+    with Session() as session:
+        config_row = session.query(Config).first()
+        _ladder_channel_id_cache = config_row.ladder_channel_id if config_row else None
+    _ladder_channel_id_cache_loaded = True
+
+
+def get_cached_ladder_channel_id() -> int | None:
+    if not _ladder_channel_id_cache_loaded:
+        _load_ladder_channel_id_cache()
+    return _ladder_channel_id_cache
+
+
+def update_ladder_channel_id_cache(value: int | None) -> None:
+    global _ladder_channel_id_cache, _ladder_channel_id_cache_loaded
+    _ladder_channel_id_cache = value
+    _ladder_channel_id_cache_loaded = True
 
 
 def queue_is_captain_pick_for_channel(channel_id: int) -> bool:
@@ -208,6 +230,35 @@ async def is_command_or_captain_channel(interaction: Interaction) -> bool:
     description = "Interactions must be performed from the command channel"
     if get_cached_captain_channel_id() is not None:
         description += " or the captain channel"
+    embed = Embed(description=description, colour=Colour.red())
+    if not interaction.response.is_done():
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    return False
+
+
+async def is_ladder_channel(interaction: Interaction) -> bool:
+    """
+    Check that interactions are performed from the registered ladder channel
+    (Config.ladder_channel_id). Returns False with a friendly error if no
+    ladder channel is configured.
+    """
+    ladder_channel_id = get_cached_ladder_channel_id()
+    if (
+        ladder_channel_id is not None
+        and interaction.channel
+        and interaction.channel.id == ladder_channel_id
+    ):
+        return True
+
+    if ladder_channel_id is None:
+        description = (
+            "No ladder channel is configured. An admin must set one with "
+            "`/config setladderchannel`."
+        )
+    else:
+        description = "Ladder commands must be used in the ladder channel."
     embed = Embed(description=description, colour=Colour.red())
     if not interaction.response.is_done():
         await interaction.response.send_message(embed=embed, ephemeral=True)

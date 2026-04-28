@@ -50,6 +50,7 @@ from discord_bots.models import (
     InProgressGame,
     InProgressGameChannel,
     InProgressGamePlayer,
+    Ladder,
     Map,
     MapVote,
     Player,
@@ -1968,6 +1969,23 @@ async def rotation_autocomplete(interaction: Interaction, current: str):
                         discord.app_commands.Choice(
                             name=rotation.name, value=rotation.name
                         )
+                    )
+    return result
+
+
+async def ladder_autocomplete(interaction: Interaction, current: str):
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        ladders: list[Ladder] | None = (
+            session.query(Ladder).order_by(Ladder.name).limit(25).all()
+        )
+        if ladders:
+            current_casefold = current.casefold()
+            for ladder in ladders:
+                if current_casefold in ladder.name.casefold():
+                    result.append(
+                        discord.app_commands.Choice(name=ladder.name, value=ladder.name)
                     )
     return result
 
