@@ -51,6 +51,7 @@ from discord_bots.models import (
     InProgressGameChannel,
     InProgressGamePlayer,
     Ladder,
+    LadderTeam,
     Map,
     MapVote,
     Player,
@@ -1987,6 +1988,38 @@ async def ladder_autocomplete(interaction: Interaction, current: str):
                     result.append(
                         discord.app_commands.Choice(name=ladder.name, value=ladder.name)
                     )
+    return result
+
+
+async def ladder_team_autocomplete(interaction: Interaction, current: str):
+    """
+    Autocomplete team names within the ladder named in the same command.
+    Reads the `ladder` argument from interaction.namespace.
+    """
+    ladder_name = getattr(interaction.namespace, "ladder", None)
+    if not ladder_name:
+        return []
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        ladder_row: Ladder | None = (
+            session.query(Ladder).filter(Ladder.name == ladder_name).first()
+        )
+        if not ladder_row:
+            return []
+        teams: list[LadderTeam] = (
+            session.query(LadderTeam)
+            .filter(LadderTeam.ladder_id == ladder_row.id)
+            .order_by(LadderTeam.name)
+            .limit(25)
+            .all()
+        )
+        current_casefold = current.casefold()
+        for team in teams:
+            if current_casefold in team.name.casefold():
+                result.append(
+                    discord.app_commands.Choice(name=team.name, value=team.name)
+                )
     return result
 
 
