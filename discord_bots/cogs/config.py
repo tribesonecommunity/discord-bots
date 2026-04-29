@@ -9,6 +9,7 @@ from discord_bots.checks import (
     is_admin_app_command,
     is_command_or_captain_channel,
     update_captain_channel_id_cache,
+    update_ladder_channel_id_cache,
 )
 from discord_bots.models import Config, Session
 
@@ -133,6 +134,16 @@ class ConfigCommands(commands.Cog):
                 value=captain_channel_value,
                 inline=True,
             )
+            ladder_channel_value = (
+                f"<#{config.ladder_channel_id}>"
+                if config.ladder_channel_id
+                else "`Not set`"
+            )
+            embed.add_field(
+                name="Ladder channel",
+                value=ladder_channel_value,
+                inline=True,
+            )
 
             await interaction.response.send_message(embed=embed)
 
@@ -235,6 +246,57 @@ class ConfigCommands(commands.Cog):
 
         embed = Embed(
             description=f"Captain channel cleared by <@{interaction.user.id}>",
+            colour=Colour.green(),
+        )
+        await interaction.response.send_message(embed=embed)
+        if env_config.ADMIN_LOG_CHANNEL:
+            admin_log_channel = bot.get_channel(env_config.ADMIN_LOG_CHANNEL)
+            if isinstance(admin_log_channel, TextChannel):
+                await admin_log_channel.send(embed=embed)
+
+    @group.command(
+        name="setladderchannel",
+        description="Register a channel as the ladder lobby",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_or_captain_channel)
+    @app_commands.describe(channel="Channel to register as the ladder lobby")
+    async def setladderchannel(self, interaction: Interaction, channel: TextChannel):
+        with Session() as session:
+            config = session.query(Config).first()
+            config.ladder_channel_id = channel.id
+            session.commit()
+        update_ladder_channel_id_cache(channel.id)
+
+        embed = Embed(
+            description=(
+                f"Ladder channel set to {channel.mention} by "
+                f"<@{interaction.user.id}>. Ladder commands can now be used "
+                f"there."
+            ),
+            colour=Colour.green(),
+        )
+        await interaction.response.send_message(embed=embed)
+        if env_config.ADMIN_LOG_CHANNEL:
+            admin_log_channel = bot.get_channel(env_config.ADMIN_LOG_CHANNEL)
+            if isinstance(admin_log_channel, TextChannel):
+                await admin_log_channel.send(embed=embed)
+
+    @group.command(
+        name="clearladderchannel",
+        description="Unregister the ladder lobby channel",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_command_or_captain_channel)
+    async def clearladderchannel(self, interaction: Interaction):
+        with Session() as session:
+            config = session.query(Config).first()
+            config.ladder_channel_id = None
+            session.commit()
+        update_ladder_channel_id_cache(None)
+
+        embed = Embed(
+            description=f"Ladder channel cleared by <@{interaction.user.id}>",
             colour=Colour.green(),
         )
         await interaction.response.send_message(embed=embed)

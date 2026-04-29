@@ -238,6 +238,10 @@ class Config:
         default=None,
         metadata={"sa": Column(BigInteger, nullable=True)},
     )
+    ladder_channel_id: int | None = field(
+        default=None,
+        metadata={"sa": Column(BigInteger, nullable=True)},
+    )
     updated_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         init=False,
@@ -1788,6 +1792,317 @@ class VotePassedWaitlistPlayer:
         metadata={"sa": Column(BigInteger, ForeignKey("player.id"), nullable=False)},
     )
     queue_id: str = field(metadata={"sa": Column(String, ForeignKey("queue.id"))})
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class Ladder:
+    """
+    A challenge ladder. Teams in a ladder challenge each other; the winning
+    challenger moves above the defeated team in the rankings.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "ladder"
+
+    name: str = field(
+        metadata={"sa": Column(String, nullable=False, unique=True)},
+    )
+    rotation_id: str = field(
+        metadata={"sa": Column(String, ForeignKey("rotation.id"), nullable=False)},
+    )
+    maps_per_match: int = field(
+        default=3,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("3"))},
+    )
+    max_team_size: int = field(
+        default=5,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("5"))},
+    )
+    max_challenge_distance: int = field(
+        default=3,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("3"))},
+    )
+    max_in_flight_per_team: int = field(
+        default=1,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("1"))},
+    )
+    leaderboard_channel_id: int | None = field(
+        default=None,
+        metadata={"sa": Column(BigInteger, nullable=True)},
+    )
+    leaderboard_message_id: int | None = field(
+        default=None,
+        metadata={"sa": Column(BigInteger, nullable=True)},
+    )
+    history_channel_id: int | None = field(
+        default=None,
+        metadata={"sa": Column(BigInteger, nullable=True)},
+    )
+    is_active: bool = field(
+        default=True,
+        metadata={
+            "sa": Column(Boolean, nullable=False, server_default=expression.true())
+        },
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class LadderTeam:
+    """
+    A team in a ladder. `position` is 1-indexed from the top of the ladder
+    and is unique within a ladder.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "ladder_team"
+    __table_args__ = (
+        UniqueConstraint("ladder_id", "name"),
+        UniqueConstraint("ladder_id", "position"),
+    )
+
+    ladder_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("ladder.id"), index=True, nullable=False)
+        }
+    )
+    name: str = field(metadata={"sa": Column(String, nullable=False)})
+    captain_id: int = field(
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), nullable=False)}
+    )
+    position: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    wins: int = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    losses: int = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    draws: int = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class LadderTeamPlayer:
+    """
+    Roster row for a ladder team.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "ladder_team_player"
+    __table_args__ = (UniqueConstraint("team_id", "player_id"),)
+
+    team_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("ladder_team.id"), index=True, nullable=False
+            )
+        }
+    )
+    player_id: int = field(
+        metadata={
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), index=True, nullable=False
+            )
+        }
+    )
+    joined_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class LadderTeamInvite:
+    """
+    A captain-issued invite to a player to join a ladder team. Lives until
+    accepted, declined, or revoked.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "ladder_team_invite"
+    __table_args__ = (UniqueConstraint("team_id", "player_id"),)
+
+    team_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("ladder_team.id"), index=True, nullable=False
+            )
+        }
+    )
+    player_id: int = field(
+        metadata={
+            "sa": Column(
+                BigInteger, ForeignKey("player.id"), index=True, nullable=False
+            )
+        }
+    )
+    invited_by_id: int = field(
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), nullable=False)}
+    )
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class LadderMatch:
+    """
+    A challenge between two ladder teams. Lifecycle:
+    pending -> accepted -> completed (or cancelled at any point).
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "ladder_match"
+
+    ladder_id: str = field(
+        metadata={
+            "sa": Column(String, ForeignKey("ladder.id"), index=True, nullable=False)
+        }
+    )
+    challenger_team_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("ladder_team.id"), index=True, nullable=False
+            )
+        }
+    )
+    defender_team_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("ladder_team.id"), index=True, nullable=False
+            )
+        }
+    )
+    challenger_position_at_challenge: int = field(
+        metadata={"sa": Column(Integer, nullable=False)}
+    )
+    defender_position_at_challenge: int = field(
+        metadata={"sa": Column(Integer, nullable=False)}
+    )
+    status: str = field(
+        default="pending",
+        metadata={
+            "sa": Column(
+                String, nullable=False, index=True, server_default=text("'pending'")
+            )
+        },
+    )
+    winner_team_id: str | None = field(
+        default=None,
+        metadata={"sa": Column(String, ForeignKey("ladder_team.id"), nullable=True)},
+    )
+    challenger_map_wins: int = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    defender_map_wins: int = field(
+        default=0,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("0"))},
+    )
+    challenged_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        init=False,
+        metadata={"sa": Column(DateTime, index=True)},
+    )
+    accepted_at: datetime | None = field(
+        default=None, metadata={"sa": Column(DateTime, nullable=True)}
+    )
+    completed_at: datetime | None = field(
+        default=None, metadata={"sa": Column(DateTime, nullable=True)}
+    )
+    id: str = field(
+        init=False,
+        default_factory=lambda: str(uuid4()),
+        metadata={"sa": Column(String, primary_key=True)},
+    )
+
+
+@mapper_registry.mapped
+@dataclass
+class LadderMatchGame:
+    """
+    One map within a ladder match. Created at accept-time with a randomly
+    selected map from the ladder's rotation. Scores are filled in when a
+    captain reports the match.
+    """
+
+    __sa_dataclass_metadata_key__ = "sa"
+    __tablename__ = "ladder_match_game"
+    __table_args__ = (UniqueConstraint("match_id", "ordinal"),)
+
+    match_id: str = field(
+        metadata={
+            "sa": Column(
+                String, ForeignKey("ladder_match.id"), index=True, nullable=False
+            )
+        }
+    )
+    ordinal: int = field(metadata={"sa": Column(Integer, nullable=False)})
+    map_id: str = field(
+        metadata={"sa": Column(String, ForeignKey("map.id"), nullable=False)}
+    )
+    challenger_score: int | None = field(
+        default=None, metadata={"sa": Column(Integer, nullable=True)}
+    )
+    defender_score: int | None = field(
+        default=None, metadata={"sa": Column(Integer, nullable=True)}
+    )
+    winner_team: int | None = field(
+        default=None, metadata={"sa": Column(Integer, nullable=True)}
+    )
+    reported_at: datetime | None = field(
+        default=None, metadata={"sa": Column(DateTime, nullable=True)}
+    )
+    reported_by_id: int | None = field(
+        default=None,
+        metadata={"sa": Column(BigInteger, ForeignKey("player.id"), nullable=True)},
+    )
     id: str = field(
         init=False,
         default_factory=lambda: str(uuid4()),
