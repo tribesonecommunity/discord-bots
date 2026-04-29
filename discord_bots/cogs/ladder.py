@@ -2,8 +2,18 @@ import logging
 import random
 from datetime import datetime, timezone
 
-from discord import Colour, Embed, Interaction, Member, TextChannel, app_commands
+import discord
+from discord import (
+    Colour,
+    Embed,
+    Interaction,
+    Member,
+    TextChannel,
+    TextStyle,
+    app_commands,
+)
 from discord.ext.commands import Bot
+from discord.ui import Modal, TextInput
 from discord.utils import escape_markdown
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +37,7 @@ from discord_bots.models import (
 )
 from discord_bots.utils import (
     ladder_autocomplete,
+    ladder_match_autocomplete,
     ladder_team_autocomplete,
     rotation_autocomplete,
 )
@@ -271,6 +282,389 @@ async def _ok(interaction: Interaction, msg: str, ephemeral: bool = False) -> No
         await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
     else:
         await interaction.followup.send(embed=embed, ephemeral=ephemeral)
+
+
+def _apply_position_swap(
+    session: SQLAlchemySession,
+    ladder_id: str,
+    challenger: LadderTeam,
+    defender: LadderTeam,
+) -> tuple[int, int]:
+    """
+    Move challenger immediately above defender. Defender drops by 1; teams
+    between also drop by 1. Returns (old_challenger_pos, old_defender_pos).
+
+    Caller must guarantee defender.position < challenger.position.
+    """
+    old_defender = defender.position
+    old_challenger = challenger.position
+
+    # Park challenger at a safe negative position to avoid the (ladder_id,
+    # position) unique constraint while we shift the middle teams down.
+    challenger.position = -1
+    session.flush()
+
+    middle = (
+        session.query(LadderTeam)
+        .filter(
+            LadderTeam.ladder_id == ladder_id,
+            LadderTeam.position >= old_defender,
+            LadderTeam.position < old_challenger,
+        )
+        .order_by(LadderTeam.position.desc())
+        .all()
+    )
+    for t in middle:
+        t.position = t.position + 1
+        session.flush()
+
+    challenger.position = old_defender
+    session.flush()
+    return old_challenger, old_defender
+
+
+def _compute_match_winner_team_id(
+    session: SQLAlchemySession, match: LadderMatch
+) -> tuple[str | None, int, int]:
+    """
+    Tally map wins from LadderMatchGame rows. Returns
+    (winner_team_id_or_none_for_draw, challenger_map_wins, defender_map_wins).
+    """
+    games: list[LadderMatchGame] = (
+        session.query(LadderMatchGame)
+        .filter(LadderMatchGame.match_id == match.id)
+        .all()
+    )
+    challenger_wins = sum(1 for g in games if g.winner_team == 0)
+    defender_wins = sum(1 for g in games if g.winner_team == 1)
+    if challenger_wins > defender_wins:
+        return match.challenger_team_id, challenger_wins, defender_wins
+    if defender_wins > challenger_wins:
+        return match.defender_team_id, challenger_wins, defender_wins
+    return None, challenger_wins, defender_wins
+
+
+def _undo_records_and_position(
+    session: SQLAlchemySession,
+    ladder_id: str,
+    match: LadderMatch,
+) -> None:
+    """
+    Reverse a previously-applied finalization. Used by admin editmatch when a
+    completed match is re-resolved with a different outcome.
+    """
+    challenger = (
+        session.query(LadderTeam)
+        .filter(LadderTeam.id == match.challenger_team_id)
+        .first()
+    )
+    defender = (
+        session.query(LadderTeam)
+        .filter(LadderTeam.id == match.defender_team_id)
+        .first()
+    )
+    if not challenger or not defender:
+        return
+    if match.winner_team_id == match.challenger_team_id:
+        challenger.wins = max(0, challenger.wins - 1)
+        defender.losses = max(0, defender.losses - 1)
+    elif match.winner_team_id == match.defender_team_id:
+        defender.wins = max(0, defender.wins - 1)
+        challenger.losses = max(0, challenger.losses - 1)
+    else:
+        challenger.draws = max(0, challenger.draws - 1)
+        defender.draws = max(0, defender.draws - 1)
+    session.flush()
+
+    # Reverse position swap if challenger had won and current positions reflect
+    # the swap.
+    if match.winner_team_id == match.challenger_team_id:
+        old_challenger_pos = match.challenger_position_at_challenge
+        old_defender_pos = match.defender_position_at_challenge
+        if (
+            old_defender_pos < old_challenger_pos
+            and challenger.position == old_defender_pos
+            and defender.position == old_defender_pos + 1
+        ):
+            # Park challenger, shift middle teams up by 1, restore challenger.
+            challenger.position = -1
+            session.flush()
+            middle = (
+                session.query(LadderTeam)
+                .filter(
+                    LadderTeam.ladder_id == ladder_id,
+                    LadderTeam.position > old_defender_pos,
+                    LadderTeam.position <= old_challenger_pos,
+                )
+                .order_by(LadderTeam.position)
+                .all()
+            )
+            for t in middle:
+                t.position = t.position - 1
+                session.flush()
+            challenger.position = old_challenger_pos
+            session.flush()
+
+
+def _finalize_match_outcome(
+    session: SQLAlchemySession,
+    ladder: Ladder,
+    match: LadderMatch,
+    forced_winner_team_id: str | None,
+    is_draw: bool,
+    challenger_map_wins: int,
+    defender_map_wins: int,
+) -> tuple[LadderTeam, LadderTeam, str, str | None]:
+    """
+    Apply records + position rule for a finalized match. Caller must have
+    already updated LadderMatchGame rows (or be force-ending without per-game
+    detail). Returns (challenger, defender, winner_label, winner_team_id).
+    """
+    challenger = (
+        session.query(LadderTeam)
+        .filter(LadderTeam.id == match.challenger_team_id)
+        .first()
+    )
+    defender = (
+        session.query(LadderTeam)
+        .filter(LadderTeam.id == match.defender_team_id)
+        .first()
+    )
+    if not challenger or not defender:
+        raise RuntimeError("Match references missing team rows")
+
+    winner_team_id: str | None
+    if is_draw:
+        winner_team_id = None
+    else:
+        winner_team_id = forced_winner_team_id
+
+    match.challenger_map_wins = challenger_map_wins
+    match.defender_map_wins = defender_map_wins
+    match.status = "completed"
+    match.completed_at = _utc_now_naive()
+    match.winner_team_id = winner_team_id
+
+    if winner_team_id == challenger.id:
+        challenger.wins += 1
+        defender.losses += 1
+        winner_label = challenger.name
+    elif winner_team_id == defender.id:
+        defender.wins += 1
+        challenger.losses += 1
+        winner_label = defender.name
+    else:
+        challenger.draws += 1
+        defender.draws += 1
+        winner_label = "draw"
+
+    if winner_team_id == challenger.id and defender.position < challenger.position:
+        _apply_position_swap(session, ladder.id, challenger, defender)
+
+    session.flush()
+    return challenger, defender, winner_label, winner_team_id
+
+
+class _ReportMatchModal(Modal):
+    def __init__(
+        self,
+        *,
+        match_id: str,
+        ladder_id: str,
+        ladder_name: str,
+        challenger_name: str,
+        defender_name: str,
+        is_admin_edit: bool,
+    ):
+        title = f"Report: {challenger_name} vs {defender_name}"
+        super().__init__(title=title[:45], timeout=None)
+        self.match_id = match_id
+        self.ladder_id = ladder_id
+        self.is_admin_edit = is_admin_edit
+        self._inputs: list[TextInput] = []
+
+        with Session() as session:
+            games: list[tuple[LadderMatchGame, Map]] = (
+                session.query(LadderMatchGame, Map)
+                .join(Map, Map.id == LadderMatchGame.map_id)
+                .filter(LadderMatchGame.match_id == match_id)
+                .order_by(LadderMatchGame.ordinal)
+                .all()
+            )
+            for game, m in games:
+                current = ""
+                if (
+                    game.challenger_score is not None
+                    and game.defender_score is not None
+                ):
+                    current = f"{game.challenger_score}-{game.defender_score}"
+                label = f"Map {game.ordinal}: {m.full_name}"
+                ti = TextInput(
+                    label=label[:45],
+                    style=TextStyle.short,
+                    placeholder="our-their, e.g. 3-1 (or 3-3 for draw)",
+                    default=current,
+                    required=True,
+                    max_length=20,
+                )
+                self.add_item(ti)
+                self._inputs.append(ti)
+
+    @staticmethod
+    def _parse_score(raw: str) -> tuple[int, int] | None:
+        s = raw.strip()
+        if "-" not in s:
+            return None
+        a, _, b = s.partition("-")
+        try:
+            ai = int(a.strip())
+            bi = int(b.strip())
+        except ValueError:
+            return None
+        if ai < 0 or bi < 0:
+            return None
+        return ai, bi
+
+    async def on_submit(self, interaction: Interaction) -> None:
+        await interaction.response.defer()
+
+        parsed: list[tuple[int, int]] = []
+        for ti in self._inputs:
+            r = self._parse_score(ti.value or "")
+            if r is None:
+                await interaction.followup.send(
+                    embed=Embed(
+                        description=(
+                            f"Invalid score in `{ti.label}`: "
+                            f"`{ti.value}`. Use `our-their`, e.g. `3-1`."
+                        ),
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            parsed.append(r)
+
+        ladder_snapshot: Ladder | None = None
+        history_embed: Embed | None = None
+
+        with Session() as session:
+            match: LadderMatch | None = (
+                session.query(LadderMatch)
+                .filter(LadderMatch.id == self.match_id)
+                .first()
+            )
+            if not match:
+                await interaction.followup.send(
+                    embed=Embed(
+                        description="Match disappeared. Aborting.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+            ladder = session.query(Ladder).filter(Ladder.id == match.ladder_id).first()
+            if not ladder:
+                return
+
+            if self.is_admin_edit and match.status == "completed":
+                _undo_records_and_position(session, ladder.id, match)
+                match.status = "accepted"
+                session.flush()
+
+            games: list[LadderMatchGame] = (
+                session.query(LadderMatchGame)
+                .filter(LadderMatchGame.match_id == match.id)
+                .order_by(LadderMatchGame.ordinal)
+                .all()
+            )
+            if len(games) != len(parsed):
+                await interaction.followup.send(
+                    embed=Embed(
+                        description="Map count mismatch. Re-run the command.",
+                        colour=Colour.red(),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            now = _utc_now_naive()
+            for game, (cs, ds) in zip(games, parsed):
+                game.challenger_score = cs
+                game.defender_score = ds
+                if cs > ds:
+                    game.winner_team = 0
+                elif ds > cs:
+                    game.winner_team = 1
+                else:
+                    game.winner_team = -1
+                game.reported_at = now
+                game.reported_by_id = interaction.user.id
+            session.flush()
+
+            winner_team_id, c_wins, d_wins = _compute_match_winner_team_id(
+                session, match
+            )
+            challenger, defender, winner_label, _ = _finalize_match_outcome(
+                session,
+                ladder,
+                match,
+                forced_winner_team_id=winner_team_id,
+                is_draw=winner_team_id is None,
+                challenger_map_wins=c_wins,
+                defender_map_wins=d_wins,
+            )
+            session.commit()
+            ladder_snapshot = (
+                session.query(Ladder).filter(Ladder.id == ladder.id).first()
+            )
+
+            score_lines = []
+            for g, (cs, ds) in zip(games, parsed):
+                tag = ""
+                if g.winner_team == 0:
+                    tag = " (challenger)"
+                elif g.winner_team == 1:
+                    tag = " (defender)"
+                score_lines.append(f"Map {g.ordinal}: {cs}-{ds}{tag}")
+
+            if winner_label == "draw":
+                outcome = "Draw — no position change."
+            elif winner_team_id == challenger.id:
+                outcome = (
+                    f"**{escape_markdown(challenger.name)}** wins and moves "
+                    f"to position **{challenger.position}**. "
+                    f"**{escape_markdown(defender.name)}** drops to "
+                    f"**{defender.position}**."
+                )
+            else:
+                outcome = (
+                    f"**{escape_markdown(defender.name)}** holds. "
+                    f"No position change."
+                )
+
+            history_embed = Embed(
+                title="Match completed",
+                description=(
+                    f"**{escape_markdown(challenger.name)}** vs "
+                    f"**{escape_markdown(defender.name)}** — "
+                    f"{c_wins}-{d_wins}\n\n" + "\n".join(score_lines) + f"\n\n{outcome}"
+                ),
+                colour=Colour.green(),
+            )
+            if self.is_admin_edit:
+                history_embed.title = "Match edited (admin)"
+
+            await interaction.followup.send(
+                embed=Embed(
+                    description=(f"Match recorded. {outcome}"),
+                    colour=Colour.green(),
+                )
+            )
+
+        if history_embed and ladder_snapshot:
+            await _post_history(ladder_snapshot, history_embed)
+            await _refresh_leaderboard(ladder_snapshot)
 
 
 class LadderCommands(BaseCog):
@@ -1613,6 +2007,589 @@ class LadderCommands(BaseCog):
                 colour=Colour.dark_grey(),
             )
             await _ok(interaction, "Challenge cancelled.")
+
+        if history_embed and ladder_snapshot:
+            await _post_history(ladder_snapshot, history_embed)
+            await _refresh_leaderboard(ladder_snapshot)
+
+    # ------------------------------------------------------------------
+    # Reporting + match info
+    # ------------------------------------------------------------------
+
+    @ladder_group.command(
+        name="report",
+        description="Report scores for your accepted match",
+    )
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(ladder=ladder_autocomplete)
+    @app_commands.describe(ladder="Ladder")
+    async def report(self, interaction: Interaction, ladder: str):
+        with Session() as session:
+            ladder_row = _find_ladder(session, ladder)
+            if not ladder_row:
+                await _err(interaction, f"Ladder **{ladder}** not found.")
+                return
+            if not ladder_row.is_active:
+                await _err(interaction, f"Ladder **{ladder}** is inactive.")
+                return
+            team = _find_player_team_in_ladder(
+                session, ladder_row.id, interaction.user.id
+            )
+            if not team or team.captain_id != interaction.user.id:
+                await _err(
+                    interaction,
+                    "Only the team captain can report scores.",
+                )
+                return
+            match: LadderMatch | None = (
+                session.query(LadderMatch)
+                .filter(
+                    LadderMatch.status == "accepted",
+                    (LadderMatch.challenger_team_id == team.id)
+                    | (LadderMatch.defender_team_id == team.id),
+                )
+                .first()
+            )
+            if not match:
+                await _err(
+                    interaction,
+                    "Your team has no accepted match to report.",
+                )
+                return
+            challenger = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.challenger_team_id)
+                .first()
+            )
+            defender = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.defender_team_id)
+                .first()
+            )
+            if not challenger or not defender:
+                await _err(interaction, "Match references missing teams.")
+                return
+
+            modal = _ReportMatchModal(
+                match_id=match.id,
+                ladder_id=ladder_row.id,
+                ladder_name=ladder_row.name,
+                challenger_name=challenger.name,
+                defender_name=defender.name,
+                is_admin_edit=False,
+            )
+
+        await interaction.response.send_modal(modal)
+
+    @ladder_group.command(
+        name="matchinfo",
+        description="Show details for a match",
+    )
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(match_id=ladder_match_autocomplete)
+    @app_commands.describe(match_id="Match")
+    async def match_info(self, interaction: Interaction, match_id: str):
+        with Session() as session:
+            match = (
+                session.query(LadderMatch).filter(LadderMatch.id == match_id).first()
+            )
+            if not match:
+                await _err(interaction, "Match not found.")
+                return
+            ladder = session.query(Ladder).filter(Ladder.id == match.ladder_id).first()
+            challenger = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.challenger_team_id)
+                .first()
+            )
+            defender = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.defender_team_id)
+                .first()
+            )
+            games: list[tuple[LadderMatchGame, Map]] = (
+                session.query(LadderMatchGame, Map)
+                .join(Map, Map.id == LadderMatchGame.map_id)
+                .filter(LadderMatchGame.match_id == match.id)
+                .order_by(LadderMatchGame.ordinal)
+                .all()
+            )
+
+            game_lines = []
+            for g, m in games:
+                if g.challenger_score is None or g.defender_score is None:
+                    game_lines.append(
+                        f"Map {g.ordinal} ({escape_markdown(m.full_name)}): "
+                        f"*not reported*"
+                    )
+                else:
+                    tag = ""
+                    if g.winner_team == 0:
+                        tag = " (challenger)"
+                    elif g.winner_team == 1:
+                        tag = " (defender)"
+                    elif g.winner_team == -1:
+                        tag = " (draw)"
+                    game_lines.append(
+                        f"Map {g.ordinal} ({escape_markdown(m.full_name)}): "
+                        f"{g.challenger_score}-{g.defender_score}{tag}"
+                    )
+
+            embed = Embed(
+                title=(
+                    f"{ladder.name if ladder else '?'}: "
+                    f"{challenger.name if challenger else '?'} vs "
+                    f"{defender.name if defender else '?'}"
+                ),
+                colour=Colour.blue(),
+            )
+            embed.add_field(name="Status", value=match.status, inline=True)
+            embed.add_field(
+                name="Score",
+                value=(f"{match.challenger_map_wins}-{match.defender_map_wins}"),
+                inline=True,
+            )
+            if match.winner_team_id:
+                winner = (
+                    session.query(LadderTeam)
+                    .filter(LadderTeam.id == match.winner_team_id)
+                    .first()
+                )
+                if winner:
+                    embed.add_field(name="Winner", value=winner.name, inline=True)
+            embed.add_field(
+                name="Games",
+                value="\n".join(game_lines) if game_lines else "*(none)*",
+                inline=False,
+            )
+            embed.add_field(name="Match ID", value=f"`{match.id}`", inline=False)
+            await interaction.response.send_message(embed=embed)
+
+    @ladder_group.command(
+        name="rankings", description="Show the current ladder rankings"
+    )
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(ladder=ladder_autocomplete)
+    @app_commands.describe(ladder="Ladder")
+    async def rankings(self, interaction: Interaction, ladder: str):
+        with Session() as session:
+            ladder_row = _find_ladder(session, ladder)
+            if not ladder_row:
+                await _err(interaction, f"Ladder **{ladder}** not found.")
+                return
+            embed = _build_leaderboard_embed(session, ladder_row)
+        await interaction.response.send_message(embed=embed)
+
+    # ------------------------------------------------------------------
+    # Admin: editmatch / forceendmatch / cancelmatch / forceadjust /
+    # removeteam
+    # ------------------------------------------------------------------
+
+    @admin_group.command(
+        name="editmatch",
+        description="Open the report modal for a match (admin)",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(match_id=ladder_match_autocomplete)
+    @app_commands.describe(match_id="Match to edit")
+    async def admin_editmatch(self, interaction: Interaction, match_id: str):
+        with Session() as session:
+            match = (
+                session.query(LadderMatch).filter(LadderMatch.id == match_id).first()
+            )
+            if not match:
+                await _err(interaction, "Match not found.")
+                return
+            if match.status not in ("accepted", "completed"):
+                await _err(
+                    interaction,
+                    f"Match status is `{match.status}`; nothing to edit.",
+                )
+                return
+            ladder = session.query(Ladder).filter(Ladder.id == match.ladder_id).first()
+            challenger = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.challenger_team_id)
+                .first()
+            )
+            defender = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.defender_team_id)
+                .first()
+            )
+            if not ladder or not challenger or not defender:
+                await _err(interaction, "Match references missing rows.")
+                return
+
+            modal = _ReportMatchModal(
+                match_id=match.id,
+                ladder_id=ladder.id,
+                ladder_name=ladder.name,
+                challenger_name=challenger.name,
+                defender_name=defender.name,
+                is_admin_edit=True,
+            )
+
+        await interaction.response.send_modal(modal)
+
+    @admin_group.command(
+        name="forceendmatch",
+        description="Force-end an accepted match in a team's favor",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(match_id=ladder_match_autocomplete)
+    @app_commands.choices(
+        winner=[
+            app_commands.Choice(name="challenger", value="challenger"),
+            app_commands.Choice(name="defender", value="defender"),
+            app_commands.Choice(name="draw", value="draw"),
+        ]
+    )
+    @app_commands.describe(match_id="Match", winner="Outcome")
+    async def admin_forceendmatch(
+        self,
+        interaction: Interaction,
+        match_id: str,
+        winner: str,
+    ):
+        await interaction.response.defer()
+        ladder_snapshot: Ladder | None = None
+        history_embed: Embed | None = None
+
+        with Session() as session:
+            match = (
+                session.query(LadderMatch).filter(LadderMatch.id == match_id).first()
+            )
+            if not match:
+                await _err(interaction, "Match not found.")
+                return
+            if match.status not in ("pending", "accepted"):
+                await _err(
+                    interaction,
+                    f"Match is `{match.status}`; force-end only applies to "
+                    f"in-flight matches.",
+                )
+                return
+            ladder = session.query(Ladder).filter(Ladder.id == match.ladder_id).first()
+            if not ladder:
+                return
+
+            if winner == "challenger":
+                forced = match.challenger_team_id
+                is_draw = False
+                c_wins = ladder.maps_per_match
+                d_wins = 0
+            elif winner == "defender":
+                forced = match.defender_team_id
+                is_draw = False
+                c_wins = 0
+                d_wins = ladder.maps_per_match
+            else:
+                forced = None
+                is_draw = True
+                c_wins = 0
+                d_wins = 0
+
+            challenger, defender, winner_label, _ = _finalize_match_outcome(
+                session,
+                ladder,
+                match,
+                forced_winner_team_id=forced,
+                is_draw=is_draw,
+                challenger_map_wins=c_wins,
+                defender_map_wins=d_wins,
+            )
+            session.commit()
+            ladder_snapshot = (
+                session.query(Ladder).filter(Ladder.id == ladder.id).first()
+            )
+
+            if winner_label == "draw":
+                outcome = "Draw — no position change."
+            elif winner == "challenger":
+                outcome = (
+                    f"**{escape_markdown(challenger.name)}** moves to "
+                    f"position **{challenger.position}**; "
+                    f"**{escape_markdown(defender.name)}** drops to "
+                    f"**{defender.position}**."
+                )
+            else:
+                outcome = (
+                    f"**{escape_markdown(defender.name)}** holds. "
+                    f"No position change."
+                )
+
+            history_embed = Embed(
+                title="Match force-ended (admin)",
+                description=(
+                    f"**{escape_markdown(challenger.name)}** vs "
+                    f"**{escape_markdown(defender.name)}** — "
+                    f"resolved by <@{interaction.user.id}> as "
+                    f"**{winner}**.\n\n{outcome}"
+                ),
+                colour=Colour.dark_green(),
+            )
+            await _ok(
+                interaction,
+                f"Match force-ended as **{winner}**. {outcome}",
+            )
+
+        if history_embed and ladder_snapshot:
+            await _post_history(ladder_snapshot, history_embed)
+            await _refresh_leaderboard(ladder_snapshot)
+
+    @admin_group.command(
+        name="cancelmatch",
+        description="Void a match without recording a result",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(match_id=ladder_match_autocomplete)
+    @app_commands.describe(match_id="Match to cancel")
+    async def admin_cancelmatch(self, interaction: Interaction, match_id: str):
+        await interaction.response.defer()
+        ladder_snapshot: Ladder | None = None
+        history_embed: Embed | None = None
+
+        with Session() as session:
+            match = (
+                session.query(LadderMatch).filter(LadderMatch.id == match_id).first()
+            )
+            if not match:
+                await _err(interaction, "Match not found.")
+                return
+            ladder = session.query(Ladder).filter(Ladder.id == match.ladder_id).first()
+            if not ladder:
+                return
+
+            if match.status == "completed":
+                _undo_records_and_position(session, ladder.id, match)
+
+            match.status = "cancelled"
+            match.completed_at = _utc_now_naive()
+            match.winner_team_id = None
+            match.challenger_map_wins = 0
+            match.defender_map_wins = 0
+            session.flush()
+
+            challenger = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.challenger_team_id)
+                .first()
+            )
+            defender = (
+                session.query(LadderTeam)
+                .filter(LadderTeam.id == match.defender_team_id)
+                .first()
+            )
+            session.commit()
+            ladder_snapshot = (
+                session.query(Ladder).filter(Ladder.id == ladder.id).first()
+            )
+
+            history_embed = Embed(
+                title="Match cancelled (admin)",
+                description=(
+                    f"<@{interaction.user.id}> cancelled the match between "
+                    f"**{escape_markdown(challenger.name) if challenger else '?'}** and "
+                    f"**{escape_markdown(defender.name) if defender else '?'}** "
+                    f"on ladder **{ladder.name}**."
+                ),
+                colour=Colour.dark_grey(),
+            )
+            await _ok(interaction, "Match cancelled.")
+
+        if history_embed and ladder_snapshot:
+            await _post_history(ladder_snapshot, history_embed)
+            await _refresh_leaderboard(ladder_snapshot)
+
+    @admin_group.command(
+        name="forceadjust",
+        description="Manually move a team to a new position",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(
+        ladder=ladder_autocomplete, team_name=ladder_team_autocomplete
+    )
+    @app_commands.describe(
+        ladder="Ladder",
+        team_name="Team to move",
+        new_position="Target position (1 = top)",
+    )
+    async def admin_forceadjust(
+        self,
+        interaction: Interaction,
+        ladder: str,
+        team_name: str,
+        new_position: int,
+    ):
+        await interaction.response.defer()
+        ladder_snapshot: Ladder | None = None
+        history_embed: Embed | None = None
+
+        with Session() as session:
+            ladder_row = _find_ladder(session, ladder)
+            if not ladder_row:
+                await _err(interaction, f"Ladder **{ladder}** not found.")
+                return
+            team = _find_team(session, ladder_row.id, team_name)
+            if not team:
+                await _err(
+                    interaction,
+                    f"Team **{team_name}** not found in this ladder.",
+                )
+                return
+
+            total_teams = (
+                session.query(func.count(LadderTeam.id))
+                .filter(LadderTeam.ladder_id == ladder_row.id)
+                .scalar()
+                or 0
+            )
+            if new_position < 1 or new_position > total_teams:
+                await _err(
+                    interaction,
+                    f"Position must be between 1 and {total_teams}.",
+                )
+                return
+            old_position = team.position
+            if old_position == new_position:
+                await _ok(interaction, "Team is already at that position.")
+                return
+
+            # Park team at -1 and shift others to fill / make room.
+            team.position = -1
+            session.flush()
+
+            if new_position < old_position:
+                # Moving up: teams in [new_position, old_position) shift down by 1.
+                middle = (
+                    session.query(LadderTeam)
+                    .filter(
+                        LadderTeam.ladder_id == ladder_row.id,
+                        LadderTeam.position >= new_position,
+                        LadderTeam.position < old_position,
+                    )
+                    .order_by(LadderTeam.position.desc())
+                    .all()
+                )
+                for t in middle:
+                    t.position = t.position + 1
+                    session.flush()
+            else:
+                # Moving down: teams in (old_position, new_position] shift up by 1.
+                middle = (
+                    session.query(LadderTeam)
+                    .filter(
+                        LadderTeam.ladder_id == ladder_row.id,
+                        LadderTeam.position > old_position,
+                        LadderTeam.position <= new_position,
+                    )
+                    .order_by(LadderTeam.position)
+                    .all()
+                )
+                for t in middle:
+                    t.position = t.position - 1
+                    session.flush()
+
+            team.position = new_position
+            session.commit()
+            ladder_snapshot = (
+                session.query(Ladder).filter(Ladder.id == ladder_row.id).first()
+            )
+
+            history_embed = Embed(
+                title="Position adjusted (admin)",
+                description=(
+                    f"<@{interaction.user.id}> moved "
+                    f"**{escape_markdown(team.name)}** from position "
+                    f"**{old_position}** to **{new_position}** on ladder "
+                    f"**{ladder_row.name}**."
+                ),
+                colour=Colour.dark_blue(),
+            )
+            await _ok(
+                interaction,
+                f"Moved **{escape_markdown(team.name)}** to position "
+                f"**{new_position}**.",
+            )
+
+        if history_embed and ladder_snapshot:
+            await _post_history(ladder_snapshot, history_embed)
+            await _refresh_leaderboard(ladder_snapshot)
+
+    @admin_group.command(name="removeteam", description="Force-disband a team (admin)")
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(
+        ladder=ladder_autocomplete, team_name=ladder_team_autocomplete
+    )
+    @app_commands.describe(ladder="Ladder", team_name="Team to remove")
+    async def admin_removeteam(
+        self, interaction: Interaction, ladder: str, team_name: str
+    ):
+        await interaction.response.defer()
+        ladder_snapshot: Ladder | None = None
+        history_embed: Embed | None = None
+
+        with Session() as session:
+            ladder_row = _find_ladder(session, ladder)
+            if not ladder_row:
+                await _err(interaction, f"Ladder **{ladder}** not found.")
+                return
+            team = _find_team(session, ladder_row.id, team_name)
+            if not team:
+                await _err(
+                    interaction,
+                    f"Team **{team_name}** not found in this ladder.",
+                )
+                return
+
+            # Cancel any in-flight matches referencing this team.
+            in_flight: list[LadderMatch] = (
+                session.query(LadderMatch)
+                .filter(
+                    LadderMatch.status.in_(IN_FLIGHT_STATUSES),
+                    (LadderMatch.challenger_team_id == team.id)
+                    | (LadderMatch.defender_team_id == team.id),
+                )
+                .all()
+            )
+            for m in in_flight:
+                m.status = "cancelled"
+                m.completed_at = _utc_now_naive()
+            session.flush()
+
+            removed_position = team.position
+            session.query(LadderTeamInvite).filter(
+                LadderTeamInvite.team_id == team.id
+            ).delete()
+            session.query(LadderTeamPlayer).filter(
+                LadderTeamPlayer.team_id == team.id
+            ).delete()
+            self._compact_positions(session, ladder_row.id, removed_position)
+            session.delete(team)
+            session.commit()
+            ladder_snapshot = (
+                session.query(Ladder).filter(Ladder.id == ladder_row.id).first()
+            )
+
+            history_embed = Embed(
+                title="Team removed (admin)",
+                description=(
+                    f"<@{interaction.user.id}> removed team "
+                    f"**{escape_markdown(team_name)}** from ladder "
+                    f"**{ladder_row.name}**."
+                ),
+                colour=Colour.dark_red(),
+            )
+            await _ok(
+                interaction,
+                f"Team **{escape_markdown(team_name)}** removed.",
+            )
 
         if history_embed and ladder_snapshot:
             await _post_history(ladder_snapshot, history_embed)

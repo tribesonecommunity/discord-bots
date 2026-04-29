@@ -251,10 +251,10 @@ New cog `discord_bots/cogs/ladder.py` (style mirrors `cogs/admin.py` and `cogs/i
 | `/ladder team transfer <ladder> <player>` | Captain-only; gives captaincy to another rostered player. |
 | `/ladder team disband <ladder>` | Captain-only. Releases roster. **Blocked while team has an in-flight match.** |
 | `/ladder challenge <ladder> <opponent_team>` | Challenger captain. |
-| `/ladder accept <ladder> <match_id>` | Defender captain. Maps roll here. |
-| `/ladder decline <ladder> <match_id>` | Defender captain. |
-| `/ladder cancel <ladder> <match_id>` | Challenger captain (only while `pending`). |
-| `/ladder report <ladder> <match_id>` | Either captain. Opens a modal with one row per map to enter scores. |
+| `/ladder accept <ladder>` | Defender captain. Maps roll here. (Match implicit — at most 1 in-flight per team.) |
+| `/ladder decline <ladder>` | Defender captain. |
+| `/ladder cancel <ladder>` | Challenger captain (only while `pending`). |
+| `/ladder report <ladder>` | Either captain. Opens a modal with one row per map to enter scores. |
 
 ### Read-only
 
@@ -264,8 +264,7 @@ New cog `discord_bots/cogs/ladder.py` (style mirrors `cogs/admin.py` and `cogs/i
 | `/ladder rankings <ladder>` | Current standings (also pinned in leaderboard channel). |
 | `/ladder team info <ladder> <team>` | Roster, captain, record, current position, in-flight matches. |
 | `/ladder team list <ladder>` | All teams in a ladder. |
-| `/ladder match info <ladder> <match_id>` | Match details, per-map scores. |
-| `/ladder matches <ladder> [team]` | Recent matches, optionally filtered by team. |
+| `/ladder matchinfo <match_id>` | Match details, per-map scores (autocomplete on match_id). |
 
 ---
 
@@ -320,8 +319,8 @@ Pattern mirrors `discord_bots/cogs/in_progress_game.py:202`.
 ## Permissions
 
 - Admin commands: `is_admin_app_command` (existing).
-- Captain commands: new check `is_team_captain_for_ladder` (queries `LadderTeam.captain_id` against `interaction.user.id` and the ladder named in the command).
-- All other ladder commands: any rostered player on the team. New check `is_team_member_for_ladder`.
+- Captain commands: an inline check inside each command compares `LadderTeam.captain_id` against `interaction.user.id` for the ladder named in the command. (No standalone decorator — kept inline because the lookup needs the ladder argument.)
+- Other player-facing commands look up the caller's team via `LadderTeamPlayer` and gate on roster membership inline.
 
 All ladder commands gate channel via a new check `is_ladder_channel` (uses `Config.ladder_channel_id`). Mirrors `is_command_or_captain_channel` from the captain-pick rollout.
 

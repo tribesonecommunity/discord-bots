@@ -1991,6 +1991,50 @@ async def ladder_autocomplete(interaction: Interaction, current: str):
     return result
 
 
+async def ladder_match_autocomplete(interaction: Interaction, current: str):
+    """
+    Autocomplete recent matches across all ladders, labeled with
+    "<ladder>: challenger vs defender [status]". Returns IDs as values.
+    """
+    from discord_bots.models import LadderMatch as _LadderMatch
+    from discord_bots.models import LadderTeam as _LadderTeam
+
+    result = []
+    session: SQLAlchemySession
+    with Session() as session:
+        rows = (
+            session.query(_LadderMatch, Ladder)
+            .join(Ladder, Ladder.id == _LadderMatch.ladder_id)
+            .order_by(_LadderMatch.challenged_at.desc())
+            .limit(50)
+            .all()
+        )
+        cf = current.casefold()
+        for match, ladder in rows:
+            challenger = (
+                session.query(_LadderTeam)
+                .filter(_LadderTeam.id == match.challenger_team_id)
+                .first()
+            )
+            defender = (
+                session.query(_LadderTeam)
+                .filter(_LadderTeam.id == match.defender_team_id)
+                .first()
+            )
+            label = (
+                f"{ladder.name}: "
+                f"{challenger.name if challenger else '?'} vs "
+                f"{defender.name if defender else '?'} "
+                f"[{match.status}]"
+            )
+            label = label[:100]
+            if cf in label.casefold() or cf in match.id:
+                result.append(discord.app_commands.Choice(name=label, value=match.id))
+            if len(result) >= 25:
+                break
+    return result
+
+
 async def ladder_team_autocomplete(interaction: Interaction, current: str):
     """
     Autocomplete team names within the ladder named in the same command.
