@@ -681,6 +681,75 @@ class LadderCommands(BaseCog):
         name="team", parent=ladder_group, description="Ladder team commands"
     )
 
+    @ladder_group.command(name="help", description="Show all ladder commands")
+    @app_commands.check(is_ladder_channel)
+    async def help_command(self, interaction: Interaction):
+        embed = Embed(
+            title="Ladder commands",
+            description=(
+                "All commands run in the ladder channel. Captains issue "
+                "challenges and reports; admins manage ladders and resolve "
+                "stuck matches."
+            ),
+            colour=Colour.blue(),
+        )
+        embed.add_field(
+            name="Read",
+            value=(
+                "`/ladder list` — list all ladders\n"
+                "`/ladder rankings <ladder>` — current standings\n"
+                "`/ladder team list <ladder>` — all teams in a ladder\n"
+                "`/ladder team info <ladder> <team_name>` — roster, record, position\n"
+                "`/ladder matchinfo <match_id>` — match details and per-map scores"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Team management",
+            value=(
+                "`/ladder team create <ladder> <name>` — create a team (you become captain)\n"
+                "`/ladder team invite <ladder> <member>` — captain only\n"
+                "`/ladder team uninvite <ladder> <member>` — revoke a pending invite\n"
+                "`/ladder team accept <ladder> <team_name>` — accept an invite\n"
+                "`/ladder team decline <ladder> <team_name>` — decline an invite\n"
+                "`/ladder team leave <ladder>` — leave your team\n"
+                "`/ladder team kick <ladder> <member>` — captain only\n"
+                "`/ladder team transfer <ladder> <member>` — give captaincy\n"
+                "`/ladder team disband <ladder>` — captain only; blocked while in-flight"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Match flow",
+            value=(
+                "`/ladder challenge <ladder> <opponent>` — challenger captain\n"
+                "`/ladder accept <ladder>` — defender captain (rolls maps)\n"
+                "`/ladder decline <ladder>` — defender captain\n"
+                "`/ladder cancel <ladder>` — challenger captain (only while pending)\n"
+                "`/ladder report <ladder>` — opens a modal to enter scores"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Admin",
+            value=(
+                "`/ladder admin create <name> <rotation> <maps_per_match> <max_team_size>`\n"
+                "`/ladder admin delete <ladder>`\n"
+                "`/ladder admin setchannels <ladder> <leaderboard_channel> <history_channel>`\n"
+                "`/ladder admin setmapspermatch <ladder> <value>`\n"
+                "`/ladder admin setmaxteamsize <ladder> <value>`\n"
+                "`/ladder admin setchallengedistance <ladder> <value>`\n"
+                "`/ladder admin setactive <ladder> <value>`\n"
+                "`/ladder admin editmatch <match_id>` — re-open report modal\n"
+                "`/ladder admin forceendmatch <match_id> <winner>` — force outcome\n"
+                "`/ladder admin cancelmatch <match_id>` — void without recording\n"
+                "`/ladder admin forceadjust <ladder> <team_name> <new_position>`\n"
+                "`/ladder admin removeteam <ladder> <team_name>`"
+            ),
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed)
+
     @ladder_group.command(name="list", description="List all ladders")
     @app_commands.check(is_ladder_channel)
     async def list_ladders(self, interaction: Interaction):
