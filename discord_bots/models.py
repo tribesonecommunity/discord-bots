@@ -1832,6 +1832,10 @@ class Ladder:
         default=1,
         metadata={"sa": Column(Integer, nullable=False, server_default=text("1"))},
     )
+    challenge_cooldown_hours: int = field(
+        default=168,
+        metadata={"sa": Column(Integer, nullable=False, server_default=text("168"))},
+    )
     leaderboard_channel_id: int | None = field(
         default=None,
         metadata={"sa": Column(BigInteger, nullable=True)},

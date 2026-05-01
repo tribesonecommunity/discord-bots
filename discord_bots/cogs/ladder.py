@@ -1,6 +1,6 @@
 import logging
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord import (
@@ -161,6 +161,51 @@ def _utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _team_cooldown_until(
+    session: SQLAlchemySession, ladder: Ladder, team_id: str
+) -> datetime | None:
+    """
+    Return the timestamp at which `team_id` exits its post-match cooldown,
+    or None if the team is not in cooldown.
+
+    Cooldown is `ladder.challenge_cooldown_hours` after the most recent
+    completed match the team played in (as challenger or defender).
+    """
+    if ladder.challenge_cooldown_hours <= 0:
+        return None
+    last_completed: datetime | None = (
+        session.query(func.max(LadderMatch.completed_at))
+        .filter(
+            LadderMatch.ladder_id == ladder.id,
+            LadderMatch.status == "completed",
+            (LadderMatch.challenger_team_id == team_id)
+            | (LadderMatch.defender_team_id == team_id),
+        )
+        .scalar()
+    )
+    if not last_completed:
+        return None
+    return last_completed + timedelta(hours=ladder.challenge_cooldown_hours)
+
+
+def _format_cooldown_remaining(remaining: timedelta) -> str:
+    """Format a positive timedelta as a short human-readable string."""
+    total_seconds = int(remaining.total_seconds())
+    if total_seconds <= 0:
+        return "<1m"
+    days, rem = divmod(total_seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes and not days:
+        parts.append(f"{minutes}m")
+    return " ".join(parts) if parts else "<1m"
+
+
 async def _post_history(ladder: Ladder, embed: Embed) -> None:
     """Post an embed to the ladder's history channel, if configured."""
     if not ladder.history_channel_id:
@@ -211,6 +256,16 @@ def _build_leaderboard_embed(session: SQLAlchemySession, ladder: Ladder) -> Embe
                 f"[challenge accepted vs {challenger.name}]"
             )
 
+    now = _utc_now_naive()
+    for t in teams:
+        if t.id in annotation_by_team:
+            continue
+        cooldown_until = _team_cooldown_until(session, ladder, t.id)
+        if cooldown_until and cooldown_until > now:
+            annotation_by_team[t.id] = (
+                f"[cooldown {_format_cooldown_remaining(cooldown_until - now)}]"
+            )
+
     if not teams:
         body = "*No teams yet.*"
     else:
@@ -229,7 +284,8 @@ def _build_leaderboard_embed(session: SQLAlchemySession, ladder: Ladder) -> Embe
     header = (
         f"maps/match: **{ladder.maps_per_match}**   "
         f"roster: **{ladder.max_team_size}**   "
-        f"challenge range: **{ladder.max_challenge_distance}**"
+        f"challenge range: **{ladder.max_challenge_distance}**   "
+        f"cooldown: **{ladder.challenge_cooldown_hours}h**"
     )
     embed = Embed(
         title=f"Ladder: {ladder.name}",
@@ -739,6 +795,7 @@ class LadderCommands(BaseCog):
                 "`/ladder admin setmapspermatch <ladder> <value>`\n"
                 "`/ladder admin setmaxteamsize <ladder> <value>`\n"
                 "`/ladder admin setchallengedistance <ladder> <value>`\n"
+                "`/ladder admin setchallengecooldown <ladder> <hours>`\n"
                 "`/ladder admin setactive <ladder> <value>`\n"
                 "`/ladder admin editmatch <match_id>` — re-open report modal\n"
                 "`/ladder admin forceendmatch <match_id> <winner>` — force outcome\n"
@@ -778,6 +835,7 @@ class LadderCommands(BaseCog):
                     f"Maps per match: **{ladder.maps_per_match}**",
                     f"Max team size: **{ladder.max_team_size}**",
                     f"Challenge distance: **{ladder.max_challenge_distance}**",
+                    f"Challenge cooldown: **{ladder.challenge_cooldown_hours}h**",
                     f"Active: **{ladder.is_active}**",
                 ]
                 embed.add_field(name=ladder.name, value="\n".join(lines), inline=False)
@@ -1033,6 +1091,37 @@ class LadderCommands(BaseCog):
             "max_challenge_distance",
             value,
             "Max challenge distance",
+        )
+
+    @admin_group.command(
+        name="setchallengecooldown",
+        description="Set the post-match challenge cooldown (hours)",
+    )
+    @app_commands.check(is_admin_app_command)
+    @app_commands.check(is_ladder_channel)
+    @app_commands.autocomplete(ladder=ladder_autocomplete)
+    @app_commands.describe(
+        ladder="Ladder to configure",
+        value="Hours a team is shielded from challenges after a match (0 disables)",
+    )
+    async def set_challenge_cooldown(
+        self, interaction: Interaction, ladder: str, value: int
+    ):
+        if value < 0:
+            await interaction.response.send_message(
+                embed=Embed(
+                    description="`challenge_cooldown_hours` cannot be negative.",
+                    colour=Colour.red(),
+                ),
+                ephemeral=True,
+            )
+            return
+        await self._set_int_field(
+            interaction,
+            ladder,
+            "challenge_cooldown_hours",
+            value,
+            "Challenge cooldown (hours)",
         )
 
     @admin_group.command(
@@ -1646,6 +1735,17 @@ class LadderCommands(BaseCog):
                 inline=True,
             )
             embed.add_field(name="Captain", value=captain_mention, inline=True)
+            cooldown_until = _team_cooldown_until(session, ladder_row, team.id)
+            now = _utc_now_naive()
+            if cooldown_until and cooldown_until > now:
+                embed.add_field(
+                    name="Challenge cooldown",
+                    value=(
+                        f"Free in "
+                        f"**{_format_cooldown_remaining(cooldown_until - now)}**"
+                    ),
+                    inline=True,
+                )
             embed.add_field(
                 name=f"Roster ({len(roster)}/{ladder_row.max_team_size})",
                 value=roster_str,
@@ -1768,6 +1868,19 @@ class LadderCommands(BaseCog):
                         f"Defender is {distance} positions above you. "
                         f"Max challenge distance is "
                         f"{ladder_row.max_challenge_distance}."
+                    ),
+                )
+                return
+
+            cooldown_until = _team_cooldown_until(session, ladder_row, defender.id)
+            now = _utc_now_naive()
+            if cooldown_until and cooldown_until > now:
+                await _err(
+                    interaction,
+                    (
+                        f"**{escape_markdown(defender.name)}** is on a "
+                        f"post-match cooldown. Free in "
+                        f"**{_format_cooldown_remaining(cooldown_until - now)}**."
                     ),
                 )
                 return
