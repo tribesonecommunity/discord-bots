@@ -1659,53 +1659,44 @@ def code_block(content: str, language: str = "autohotkey") -> str:
 
 
 def get_team_name_diff(
-    team0_player_names_before: list[str] | None,
-    team0_player_names_after: list[str] | None,
-    team1_player_names_before: list[str] | None,
-    team1_player_names_after: list[str] | None,
+    team0_player_names_before: list[str],
+    team0_player_names_after: list[str],
+    team1_player_names_before: list[str],
+    team1_player_names_after: list[str],
 ) -> tuple[str, str]:
     """
     Given lists of player names for team0 and team1 (before and after), returns a tuple[str, str] that represents the diff in discord markdown format
     Useful for displaying after a rebalance, typically after a sub or autosub.
     Note: the returned string is a vertical list
     """
-    if (
-        not team0_player_names_before
-        or not team0_player_names_after
-        or not team1_player_names_before
-        or not team1_player_names_after
-    ):
-        return "", ""
-    players_added_to_team0: list[str] = list(
-        set(team0_player_names_after) - set(team0_player_names_before)
-    )
-    players_added_to_team1: list[str] = list(
-        set(team1_player_names_after) - set(team1_player_names_before)
-    )
-    team0_diff_vaules: list[str] = []
-    team1_diff_vaules: list[str] = []
-    # sort the names alphabetically and caselessly to make them easier to read
+
+    def format_team_diff(names: list[str], added_names: set[str]) -> list[str]:
+        return [f"+ {name}" if name in added_names else f"{name}" for name in names]
+
     team0_player_names_after.sort(key=str.casefold)
     team1_player_names_after.sort(key=str.casefold)
-    for name in team0_player_names_after:
-        if name in players_added_to_team0:
-            team0_diff_vaules.append(f"+ {name}")
-        else:
-            team0_diff_vaules.append(f" {name}")
-    for name in team1_player_names_after:
-        if name in players_added_to_team1:
-            team1_diff_vaules.append(f"+ {name}")
-        else:
-            team1_diff_vaules.append(f"  {name}")
+    player_names_added_to_team0: set[str] = set(team0_player_names_after) - set(
+        team0_player_names_before
+    )
+    player_names_added_to_team1: set[str] = set(team1_player_names_after) - set(
+        team1_player_names_before
+    )
+    team0_diff_values: list[str] = format_team_diff(
+        team0_player_names_after, player_names_added_to_team0
+    )
+    team1_diff_values: list[str] = format_team_diff(
+        team1_player_names_after, player_names_added_to_team1
+    )
+
     newline = "\n"
     team0_diff_str: str = (
-        f">>> ```diff\n{newline.join(team0_diff_vaules)}```"
-        if team0_diff_vaules
+        f">>> ```diff\n{newline.join(team0_diff_values)}```"
+        if team0_diff_values
         else "> \n** **"  # creates an empty quote
     )
     team1_diff_str: str = (
-        f">>> ```diff\n{newline.join(team1_diff_vaules)}```"
-        if team1_diff_vaules
+        f">>> ```diff\n{newline.join(team1_diff_values)}```"
+        if team1_diff_values
         else "> \n** **"  # creates an empty quote
     )
     return team0_diff_str, team1_diff_str
